@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 
 /* ═══ MOCK DATA ═══ */
@@ -82,6 +82,37 @@ const CHECKLIST = [
   { id: "d17", name: "Declarație GDPR", category: "Declarații & Angajamente", source: "manual", templateName: null, done: false },
 ];
 
+type SolomonMessage = {
+  role: "user" | "assistant";
+  text: string;
+  extractions: Array<{ key: string; label: string; value: string; confidence: number }> | null;
+};
+
+const SOLOMON_MESSAGES: SolomonMessage[] = [
+  { role: "assistant", text: "Bună! Sunt **Solomon**, asistentul tău de colectare date.\n\nAm preluat deja datele firmei din ONRC — **9 din 12 câmpuri** completate automat ✓\n\nMai am nevoie de:\n• Valoarea totală a proiectului\n• Durata proiectului (luni)\n• IBAN cont dedicat proiect\n\nCare e bugetul estimat?", extractions: null },
+  { role: "user", text: "Proiectul vizează achiziția a 2 centre de prelucrare CNC cu 5 axe. Valoarea estimată e 150,000 EUR, durata 18 luni.", extractions: null },
+  { role: "assistant", text: "Am extras datele din mesajul tău:", extractions: [
+    { key: "echipamente_descr", label: "Descriere echipamente", value: "2× Centre de prelucrare CNC 5 axe", confidence: 90 },
+    { key: "valoare_estimata_eur", label: "Valoare estimată (EUR)", value: "150,000 EUR", confidence: 95 },
+    { key: "durata_proiect", label: "Durata proiectului", value: "18 luni", confidence: 92 },
+  ]},
+];
+
+type SolomonElement = {
+  key: string; label: string; value: string; source: string; status: "confirmat" | "propus";
+};
+
+const SOLOMON_ELEMENTS: SolomonElement[] = [
+  { key: "denumire_firma", label: "Denumirea firmei", value: "SC CONSTRUCT NORD SRL", source: "Date ONRC", status: "confirmat" },
+  { key: "cui", label: "Cod Unic de Înregistrare", value: "RO44123456", source: "Date ONRC", status: "confirmat" },
+  { key: "nr_angajati", label: "Număr angajați", value: "47", source: "Document uploadat", status: "propus" },
+  { key: "cifra_afaceri", label: "Cifra de afaceri (2024)", value: "4.250.000 lei", source: "Document uploadat", status: "propus" },
+  { key: "profit_net", label: "Profit net (2024)", value: "380.000 lei", source: "Document uploadat", status: "propus" },
+  { key: "adresa_sediu", label: "Adresa sediu social", value: "Str. Industriei 14, Cluj", source: "Date ONRC", status: "confirmat" },
+  { key: "cod_caen", label: "Cod CAEN principal", value: "2562", source: "Date ONRC", status: "confirmat" },
+  { key: "reprezentant_nume", label: "Reprezentant legal", value: "Popescu Ion", source: "Chat Solomon", status: "propus" },
+];
+
 const STATUS_MAP: Record<string, { label: string; color: string; bg: string }> = {
   draft: { label: "Ciornă", color: "#5a6478", bg: "rgba(90,100,120,0.12)" },
   in_progress: { label: "În lucru", color: "#4d8bff", bg: "rgba(77,139,255,0.12)" },
@@ -104,6 +135,109 @@ export default function ProjectViewPage() {
   const [ghidTab, setGhidTab] = useState<"reguli" | "ghid">("reguli");
   const [checklistItems, setChecklistItems] = useState(CHECKLIST);
   const [collapsedCats, setCollapsedCats] = useState<Record<string, boolean>>({});
+
+  // Solomon state
+  const [solomonModel, setSolomonModel] = useState<"sonnet" | "opus">("opus");
+  const [solomonET, setSolomonET] = useState(true);
+  const [solomonMessages, setSolomonMessages] = useState<SolomonMessage[]>(SOLOMON_MESSAGES);
+  const [solomonInput, setSolomonInput] = useState("");
+  const [solomonElements, setSolomonElements] = useState<SolomonElement[]>(SOLOMON_ELEMENTS);
+  const [extractionStates, setExtractionStates] = useState<Record<string, "confirmed" | "rejected">>({});
+  const [refinePopup, setRefinePopup] = useState<{ text: string; x: number; y: number } | null>(null);
+  const [refineInput, setRefineInput] = useState("");
+  const chatRef = useRef<HTMLDivElement>(null);
+  const popupRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll chat
+  useEffect(() => {
+    if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
+  }, [solomonMessages]);
+
+  // Close refine popup on outside click
+  useEffect(() => {
+    const close = (e: MouseEvent) => {
+      if (popupRef.current && !popupRef.current.contains(e.target as Node)) setRefinePopup(null);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, []);
+
+  const handleSolomonSend = () => {
+    if (!solomonInput.trim()) return;
+    setSolomonMessages(prev => [...prev, { role: "user", text: solomonInput, extractions: null }]);
+    const inputCopy = solomonInput;
+    setSolomonInput("");
+    // Mock AI response with extraction
+    setTimeout(() => {
+      setSolomonMessages(prev => [...prev, {
+        role: "assistant",
+        text: "Am procesat informația. Iată ce am extras:",
+        extractions: [
+          { key: "nou_element", label: "Element nou", value: inputCopy.substring(0, 40) + (inputCopy.length > 40 ? "..." : ""), confidence: 78 },
+        ]
+      }]);
+    }, 800);
+  };
+
+  const handleConfirmExtraction = (msgIdx: number, extIdx: number) => {
+    const k = `${msgIdx}-${extIdx}`;
+    setExtractionStates(prev => ({ ...prev, [k]: "confirmed" }));
+    const msg = solomonMessages[msgIdx];
+    if (msg?.extractions?.[extIdx]) {
+      const ext = msg.extractions[extIdx];
+      setSolomonElements(prev => [
+        { key: ext.key, label: ext.label, value: ext.value, source: "Chat Solomon", status: "confirmat" },
+        ...prev,
+      ]);
+    }
+  };
+
+  const handleRejectExtraction = (msgIdx: number, extIdx: number) => {
+    setExtractionStates(prev => ({ ...prev, [`${msgIdx}-${extIdx}`]: "rejected" }));
+  };
+
+  const handleConfirmElement = (idx: number) => {
+    setSolomonElements(prev => prev.map((el, i) => i === idx ? { ...el, status: "confirmat" } : el));
+  };
+
+  const handleRejectElement = (idx: number) => {
+    setSolomonElements(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const handleTextSelect = useCallback(() => {
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed) return;
+    const text = sel.toString().trim();
+    if (text.length < 5) return;
+    const msgEl = (sel.anchorNode?.parentElement as HTMLElement)?.closest?.(".chat-msg.assistant");
+    if (!msgEl) return;
+    const range = sel.getRangeAt(0);
+    const rect = range.getBoundingClientRect();
+    setRefinePopup({ text, x: rect.left, y: rect.bottom + 8 });
+    setRefineInput("");
+  }, []);
+
+  const handleRefineSubmit = () => {
+    if (!refineInput.trim() || !refinePopup) return;
+    setSolomonMessages(prev => [...prev, {
+      role: "assistant",
+      text: `✨ Fragment rescris conform instrucțiunii "${refineInput}":\n\n${refinePopup.text.substring(0, 60)}${refinePopup.text.length > 60 ? "..." : ""} [actualizat]`,
+      extractions: null,
+    }]);
+    setRefinePopup(null);
+    setRefineInput("");
+  };
+
+  const renderMsgText = (text: string) => {
+    return text.split(/(\*\*.*?\*\*)/).map((part, i) => {
+      if (part.startsWith("**") && part.endsWith("**")) {
+        return <span key={i} className="msg-bold">{part.slice(2, -2)}</span>;
+      }
+      return part;
+    });
+  };
+
+  const solomonConfirmedCount = solomonElements.filter(e => e.status === "confirmat").length;
 
   const toggleBranch = (key: string) => setBranches(b => ({ ...b, [key]: !b[key] }));
 
@@ -305,6 +439,81 @@ export default function ProjectViewPage() {
         .check-template{font-size:11px;color:var(--accent-blue);cursor:pointer;white-space:nowrap}
         .check-template:hover{text-decoration:underline}
 
+        /* ═══ SOLOMON CHAT ═══ */
+        .solomon-layout{display:flex;height:100%;overflow:hidden}
+        .solomon-chat{flex:1;display:flex;flex-direction:column;min-width:0;height:100%;overflow:hidden}
+        .solomon-toolbar{padding:10px 20px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border);background:var(--bg-surface)}
+        .solomon-avatar{width:32px;height:32px;border-radius:50%;background:var(--accent-blue);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;color:white;flex-shrink:0}
+        .solomon-name-block{display:flex;flex-direction:column;gap:1px}
+        .solomon-name-block .sn-name{font-size:14px;font-weight:700;color:var(--text-primary)}
+        .solomon-name-block .sn-status{font-size:11px;color:var(--accent-green);display:flex;align-items:center;gap:4px}
+        .sn-status-dot{width:6px;height:6px;border-radius:50%;background:var(--accent-green);animation:statusPulse 2s ease infinite}
+        @keyframes statusPulse{0%,100%{opacity:1}50%{opacity:.4}}
+        .model-selector{display:flex;gap:3px;background:var(--bg-deep);padding:3px;border-radius:var(--r-sm);margin-left:auto}
+        .model-btn{padding:4px 10px;font-size:11px;font-weight:600;border-radius:4px;border:none;cursor:pointer;background:transparent;color:var(--text-secondary);font-family:var(--font-mono);transition:all .15s}
+        .model-btn.active{background:var(--accent-blue);color:white}
+        .model-btn:hover:not(.active){color:var(--text-primary);background:var(--bg-hover)}
+        .et-toggle{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text-secondary);cursor:pointer;padding:4px 9px;border-radius:4px;border:1px solid var(--border);background:transparent;font-family:var(--font-sans);transition:all .15s}
+        .et-toggle.on{border-color:var(--accent-purple);color:var(--accent-purple);background:rgba(167,139,250,.08)}
+        .chat-messages{flex:1;overflow-y:auto;overflow-x:hidden;padding:20px;display:flex;flex-direction:column;gap:16px;min-height:0}
+        .chat-msg{max-width:85%;padding:14px 18px;border-radius:var(--r-lg, 14px);font-size:14px;line-height:1.6;white-space:pre-wrap;position:relative}
+        .chat-msg.assistant{background:var(--bg-elevated);border:1px solid var(--border);align-self:flex-start;border-bottom-left-radius:4px}
+        .chat-msg.user{background:rgba(77,139,255,.1);border:1px solid rgba(77,139,255,.2);align-self:flex-end;border-bottom-right-radius:4px}
+        .chat-msg .msg-bold{font-weight:600;color:var(--text-primary)}
+        .extraction-cards{margin-top:10px;display:flex;flex-direction:column;gap:8px}
+        .extraction-card{background:var(--bg-deep);border:1px solid var(--border);border-radius:var(--r-sm);padding:10px 14px;transition:all .2s}
+        .extraction-card.confirmed{border-color:var(--accent-green);background:rgba(52,211,153,.05)}
+        .extraction-card.rejected{border-color:var(--accent-red);opacity:.5;text-decoration:line-through}
+        .exc-top{display:flex;align-items:center;gap:6px;margin-bottom:4px}
+        .exc-label{font-size:12px;color:var(--text-muted);flex:1}
+        .exc-confidence{font-size:11px;font-family:var(--font-mono);font-weight:600;color:var(--text-secondary)}
+        .exc-value{font-size:14px;font-weight:600;color:var(--accent-blue);font-family:var(--font-mono);margin-bottom:8px}
+        .exc-actions{display:flex;gap:6px}
+        .exc-btn{padding:4px 12px;border-radius:4px;border:1px solid var(--border);font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font-sans);display:flex;align-items:center;gap:4px;transition:all .15s;background:transparent}
+        .exc-btn.confirm-btn{border-color:var(--accent-green);color:var(--accent-green)}
+        .exc-btn.confirm-btn:hover{background:rgba(52,211,153,.1)}
+        .exc-btn.edit-btn{color:var(--text-secondary)}
+        .exc-btn.edit-btn:hover{color:var(--accent-yellow);border-color:var(--accent-yellow)}
+        .exc-btn.reject-btn{color:var(--text-muted)}
+        .exc-btn.reject-btn:hover{color:var(--accent-red);border-color:var(--accent-red)}
+        .exc-confirmed-label{font-size:11px;font-weight:700;color:var(--accent-green);display:flex;align-items:center;gap:4px}
+        .chat-timestamp{font-size:10px;color:var(--text-muted);margin-top:4px}
+        .chat-input-area{padding:14px 20px;border-top:1px solid var(--border);background:var(--bg-surface)}
+        .chat-input-row{display:flex;gap:8px;align-items:flex-end}
+        .chat-input{flex:1;padding:12px 16px;border-radius:var(--r-md);border:1px solid var(--border);background:var(--bg-deep);color:var(--text-primary);font-size:14px;font-family:var(--font-sans);line-height:1.5;resize:none;outline:none;min-height:44px;max-height:160px;overflow-y:auto;transition:border-color .15s}
+        .chat-input:focus{border-color:var(--accent-blue)}
+        .chat-input::placeholder{color:var(--text-muted)}
+        .chat-btn{width:44px;height:44px;border-radius:var(--r-md);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;flex-shrink:0}
+        .chat-btn.send{background:var(--accent-blue);color:white;font-size:18px}
+        .chat-btn.send:hover{background:#5d9bff}
+        .chat-btn.upload-btn{background:var(--bg-elevated);color:var(--text-secondary);border:1px solid var(--border);font-size:16px}
+        .chat-btn.upload-btn:hover{border-color:var(--border-active);color:var(--text-primary)}
+        .solomon-elements-panel{width:320px;min-width:280px;border-left:1px solid var(--border);background:var(--bg-surface);display:flex;flex-direction:column;overflow:hidden;height:100%}
+        .sep-header{padding:14px 16px;border-bottom:1px solid var(--border);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text-muted);display:flex;align-items:center;gap:8px}
+        .sep-count{font-size:10px;padding:1px 6px;border-radius:8px;background:rgba(77,139,255,.12);color:var(--accent-blue);font-family:var(--font-mono)}
+        .sep-scroll{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:8px}
+        .sep-card{padding:12px 14px;border-radius:var(--r-sm);border:1px solid var(--border);background:var(--bg-elevated);transition:all .15s}
+        .sep-card:hover{border-color:var(--border-active)}
+        .sep-card.is-confirmed{border-left:3px solid var(--accent-green)}
+        .sep-card.is-proposed{border-left:3px solid var(--accent-yellow)}
+        .sep-card-label{font-size:13px;font-weight:700;color:var(--text-primary);margin-bottom:3px}
+        .sep-card-value{font-size:14px;font-weight:600;color:var(--accent-yellow);font-family:var(--font-mono);margin-bottom:6px;word-break:break-word}
+        .sep-card.is-confirmed .sep-card-value{color:var(--accent-green)}
+        .sep-card-source{font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:4px}
+        .sep-confirm-row{margin-top:8px;display:flex;gap:6px}
+        .sep-confirm-btn{padding:3px 10px;border-radius:4px;border:1px solid var(--accent-green);background:transparent;color:var(--accent-green);font-size:11px;font-weight:600;cursor:pointer;font-family:var(--font-sans);display:flex;align-items:center;gap:3px;transition:all .15s}
+        .sep-confirm-btn:hover{background:rgba(52,211,153,.1)}
+        .sep-reject-btn{padding:3px 10px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--text-muted);font-size:11px;font-weight:600;cursor:pointer;font-family:var(--font-sans);transition:all .15s}
+        .sep-reject-btn:hover{color:var(--accent-red);border-color:var(--accent-red)}
+        .sep-confirmed-badge{font-size:10px;color:var(--accent-green);font-weight:700;margin-top:6px;display:flex;align-items:center;gap:4px}
+        .inline-refine-popup{position:fixed;z-index:1000;background:var(--bg-elevated);border:1px solid var(--accent-blue);border-radius:var(--r-md);padding:12px;box-shadow:0 8px 32px rgba(0,0,0,.5);width:340px;animation:popIn .15s ease}
+        @keyframes popIn{from{opacity:0;transform:translateY(4px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+        .refine-selected-text{font-size:12px;color:var(--text-secondary);background:var(--bg-deep);padding:8px 10px;border-radius:var(--r-sm);margin-bottom:8px;max-height:60px;overflow:hidden;border-left:3px solid var(--accent-blue)}
+        .refine-input-row{display:flex;gap:6px}
+        .refine-input{flex:1;padding:8px 12px;border-radius:var(--r-sm);border:1px solid var(--border);background:var(--bg-deep);color:var(--text-primary);font-size:13px;font-family:var(--font-sans);outline:none}
+        .refine-input:focus{border-color:var(--accent-blue)}
+        .refine-submit{padding:8px 14px;border-radius:var(--r-sm);border:none;background:var(--accent-blue);color:white;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font-sans)}
+
         .coming-soon{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--text-muted);gap:12px}
         .coming-soon .cs-icon{font-size:48px;opacity:.5}
         .coming-soon .cs-label{font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:1px}
@@ -357,7 +566,7 @@ export default function ProjectViewPage() {
                   </div>
                   <div className={`tree-leaf ${activeLeaf === "solomon" ? "active" : ""}`} onClick={() => setActiveLeaf("solomon")}>
                     <span>&#129302;</span> Solomon
-                    <span className="leaf-badge muted">Opus</span>
+                    <span className="leaf-badge muted">{solomonModel === "opus" ? "Opus" : "Sonnet"}</span>
                   </div>
                   <div className={`tree-leaf ${activeLeaf === "elemente" ? "active" : ""}`} onClick={() => setActiveLeaf("elemente")}>
                     <span>&#128202;</span> Elemente
@@ -738,12 +947,165 @@ export default function ProjectViewPage() {
               </div>
             )}
 
-            {/* ═══ SOLOMON (placeholder for Phase 5) ═══ */}
+            {/* ═══ SOLOMON CHAT ═══ */}
             {activeLeaf === "solomon" && (
-              <div className="coming-soon">
-                <div className="cs-icon">&#129302;</div>
-                <div className="cs-label">Solomon</div>
-                <div className="cs-desc">Asistentul AI de colectare date — va fi implementat în Faza 5</div>
+              <div className="solomon-layout">
+                {/* Chat area */}
+                <div className="solomon-chat">
+                  {/* Toolbar */}
+                  <div className="solomon-toolbar">
+                    <div className="solomon-avatar">S</div>
+                    <div className="solomon-name-block">
+                      <div className="sn-name">Solomon</div>
+                      <div className="sn-status"><span className="sn-status-dot" /> Activ &middot; Agent colectare date</div>
+                    </div>
+                    <div className="model-selector">
+                      <button className={`model-btn ${solomonModel === "sonnet" ? "active" : ""}`} onClick={() => setSolomonModel("sonnet")}>Sonnet</button>
+                      <button className={`model-btn ${solomonModel === "opus" ? "active" : ""}`} onClick={() => setSolomonModel("opus")}>Opus</button>
+                    </div>
+                    <button className={`et-toggle ${solomonET ? "on" : ""}`} onClick={() => setSolomonET(!solomonET)}>
+                      &#10024; ET
+                    </button>
+                  </div>
+
+                  {/* Messages */}
+                  <div className="chat-messages" ref={chatRef} onMouseUp={handleTextSelect}>
+                    {solomonMessages.map((msg, msgIdx) => (
+                      <div key={msgIdx}>
+                        <div className={`chat-msg ${msg.role}`}>
+                          {renderMsgText(msg.text)}
+                          {msg.extractions && (
+                            <div className="extraction-cards">
+                              {msg.extractions.map((ext, extIdx) => {
+                                const k = `${msgIdx}-${extIdx}`;
+                                const state = extractionStates[k];
+                                return (
+                                  <div key={extIdx} className={`extraction-card ${state || ""}`}>
+                                    <div className="exc-top">
+                                      <span className="exc-label">{ext.label}</span>
+                                      <span className="exc-confidence">{ext.confidence}%</span>
+                                    </div>
+                                    <div className="exc-value">{ext.value}</div>
+                                    {!state ? (
+                                      <div className="exc-actions">
+                                        <button className="exc-btn confirm-btn" onClick={(e) => { e.stopPropagation(); handleConfirmExtraction(msgIdx, extIdx); }}>
+                                          &#10003; Confirmă
+                                        </button>
+                                        <button className="exc-btn edit-btn" title="Editează înainte de confirmare">
+                                          &#9998; Editează
+                                        </button>
+                                        <button className="exc-btn reject-btn" onClick={(e) => { e.stopPropagation(); handleRejectExtraction(msgIdx, extIdx); }}>
+                                          &#10005; Respinge
+                                        </button>
+                                      </div>
+                                    ) : state === "confirmed" ? (
+                                      <div className="exc-confirmed-label">&#10003; Salvat în Elemente</div>
+                                    ) : (
+                                      <div style={{ fontSize: 11, color: "var(--accent-red)" }}>Respins</div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                        {msg.role === "assistant" && (
+                          <div className="chat-timestamp">
+                            <div className="solomon-avatar" style={{ width: 20, height: 20, fontSize: 10, display: "inline-flex", verticalAlign: "middle", marginRight: 6 }}>S</div>
+                            {new Date().toLocaleTimeString("ro-RO", { hour: "2-digit", minute: "2-digit" })}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Input area */}
+                  <div className="chat-input-area">
+                    <div className="chat-input-row">
+                      <button className="chat-btn upload-btn" title="Upload document">
+                        &#128206;
+                      </button>
+                      <button className="chat-btn upload-btn" title="Paste snippet" style={{ fontSize: 12, fontWeight: 600, width: "auto", padding: "0 12px" }}>
+                        &#128203;
+                      </button>
+                      <textarea
+                        className="chat-input"
+                        placeholder="Scrie detalii despre proiect, lipește date, sau întreabă..."
+                        value={solomonInput}
+                        rows={1}
+                        onChange={e => {
+                          setSolomonInput(e.target.value);
+                          e.target.style.height = "auto";
+                          e.target.style.height = Math.min(e.target.scrollHeight, 160) + "px";
+                        }}
+                        onKeyDown={e => {
+                          if (e.key === "Enter" && !e.shiftKey) {
+                            e.preventDefault();
+                            handleSolomonSend();
+                            (e.target as HTMLTextAreaElement).style.height = "auto";
+                          }
+                        }}
+                      />
+                      <button className="chat-btn send" onClick={handleSolomonSend}>
+                        &#10148;
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Elements panel */}
+                <div className="solomon-elements-panel">
+                  <div className="sep-header">
+                    Elemente completate
+                    <span className="sep-count">{solomonConfirmedCount}/{solomonElements.length}</span>
+                  </div>
+                  <div className="sep-scroll">
+                    {solomonElements.map((el, i) => (
+                      <div key={`${el.key}-${i}`} className={`sep-card ${el.status === "confirmat" ? "is-confirmed" : "is-proposed"}`}>
+                        <div className="sep-card-label">{el.label}</div>
+                        <div className="sep-card-value">{el.value}</div>
+                        <div className="sep-card-source">
+                          <span style={{ fontSize: 10 }}>&#128196;</span>
+                          {el.source}
+                        </div>
+                        {el.status === "confirmat" ? (
+                          <div className="sep-confirmed-badge">&#10003; Confirmat</div>
+                        ) : (
+                          <div className="sep-confirm-row">
+                            <button className="sep-confirm-btn" onClick={() => handleConfirmElement(i)}>
+                              &#10003; Confirmă
+                            </button>
+                            <button className="sep-reject-btn" onClick={() => handleRejectElement(i)}>
+                              &#10005;
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Inline refine popup */}
+            {refinePopup && (
+              <div
+                ref={popupRef}
+                className="inline-refine-popup"
+                style={{ left: Math.min(refinePopup.x, (typeof window !== "undefined" ? window.innerWidth : 1000) - 360), top: refinePopup.y }}
+              >
+                <div className="refine-selected-text">{refinePopup.text}</div>
+                <div className="refine-input-row">
+                  <input
+                    className="refine-input"
+                    placeholder="Ex: fă-l mai formal, adaugă detalii..."
+                    value={refineInput}
+                    onChange={e => setRefineInput(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && handleRefineSubmit()}
+                    autoFocus
+                  />
+                  <button className="refine-submit" onClick={handleRefineSubmit}>Rescrie</button>
+                </div>
               </div>
             )}
 

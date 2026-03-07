@@ -11,6 +11,7 @@ import { ruleRoutes } from "./routes/rules";
 import { templateRoutes } from "./routes/templates";
 import { projectRoutes } from "./routes/projects";
 import { dashboardRoutes } from "./routes/dashboard";
+import { solomonRoutes } from "./routes/solomon";
 import { authMiddleware } from "./middleware/auth";
 import { auditMiddleware } from "./middleware/audit";
 
@@ -36,6 +37,7 @@ app.route("/api/rules", ruleRoutes);
 app.route("/api/templates", templateRoutes);
 app.route("/api/projects", projectRoutes);
 app.route("/api/dashboard", dashboardRoutes);
+app.route("/api/solomon", solomonRoutes);
 
 // Health check
 app.get("/health", (c) => c.json({ status: "ok", timestamp: new Date().toISOString() }));

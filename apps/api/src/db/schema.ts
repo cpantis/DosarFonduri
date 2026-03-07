@@ -242,6 +242,8 @@ export const projects = pgTable("projects", {
   status: projectStatusEnum("status").notNull().default("draft"),
   valoare: decimal("valoare", { precision: 15, scale: 2 }),
   consultantId: uuid("consultant_id").references(() => users.id).notNull(),
+  lockedBy: uuid("locked_by").references(() => users.id),
+  lockedAt: timestamp("locked_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({

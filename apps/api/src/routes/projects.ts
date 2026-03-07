@@ -4,13 +4,29 @@ import { db } from "../db";
 import {
   projects, projectElements, projectEligibility, projectDocuments,
   projectChecklist, templateElements, rules, companies, companyFinancials,
-  documentFolders, documents, auditLog, orgConfig,
+  documentFolders, documents, auditLog, orgConfig, users,
 } from "../db/schema";
 import { eq, and, count, asc, desc, sql } from "drizzle-orm";
 import { AuthContext } from "../middleware/auth";
 import { checkEligibility } from "../services/eligibility";
 
 export const projectRoutes = new Hono();
+
+// Lock timeout: 30 minutes of inactivity
+const LOCK_TIMEOUT_MS = 30 * 60 * 1000;
+
+function isLockExpired(lockedAt: Date | null): boolean {
+  if (!lockedAt) return true;
+  return Date.now() - lockedAt.getTime() > LOCK_TIMEOUT_MS;
+}
+
+async function requireLock(projectId: string, userId: string): Promise<string | null> {
+  const project = await db.query.projects.findFirst({ where: eq(projects.id, projectId) });
+  if (!project) return "Not found";
+  if (!project.lockedBy || isLockExpired(project.lockedAt)) return "Proiectul nu este blocat de tine";
+  if (project.lockedBy !== userId) return "Proiectul este blocat de alt utilizator";
+  return null; // ok
+}
 
 // Helper: build program path (Session → Measure → Program)
 async function buildProgramPath(folderId: string): Promise<{ program: string; masura: string; sesiune: string }> {
@@ -96,10 +112,19 @@ projectRoutes.get("/", async (c) => {
 
     const programPath = await buildProgramPath(p.folderId);
 
+    // Lock info
+    const lockActive = p.lockedBy && !isLockExpired(p.lockedAt);
+    let lockedByName: string | null = null;
+    if (lockActive && p.lockedBy) {
+      const locker = await db.query.users.findFirst({ where: eq(users.id, p.lockedBy) });
+      lockedByName = locker?.name || null;
+    }
+
     return {
       ...p,
       company: company ? { denumire: company.denumire, cui: company.cui } : null,
       programPath,
+      lock: lockActive ? { lockedBy: p.lockedBy, lockedByName, lockedAt: p.lockedAt } : null,
       progress: {
         eligibility: { passed: passedElig, total: totalElig },
         elements: { filled: filledElements, total: totalElements, confirmed: confirmedElements },
@@ -323,6 +348,10 @@ projectRoutes.get("/:id", async (c) => {
 projectRoutes.put("/:id/elements/:eid", async (c) => {
   const auth = c.get("auth") as AuthContext;
   const { id, eid } = c.req.param();
+
+  const lockErr = await requireLock(id, auth.userId);
+  if (lockErr) return c.json({ error: lockErr }, 423);
+
   const body = await c.req.json();
 
   const [updated] = await db.update(projectElements).set({
@@ -428,7 +457,12 @@ projectRoutes.post("/:id/check-eligibility", async (c) => {
 // ─── OVERRIDE ELIGIBILITY RULE ───
 projectRoutes.put("/:id/eligibility/:eid", async (c) => {
   const auth = c.get("auth") as AuthContext;
+  const id = c.req.param("id");
   const { eid } = c.req.param();
+
+  const lockErr = await requireLock(id, auth.userId);
+  if (lockErr) return c.json({ error: lockErr }, 423);
+
   const body = await c.req.json();
 
   const [updated] = await db.update(projectEligibility).set({
@@ -481,7 +515,13 @@ projectRoutes.post("/:id/checklist", async (c) => {
 });
 
 projectRoutes.put("/:id/checklist/:itemId", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const id = c.req.param("id");
   const { itemId } = c.req.param();
+
+  const lockErr = await requireLock(id, auth.userId);
+  if (lockErr) return c.json({ error: lockErr }, 423);
+
   const body = await c.req.json();
 
   const updateData: any = {};
@@ -500,6 +540,107 @@ projectRoutes.delete("/:id/checklist/:itemId", async (c) => {
   const { itemId } = c.req.param();
   await db.delete(projectChecklist).where(eq(projectChecklist.id, itemId));
   return c.json({ ok: true });
+});
+
+// ─── LOCK: ACQUIRE ───
+projectRoutes.post("/:id/lock", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const id = c.req.param("id");
+
+  const project = await db.query.projects.findFirst({
+    where: and(eq(projects.id, id), eq(projects.organizationId, auth.organizationId!)),
+  });
+  if (!project) return c.json({ error: "Not found" }, 404);
+
+  // Already locked by this user — just refresh
+  if (project.lockedBy === auth.userId && !isLockExpired(project.lockedAt)) {
+    const [updated] = await db.update(projects).set({ lockedAt: new Date() })
+      .where(eq(projects.id, id)).returning();
+    return c.json({ locked: true, lockedBy: auth.userId, lockedAt: updated.lockedAt });
+  }
+
+  // Locked by someone else and not expired
+  if (project.lockedBy && project.lockedBy !== auth.userId && !isLockExpired(project.lockedAt)) {
+    const locker = await db.query.users.findFirst({ where: eq(users.id, project.lockedBy) });
+    return c.json({
+      locked: false,
+      error: "Proiectul este blocat",
+      lockedBy: project.lockedBy,
+      lockedByName: locker?.name || "Alt utilizator",
+      lockedAt: project.lockedAt,
+    }, 423);
+  }
+
+  // Available or expired — acquire lock
+  const [updated] = await db.update(projects).set({
+    lockedBy: auth.userId,
+    lockedAt: new Date(),
+  }).where(eq(projects.id, id)).returning();
+
+  return c.json({ locked: true, lockedBy: auth.userId, lockedAt: updated.lockedAt });
+});
+
+// ─── LOCK: RELEASE ───
+projectRoutes.delete("/:id/lock", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const id = c.req.param("id");
+
+  const project = await db.query.projects.findFirst({
+    where: and(eq(projects.id, id), eq(projects.organizationId, auth.organizationId!)),
+  });
+  if (!project) return c.json({ error: "Not found" }, 404);
+
+  // Only lock owner or admin can release
+  if (project.lockedBy !== auth.userId && auth.role !== "admin") {
+    return c.json({ error: "Nu poți debloca proiectul altui utilizator" }, 403);
+  }
+
+  await db.update(projects).set({ lockedBy: null, lockedAt: null }).where(eq(projects.id, id));
+  return c.json({ ok: true });
+});
+
+// ─── LOCK: HEARTBEAT (extend lock) ───
+projectRoutes.post("/:id/lock/heartbeat", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const id = c.req.param("id");
+
+  const project = await db.query.projects.findFirst({
+    where: and(eq(projects.id, id), eq(projects.organizationId, auth.organizationId!)),
+  });
+  if (!project) return c.json({ error: "Not found" }, 404);
+
+  if (project.lockedBy !== auth.userId) {
+    return c.json({ error: "Lock not owned by you" }, 403);
+  }
+
+  const [updated] = await db.update(projects).set({ lockedAt: new Date() })
+    .where(eq(projects.id, id)).returning();
+
+  return c.json({ lockedAt: updated.lockedAt });
+});
+
+// ─── LOCK: STATUS CHECK ───
+projectRoutes.get("/:id/lock", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const id = c.req.param("id");
+
+  const project = await db.query.projects.findFirst({
+    where: and(eq(projects.id, id), eq(projects.organizationId, auth.organizationId!)),
+  });
+  if (!project) return c.json({ error: "Not found" }, 404);
+
+  if (!project.lockedBy || isLockExpired(project.lockedAt)) {
+    return c.json({ locked: false });
+  }
+
+  const locker = await db.query.users.findFirst({ where: eq(users.id, project.lockedBy) });
+  return c.json({
+    locked: true,
+    lockedBy: project.lockedBy,
+    lockedByName: locker?.name || "Alt utilizator",
+    lockedAt: project.lockedAt,
+    isOwner: project.lockedBy === auth.userId,
+  });
 });
 
 // ─── DELETE PROJECT ───
@@ -528,6 +669,10 @@ projectRoutes.delete("/:id", async (c) => {
 projectRoutes.put("/:id", async (c) => {
   const auth = c.get("auth") as AuthContext;
   const id = c.req.param("id");
+
+  const lockErr = await requireLock(id, auth.userId);
+  if (lockErr) return c.json({ error: lockErr }, 423);
+
   const body = await c.req.json();
 
   const updateData: any = { updatedAt: new Date() };

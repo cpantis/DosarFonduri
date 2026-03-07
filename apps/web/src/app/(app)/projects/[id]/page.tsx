@@ -225,6 +225,80 @@ export default function ProjectViewPage() {
   const [neemiaActivePage, setNeemiaActivePage] = useState(0);
   const [neemiaAnimKey, setNeemiaAnimKey] = useState(0);
 
+  // ─── LOCK STATE ───
+  const [lockOwned, setLockOwned] = useState(false);
+  const [lockError, setLockError] = useState<{ lockedByName: string; lockedAt: string } | null>(null);
+  const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Acquire lock on mount, release on unmount
+  useEffect(() => {
+    let cancelled = false;
+
+    async function acquireLock() {
+      try {
+        const res = await apiPost<any>(`/api/projects/${projectId}/lock`, {});
+        if (!cancelled) {
+          setLockOwned(true);
+          setLockError(null);
+        }
+      } catch (err: any) {
+        if (!cancelled) {
+          // Parse lock error from response
+          try {
+            const msg = err.message || "";
+            if (msg.includes("blocat")) {
+              // Fetch lock info
+              const lockInfo = await apiGet<any>(`/api/projects/${projectId}/lock`);
+              setLockError({ lockedByName: lockInfo.lockedByName || "Alt utilizator", lockedAt: lockInfo.lockedAt || "" });
+            }
+          } catch {
+            setLockError({ lockedByName: "Alt utilizator", lockedAt: "" });
+          }
+          setLockOwned(false);
+        }
+      }
+    }
+
+    acquireLock();
+
+    // Heartbeat every 5 minutes
+    heartbeatRef.current = setInterval(async () => {
+      if (!cancelled) {
+        try {
+          await apiPost(`/api/projects/${projectId}/lock/heartbeat`, {});
+        } catch {
+          // Lock lost
+          setLockOwned(false);
+        }
+      }
+    }, 5 * 60 * 1000);
+
+    // Release lock on unmount / navigation
+    const releaseLock = () => {
+      // Fire-and-forget (navigator.sendBeacon not suitable for auth headers)
+      fetch(`${API_URL}/api/projects/${projectId}/lock`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${typeof window !== "undefined" ? localStorage.getItem("df-token") || "" : ""}`,
+        },
+        keepalive: true,
+      }).catch(() => {});
+    };
+
+    window.addEventListener("beforeunload", releaseLock);
+
+    return () => {
+      cancelled = true;
+      if (heartbeatRef.current) clearInterval(heartbeatRef.current);
+      window.removeEventListener("beforeunload", releaseLock);
+      releaseLock();
+    };
+  }, [projectId]);
+
+  // Read-only mode when lock is not owned
+  const readOnly = !lockOwned;
+
   useEffect(() => {
     async function fetchData() {
       try {
@@ -323,7 +397,7 @@ export default function ProjectViewPage() {
   }
 
   const handleSolomonSend = async () => {
-    if (!solomonInput.trim() || !solomonConvId || solomonStreaming) return;
+    if (readOnly || !solomonInput.trim() || !solomonConvId || solomonStreaming) return;
     const userText = solomonInput;
     setSolomonMessages(prev => [...prev, { role: "user", text: userText, extractions: null }]);
     setSolomonInput("");
@@ -421,6 +495,7 @@ export default function ProjectViewPage() {
   };
 
   const handleConfirmElement = (idx: number) => {
+    if (readOnly) return;
     setSolomonElements(prev => prev.map((el, i) => i === idx ? { ...el, status: "confirmat" } : el));
   };
 
@@ -512,6 +587,7 @@ export default function ProjectViewPage() {
   const solomonConfirmedCount = solomonElements.filter(e => e.status === "confirmat").length;
 
   const handleRecheckEligibility = async () => {
+    if (readOnly) return;
     setRecheckLoading(true);
     try {
       await apiPost(`/api/projects/${projectId}/check-eligibility`, {});
@@ -526,6 +602,7 @@ export default function ProjectViewPage() {
   };
 
   const handleChecklistToggle = async (itemId: string, currentDone: boolean) => {
+    if (readOnly) return;
     setChecklistItems(items => items.map(i => i.id === itemId ? { ...i, done: !currentDone } : i));
     try {
       await apiPut(`/api/projects/${projectId}/checklist/${itemId}`, { done: !currentDone });
@@ -536,6 +613,7 @@ export default function ProjectViewPage() {
   };
 
   const handleConfirmElementApi = async (elId: string) => {
+    if (readOnly) return;
     try {
       await apiPut(`/api/projects/${projectId}/elements/${elId}`, { confirmed: true });
       setElements(prev => prev.map(e => e.id === elId ? { ...e, status: "confirmat" as const, confidence: 100 } : e));
@@ -619,6 +697,10 @@ export default function ProjectViewPage() {
   return (
     <>
       <style>{`
+        .lock-banner{display:flex;align-items:center;gap:10px;padding:10px 20px;background:rgba(251,191,36,.12);border-bottom:1px solid rgba(251,191,36,.3);font-size:13px;color:#fbbf24;font-family:var(--font-sans)}
+        .lock-banner .lb-icon{font-size:18px}
+        .lock-banner .lb-name{font-weight:700;color:#fbbf24}
+        .lock-banner .lb-time{font-size:11px;color:var(--text-muted);margin-left:auto;font-family:var(--font-mono)}
         .pv-container{display:flex;height:100%;overflow:hidden;background:var(--bg-deep)}
 
         .tree-sidebar{width:260px;min-width:260px;background:var(--bg-surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto}
@@ -926,7 +1008,15 @@ export default function ProjectViewPage() {
         .coming-soon .cs-desc{font-size:13px;color:var(--text-secondary)}
       `}</style>
 
-      <div className="pv-container">
+      {lockError && (
+        <div className="lock-banner">
+          <span className="lb-icon">&#128274;</span>
+          Proiectul este deschis de <span className="lb-name">{lockError.lockedByName}</span> — vizualizare doar în citire
+          {lockError.lockedAt && <span className="lb-time">din {new Date(lockError.lockedAt).toLocaleTimeString("ro-RO", { hour: "2-digit", minute: "2-digit" })}</span>}
+        </div>
+      )}
+
+      <div className="pv-container" style={lockError ? { height: "calc(100% - 44px)" } : undefined}>
         {/* SIDEBAR TREE */}
         <div className="tree-sidebar">
           <div className="tree-header">

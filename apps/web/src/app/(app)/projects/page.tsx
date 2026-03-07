@@ -209,6 +209,7 @@ export default function ProjectsPage() {
         .pc-footer{display:flex;align-items:center;gap:10px;padding-top:10px;border-top:1px solid var(--border)}
         .pc-consultant{font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:4px;flex:1}
         .pc-updated{font-size:11px;color:var(--text-muted);font-family:var(--font-mono)}
+        .lock-indicator{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600;background:rgba(251,191,36,.12);color:#fbbf24}
 
         .proj-table{width:100%;border:1px solid var(--border);border-radius:var(--r-md);overflow:hidden;background:var(--bg-surface)}
         .pt-row{display:grid;grid-template-columns:1fr 140px 90px 100px 100px 100px 90px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--border);transition:background .12s;cursor:pointer}
@@ -368,6 +369,7 @@ export default function ProjectsPage() {
 
                   <div className="pc-footer">
                     <span className="pc-consultant">&#128100; {p.consultantId || "—"}</span>
+                    {p.lock && <span className="lock-indicator">&#128274; {p.lock.lockedByName}</span>}
                     <span className="pc-updated">{p.updatedAt ? formatRelativeTime(p.updatedAt) : "—"}</span>
                   </div>
                 </div>
@@ -394,7 +396,7 @@ export default function ProjectsPage() {
               const programPath = p.programPath || {};
               return (
                 <div className="pt-row" key={p.id} onClick={() => router.push(`/projects/${p.id}`)}>
-                  <div><div className="pt-name">{p.name}</div><div className="pt-firma">{p.company?.denumire || "—"}</div></div>
+                  <div><div className="pt-name">{p.name}{p.lock && <span className="lock-indicator" style={{ marginLeft: 8 }}>&#128274;</span>}</div><div className="pt-firma">{p.company?.denumire || "—"}</div></div>
                   <div className="pt-program">{programPath.masura || "—"}</div>
                   <div><span className="status-badge" style={{ background: st.bg, color: st.color }}>{st.label}</span></div>
                   <div>

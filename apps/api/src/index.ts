@@ -5,6 +5,8 @@ import { logger } from "hono/logger";
 import { serve } from "@hono/node-server";
 import { authRoutes } from "./routes/auth";
 import { providerRoutes } from "./routes/provider";
+import { companyRoutes } from "./routes/companies";
+import { documentRoutes } from "./routes/documents";
 import { authMiddleware } from "./middleware/auth";
 import { auditMiddleware } from "./middleware/audit";
 
@@ -21,9 +23,11 @@ app.use("*", cors({
 app.route("/api/auth", authRoutes);
 app.route("/api/provider", providerRoutes);
 
-// Protected routes (placeholder - will be added in later phases)
+// Protected routes
 app.use("/api/*", authMiddleware);
 app.use("/api/*", auditMiddleware);
+app.route("/api/companies", companyRoutes);
+app.route("/api/documents", documentRoutes);
 
 // Health check
 app.get("/health", (c) => c.json({ status: "ok", timestamp: new Date().toISOString() }));

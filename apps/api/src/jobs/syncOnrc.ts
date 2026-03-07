@@ -1,6 +1,6 @@
 import { db } from "../db";
 import { companies, apiIntegrations } from "../db/schema";
-import { eq, and, lt } from "drizzle-orm";
+import { eq, and, lt, or, isNull } from "drizzle-orm";
 
 // ONRC sync job — called by worker on cron schedule
 export async function syncOnrcJob() {
@@ -23,10 +23,11 @@ export async function syncOnrcJob() {
     const cutoff = new Date(Date.now() - syncDays * 86400000);
 
     // Find companies that haven't been synced recently
+    // Include companies never synced (NULL) or synced before cutoff
     const staleCompanies = await db.query.companies.findMany({
       where: and(
         eq(companies.organizationId, integration.organizationId),
-        lt(companies.lastSyncedAt, cutoff),
+        or(isNull(companies.lastSyncedAt), lt(companies.lastSyncedAt, cutoff)),
       ),
     });
 

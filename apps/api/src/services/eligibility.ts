@@ -56,7 +56,7 @@ export async function checkEligibility(projectId: string, organizationId: string
   const companyData: Record<string, any> = {
     forma_juridica: company.formaJuridica,
     cui: company.cui,
-    cod_caen: (company as any).caen,
+    cod_caen: company.caen,
     stare: company.stare,
     an_infiintare: company.anInfiintare,
     vechime_ani: new Date().getFullYear() - (company.anInfiintare || 2020),
@@ -193,7 +193,7 @@ CUI: ${company.cui} | Reg. Com: ${company.regCom}
 Forma juridică: ${company.formaJuridica}
 Stare: ${company.stare}
 An înființare: ${company.anInfiintare} (vechime: ${companyData.vechime_ani} ani)
-CAEN principal: ${(company as any).caen || "nespecificat"}
+CAEN principal: ${company.caen || "nespecificat"}
 Județ: ${company.judet} | Localitate: ${company.localitate}
 Capital social: ${company.capitalSocial} ${company.moneda || "LEI"}
 Părți sociale: ${company.partiSociale}

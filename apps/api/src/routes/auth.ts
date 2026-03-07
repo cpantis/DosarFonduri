@@ -40,8 +40,8 @@ authRoutes.post("/signup", async (c) => {
       status: "active",
     }).where(eq(users.id, preRegistered.id));
 
-    const token = await sign({ sub: preRegistered.id }, process.env.JWT_SECRET!);
-    return c.json({ token, user: { ...preRegistered, status: "active" }, hasOrganization: true });
+    const token = await sign({ sub: preRegistered.id, exp: Math.floor(Date.now() / 1000) + 7 * 86400 }, process.env.JWT_SECRET!);
+    return c.json({ token, user: { ...preRegistered, name: body.name, status: "active" }, hasOrganization: true });
   }
 
   if (body.cabinetCode) {
@@ -78,7 +78,7 @@ authRoutes.post("/signup", async (c) => {
       activatedAt: new Date(),
     }).where(eq(cabinetCodes.id, code.id));
 
-    const token = await sign({ sub: user.id }, process.env.JWT_SECRET!);
+    const token = await sign({ sub: user.id, exp: Math.floor(Date.now() / 1000) + 7 * 86400 }, process.env.JWT_SECRET!);
     return c.json({ token, user, organization: org, hasOrganization: true });
   }
 
@@ -90,7 +90,7 @@ authRoutes.post("/signup", async (c) => {
     status: "pending_cabinet",
   }).returning();
 
-  const token = await sign({ sub: user.id }, process.env.JWT_SECRET!);
+  const token = await sign({ sub: user.id, exp: Math.floor(Date.now() / 1000) + 7 * 86400 }, process.env.JWT_SECRET!);
   return c.json({ token, user, hasOrganization: false });
 });
 
@@ -108,7 +108,7 @@ authRoutes.post("/login", async (c) => {
 
   await db.update(users).set({ lastActiveAt: new Date() }).where(eq(users.id, user.id));
 
-  const token = await sign({ sub: user.id }, process.env.JWT_SECRET!);
+  const token = await sign({ sub: user.id, exp: Math.floor(Date.now() / 1000) + 7 * 86400 }, process.env.JWT_SECRET!);
   return c.json({
     token,
     user: { id: user.id, email: user.email, name: user.name, role: user.role, theme: user.theme },

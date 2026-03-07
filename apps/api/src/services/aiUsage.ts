@@ -23,7 +23,7 @@ export async function logAIUsage(params: {
   await db.insert(aiUsageLog).values({
     organizationId: params.organizationId,
     projectId: params.projectId,
-    userId: params.userId || "system",
+    userId: params.userId || null,
     agent: params.agent,
     model: params.model,
     tokensInput: params.tokensInput,

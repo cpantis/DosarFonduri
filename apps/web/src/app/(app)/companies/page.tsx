@@ -1,163 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { isSOC, isPF, FORME_JURIDICE, getCompanyTabs, getFieldLabel } from "@/hooks/useFormaJuridica";
-
-/* ═══ MOCK DATA ═══ */
-interface Company {
-  id: number;
-  forma: string;
-  denumire: string;
-  cui: string;
-  regCom: string;
-  formaJuridica: string;
-  caen: string;
-  caenDesc: string;
-  activitatiSecundare: { cod: string; den: string }[];
-  adresa: string;
-  localitate: string;
-  judet: string;
-  codPostal: string;
-  telefon: string;
-  email: string;
-  website: string;
-  stare: string;
-  angajati: number;
-  cifraAfaceri: string;
-  profitNet: string;
-  capitalSocial: string | null;
-  moneda: string | null;
-  integralVarsat: boolean | null;
-  partiSociale: number | null;
-  valoareParte: string | null;
-  actiuni?: number;
-  valoareActiune?: string;
-  tipActiuni?: string;
-  natura: { privatAutohton: number; privatStrain: number; stat: number } | null;
-  anInfiintare: number;
-  durata: string;
-  actConstitutiv?: string;
-  ultimaMentiune: string;
-  ultimulSync: string;
-  asociatiPF: { nume: string; calitate: string; cetatenie: string; aport: string; partiSociale?: number; actiuni?: number; cotaBeneficii: number; cotaPierderi: number }[];
-  asociatiPJ: { denumire: string; calitate: string; tara: string; cui: string; aport: string; actiuni?: number; cotaBeneficii: number; cotaPierderi: number }[];
-  administratori: { nume: string; functie: string; puteri: string; durataMandatLabel: string; dataNumirii: string }[];
-  cenzori?: { nume: string; calitate: string; nrAutorizare: string }[];
-  sediiSecundare: { denumire: string; adresa: string }[];
-  insolventa: boolean;
-  dizolvare?: boolean;
-  lichidare?: boolean;
-  restrictii: boolean;
-  titular?: { nume: string; cetatenie: string; sex: string; dataNasterii: string; stare_civila: string };
-  patrimoniu_afectat?: string;
-  reprezentantIF?: string;
-  membriIF?: { nume: string; calitate: string; gradRudenie: string; cetatenie: string }[];
-  situatiiFinanciare: { an: number; cifraAfaceri: number; profitNet: number; angajati: number; capitaluriProprii?: number; venituriTotale?: number; cheltuieliTotale?: number }[];
-}
-
-const FIRME: Company[] = [
-  {
-    id: 1, forma: "SRL", denumire: "SC CONSTRUCT NORD SRL", cui: "RO44123456", regCom: "J12/441/2018", formaJuridica: "Societate cu Raspundere Limitata",
-    caen: "2562", caenDesc: "Mecanica generala", activitatiSecundare: [{ cod: "2511", den: "Fabricarea de constructii metalice" }, { cod: "2529", den: "Productie de rezervoare" }],
-    adresa: "Str. Industriei 14, Cluj-Napoca", localitate: "Cluj-Napoca", judet: "Cluj", codPostal: "400000", telefon: "0264-555-123", email: "office@constructnord.ro", website: "www.constructnord.ro",
-    stare: "functiune", angajati: 47, cifraAfaceri: "4.250.000", profitNet: "380.000",
-    capitalSocial: "10.000", moneda: "RON", integralVarsat: true, partiSociale: 100, valoareParte: "100", natura: { privatAutohton: 100, privatStrain: 0, stat: 0 },
-    anInfiintare: 2018, durata: "nelimitata", actConstitutiv: "Act constitutiv actualizat la 15.03.2024",
-    ultimaMentiune: "Depunere act constitutiv actualizat (art.204 din Legea nr.31/1990) Nr. 45032 din 15.03.2024", ultimulSync: "Azi, 09:12",
-    asociatiPF: [{ nume: "Popescu Ion", calitate: "asociat", cetatenie: "romana", aport: "6.000 RON", partiSociale: 60, cotaBeneficii: 60, cotaPierderi: 60 }, { nume: "Popescu Maria", calitate: "asociat", cetatenie: "romana", aport: "4.000 RON", partiSociale: 40, cotaBeneficii: 40, cotaPierderi: 40 }],
-    asociatiPJ: [],
-    administratori: [{ nume: "Popescu Ion", functie: "administrator", puteri: "depline", durataMandatLabel: "nelimitata", dataNumirii: "2018-05-10" }],
-    sediiSecundare: [{ denumire: "Punct de lucru Dej", adresa: "Str. Fabricii 22, Dej, Cluj" }],
-    insolventa: false, dizolvare: false, lichidare: false, restrictii: false,
-    situatiiFinanciare: [
-      { an: 2024, cifraAfaceri: 4250000, profitNet: 380000, angajati: 47, capitaluriProprii: 890000 },
-      { an: 2023, cifraAfaceri: 3800000, profitNet: 310000, angajati: 42, capitaluriProprii: 510000 },
-      { an: 2022, cifraAfaceri: 3200000, profitNet: 250000, angajati: 38, capitaluriProprii: 200000 },
-    ],
-  },
-  {
-    id: 2, forma: "PFA", denumire: "MARIN GHEORGHE PFA", cui: "31987654", regCom: "F02/987/2015", formaJuridica: "Persoana Fizica Autorizata",
-    caen: "0111", caenDesc: "Cultivarea cerealelor", activitatiSecundare: [{ cod: "0113", den: "Cultivarea legumelor" }],
-    adresa: "Sat Luminita, Com. Floresti", localitate: "Floresti", judet: "Arad", codPostal: "317130", telefon: "0257-333-456", email: "marin.g@gmail.com", website: "",
-    stare: "functiune", angajati: 2, cifraAfaceri: "890.000", profitNet: "210.000",
-    capitalSocial: null, moneda: null, integralVarsat: null, partiSociale: null, valoareParte: null, natura: null,
-    anInfiintare: 2015, durata: "nelimitata",
-    ultimaMentiune: "Depunere declaratie pe propria raspundere nr. 5044 din 10.01.2025", ultimulSync: "Ieri, 14:30",
-    titular: { nume: "Marin Gheorghe", cetatenie: "romana", sex: "M", dataNasterii: "1978-04-12", stare_civila: "casatorit" },
-    patrimoniu_afectat: "Teren arabil 15 ha, tractor John Deere, combine, utilaje agricole",
-    asociatiPF: [], asociatiPJ: [], administratori: [],
-    sediiSecundare: [],
-    insolventa: false, restrictii: false,
-    situatiiFinanciare: [
-      { an: 2024, cifraAfaceri: 890000, profitNet: 210000, angajati: 2, venituriTotale: 920000, cheltuieliTotale: 710000 },
-      { an: 2023, cifraAfaceri: 750000, profitNet: 180000, angajati: 2, venituriTotale: 790000, cheltuieliTotale: 610000 },
-    ],
-  },
-  {
-    id: 3, forma: "SA", denumire: "TECH SOLUTIONS SA", cui: "RO28456789", regCom: "J40/1234/2012", formaJuridica: "Societate pe Actiuni",
-    caen: "6201", caenDesc: "Activitati de programare", activitatiSecundare: [{ cod: "6202", den: "Consultanta IT" }, { cod: "6311", den: "Prelucrare date" }],
-    adresa: "Bd. Unirii 45, Etaj 3, Sector 3", localitate: "Bucuresti", judet: "Bucuresti", codPostal: "030167", telefon: "021-444-7890", email: "info@techsolutions.ro", website: "www.techsolutions.ro",
-    stare: "functiune", angajati: 85, cifraAfaceri: "12.400.000", profitNet: "1.850.000",
-    capitalSocial: "100.000", moneda: "RON", integralVarsat: true, actiuni: 10000, valoareActiune: "10", tipActiuni: "nominative", natura: { privatAutohton: 100, privatStrain: 0, stat: 0 },
-    anInfiintare: 2012, durata: "nelimitata", actConstitutiv: "Act constitutiv actualizat la 10.01.2025",
-    ultimaMentiune: "Majorare capital social, Nr. 78901 din 10.01.2025", ultimulSync: "Azi, 11:05",
-    asociatiPF: [{ nume: "Radu Elena", calitate: "actionar", cetatenie: "romana", aport: "55.000 RON", actiuni: 5500, cotaBeneficii: 55, cotaPierderi: 55 }],
-    asociatiPJ: [{ denumire: "Innovation Partners SRL", calitate: "actionar", tara: "Romania", cui: "RO33445566", aport: "45.000 RON", actiuni: 4500, cotaBeneficii: 45, cotaPierderi: 45 }],
-    administratori: [{ nume: "Radu Elena", functie: "Presedinte CA", puteri: "conform statut", durataMandatLabel: "4 ani", dataNumirii: "2023-03-15" }, { nume: "Ionescu Dan", functie: "Director General", puteri: "conform delegare", durataMandatLabel: "4 ani", dataNumirii: "2023-03-15" }],
-    cenzori: [{ nume: "AUDIT EXPERT SRL", calitate: "auditor financiar", nrAutorizare: "AF-2345" }],
-    sediiSecundare: [{ denumire: "Birou Cluj", adresa: "Str. Memorandumului 10, Cluj-Napoca" }],
-    insolventa: false, dizolvare: false, lichidare: false, restrictii: false,
-    situatiiFinanciare: [
-      { an: 2024, cifraAfaceri: 12400000, profitNet: 1850000, angajati: 85, capitaluriProprii: 4200000 },
-      { an: 2023, cifraAfaceri: 10800000, profitNet: 1500000, angajati: 72, capitaluriProprii: 2350000 },
-    ],
-  },
-  {
-    id: 4, forma: "IF", denumire: "VOICU INTREPRINDERE FAMILIALA", cui: "39876543", regCom: "F35/567/2020", formaJuridica: "Intreprindere Familiala",
-    caen: "3511", caenDesc: "Productia de energie electrica", activitatiSecundare: [],
-    adresa: "Str. Soarelui 8", localitate: "Timisoara", judet: "Timis", codPostal: "300001", telefon: "0256-222-890", email: "", website: "",
-    stare: "functiune", angajati: 4, cifraAfaceri: "920.000", profitNet: "85.000",
-    capitalSocial: null, moneda: null, integralVarsat: null, partiSociale: null, valoareParte: null, natura: null,
-    anInfiintare: 2020, durata: "nelimitata",
-    ultimaMentiune: "Inregistrare mentiuni, Nr. 33201 din 20.09.2024", ultimulSync: "3 mar, 16:20",
-    reprezentantIF: "Voicu Andrei",
-    membriIF: [{ nume: "Voicu Andrei", calitate: "reprezentant", gradRudenie: "-", cetatenie: "romana" }, { nume: "Voicu Daniela", calitate: "membru", gradRudenie: "sotie", cetatenie: "romana" }, { nume: "Voicu Alex", calitate: "membru", gradRudenie: "fiu", cetatenie: "romana" }],
-    asociatiPF: [], asociatiPJ: [], administratori: [],
-    sediiSecundare: [],
-    insolventa: false, restrictii: false,
-    situatiiFinanciare: [{ an: 2024, cifraAfaceri: 920000, profitNet: 85000, angajati: 4, venituriTotale: 980000, cheltuieliTotale: 895000 }],
-  },
-  {
-    id: 5, forma: "SRL", denumire: "PAINE & TRADITIE SRL", cui: "RO42111222", regCom: "J32/890/2019", formaJuridica: "Societate cu Raspundere Limitata",
-    caen: "1071", caenDesc: "Fabricarea painii", activitatiSecundare: [{ cod: "1072", den: "Fabricarea biscuitilor" }],
-    adresa: "Str. Morii 22", localitate: "Sibiu", judet: "Sibiu", codPostal: "550003", telefon: "0269-111-234", email: "contact@painetrad.ro", website: "",
-    stare: "functiune", angajati: 18, cifraAfaceri: "2.100.000", profitNet: "190.000",
-    capitalSocial: "1.000", moneda: "RON", integralVarsat: true, partiSociale: 100, valoareParte: "10", natura: { privatAutohton: 100, privatStrain: 0, stat: 0 },
-    anInfiintare: 2019, durata: "nelimitata", actConstitutiv: "Act constitutiv din 2019",
-    ultimaMentiune: "Depunere situatii financiare 2023, Nr. 8901 din 15.05.2024", ultimulSync: "28 feb, 10:00",
-    asociatiPF: [{ nume: "Lungu Maria", calitate: "asociat", cetatenie: "romana", aport: "700 RON", partiSociale: 70, cotaBeneficii: 70, cotaPierderi: 70 }, { nume: "Lungu Vasile", calitate: "asociat", cetatenie: "romana", aport: "300 RON", partiSociale: 30, cotaBeneficii: 30, cotaPierderi: 30 }],
-    asociatiPJ: [],
-    administratori: [{ nume: "Lungu Maria", functie: "administrator", puteri: "depline", durataMandatLabel: "nelimitata", dataNumirii: "2019-07-01" }],
-    sediiSecundare: [],
-    insolventa: false, dizolvare: false, lichidare: false, restrictii: false,
-    situatiiFinanciare: [{ an: 2024, cifraAfaceri: 2100000, profitNet: 190000, angajati: 18, capitaluriProprii: 420000 }],
-  },
-  {
-    id: 6, forma: "SRL", denumire: "TRANSPORT RAPID SRL", cui: "RO15333444", regCom: "J08/234/2010", formaJuridica: "Societate cu Raspundere Limitata",
-    caen: "4941", caenDesc: "Transporturi rutiere de marfuri", activitatiSecundare: [],
-    adresa: "Str. Garii 5", localitate: "Brasov", judet: "Brasov", codPostal: "500001", telefon: "-", email: "", website: "",
-    stare: "radiata", angajati: 0, cifraAfaceri: "0", profitNet: "-45.000",
-    capitalSocial: "200", moneda: "RON", integralVarsat: true, partiSociale: 20, valoareParte: "10", natura: { privatAutohton: 100, privatStrain: 0, stat: 0 },
-    anInfiintare: 2010, durata: "nelimitata",
-    ultimaMentiune: "Radiere, Nr. 11023 din 01.02.2025", ultimulSync: "15 feb, 08:30",
-    asociatiPF: [{ nume: "Barbu Cristian", calitate: "asociat", cetatenie: "romana", aport: "200 RON", partiSociale: 20, cotaBeneficii: 100, cotaPierderi: 100 }],
-    asociatiPJ: [],
-    administratori: [{ nume: "Barbu Cristian", functie: "administrator", puteri: "depline", durataMandatLabel: "nelimitata", dataNumirii: "2010-03-01" }],
-    sediiSecundare: [],
-    insolventa: false, dizolvare: true, lichidare: true, restrictii: false,
-    situatiiFinanciare: [{ an: 2024, cifraAfaceri: 0, profitNet: -45000, angajati: 0, capitaluriProprii: -45000 }],
-  },
-];
+import { apiGet, apiPost, apiDelete, api } from "@/lib/api";
 
 /* ═══ HELPERS ═══ */
 const fmt = (v: string | number | null | undefined) => {
@@ -175,9 +20,101 @@ const formaColor = (cod: string) => {
   return { bg: "rgba(77,139,255,0.12)", color: "var(--accent-blue)" };
 };
 
+const formatSyncTime = (iso: string | null | undefined) => {
+  if (!iso) return "\u2014";
+  const d = new Date(iso);
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  const hh = d.getHours().toString().padStart(2, "0");
+  const mm = d.getMinutes().toString().padStart(2, "0");
+  if (diffDays === 0) return `Azi, ${hh}:${mm}`;
+  if (diffDays === 1) return `Ieri, ${hh}:${mm}`;
+  const day = d.getDate();
+  const months = ["ian", "feb", "mar", "apr", "mai", "iun", "iul", "aug", "sep", "oct", "nov", "dec"];
+  return `${day} ${months[d.getMonth()]}, ${hh}:${mm}`;
+};
+
+/** Map API company detail to the shapes expected by JSX */
+const mapDetail = (d: any) => {
+  const raw = d.onrcRawData || {};
+  // Map financials → situatiiFinanciare
+  const situatiiFinanciare = (d.financials || []).map((f: any) => ({
+    an: f.year,
+    cifraAfaceri: f.f20?.cifraAfaceriNeta ?? null,
+    profitNet: f.f20?.profitNet ?? null,
+    angajati: f.f30?.numarMediuSalariati ?? null,
+    capitaluriProprii: f.f10?.capitaluriProprii ?? null,
+    venituriTotale: f.f20?.venituriTotale ?? null,
+    cheltuieliTotale: f.f20?.cheltuieliTotale ?? null,
+    source: f.source,
+  }));
+
+  // Map associates
+  const asociatiPF = (d.asociatiPF || []).map((a: any) => ({
+    nume: a.name,
+    calitate: a.role || a.tipAsociat || "asociat",
+    cetatenie: a.citizenshipOrCountry || "\u2014",
+    aport: a.contribution || "\u2014",
+    partiSociale: a.shares ?? null,
+    actiuni: a.shares ?? null,
+    cotaBeneficii: a.pctBenefits ?? 0,
+    cotaPierderi: a.pctLosses ?? 0,
+  }));
+  const asociatiPJ = (d.asociatiPJ || []).map((a: any) => ({
+    denumire: a.name,
+    calitate: a.role || a.tipAsociat || "asociat",
+    tara: a.citizenshipOrCountry || "\u2014",
+    cui: a.cui || "\u2014",
+    aport: a.contribution || "\u2014",
+    actiuni: a.shares ?? null,
+    cotaBeneficii: a.pctBenefits ?? 0,
+    cotaPierderi: a.pctLosses ?? 0,
+  }));
+  const administratori = (d.administratori || []).map((a: any) => ({
+    nume: a.name,
+    functie: a.role || "administrator",
+    puteri: a.powers || "\u2014",
+    durataMandatLabel: a.mandateDuration || "\u2014",
+    dataNumirii: a.appointmentDate || "\u2014",
+  }));
+  const membriIF = (d.ifMembers || []).map((m: any) => ({
+    nume: m.name,
+    calitate: m.role || "membru",
+    gradRudenie: m.kinship || "\u2014",
+    cetatenie: m.citizenshipOrCountry || "\u2014",
+  }));
+
+  return {
+    ...d,
+    forma: d.formaJuridica || "SRL",
+    caenDesc: raw.caenDesc || raw.caen_desc || "\u2014",
+    activitatiSecundare: raw.activitatiSecundare || raw.activitati_secundare || [],
+    sediiSecundare: raw.sediiSecundare || raw.sedii_secundare || [],
+    insolventa: raw.insolventa ?? false,
+    dizolvare: raw.dizolvare ?? false,
+    lichidare: raw.lichidare ?? false,
+    restrictii: raw.restrictii ?? false,
+    titular: raw.titular || null,
+    cenzori: raw.cenzori || null,
+    ultimaMentiune: raw.ultimaMentiune || raw.ultima_mentiune || "\u2014",
+    natura: d.naturaCapital || null,
+    situatiiFinanciare,
+    asociatiPF,
+    asociatiPJ,
+    administratori,
+    membriIF,
+  };
+};
+
 /* ═══ COMPONENT ═══ */
 export default function CompaniesPage() {
-  const [selected, setSelected] = useState<number | null>(null);
+  const [companies, setCompanies] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [detail, setDetail] = useState<any | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
   const [showAdd, setShowAdd] = useState(false);
@@ -187,34 +124,145 @@ export default function CompaniesPage() {
   const [cuiLoad, setCuiLoad] = useState(false);
   const [cuiRes, setCuiRes] = useState<{ denumire: string; adresa: string; caen: string; stare: string } | "error" | null>(null);
   const [detailTab, setDetailTab] = useState("General");
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadLoading, setUploadLoading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const filtered = FIRME.filter(f => {
+  const fetchCompanies = useCallback(async () => {
+    try {
+      setLoading(true);
+      const data = await apiGet<any[]>("/api/companies");
+      setCompanies(data);
+      setError(null);
+    } catch (err: any) {
+      setError(err.message || "Eroare la incarcarea firmelor");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchCompanies();
+  }, [fetchCompanies]);
+
+  const fetchDetail = useCallback(async (id: string) => {
+    try {
+      setDetailLoading(true);
+      const data = await apiGet(`/api/companies/${id}`);
+      setDetail(mapDetail(data));
+    } catch (err: any) {
+      setDetail(null);
+    } finally {
+      setDetailLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (selected) {
+      fetchDetail(selected);
+    } else {
+      setDetail(null);
+    }
+  }, [selected, fetchDetail]);
+
+  const filtered = companies.filter(f => {
+    const forma = f.formaJuridica || "";
     if (filter === "activ" && f.stare === "radiata") return false;
     if (filter === "radiat" && f.stare !== "radiata") return false;
-    if (filter === "soc" && !isSOC(f.forma)) return false;
-    if (filter === "pf" && !isPF(f.forma)) return false;
+    if (filter === "soc" && !isSOC(forma)) return false;
+    if (filter === "pf" && !isPF(forma)) return false;
     if (search) {
       const q = search.toLowerCase();
-      return f.denumire.toLowerCase().includes(q) || f.cui.toLowerCase().includes(q) || f.caen.includes(q) || f.judet.toLowerCase().includes(q) || f.forma.toLowerCase().includes(q);
+      return (f.denumire || "").toLowerCase().includes(q) || (f.cui || "").toLowerCase().includes(q) || (f.caen || "").includes(q) || (f.judet || "").toLowerCase().includes(q) || forma.toLowerCase().includes(q);
     }
     return true;
   });
 
-  const sel = FIRME.find(f => f.id === selected) || null;
+  const sel = detail;
   const tabs = sel ? getCompanyTabs(sel.forma) : [];
 
   const checkCui = async () => {
-    if (cui.replace(/\D/g, "").length < 6) return;
+    const cleanCui = cui.replace(/\D/g, "");
+    if (cleanCui.length < 6) return;
     setCuiLoad(true);
     setCuiRes(null);
-    // Simulate API call
-    await new Promise(r => setTimeout(r, 1200));
-    const mockData: Record<string, { denumire: string; adresa: string; caen: string; stare: string }> = {
-      "55667788": { denumire: "INOVATIE DIGITALA SRL", adresa: "Str. Progresului 10, Iasi", caen: "6311", stare: "ACTIV" },
-    };
-    const clean = cui.replace(/\D/g, "");
-    setCuiLoad(false);
-    setCuiRes(mockData[clean] || "error");
+    try {
+      const result = await apiPost<any>("/api/companies", { cui: cleanCui, mode: "auto" });
+      setCuiRes({
+        denumire: result.denumire || result.name || "Firma adaugata",
+        adresa: result.adresa || "\u2014",
+        caen: result.caen || "\u2014",
+        stare: result.stare || "ACTIV",
+      });
+      await fetchCompanies();
+      // Auto-select the newly created company
+      if (result.id) {
+        setSelected(result.id);
+        setDetailTab("General");
+      }
+    } catch (err: any) {
+      setCuiRes("error");
+    } finally {
+      setCuiLoad(false);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm("Sigur doriti sa stergeti aceasta firma?")) return;
+    try {
+      await apiDelete(`/api/companies/${id}`);
+      setSelected(null);
+      setDetail(null);
+      await fetchCompanies();
+    } catch (err: any) {
+      alert("Eroare la stergere: " + (err.message || "Eroare necunoscuta"));
+    }
+  };
+
+  const handleSyncOnrc = async (id: string) => {
+    try {
+      await apiPost(`/api/companies/${id}/sync-onrc`, {});
+      await fetchDetail(id);
+    } catch (err: any) {
+      alert("Eroare la sincronizare: " + (err.message || "Eroare necunoscuta"));
+    }
+  };
+
+  const handleManualUpload = async () => {
+    if (!uploadFile) return;
+    setUploadLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", uploadFile);
+      formData.append("formaJuridica", addForma);
+      const result = await api<any>("/api/companies", {
+        method: "POST",
+        body: formData,
+        headers: { "Content-Type": "" } as any,
+      });
+      await fetchCompanies();
+      setShowAdd(false);
+      setUploadFile(null);
+      if (result.id) {
+        setSelected(result.id);
+        setDetailTab("General");
+      }
+    } catch (err: any) {
+      alert("Eroare la upload: " + (err.message || "Eroare necunoscuta"));
+    } finally {
+      setUploadLoading(false);
+    }
+  };
+
+  const handleFileDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files?.[0];
+    if (file && file.type === "application/pdf") setUploadFile(file);
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) setUploadFile(file);
   };
 
   return (
@@ -325,8 +373,8 @@ export default function CompaniesPage() {
       {/* TOPBAR */}
       <div className="topbar">
         <div className="tb-title">Firme</div>
-        <span className="tb-count">{filtered.length} firme</span>
-        <button className="btn-add" onClick={() => { setShowAdd(true); setCui(""); setCuiRes(null); setAddMode("auto"); setAddForma("SRL"); }}>+ Adauga firma</button>
+        <span className="tb-count">{loading ? "..." : `${filtered.length} firme`}</span>
+        <button className="btn-add" onClick={() => { setShowAdd(true); setCui(""); setCuiRes(null); setAddMode("auto"); setAddForma("SRL"); setUploadFile(null); }}>+ Adauga firma</button>
       </div>
 
       <div className="firme-layout">
@@ -343,11 +391,14 @@ export default function CompaniesPage() {
             </div>
           </div>
           <div className="firme-scroll">
-            {filtered.map(f => {
-              const fc = formaColor(f.forma);
+            {loading && <div className="empty-panel" style={{ padding: 60 }}><span className="spinner" style={{ width: 24, height: 24, borderColor: "var(--border)", borderTopColor: "var(--accent-blue)" }} /><div className="ep-text">Se incarca firmele...</div></div>}
+            {error && <div className="empty-panel" style={{ padding: 60 }}><div className="ep-text" style={{ color: "var(--accent-red)" }}>{error}</div><button className="btn-s" onClick={fetchCompanies} style={{ marginTop: 8 }}>Reincearca</button></div>}
+            {!loading && !error && filtered.map(f => {
+              const forma = f.formaJuridica || "";
+              const fc = formaColor(forma);
               return (
                 <div key={f.id} className={`firma-card ${selected === f.id ? "active" : ""}`} onClick={() => { setSelected(f.id); setDetailTab("General"); }}>
-                  <div className="fc-icon" style={{ background: fc.bg, color: fc.color }}>{f.forma}</div>
+                  <div className="fc-icon" style={{ background: fc.bg, color: fc.color }}>{forma}</div>
                   <div className="fc-info">
                     <div className="fc-name">
                       {f.denumire}
@@ -355,22 +406,24 @@ export default function CompaniesPage() {
                     </div>
                     <div className="fc-meta">
                       <span>CUI: {f.cui}</span>
-                      <span>CAEN: {f.caen}</span>
-                      <span>{f.judet}</span>
-                      <span>{f.angajati} ang.</span>
+                      <span>CAEN: {f.caen || "\u2014"}</span>
+                      <span>{f.judet || "\u2014"}</span>
                     </div>
                   </div>
-                  <div className="fc-right"><div className="fc-sync">Sync: {f.ultimulSync}</div></div>
+                  <div className="fc-right"><div className="fc-sync">Sync: {formatSyncTime(f.lastSyncedAt)}</div></div>
                 </div>
               );
             })}
-            {filtered.length === 0 && <div className="empty-panel" style={{ padding: 60 }}><div className="ep-icon">&#128269;</div><div className="ep-text">Nicio firma gasita</div></div>}
+            {!loading && !error && filtered.length === 0 && <div className="empty-panel" style={{ padding: 60 }}><div className="ep-icon">&#128269;</div><div className="ep-text">Nicio firma gasita</div></div>}
           </div>
         </div>
 
         {/* DETAIL PANEL */}
         {sel ? (
           <div className="firma-detail" key={sel.id}>
+            {detailLoading ? (
+              <div className="empty-panel" style={{ flex: 1 }}><span className="spinner" style={{ width: 24, height: 24, borderColor: "var(--border)", borderTopColor: "var(--accent-blue)" }} /><div className="ep-text">Se incarca detaliile...</div></div>
+            ) : (<>
             <div className="fd-top">
               <div className="fd-top-info">
                 <div className="fd-name">{sel.denumire}</div>
@@ -378,14 +431,14 @@ export default function CompaniesPage() {
                 <div className="fd-badges">
                   <span className="fc-badge" style={sel.stare === "radiata" ? { background: "rgba(248,113,113,.12)", color: "var(--accent-red)" } : { background: "rgba(52,211,153,.12)", color: "var(--accent-green)" }}>{sel.stare}</span>
                   <span className="fc-badge" style={formaColor(sel.forma)}>{sel.forma}</span>
-                  <span className="fc-badge" style={{ background: "var(--bg-elevated)", color: "var(--text-muted)" }}>CAEN {sel.caen}</span>
-                  <span className="fc-badge" style={{ background: "var(--bg-elevated)", color: "var(--text-muted)" }}>Din {sel.anInfiintare}</span>
+                  <span className="fc-badge" style={{ background: "var(--bg-elevated)", color: "var(--text-muted)" }}>CAEN {sel.caen || "\u2014"}</span>
+                  <span className="fc-badge" style={{ background: "var(--bg-elevated)", color: "var(--text-muted)" }}>Din {sel.anInfiintare || "\u2014"}</span>
                 </div>
               </div>
               <div className="fd-act-row">
-                <button className="fd-act">Actualizare CUI</button>
+                <button className="fd-act" onClick={() => handleSyncOnrc(sel.id)}>Actualizare CUI</button>
                 <button className="fd-act">Reincarca certificat</button>
-                <button className="fd-act danger">Sterge</button>
+                <button className="fd-act danger" onClick={() => handleDelete(sel.id)}>Sterge</button>
               </div>
             </div>
 
@@ -397,13 +450,13 @@ export default function CompaniesPage() {
               {/* GENERAL */}
               {detailTab === "General" && (<>
                 <div className="fd-grid">
-                  <div className="c span2"><div className="c-label">Forma juridica</div><div className="c-val">{sel.formaJuridica}</div></div>
+                  <div className="c span2"><div className="c-label">Forma juridica</div><div className="c-val">{FORME_JURIDICE.find(fj => fj.cod === sel.forma)?.label || sel.forma}</div></div>
                   <div className="c"><div className="c-label">Stare</div><div className="c-val"><span className="fc-badge" style={sel.stare === "radiata" ? { background: "rgba(248,113,113,.12)", color: "var(--accent-red)" } : { background: "rgba(52,211,153,.12)", color: "var(--accent-green)" }}>{sel.stare}</span></div></div>
-                  <div className="c span2"><div className="c-label">Adresa</div><div className="c-val">{sel.adresa}</div><div className="c-val sub">{sel.localitate}, {sel.judet} {sel.codPostal}</div></div>
-                  <div className="c"><div className="c-label">Telefon</div><div className="c-val mono">{sel.telefon}</div></div>
+                  <div className="c span2"><div className="c-label">Adresa</div><div className="c-val">{sel.adresa || "\u2014"}</div><div className="c-val sub">{sel.localitate || ""}{sel.localitate && sel.judet ? ", " : ""}{sel.judet || ""} {sel.codPostal || ""}</div></div>
+                  <div className="c"><div className="c-label">Telefon</div><div className="c-val mono">{sel.telefon || "\u2014"}</div></div>
                   {sel.email && <div className="c"><div className="c-label">Email</div><div className="c-val mono" style={{ fontSize: 12 }}>{sel.email}</div></div>}
-                  <div className="c"><div className="c-label">{getFieldLabel("durata_label", sel.forma)}</div><div className="c-val">{sel.durata}</div></div>
-                  <div className="c"><div className="c-label">An infiintare</div><div className="c-val mono">{sel.anInfiintare}</div></div>
+                  <div className="c"><div className="c-label">{getFieldLabel("durata_label", sel.forma)}</div><div className="c-val">{sel.durata || "\u2014"}</div></div>
+                  <div className="c"><div className="c-label">An infiintare</div><div className="c-val mono">{sel.anInfiintare || "\u2014"}</div></div>
                 </div>
                 {isPF(sel.forma) && sel.patrimoniu_afectat && (
                   <div className="mention"><div className="mention-label">Patrimoniu de afectatiune</div><div className="mention-text">{sel.patrimoniu_afectat}</div></div>
@@ -415,7 +468,7 @@ export default function CompaniesPage() {
                     <div className="c"><div className="c-label">Subscris</div><div className="c-val mono">{fmt(sel.capitalSocial)}</div></div>
                     <div className="c"><div className="c-label">{getFieldLabel("parti_actiuni", sel.forma)}</div><div className="c-val mono">{sel.partiSociale || sel.actiuni || "\u2014"}</div></div>
                     <div className="c"><div className="c-label">{getFieldLabel("valoare_parte", sel.forma)}</div><div className="c-val mono">{fmt(sel.valoareParte || sel.valoareActiune)}</div></div>
-                    <div className="c"><div className="c-label">Natura capital</div><div className="c-val" style={{ fontSize: 11 }}>privat autohton {sel.natura?.privatAutohton || 0}%{(sel.natura?.privatStrain ?? 0) > 0 ? `, strain ${sel.natura!.privatStrain}%` : ""}{(sel.natura?.stat ?? 0) > 0 ? `, stat ${sel.natura!.stat}%` : ""}</div></div>
+                    <div className="c"><div className="c-label">Natura capital</div><div className="c-val" style={{ fontSize: 11 }}>privat autohton {sel.natura?.privatAutohton || sel.natura?.privat_autohton || 0}%{((sel.natura?.privatStrain ?? sel.natura?.privat_strain ?? 0) > 0) ? `, strain ${sel.natura?.privatStrain || sel.natura?.privat_strain}%` : ""}{((sel.natura?.stat ?? 0) > 0) ? `, stat ${sel.natura!.stat}%` : ""}</div></div>
                   </div>
                 </>)}
               </>)}
@@ -424,7 +477,7 @@ export default function CompaniesPage() {
               {(detailTab === "Asociati" || detailTab === "Actionari") && (<>
                 {sel.asociatiPJ.length > 0 && (<>
                   <div className="fd-stitle">{getFieldLabel("asociati_label", sel.forma)} &mdash; Persoane Juridice ({sel.asociatiPJ.length})</div>
-                  {sel.asociatiPJ.map((a, i) => (
+                  {sel.asociatiPJ.map((a: any, i: number) => (
                     <div className="assoc-row" key={i}>
                       <span style={{ fontSize: 16 }}>&#127970;</span>
                       <div className="assoc-name">{a.denumire}<div style={{ fontSize: 11, color: "var(--text-muted)" }}>{a.calitate} &middot; {a.tara}</div></div>
@@ -434,7 +487,7 @@ export default function CompaniesPage() {
                   ))}
                 </>)}
                 <div className="fd-stitle">{getFieldLabel("asociati_label", sel.forma)} &mdash; Persoane Fizice ({sel.asociatiPF.length})</div>
-                {sel.asociatiPF.map((a, i) => (
+                {sel.asociatiPF.map((a: any, i: number) => (
                   <div className="assoc-row" key={i}>
                     <span style={{ fontSize: 16 }}>&#128100;</span>
                     <div className="assoc-name">{a.nume}<div style={{ fontSize: 11, color: "var(--text-muted)" }}>{a.calitate} &middot; {a.cetatenie}</div></div>
@@ -459,9 +512,9 @@ export default function CompaniesPage() {
               {/* MEMBRI IF */}
               {detailTab === "Membri IF" && sel.membriIF && (<>
                 <div className="fd-stitle">Reprezentant</div>
-                <div className="assoc-row"><span style={{ fontSize: 16 }}>&#128084;</span><div className="assoc-name">{sel.reprezentantIF}</div><div className="assoc-detail">Reprezentant IF</div></div>
+                <div className="assoc-row"><span style={{ fontSize: 16 }}>&#128084;</span><div className="assoc-name">{sel.reprezentantIF || "\u2014"}</div><div className="assoc-detail">Reprezentant IF</div></div>
                 <div className="fd-stitle">Membri ({sel.membriIF.length})</div>
-                {sel.membriIF.map((m, i) => (
+                {sel.membriIF.map((m: any, i: number) => (
                   <div className="assoc-row" key={i}>
                     <span style={{ fontSize: 16 }}>&#128100;</span>
                     <div className="assoc-name">{m.nume}<div style={{ fontSize: 11, color: "var(--text-muted)" }}>{m.calitate}</div></div>
@@ -474,7 +527,7 @@ export default function CompaniesPage() {
               {/* ADMINISTRARE */}
               {detailTab === "Administrare" && (<>
                 <div className="fd-stitle">{getFieldLabel("admin_label", sel.forma)} ({sel.administratori.length})</div>
-                {sel.administratori.map((a, i) => (
+                {sel.administratori.map((a: any, i: number) => (
                   <div className="assoc-row" key={i}>
                     <span style={{ fontSize: 16 }}>&#128084;</span>
                     <div className="assoc-name">{a.nume}<div style={{ fontSize: 11, color: "var(--text-muted)" }}>{a.functie}</div></div>
@@ -484,7 +537,7 @@ export default function CompaniesPage() {
                 ))}
                 {sel.cenzori && sel.cenzori.length > 0 && (<>
                   <div className="fd-stitle">Cenzori / Auditori</div>
-                  {sel.cenzori.map((c, i) => (
+                  {sel.cenzori.map((c: any, i: number) => (
                     <div className="assoc-row" key={i}><span style={{ fontSize: 16 }}>&#128269;</span><div className="assoc-name">{c.nume}<div style={{ fontSize: 11, color: "var(--text-muted)" }}>{c.calitate}</div></div><div className="assoc-detail">{c.nrAutorizare}</div></div>
                   ))}
                 </>)}
@@ -493,10 +546,10 @@ export default function CompaniesPage() {
               {/* ACTIVITATI */}
               {detailTab === "Activitati" && (<>
                 <div className="fd-stitle">Activitate principala</div>
-                <div className="c full" style={{ marginBottom: 12 }}><div className="c-label">CAEN {sel.caen}</div><div className="c-val">{sel.caenDesc}</div></div>
+                <div className="c full" style={{ marginBottom: 12 }}><div className="c-label">CAEN {sel.caen || "\u2014"}</div><div className="c-val">{sel.caenDesc}</div></div>
                 {sel.activitatiSecundare.length > 0 && (<>
                   <div className="fd-stitle">Activitati secundare ({sel.activitatiSecundare.length})</div>
-                  {sel.activitatiSecundare.map((a, i) => (
+                  {sel.activitatiSecundare.map((a: any, i: number) => (
                     <div className="assoc-row" key={i} style={{ padding: "7px 12px" }}><div className="assoc-detail" style={{ minWidth: 50 }}>{a.cod}</div><div className="assoc-name" style={{ fontSize: 13 }}>{a.den}</div></div>
                   ))}
                 </>)}
@@ -505,10 +558,10 @@ export default function CompaniesPage() {
               {/* SEDII */}
               {detailTab === "Sedii" && (<>
                 <div className="fd-stitle">Sediu social</div>
-                <div className="c full" style={{ marginBottom: 12 }}><div className="c-label">Adresa completa</div><div className="c-val">{sel.adresa}, {sel.localitate}, {sel.judet} {sel.codPostal}</div></div>
+                <div className="c full" style={{ marginBottom: 12 }}><div className="c-label">Adresa completa</div><div className="c-val">{sel.adresa || "\u2014"}, {sel.localitate || ""}, {sel.judet || ""} {sel.codPostal || ""}</div></div>
                 {sel.sediiSecundare && sel.sediiSecundare.length > 0 && (<>
                   <div className="fd-stitle">Sedii secundare / Puncte de lucru ({sel.sediiSecundare.length})</div>
-                  {sel.sediiSecundare.map((s, i) => (
+                  {sel.sediiSecundare.map((s: any, i: number) => (
                     <div className="assoc-row" key={i}><span style={{ fontSize: 16 }}>&#128205;</span><div className="assoc-name">{s.denumire}<div style={{ fontSize: 11, color: "var(--text-muted)" }}>{s.adresa}</div></div></div>
                   ))}
                 </>)}
@@ -517,24 +570,33 @@ export default function CompaniesPage() {
               {/* FIN. ONRC */}
               {detailTab === "Fin. ONRC" && (<>
                 <div className="fd-stitle">Situatii financiare (din date ONRC)</div>
-                <table className="fin-table">
-                  <thead><tr>
-                    <th>An</th><th>Cifra afaceri</th><th>Profit net</th><th>Angajati</th>
-                    {isSOC(sel.forma) && <th>Capitaluri proprii</th>}
-                    {isPF(sel.forma) && <><th>Venituri</th><th>Cheltuieli</th></>}
-                  </tr></thead>
-                  <tbody>{sel.situatiiFinanciare.map((s, i) => (
-                    <tr key={i}>
-                      <td>{s.an}</td>
-                      <td>{fmtNum(s.cifraAfaceri)}</td>
-                      <td className={s.profitNet >= 0 ? "green" : "red"}>{fmtNum(s.profitNet)}</td>
-                      <td>{s.angajati}</td>
-                      {isSOC(sel.forma) && <td>{fmtNum(s.capitaluriProprii)}</td>}
-                      {isPF(sel.forma) && <><td>{fmtNum(s.venituriTotale)}</td><td>{fmtNum(s.cheltuieliTotale)}</td></>}
-                    </tr>
-                  ))}</tbody>
-                </table>
-                <div style={{ marginTop: 12, fontSize: 11, color: "var(--text-muted)" }}>Sursa: Date publice ONRC / termene.ro</div>
+                {sel.situatiiFinanciare.length > 0 ? (
+                  <>
+                    <table className="fin-table">
+                      <thead><tr>
+                        <th>An</th><th>Cifra afaceri</th><th>Profit net</th><th>Angajati</th>
+                        {isSOC(sel.forma) && <th>Capitaluri proprii</th>}
+                        {isPF(sel.forma) && <><th>Venituri</th><th>Cheltuieli</th></>}
+                      </tr></thead>
+                      <tbody>{sel.situatiiFinanciare.map((s: any, i: number) => (
+                        <tr key={i}>
+                          <td>{s.an}</td>
+                          <td>{fmtNum(s.cifraAfaceri)}</td>
+                          <td className={(s.profitNet ?? 0) >= 0 ? "green" : "red"}>{fmtNum(s.profitNet)}</td>
+                          <td>{s.angajati ?? "\u2014"}</td>
+                          {isSOC(sel.forma) && <td>{fmtNum(s.capitaluriProprii)}</td>}
+                          {isPF(sel.forma) && <><td>{fmtNum(s.venituriTotale)}</td><td>{fmtNum(s.cheltuieliTotale)}</td></>}
+                        </tr>
+                      ))}</tbody>
+                    </table>
+                    <div style={{ marginTop: 12, fontSize: 11, color: "var(--text-muted)" }}>Sursa: Date publice ONRC / termene.ro</div>
+                  </>
+                ) : (
+                  <div className="empty-panel" style={{ padding: 40 }}>
+                    <div className="ep-icon">&#128202;</div>
+                    <div className="ep-text">Nicio situatie financiara disponibila.</div>
+                  </div>
+                )}
               </>)}
 
               {/* FIN. ANAF */}
@@ -555,11 +617,12 @@ export default function CompaniesPage() {
                 {!sel.insolventa && !sel.dizolvare && !sel.lichidare && !sel.restrictii && <div className="ok-box">Fara restrictii, insolventa, dizolvare sau lichidare</div>}
                 <div className="fd-grid c2" style={{ marginTop: 12 }}>
                   <div className="c"><div className="c-label">Nr. Reg. Comertului</div><div className="c-val mono">{sel.regCom}</div></div>
-                  <div className="c"><div className="c-label">Forma juridica</div><div className="c-val">{sel.formaJuridica}</div></div>
+                  <div className="c"><div className="c-label">Forma juridica</div><div className="c-val">{FORME_JURIDICE.find(fj => fj.cod === sel.forma)?.label || sel.forma}</div></div>
                 </div>
                 <div className="mention" style={{ marginTop: 12 }}><div className="mention-label">Ultima mentiune</div><div className="mention-text">{sel.ultimaMentiune}</div></div>
               </>)}
             </div>
+            </>)}
           </div>
         ) : (
           <div className="firma-detail" style={{ alignItems: "center", justifyContent: "center" }}>
@@ -583,8 +646,7 @@ export default function CompaniesPage() {
                 <input className={`fi mono ${cuiRes && cuiRes !== "error" ? "ok" : cuiRes === "error" ? "err" : ""}`} placeholder="CUI firma (ex: 55667788)" value={cui} onChange={e => { setCui(e.target.value); setCuiRes(null); }} onKeyDown={e => e.key === "Enter" && checkCui()} />
                 <button className="btn-p" onClick={checkCui} disabled={cuiLoad || cui.replace(/\D/g, "").length < 6}>{cuiLoad ? <span className="spinner" /> : "Verifica"}</button>
               </div>
-              <div className="f-hint">Demo &mdash; incearca: 55667788</div>
-              {cuiLoad && <div className="cui-load"><span className="spinner" /> Se verifica la termene.ro...</div>}
+              {cuiLoad && <div className="cui-load"><span className="spinner" /> Se verifica...</div>}
               {cuiRes && cuiRes !== "error" && (
                 <div className="cui-ok">
                   <div className="cn">{cuiRes.denumire}</div>
@@ -593,10 +655,10 @@ export default function CompaniesPage() {
                   <div className="cr"><strong>Stare:</strong><span style={{ color: "var(--accent-green)" }}>{cuiRes.stare}</span></div>
                 </div>
               )}
-              {cuiRes === "error" && <div className="cui-err">CUI-ul nu a fost gasit.</div>}
+              {cuiRes === "error" && <div className="cui-err">CUI-ul nu a fost gasit sau a aparut o eroare.</div>}
               <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
                 <button className="btn-s" onClick={() => setShowAdd(false)}>Anuleaza</button>
-                <button className="btn-p" disabled={!cuiRes || cuiRes === "error"}>Adauga firma</button>
+                <button className="btn-p" disabled={!cuiRes || cuiRes === "error"} onClick={() => setShowAdd(false)}>Inchide</button>
               </div>
             </>) : (<>
               <div className="modal-sub">Incarca documentul ONRC si agentii vor face restul:</div>
@@ -622,15 +684,16 @@ export default function CompaniesPage() {
                 ))}
               </div>
 
-              <div className="upload-zone">
-                <div className="uz-icon">&#128196;</div>
-                <div className="uz-title">Certificat constatator / Document ONRC</div>
-                <div className="uz-sub">Click sau trage fisierul aici (PDF, max 10MB)</div>
+              <input type="file" ref={fileInputRef} accept=".pdf" style={{ display: "none" }} onChange={handleFileSelect} />
+              <div className="upload-zone" onClick={() => fileInputRef.current?.click()} onDragOver={e => e.preventDefault()} onDrop={handleFileDrop}>
+                <div className="uz-icon">{uploadFile ? "\u2705" : "\u{1F4C4}"}</div>
+                <div className="uz-title">{uploadFile ? uploadFile.name : "Certificat constatator / Document ONRC"}</div>
+                <div className="uz-sub">{uploadFile ? `${(uploadFile.size / 1024 / 1024).toFixed(1)} MB` : "Click sau trage fisierul aici (PDF, max 10MB)"}</div>
               </div>
 
               <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
                 <button className="btn-s" onClick={() => setShowAdd(false)}>Anuleaza</button>
-                <button className="btn-p" disabled>Proceseaza si creeaza firma</button>
+                <button className="btn-p" disabled={!uploadFile || uploadLoading} onClick={handleManualUpload}>{uploadLoading ? <span className="spinner" /> : "Proceseaza si creeaza firma"}</button>
               </div>
             </>)}
           </div>

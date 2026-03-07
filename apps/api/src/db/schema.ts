@@ -337,7 +337,7 @@ export const aiUsageLog = pgTable("ai_usage_log", {
   id: uuid("id").defaultRandom().primaryKey(),
   organizationId: uuid("organization_id").references(() => organizations.id).notNull(),
   projectId: uuid("project_id").references(() => projects.id),
-  userId: uuid("user_id").references(() => users.id).notNull(),
+  userId: uuid("user_id").references(() => users.id),
   agent: aiAgentEnum("agent").notNull(),
   model: varchar("model", { length: 100 }).notNull(),
   tokensInput: integer("tokens_input").notNull(),

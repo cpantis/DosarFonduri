@@ -101,7 +101,7 @@ print(json.dumps({"filled_count": len(unique_filled), "filled_keys": unique_fill
   fs.writeFileSync(scriptPath, script);
 
   try {
-    execSync(`python3 ${scriptPath} ${inputPath} ${outputPath} ${dataPath}`, {
+    execSync(`python3 "${scriptPath}" "${inputPath}" "${outputPath}" "${dataPath}"`, {
       encoding: "utf-8",
       timeout: 60000,
     });
@@ -172,15 +172,14 @@ print(json.dumps({"filled_count": len(set(filled)), "filled_keys": list(set(fill
   fs.writeFileSync(scriptPath, script);
 
   try {
-    execSync(`python3 ${scriptPath} ${inputPath} ${outputPath} ${dataPath}`, {
+    execSync(`python3 "${scriptPath}" "${inputPath}" "${outputPath}" "${dataPath}"`, {
       encoding: "utf-8",
       timeout: 60000,
     });
-    const fs2 = await import("fs");
-    return fs2.readFileSync(outputPath);
+    return fs.readFileSync(outputPath);
   } finally {
     [inputPath, outputPath, dataPath, scriptPath].forEach(p => {
-      try { require("fs").unlinkSync(p); } catch {}
+      try { fs.unlinkSync(p); } catch {}
     });
   }
 }

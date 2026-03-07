@@ -75,6 +75,16 @@ export async function checkEligibility(projectId: string, organizationId: string
     orderBy: (f, { desc }) => [desc(f.year)],
   });
 
+  // Preserve manual overrides before re-evaluating
+  const existingResults = await db.query.projectEligibility.findMany({
+    where: eq(projectEligibility.projectId, projectId),
+  });
+  const overrides = new Map(
+    existingResults
+      .filter(r => r.overrideResult !== null)
+      .map(r => [r.ruleId, { overrideResult: r.overrideResult, overrideBy: r.overrideBy, notes: r.notes }])
+  );
+
   // Delete old eligibility results
   await db.delete(projectEligibility).where(eq(projectEligibility.projectId, projectId));
 
@@ -103,11 +113,14 @@ export async function checkEligibility(projectId: string, organizationId: string
     }
 
     let passed = false;
-    const compareValue = parseFloat(condition.value) || condition.value;
+    const numericCompare = parseFloat(condition.value);
+    const compareValue = !isNaN(numericCompare) ? numericCompare : condition.value;
+    const numericField = typeof fieldValue === "number" ? fieldValue : parseFloat(fieldValue);
+    const effectiveFieldValue = typeof compareValue === "number" && !isNaN(numericField) ? numericField : fieldValue;
 
     switch (condition.operator) {
-      case "eq": passed = fieldValue == compareValue; break;
-      case "neq": passed = fieldValue != compareValue; break;
+      case "eq": passed = String(effectiveFieldValue) === String(compareValue); break;
+      case "neq": passed = String(effectiveFieldValue) !== String(compareValue); break;
       case "gt": passed = fieldValue > compareValue; break;
       case "gte": passed = fieldValue >= compareValue; break;
       case "lt": passed = fieldValue < compareValue; break;
@@ -153,16 +166,30 @@ export async function checkEligibility(projectId: string, organizationId: string
     results.push(...interpretedResults);
   }
 
-  // Insert results
+  // Insert results, restoring any manual overrides
   if (results.length > 0) {
     await db.insert(projectEligibility).values(
-      results.map(r => ({
-        projectId,
-        ruleId: r.ruleId,
-        status: r.status,
-        autoResult: r.autoResult,
-        notes: r.notes,
-      }))
+      results.map(r => {
+        const override = overrides.get(r.ruleId);
+        if (override) {
+          return {
+            projectId,
+            ruleId: r.ruleId,
+            status: override.overrideResult === true ? "passed" as const : override.overrideResult === false ? "failed" as const : r.status,
+            autoResult: r.autoResult,
+            overrideResult: override.overrideResult,
+            overrideBy: override.overrideBy,
+            notes: override.notes || r.notes,
+          };
+        }
+        return {
+          projectId,
+          ruleId: r.ruleId,
+          status: r.status,
+          autoResult: r.autoResult,
+          notes: r.notes,
+        };
+      })
     );
   }
 }
@@ -220,7 +247,7 @@ ${allFinancials.map(f => {
 
   const requestParams: any = {
     model,
-    max_tokens: 8000,
+    max_tokens: useET ? 24000 : 8000,
     system: `Ești expert senior în fonduri europene cu 15+ ani experiență. Evaluezi reguli de eligibilitate interpretate contra datelor reale ale unei firme.
 
 INSTRUCȚIUNI:

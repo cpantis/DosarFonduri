@@ -385,6 +385,24 @@ export const orgConfig = pgTable("org_config", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// === SOLOMON KNOWLEDGE BASE (actualizări legislative, bune practici, corecții) ===
+export const solomonKnowledge = pgTable("solomon_knowledge", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id).notNull(),
+  category: varchar("category", { length: 100 }).notNull(), // "legislatie", "praguri", "proceduri", "ghid_specific", "bune_practici", "corectii"
+  title: varchar("title", { length: 500 }).notNull(),
+  content: text("content").notNull(), // the actual knowledge/rule/update
+  sourceUrl: varchar("source_url", { length: 1000 }), // link to MO, regulation, etc.
+  sourceReference: varchar("source_reference", { length: 500 }), // "OUG 12/2026", "Reg. UE 2024/xxx"
+  validFrom: timestamp("valid_from"), // when this rule takes effect
+  validUntil: timestamp("valid_until"), // when it expires (null = still valid)
+  priority: integer("priority").default(0), // higher = shown first
+  enabled: boolean("enabled").default(true),
+  createdBy: uuid("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 // === API INTEGRATIONS ===
 export const apiIntegrations = pgTable("api_integrations", {
   id: uuid("id").defaultRandom().primaryKey(),

@@ -5,7 +5,7 @@ import {
   projectEligibility, rules,
   companies, companyFinancials,
   solomonConversations, solomonMessages,
-  orgConfig,
+  orgConfig, solomonKnowledge,
 } from "../db/schema";
 import { eq, and } from "drizzle-orm";
 import { logAIUsage } from "./aiUsage";
@@ -108,6 +108,23 @@ async function buildSystemPrompt(projectId: string, organizationId: string): Pro
     return `  ${f.year}: CA=${f20?.cifraAfaceriNeta || "?"} RON | Profit=${f20?.profitNet || "?"} RON | Angajați=${f30?.numarMediuSalariati || "?"} | Cap. proprii=${f10?.capitaluriProprii || "?"}`;
   }).join("\n");
 
+  // Load knowledge base updates (legislative changes, corrections, best practices)
+  const now = new Date();
+  const knowledgeEntries = await db.query.solomonKnowledge.findMany({
+    where: and(
+      eq(solomonKnowledge.organizationId, organizationId),
+      eq(solomonKnowledge.enabled, true),
+    ),
+    orderBy: (k, { desc }) => [desc(k.priority), desc(k.createdAt)],
+    limit: 50,
+  });
+  // Filter valid entries (validFrom <= now && (validUntil is null or >= now))
+  const activeKnowledge = knowledgeEntries.filter(k => {
+    if (k.validFrom && k.validFrom > now) return false;
+    if (k.validUntil && k.validUntil < now) return false;
+    return true;
+  });
+
   // Compute derived fields
   const currentYear = new Date().getFullYear();
   const vechimeAni = company.anInfiintare ? currentYear - Number(company.anInfiintare) : null;
@@ -127,8 +144,11 @@ async function buildSystemPrompt(projectId: string, organizationId: string): Pro
    - Au prioritate absolută față de cunoștințele tale generale
    - Dacă o regulă din ghid contrazice o practică generală, aplică regula din ghid
    - Citează regula din ghid când o aplici (cu pagina sursă dacă e disponibilă)
-2. **DATELE FIRMEI** (ONRC + bilanțuri) → CONTEXT FACTUAL, nu modifica și nu inventa
-3. **CUNOȘTINȚELE TALE DE EXPERT** → completează unde ghidul nu spune explicit (formulare, bune practici, avertismente, legislație generală)
+2. **ACTUALIZĂRI LEGISLATIVE ȘI CUNOȘTINȚE NOI** (adăugate de consultant/admin, listate mai jos) → SUPRASCRIU cunoștințele tale implicite
+   - Dacă o actualizare modifică un prag, o procedură sau o regulă pe care o cunoști, aplică ACTUALIZAREA
+   - Ex: dacă pragul de minimis a fost modificat, folosește noul prag, nu cel din training
+3. **DATELE FIRMEI** (ONRC + bilanțuri) → CONTEXT FACTUAL, nu modifica și nu inventa
+4. **CUNOȘTINȚELE TALE DE EXPERT** → completează unde ghidul și actualizările nu spun explicit (formulare, bune practici, avertismente, legislație generală)
 
 ═══════════════════════════════════════════
 ## PROFILUL TĂU DE EXPERT
@@ -555,6 +575,21 @@ ${passedRules.length > 0 ? `### ✅ REGULI ÎNDEPLINITE (${passedRules.length})
 ${passedRules.slice(0, 15).join("\n")}${passedRules.length > 15 ? `\n... și alte ${passedRules.length - 15} reguli îndeplinite` : ""}
 ` : ""}` : "Nu au fost extrase încă reguli din ghidul de finanțare. Întreabă consultantul dacă ghidul a fost încărcat."}
 
+${activeKnowledge.length > 0 ? `═══════════════════════════════════════════
+## ACTUALIZĂRI LEGISLATIVE ȘI CUNOȘTINȚE NOI (${activeKnowledge.length})
+═══════════════════════════════════════════
+Următoarele actualizări au fost adăugate de consultant/admin și AU PRIORITATE față de cunoștințele tale implicite:
+
+${activeKnowledge.map(k => {
+  let entry = `### [${k.category.toUpperCase()}] ${k.title}`;
+  if (k.sourceReference) entry += `\nSursă: ${k.sourceReference}`;
+  if (k.sourceUrl) entry += ` (${k.sourceUrl})`;
+  if (k.validFrom) entry += `\nÎn vigoare de la: ${k.validFrom.toISOString().split("T")[0]}`;
+  if (k.validUntil) entry += ` | Expiră: ${k.validUntil.toISOString().split("T")[0]}`;
+  entry += `\n${k.content}`;
+  return entry;
+}).join("\n\n")}
+` : ""}
 ═══════════════════════════════════════════
 ## CÂMPURI DE COMPLETAT (${emptyElements.length} rămase)
 ═══════════════════════════════════════════

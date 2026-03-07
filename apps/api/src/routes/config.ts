@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { db } from "../db";
-import { orgConfig, apiIntegrations } from "../db/schema";
+import { orgConfig, apiIntegrations, solomonKnowledge } from "../db/schema";
 import { eq, and } from "drizzle-orm";
 import { encrypt, decrypt } from "../lib/crypto";
 import type { AuthContext } from "../middleware/auth";
@@ -262,4 +262,145 @@ configRoutes.post("/api-integrations/:id/test", async (c) => {
 
     return c.json({ success: false, result });
   }
+});
+
+// ═══════════════════════════════════════════
+// SOLOMON KNOWLEDGE BASE — actualizări legislative, bune practici, corecții
+// ═══════════════════════════════════════════
+
+// ─── GET /knowledge ───
+configRoutes.get("/knowledge", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  if (!auth.organizationId) return c.json({ error: "No organization" }, 400);
+
+  const entries = await db.query.solomonKnowledge.findMany({
+    where: eq(solomonKnowledge.organizationId, auth.organizationId),
+    orderBy: (k, { desc }) => [desc(k.priority), desc(k.createdAt)],
+  });
+
+  return c.json(entries);
+});
+
+// ─── POST /knowledge ───
+const knowledgeCreateSchema = z.object({
+  category: z.enum(["legislatie", "praguri", "proceduri", "ghid_specific", "bune_practici", "corectii"]),
+  title: z.string().min(1).max(500),
+  content: z.string().min(1),
+  sourceUrl: z.string().url().optional(),
+  sourceReference: z.string().max(500).optional(),
+  validFrom: z.string().datetime().optional(),
+  validUntil: z.string().datetime().optional(),
+  priority: z.number().int().min(0).max(100).optional(),
+});
+
+configRoutes.post("/knowledge", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  if (!auth.organizationId) return c.json({ error: "No organization" }, 400);
+  if (auth.role !== "admin" && auth.role !== "consultant") {
+    return c.json({ error: "Insufficient permissions" }, 403);
+  }
+
+  const body = knowledgeCreateSchema.parse(await c.req.json());
+
+  const [created] = await db
+    .insert(solomonKnowledge)
+    .values({
+      organizationId: auth.organizationId,
+      category: body.category,
+      title: body.title,
+      content: body.content,
+      sourceUrl: body.sourceUrl,
+      sourceReference: body.sourceReference,
+      validFrom: body.validFrom ? new Date(body.validFrom) : null,
+      validUntil: body.validUntil ? new Date(body.validUntil) : null,
+      priority: body.priority ?? 0,
+      createdBy: auth.userId,
+    })
+    .returning();
+
+  return c.json(created, 201);
+});
+
+// ─── PUT /knowledge/:id ───
+configRoutes.put("/knowledge/:id", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  if (!auth.organizationId) return c.json({ error: "No organization" }, 400);
+  if (auth.role !== "admin" && auth.role !== "consultant") {
+    return c.json({ error: "Insufficient permissions" }, 403);
+  }
+
+  const id = c.req.param("id");
+  const body = knowledgeCreateSchema.partial().parse(await c.req.json());
+
+  const existing = await db.query.solomonKnowledge.findFirst({
+    where: and(
+      eq(solomonKnowledge.id, id),
+      eq(solomonKnowledge.organizationId, auth.organizationId),
+    ),
+  });
+  if (!existing) return c.json({ error: "Knowledge entry not found" }, 404);
+
+  const updates: Record<string, any> = { updatedAt: new Date() };
+  if (body.category) updates.category = body.category;
+  if (body.title) updates.title = body.title;
+  if (body.content) updates.content = body.content;
+  if (body.sourceUrl !== undefined) updates.sourceUrl = body.sourceUrl || null;
+  if (body.sourceReference !== undefined) updates.sourceReference = body.sourceReference || null;
+  if (body.validFrom !== undefined) updates.validFrom = body.validFrom ? new Date(body.validFrom) : null;
+  if (body.validUntil !== undefined) updates.validUntil = body.validUntil ? new Date(body.validUntil) : null;
+  if (body.priority !== undefined) updates.priority = body.priority;
+
+  const [updated] = await db
+    .update(solomonKnowledge)
+    .set(updates)
+    .where(eq(solomonKnowledge.id, id))
+    .returning();
+
+  return c.json(updated);
+});
+
+// ─── PATCH /knowledge/:id/toggle ───
+configRoutes.patch("/knowledge/:id/toggle", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  if (!auth.organizationId) return c.json({ error: "No organization" }, 400);
+
+  const id = c.req.param("id");
+
+  const existing = await db.query.solomonKnowledge.findFirst({
+    where: and(
+      eq(solomonKnowledge.id, id),
+      eq(solomonKnowledge.organizationId, auth.organizationId),
+    ),
+  });
+  if (!existing) return c.json({ error: "Knowledge entry not found" }, 404);
+
+  const [updated] = await db
+    .update(solomonKnowledge)
+    .set({ enabled: !existing.enabled, updatedAt: new Date() })
+    .where(eq(solomonKnowledge.id, id))
+    .returning();
+
+  return c.json(updated);
+});
+
+// ─── DELETE /knowledge/:id ───
+configRoutes.delete("/knowledge/:id", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  if (!auth.organizationId) return c.json({ error: "No organization" }, 400);
+  if (auth.role !== "admin") {
+    return c.json({ error: "Admin only" }, 403);
+  }
+
+  const id = c.req.param("id");
+
+  const existing = await db.query.solomonKnowledge.findFirst({
+    where: and(
+      eq(solomonKnowledge.id, id),
+      eq(solomonKnowledge.organizationId, auth.organizationId),
+    ),
+  });
+  if (!existing) return c.json({ error: "Knowledge entry not found" }, 404);
+
+  await db.delete(solomonKnowledge).where(eq(solomonKnowledge.id, id));
+  return c.json({ ok: true });
 });

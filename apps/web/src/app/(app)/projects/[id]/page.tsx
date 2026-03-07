@@ -1,81 +1,9 @@
 "use client";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api";
+import { apiGet, apiPost, apiPut } from "@/lib/api";
 
-/* ═══ TYPES ═══ */
-type ProjectElement = {
-  id: string;
-  value: string | null;
-  source: string | null;
-  confirmed: boolean;
-  templateElement?: {
-    key: string;
-    label: string;
-    type: string;
-  };
-};
-
-type EligibilityRule = {
-  id: string;
-  ruleId: string;
-  status: "passed" | "failed" | "pending";
-  details: string;
-  source: string;
-  confidence?: number;
-  rule?: {
-    description: string;
-    type: "fixed" | "interpreted";
-  };
-};
-
-type ChecklistItem = {
-  id: string;
-  name: string;
-  category: string;
-  done: boolean;
-  source: string;
-  templateName?: string | null;
-};
-
-type GuideRule = {
-  id: string;
-  type: "fixed" | "interpreted";
-  text: string;
-  confidence: number;
-  page?: number;
-  section?: string;
-};
-
-type ProjectDetail = {
-  id: string;
-  name: string;
-  status: string;
-  companyId: string;
-  folderId: string;
-  valoare: string | null;
-  company: {
-    id: string;
-    denumire: string;
-    cui: string;
-    formaJuridica: string;
-    caen: string;
-    localitate?: string;
-    judet?: string;
-    capitalSocial?: string;
-    cifraAfaceri?: string;
-  };
-  folder?: any;
-  programPath?: {
-    program: string;
-    masura: string;
-    sesiune: string;
-  };
-  elements: ProjectElement[];
-  eligibility: EligibilityRule[];
-  generatedDocs: any[];
-  checklist: ChecklistItem[];
-};
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
 type SolomonMessage = {
   role: "user" | "assistant";
@@ -87,12 +15,83 @@ type SolomonElement = {
   key: string; label: string; value: string; source: string; status: "confirmat" | "propus";
 };
 
-type NeemiaDoc = {
+type TemplateField = { name: string; value: string | null; source: string | null };
+type TemplatePage = { num: number; title: string; status: "complete" | "partial" | "empty"; fields: TemplateField[] };
+
+type NeemiaTemplate = {
   id: string;
   name: string;
   type: string;
+  pages: TemplatePage[];
+  totalFields: number;
+  filledFields: number;
+  templateDocumentId: string;
   status: string;
-  url?: string;
+  downloadUrl: string | null;
+};
+
+type EligibilityRule = {
+  id: string;
+  name: string;
+  status: "pass" | "fail" | "pending";
+  detail: string;
+  type: "fixed" | "interpreted";
+  confidence?: number;
+  page?: number;
+  section?: string;
+};
+
+type GuideRule = {
+  id: string;
+  type: "fixed" | "interpreted";
+  text: string;
+  confidence: number;
+  page: number;
+  section: string;
+};
+
+type ElementItem = {
+  id: string;
+  key: string;
+  label: string;
+  value: string | null;
+  status: "confirmat" | "propus_ai" | "gol";
+  confidence: number;
+  source: string | null;
+  sourceLabel: string | null;
+  templates: string[];
+};
+
+type ChecklistItem = {
+  id: string;
+  name: string;
+  category: string;
+  source: string;
+  templateName: string | null;
+  done: boolean;
+};
+
+type ProjectData = {
+  id: string;
+  name: string;
+  status: string;
+  valoare: string | null;
+  company: {
+    id: string;
+    cui: string;
+    denumire: string;
+    formaJuridica: string;
+    caen: string;
+    adresa: string;
+    capitalSocial?: string;
+    cifraAfaceri?: string;
+    onrcRawData?: any;
+  } | null;
+  programPath: { program: string; masura: string; sesiune: string };
+  elements: any[];
+  eligibility: any[];
+  generatedDocs: any[];
+  checklist: any[];
 };
 
 const STATUS_MAP: Record<string, { label: string; color: string; bg: string }> = {
@@ -106,40 +105,83 @@ const pct = (a: number, b: number) => b > 0 ? Math.round((a / b) * 100) : 0;
 
 type LeafType = "sumar" | "eligibilitate" | "ghid" | "solomon" | "elemente" | "checklist" | "neemia";
 
-/* ═══ HELPER: map API element to UI element ═══ */
-function mapElementStatus(el: ProjectElement): "confirmat" | "propus_ai" | "gol" {
-  if (!el.value) return "gol";
-  if (el.confirmed) return "confirmat";
-  return "propus_ai";
+function parseAdresa(adresa: string | undefined): { localitate: string; judet: string } {
+  if (!adresa) return { localitate: "-", judet: "-" };
+  const parts = adresa.split(",").map(s => s.trim());
+  if (parts.length >= 2) {
+    return { localitate: parts[parts.length - 2] || parts[0], judet: parts[parts.length - 1] };
+  }
+  return { localitate: adresa, judet: "-" };
 }
 
-function mapElementSourceLabel(source: string | null): string | null {
-  if (!source) return null;
-  switch (source) {
-    case "onrc": return "Date ONRC";
-    case "manual": return "Completare manuală";
-    case "solomon": return "Chat Solomon";
-    default: return source;
-  }
+function mapEligibilityRules(flat: any[]): EligibilityRule[] {
+  return flat.map(item => ({
+    id: item.id,
+    name: item.rule?.description || "Regulă necunoscută",
+    status: item.status === "passed" ? "pass" : item.status === "failed" ? "fail" : "pending",
+    detail: item.detail || "",
+    type: item.rule?.type || "fixed",
+    confidence: item.rule?.confidence ?? item.confidence,
+    page: item.rule?.page,
+    section: item.rule?.section,
+  }));
 }
 
-function mapElementSourceDot(source: string | null): string {
-  if (!source) return "";
-  switch (source) {
-    case "onrc": return "company_data";
-    case "manual": return "manual";
-    case "solomon": return "solomon_chat";
-    default: return source;
+function mapGuideRules(grouped: any[]): GuideRule[] {
+  const rules: GuideRule[] = [];
+  for (const group of grouped) {
+    for (const item of group.rules || []) {
+      rules.push({
+        id: item.id,
+        type: item.rule?.type || "fixed",
+        text: item.rule?.description || "",
+        confidence: item.rule?.confidence ?? 0.5,
+        page: item.rule?.page ?? 0,
+        section: item.rule?.section || "",
+      });
+    }
   }
+  return rules;
 }
 
-/* ═══ HELPER: map API eligibility status to UI status ═══ */
-function mapEligStatus(status: string): "pass" | "fail" | "pending" {
-  switch (status) {
-    case "passed": return "pass";
-    case "failed": return "fail";
-    default: return "pending";
-  }
+function mapElements(elements: any[]): ElementItem[] {
+  return elements.map(el => {
+    const confirmed = el.confirmed;
+    const hasValue = !!el.value;
+    let status: "confirmat" | "propus_ai" | "gol" = "gol";
+    if (confirmed) status = "confirmat";
+    else if (hasValue) status = "propus_ai";
+
+    const sourceMap: Record<string, string> = {
+      onrc: "Date ONRC",
+      manual: "Completare manuală",
+      solomon: "Chat Solomon",
+      document: "Document uploadat",
+    };
+
+    return {
+      id: el.id,
+      key: el.templateElement?.key || el.id,
+      label: el.templateElement?.label || "Element",
+      value: el.value,
+      status,
+      confidence: confirmed ? 100 : hasValue ? 85 : 0,
+      source: el.source,
+      sourceLabel: sourceMap[el.source] || el.source || null,
+      templates: [],
+    };
+  });
+}
+
+function mapChecklist(items: any[]): ChecklistItem[] {
+  return items.map(item => ({
+    id: item.id,
+    name: item.name,
+    category: item.category || "General",
+    source: item.source || "manual",
+    templateName: item.templateId ? item.name : null,
+    done: item.done,
+  }));
 }
 
 export default function ProjectViewPage() {
@@ -147,16 +189,14 @@ export default function ProjectViewPage() {
   const params = useParams();
   const projectId = params.id as string;
 
-  // Core data state
-  const [project, setProject] = useState<ProjectDetail | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [eligibilityData, setEligibilityData] = useState<{ flat: EligibilityRule[]; grouped?: any; summary?: any } | null>(null);
-  const [checklistData, setChecklistData] = useState<{ items: ChecklistItem[]; grouped?: Record<string, ChecklistItem[]>; summary?: any } | null>(null);
+  const [project, setProject] = useState<ProjectData | null>(null);
+  const [eligibilityRules, setEligibilityRules] = useState<EligibilityRule[]>([]);
   const [guideRules, setGuideRules] = useState<GuideRule[]>([]);
-  const [neemiaDocs, setNeemiaDocs] = useState<NeemiaDoc[]>([]);
+  const [elements, setElements] = useState<ElementItem[]>([]);
+  const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([]);
+  const [neemiaTemplates, setNeemiaTemplates] = useState<NeemiaTemplate[]>([]);
 
-  // UI state
   const [activeLeaf, setActiveLeaf] = useState<LeafType>("sumar");
   const [branches, setBranches] = useState<Record<string, boolean>>({ scriere: true, implementare: false, monitorizare: false });
   const [selectedRule, setSelectedRule] = useState<string | null>(null);
@@ -166,128 +206,141 @@ export default function ProjectViewPage() {
   const [ghidTab, setGhidTab] = useState<"reguli" | "ghid">("reguli");
   const [collapsedCats, setCollapsedCats] = useState<Record<string, boolean>>({});
 
-  // Solomon state
   const [solomonModel, setSolomonModel] = useState<"sonnet" | "opus">("opus");
   const [solomonET, setSolomonET] = useState(true);
   const [solomonMessages, setSolomonMessages] = useState<SolomonMessage[]>([]);
   const [solomonInput, setSolomonInput] = useState("");
   const [solomonElements, setSolomonElements] = useState<SolomonElement[]>([]);
+  const [solomonConvId, setSolomonConvId] = useState<string | null>(null);
+  const [solomonStreaming, setSolomonStreaming] = useState(false);
   const [extractionStates, setExtractionStates] = useState<Record<string, "confirmed" | "rejected">>({});
   const [refinePopup, setRefinePopup] = useState<{ text: string; x: number; y: number } | null>(null);
   const [refineInput, setRefineInput] = useState("");
-  const [solomonConvId, setSolomonConvId] = useState<string | null>(null);
-  const [solomonSending, setSolomonSending] = useState(false);
   const chatRef = useRef<HTMLDivElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
 
-  // Neemia state
+  const [recheckLoading, setRecheckLoading] = useState(false);
+
   const [neemiaActiveTemplate, setNeemiaActiveTemplate] = useState(0);
   const [neemiaActivePage, setNeemiaActivePage] = useState(0);
   const [neemiaAnimKey, setNeemiaAnimKey] = useState(0);
 
-  /* ═══ DATA FETCHING ═══ */
-  useEffect(() => {
-    if (!projectId) return;
-    setLoading(true);
-    setError(null);
+  // ─── LOCK STATE ───
+  const [lockOwned, setLockOwned] = useState(false);
+  const [lockError, setLockError] = useState<{ lockedByName: string; lockedAt: string } | null>(null);
+  const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-    Promise.all([
-      apiGet<ProjectDetail>(`/api/projects/${projectId}`),
-      apiGet<{ flat: EligibilityRule[]; grouped?: any; summary?: any }>(`/api/projects/${projectId}/eligibility`).catch(() => null),
-      apiGet<{ items: ChecklistItem[]; grouped?: Record<string, ChecklistItem[]>; summary?: any }>(`/api/projects/${projectId}/checklist`).catch(() => null),
-      apiGet<NeemiaDoc[]>(`/api/neemia/projects/${projectId}/documents`).catch(() => []),
-    ])
-      .then(([proj, elig, check, docs]) => {
-        setProject(proj);
-        if (elig) setEligibilityData(elig);
-        if (check) setChecklistData(check);
-        setNeemiaDocs(Array.isArray(docs) ? docs : []);
-        setLoading(false);
-      })
-      .catch(err => {
-        setError(err.message || "Failed to load project");
-        setLoading(false);
-      });
+  // Acquire lock on mount, release on unmount
+  useEffect(() => {
+    let cancelled = false;
+
+    async function acquireLock() {
+      try {
+        const res = await apiPost<any>(`/api/projects/${projectId}/lock`, {});
+        if (!cancelled) {
+          setLockOwned(true);
+          setLockError(null);
+        }
+      } catch (err: any) {
+        if (!cancelled) {
+          // Parse lock error from response
+          try {
+            const msg = err.message || "";
+            if (msg.includes("blocat")) {
+              // Fetch lock info
+              const lockInfo = await apiGet<any>(`/api/projects/${projectId}/lock`);
+              setLockError({ lockedByName: lockInfo.lockedByName || "Alt utilizator", lockedAt: lockInfo.lockedAt || "" });
+            }
+          } catch {
+            setLockError({ lockedByName: "Alt utilizator", lockedAt: "" });
+          }
+          setLockOwned(false);
+        }
+      }
+    }
+
+    acquireLock();
+
+    // Heartbeat every 5 minutes
+    heartbeatRef.current = setInterval(async () => {
+      if (!cancelled) {
+        try {
+          await apiPost(`/api/projects/${projectId}/lock/heartbeat`, {});
+        } catch {
+          // Lock lost
+          setLockOwned(false);
+        }
+      }
+    }, 5 * 60 * 1000);
+
+    // Release lock on unmount / navigation
+    const releaseLock = () => {
+      // Fire-and-forget (navigator.sendBeacon not suitable for auth headers)
+      fetch(`${API_URL}/api/projects/${projectId}/lock`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${typeof window !== "undefined" ? localStorage.getItem("df-token") || "" : ""}`,
+        },
+        keepalive: true,
+      }).catch(() => {});
+    };
+
+    window.addEventListener("beforeunload", releaseLock);
+
+    return () => {
+      cancelled = true;
+      if (heartbeatRef.current) clearInterval(heartbeatRef.current);
+      window.removeEventListener("beforeunload", releaseLock);
+      releaseLock();
+    };
   }, [projectId]);
 
-  // Fetch guide rules when ghid tab is activated
+  // Read-only mode when lock is not owned
+  const readOnly = !lockOwned;
+
   useEffect(() => {
-    if (activeLeaf !== "ghid" || guideRules.length > 0) return;
-    if (!project?.folderId) return;
-    // Try to get guide document rules from the folder
-    apiGet<any[]>(`/api/rules/documents/${project.folderId}/rules`)
-      .then(rules => {
-        if (Array.isArray(rules)) {
-          setGuideRules(rules.map(r => ({
-            id: r.id,
-            type: r.type || "fixed",
-            text: r.description || r.text || "",
-            confidence: r.confidence ?? 1,
-            page: r.page,
-            section: r.section,
-          })));
-        }
-      })
-      .catch(() => {
-        // Guide rules may not be available yet
-      });
-  }, [activeLeaf, project?.folderId, guideRules.length]);
+    async function fetchData() {
+      try {
+        setLoading(true);
+        const [proj, eligData, checkData, neemiaDocs] = await Promise.all([
+          apiGet<any>(`/api/projects/${projectId}`),
+          apiGet<any>(`/api/projects/${projectId}/eligibility`).catch(() => ({ flat: [], grouped: [], summary: {} })),
+          apiGet<any>(`/api/projects/${projectId}/checklist`).catch(() => ({ items: [], grouped: {}, summary: {} })),
+          apiGet<any[]>(`/api/neemia/projects/${projectId}/documents`).catch(() => []),
+        ]);
 
-  // Solomon: initialize conversation when tab is activated
-  useEffect(() => {
-    if (activeLeaf !== "solomon" || solomonConvId) return;
-    if (!projectId) return;
+        setProject(proj);
+        setEligibilityRules(mapEligibilityRules(eligData.flat || []));
+        setGuideRules(mapGuideRules(eligData.grouped || []));
+        setElements(mapElements(proj.elements || []));
+        setChecklistItems(mapChecklist(checkData.items || proj.checklist || []));
 
-    apiGet<any[]>(`/api/solomon/projects/${projectId}/conversations`)
-      .then(convs => {
-        if (Array.isArray(convs) && convs.length > 0) {
-          const conv = convs[0];
-          setSolomonConvId(conv.id);
-          // Load existing messages
-          return apiGet<any[]>(`/api/solomon/conversations/${conv.id}/messages`).then(msgs => {
-            if (Array.isArray(msgs)) {
-              setSolomonMessages(msgs.map((m: any) => ({
-                role: m.role,
-                text: m.content || m.text || "",
-                extractions: m.extractions || null,
-              })));
-            }
-          });
-        } else {
-          // Create a new conversation
-          return apiPost<any>(`/api/solomon/projects/${projectId}/conversations`, {
-            model: solomonModel,
-          }).then(conv => {
-            setSolomonConvId(conv.id);
-          });
-        }
-      })
-      .catch(() => {
-        // Solomon may not be available
-      });
-  }, [activeLeaf, projectId, solomonConvId, solomonModel]);
+        const neemiaMapped: NeemiaTemplate[] = (neemiaDocs || []).map((doc: any) => ({
+          id: doc.id,
+          name: doc.templateName || "Document",
+          type: (doc.templateFileType || "DOCX").toUpperCase(),
+          pages: [],
+          totalFields: 0,
+          filledFields: 0,
+          templateDocumentId: doc.templateDocumentId,
+          status: doc.status,
+          downloadUrl: doc.downloadUrl || null,
+        }));
+        setNeemiaTemplates(neemiaMapped);
+      } catch (err) {
+        console.error("Failed to load project:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchData();
+  }, [projectId]);
 
-  // Build solomon elements from project elements
-  useEffect(() => {
-    if (!project) return;
-    const mapped: SolomonElement[] = project.elements
-      .filter(el => el.value)
-      .map(el => ({
-        key: el.templateElement?.key || el.id,
-        label: el.templateElement?.label || el.templateElement?.key || "Element",
-        value: el.value!,
-        source: mapElementSourceLabel(el.source) || "Unknown",
-        status: el.confirmed ? "confirmat" as const : "propus" as const,
-      }));
-    setSolomonElements(mapped);
-  }, [project]);
-
-  // Auto-scroll chat
   useEffect(() => {
     if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
   }, [solomonMessages]);
 
-  // Close refine popup on outside click
   useEffect(() => {
     const close = (e: MouseEvent) => {
       if (popupRef.current && !popupRef.current.contains(e.target as Node)) setRefinePopup(null);
@@ -296,93 +349,131 @@ export default function ProjectViewPage() {
     return () => document.removeEventListener("mousedown", close);
   }, []);
 
-  /* ═══ DERIVED DATA ═══ */
-  const eligRules = eligibilityData?.flat || project?.eligibility || [];
-  const eligMapped = eligRules.map(r => ({
-    id: r.id,
-    name: r.rule?.description || r.details || "Regulă",
-    status: mapEligStatus(r.status),
-    detail: r.details || "",
-    type: r.rule?.type || r.source || "fixed",
-    confidence: r.confidence,
-  }));
-
-  const elements = (project?.elements || []).map(el => ({
-    id: el.id,
-    key: el.templateElement?.key || el.id,
-    label: el.templateElement?.label || el.templateElement?.key || "Element",
-    value: el.value,
-    status: mapElementStatus(el),
-    confidence: el.confirmed ? 100 : 80,
-    source: mapElementSourceDot(el.source),
-    sourceLabel: mapElementSourceLabel(el.source),
-    templates: [] as string[],
-  }));
-
-  const checklistItems = checklistData?.items || project?.checklist || [];
-  const checkCategories = [...new Set(checklistItems.map(i => i.category))];
-
-  const eligPassed = eligMapped.filter(r => r.status === "pass").length;
-  const eligTotal = eligMapped.length;
-  const elemFilled = elements.filter(e => e.value).length;
-  const elemTotal = elements.length;
-  const checkDone = checklistItems.filter(i => i.done).length;
-  const checkTotal = checklistItems.length;
-
-  const filteredElements = elements.filter(e => {
-    if (elemFilter === "gol" && e.status !== "gol") return false;
-    if (elemFilter === "propus_ai" && e.status !== "propus_ai") return false;
-    if (elemFilter === "confirmat" && e.status !== "confirmat") return false;
-    if (elemSearch) {
-      const q = elemSearch.toLowerCase();
-      return e.label.toLowerCase().includes(q) || e.key.toLowerCase().includes(q) || (e.value || "").toLowerCase().includes(q);
+  useEffect(() => {
+    if (activeLeaf === "solomon" && !solomonConvId) {
+      initSolomonConversation();
     }
-    return true;
-  });
+  }, [activeLeaf]);
 
-  const projectPath = project?.programPath
-    ? [
-        { label: project.programPath.program || "Program", level: "program" },
-        { label: project.programPath.masura || "Măsura", level: "masura" },
-        { label: project.programPath.sesiune || "Sesiunea", level: "sesiune" },
-      ]
-    : [];
+  async function initSolomonConversation() {
+    try {
+      const convs = await apiGet<any[]>(`/api/solomon/projects/${projectId}/conversations`);
+      if (convs && convs.length > 0) {
+        const conv = convs[0];
+        setSolomonConvId(conv.id);
+        const msgs = await apiGet<any[]>(`/api/solomon/conversations/${conv.id}/messages`);
+        setSolomonMessages((msgs || []).map((m: any) => ({
+          role: m.role as "user" | "assistant",
+          text: m.content || "",
+          extractions: m.extractions ? (typeof m.extractions === "string" ? JSON.parse(m.extractions) : m.extractions) : null,
+        })));
+        const elems: SolomonElement[] = [];
+        for (const m of (msgs || [])) {
+          if (m.extractions) {
+            const exts = typeof m.extractions === "string" ? JSON.parse(m.extractions) : m.extractions;
+            for (const ext of exts) {
+              elems.push({ key: ext.key, label: ext.label, value: ext.value, source: "Chat Solomon", status: "propus" });
+            }
+          }
+        }
+        setSolomonElements(elems);
+      } else {
+        const newConv = await apiPost<any>(`/api/solomon/projects/${projectId}/conversations`, {});
+        setSolomonConvId(newConv.id);
+      }
+    } catch (err) {
+      console.error("Failed to init Solomon conversation:", err);
+    }
+  }
 
-  const projectStatus = project?.status || "draft";
-  const statusInfo = STATUS_MAP[projectStatus] || STATUS_MAP.draft;
+  async function handleSolomonModelChange(model: "sonnet" | "opus") {
+    setSolomonModel(model);
+    if (solomonConvId) {
+      const modelId = model === "opus" ? "claude-opus-4-6" : "claude-sonnet-4-20250514";
+      try {
+        await apiPut(`/api/solomon/conversations/${solomonConvId}/model`, { model: modelId });
+      } catch {}
+    }
+  }
 
-  /* ═══ HANDLERS ═══ */
   const handleSolomonSend = async () => {
-    if (!solomonInput.trim() || solomonSending) return;
+    if (readOnly || !solomonInput.trim() || !solomonConvId || solomonStreaming) return;
     const userText = solomonInput;
     setSolomonMessages(prev => [...prev, { role: "user", text: userText, extractions: null }]);
     setSolomonInput("");
-    setSolomonSending(true);
+    setSolomonStreaming(true);
 
     try {
-      if (solomonConvId) {
-        const response = await apiPost<any>(`/api/solomon/conversations/${solomonConvId}/messages`, {
-          content: userText,
-          model: solomonModel,
-          extendedThinking: solomonET,
-        });
-        // Handle response - it may be a direct message or need parsing
-        const assistantText = response?.content || response?.text || response?.message || "Am procesat informația.";
-        const extractions = response?.extractions || null;
-        setSolomonMessages(prev => [...prev, {
-          role: "assistant",
-          text: assistantText,
-          extractions,
-        }]);
+      const token = typeof window !== "undefined" ? localStorage.getItem("df-token") : null;
+      const res = await fetch(`${API_URL}/api/solomon/conversations/${solomonConvId}/messages`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ content: userText }),
+      });
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error("No reader");
+
+      const decoder = new TextDecoder();
+      let assistantText = "";
+      let assistantExtractions: Array<{ key: string; label: string; value: string; confidence: number }> | null = null;
+      let buffer = "";
+
+      setSolomonMessages(prev => [...prev, { role: "assistant", text: "", extractions: null }]);
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const jsonStr = line.slice(6).trim();
+          if (!jsonStr || jsonStr === "[DONE]") continue;
+          try {
+            const evt = JSON.parse(jsonStr);
+            if (evt.type === "text") {
+              assistantText += evt.content;
+              setSolomonMessages(prev => {
+                const updated = [...prev];
+                updated[updated.length - 1] = { role: "assistant", text: assistantText, extractions: assistantExtractions };
+                return updated;
+              });
+            } else if (evt.type === "extraction") {
+              assistantExtractions = evt.extractions || [];
+              setSolomonMessages(prev => {
+                const updated = [...prev];
+                updated[updated.length - 1] = { role: "assistant", text: assistantText, extractions: assistantExtractions };
+                return updated;
+              });
+              for (const ext of (evt.extractions || [])) {
+                setSolomonElements(prev => [
+                  { key: ext.key, label: ext.label, value: ext.value, source: "Chat Solomon", status: "propus" },
+                  ...prev,
+                ]);
+              }
+            }
+          } catch {}
+        }
       }
-    } catch (err: any) {
-      setSolomonMessages(prev => [...prev, {
-        role: "assistant",
-        text: `Eroare: ${err.message || "Nu am putut procesa mesajul."}`,
-        extractions: null,
-      }]);
+    } catch (err) {
+      console.error("Solomon SSE error:", err);
+      setSolomonMessages(prev => {
+        if (prev.length > 0 && prev[prev.length - 1].role === "assistant" && prev[prev.length - 1].text === "") {
+          return prev.slice(0, -1);
+        }
+        return prev;
+      });
     } finally {
-      setSolomonSending(false);
+      setSolomonStreaming(false);
     }
   };
 
@@ -394,7 +485,7 @@ export default function ProjectViewPage() {
       const ext = msg.extractions[extIdx];
       setSolomonElements(prev => [
         { key: ext.key, label: ext.label, value: ext.value, source: "Chat Solomon", status: "confirmat" },
-        ...prev,
+        ...prev.filter(e => e.key !== ext.key),
       ]);
     }
   };
@@ -404,6 +495,7 @@ export default function ProjectViewPage() {
   };
 
   const handleConfirmElement = (idx: number) => {
+    if (readOnly) return;
     setSolomonElements(prev => prev.map((el, i) => i === idx ? { ...el, status: "confirmat" } : el));
   };
 
@@ -424,15 +516,63 @@ export default function ProjectViewPage() {
     setRefineInput("");
   }, []);
 
-  const handleRefineSubmit = () => {
-    if (!refineInput.trim() || !refinePopup) return;
-    setSolomonMessages(prev => [...prev, {
-      role: "assistant",
-      text: `Fragment rescris conform instrucțiunii "${refineInput}":\n\n${refinePopup.text.substring(0, 60)}${refinePopup.text.length > 60 ? "..." : ""} [actualizat]`,
-      extractions: null,
-    }]);
-    setRefinePopup(null);
-    setRefineInput("");
+  const handleRefineSubmit = async () => {
+    if (!refineInput.trim() || !refinePopup || !solomonConvId) return;
+    setSolomonStreaming(true);
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("df-token") : null;
+      const res = await fetch(`${API_URL}/api/solomon/conversations/${solomonConvId}/refine`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ selectedText: refinePopup.text, instruction: refineInput }),
+      });
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error("No reader");
+
+      const decoder = new TextDecoder();
+      let refinedText = "";
+      let buffer = "";
+
+      setSolomonMessages(prev => [...prev, { role: "assistant", text: "", extractions: null }]);
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const jsonStr = line.slice(6).trim();
+          if (!jsonStr || jsonStr === "[DONE]") continue;
+          try {
+            const evt = JSON.parse(jsonStr);
+            if (evt.type === "text") {
+              refinedText += evt.content;
+              setSolomonMessages(prev => {
+                const updated = [...prev];
+                updated[updated.length - 1] = { role: "assistant", text: refinedText, extractions: null };
+                return updated;
+              });
+            }
+          } catch {}
+        }
+      }
+    } catch (err) {
+      console.error("Refine SSE error:", err);
+    } finally {
+      setSolomonStreaming(false);
+      setRefinePopup(null);
+      setRefineInput("");
+    }
   };
 
   const renderMsgText = (text: string) => {
@@ -446,55 +586,39 @@ export default function ProjectViewPage() {
 
   const solomonConfirmedCount = solomonElements.filter(e => e.status === "confirmat").length;
 
-  const handleChecklistToggle = async (item: ChecklistItem) => {
-    const newDone = !item.done;
-    // Optimistic update
-    if (checklistData) {
-      setChecklistData({
-        ...checklistData,
-        items: checklistData.items.map(i => i.id === item.id ? { ...i, done: newDone } : i),
-        grouped: checklistData.grouped
-          ? Object.fromEntries(
-              Object.entries(checklistData.grouped).map(([cat, items]) => [
-                cat,
-                (items as ChecklistItem[]).map(i => i.id === item.id ? { ...i, done: newDone } : i),
-              ])
-            )
-          : undefined,
-      });
-    }
-    try {
-      await apiPut(`/api/projects/${projectId}/checklist/${item.id}`, { done: newDone });
-    } catch {
-      // Revert on error
-      if (checklistData) {
-        setChecklistData({
-          ...checklistData,
-          items: checklistData.items.map(i => i.id === item.id ? { ...i, done: !newDone } : i),
-        });
-      }
-    }
-  };
-
-  const handleReCheckEligibility = async () => {
+  const handleRecheckEligibility = async () => {
+    if (readOnly) return;
+    setRecheckLoading(true);
     try {
       await apiPost(`/api/projects/${projectId}/check-eligibility`, {});
-      // Refresh eligibility data
-      const elig = await apiGet<{ flat: EligibilityRule[]; grouped?: any; summary?: any }>(`/api/projects/${projectId}/eligibility`);
-      setEligibilityData(elig);
-    } catch (err: any) {
-      // Could show error toast
+      const eligData = await apiGet<any>(`/api/projects/${projectId}/eligibility`);
+      setEligibilityRules(mapEligibilityRules(eligData.flat || []));
+      setGuideRules(mapGuideRules(eligData.grouped || []));
+    } catch (err) {
+      console.error("Re-check eligibility failed:", err);
+    } finally {
+      setRecheckLoading(false);
     }
   };
 
-  const handleNeemiaGenerate = async () => {
+  const handleChecklistToggle = async (itemId: string, currentDone: boolean) => {
+    if (readOnly) return;
+    setChecklistItems(items => items.map(i => i.id === itemId ? { ...i, done: !currentDone } : i));
     try {
-      await apiPost(`/api/neemia/projects/${projectId}/generate`, {});
-      // Refresh docs
-      const docs = await apiGet<NeemiaDoc[]>(`/api/neemia/projects/${projectId}/documents`);
-      setNeemiaDocs(Array.isArray(docs) ? docs : []);
-    } catch {
-      // handle error
+      await apiPut(`/api/projects/${projectId}/checklist/${itemId}`, { done: !currentDone });
+    } catch (err) {
+      console.error("Checklist toggle failed:", err);
+      setChecklistItems(items => items.map(i => i.id === itemId ? { ...i, done: currentDone } : i));
+    }
+  };
+
+  const handleConfirmElementApi = async (elId: string) => {
+    if (readOnly) return;
+    try {
+      await apiPut(`/api/projects/${projectId}/elements/${elId}`, { confirmed: true });
+      setElements(prev => prev.map(e => e.id === elId ? { ...e, status: "confirmat" as const, confidence: 100 } : e));
+    } catch (err) {
+      console.error("Confirm element failed:", err);
     }
   };
 
@@ -509,31 +633,63 @@ export default function ProjectViewPage() {
     setNeemiaAnimKey(k => k + 1);
   };
 
+  const neemiaProgressPct = (tmpl: NeemiaTemplate) => tmpl.totalFields > 0 ? Math.round(tmpl.filledFields / tmpl.totalFields * 100) : 0;
+  const neemiaProgressColor = (p: number) => p === 100 ? "var(--accent-green)" : p > 0 ? "var(--accent-yellow)" : "var(--accent-red)";
+
   const toggleBranch = (key: string) => setBranches(b => ({ ...b, [key]: !b[key] }));
 
-  /* ═══ LOADING STATE ═══ */
+  const eligPassed = eligibilityRules.filter(r => r.status === "pass").length;
+  const eligTotal = eligibilityRules.length;
+  const elemFilled = elements.filter(e => e.value).length;
+  const elemTotal = elements.length;
+  const checkDone = checklistItems.filter(i => i.done).length;
+  const checkTotal = checklistItems.length;
+
+  const filteredElements = elements.filter(e => {
+    if (elemFilter === "gol" && e.status !== "gol") return false;
+    if (elemFilter === "propus_ai" && e.status !== "propus_ai") return false;
+    if (elemFilter === "confirmat" && e.status !== "confirmat") return false;
+    if (elemSearch) {
+      const q = elemSearch.toLowerCase();
+      return e.label.toLowerCase().includes(q) || e.key.toLowerCase().includes(q) || (e.value || "").toLowerCase().includes(q);
+    }
+    return true;
+  });
+
+  const checkCategories = [...new Set(checklistItems.map(i => i.category))];
+
+  const neemiaTemplate = neemiaTemplates[neemiaActiveTemplate] || null;
+  const neemiaPage = neemiaTemplate?.pages?.[neemiaActivePage] || null;
+
+  const projectName = project?.name || "Se incarcă...";
+  const projectFirma = project?.company?.denumire || "-";
+  const projectCui = project?.company?.cui || "-";
+  const projectStatus = project?.status || "draft";
+  const projectValoare = project?.valoare || "-";
+  const projectPath = project?.programPath
+    ? [
+        { label: project.programPath.program || "Program", level: "program" },
+        { label: project.programPath.masura || "Măsura", level: "masura" },
+        { label: project.programPath.sesiune || "Sesiune", level: "sesiune" },
+      ]
+    : [];
+  const companyData = project?.company;
+  const { localitate, judet } = parseAdresa(companyData?.adresa);
+  const capitalSocial = companyData?.capitalSocial || companyData?.onrcRawData?.capitalSocial || "-";
+  const cifraAfaceri = companyData?.cifraAfaceri || companyData?.onrcRawData?.cifraAfaceri || "-";
+
   if (loading) {
     return (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", background: "var(--bg-deep)", color: "var(--text-secondary)", fontSize: 15 }}>
-        <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 32, marginBottom: 12, animation: "spin 1s linear infinite" }}>&#9881;</div>
-          <div>Se încarcă proiectul...</div>
-          <style>{`@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}`}</style>
-        </div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", background: "var(--bg-deep)", color: "var(--text-secondary)", fontSize: 16, fontFamily: "var(--font-sans)" }}>
+        Se incarcă proiectul...
       </div>
     );
   }
 
-  if (error || !project) {
+  if (!project) {
     return (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", background: "var(--bg-deep)", color: "var(--accent-red)", fontSize: 15 }}>
-        <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 32, marginBottom: 12 }}>&#9888;</div>
-          <div>{error || "Proiectul nu a fost găsit."}</div>
-          <button onClick={() => router.push("/projects")} style={{ marginTop: 16, padding: "8px 20px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-surface)", color: "var(--text-primary)", cursor: "pointer", fontFamily: "var(--font-sans)", fontSize: 13 }}>
-            &larr; Înapoi la proiecte
-          </button>
-        </div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", background: "var(--bg-deep)", color: "var(--accent-red)", fontSize: 16, fontFamily: "var(--font-sans)" }}>
+        Proiectul nu a fost gasit.
       </div>
     );
   }
@@ -541,6 +697,10 @@ export default function ProjectViewPage() {
   return (
     <>
       <style>{`
+        .lock-banner{display:flex;align-items:center;gap:10px;padding:10px 20px;background:rgba(251,191,36,.12);border-bottom:1px solid rgba(251,191,36,.3);font-size:13px;color:#fbbf24;font-family:var(--font-sans)}
+        .lock-banner .lb-icon{font-size:18px}
+        .lock-banner .lb-name{font-weight:700;color:#fbbf24}
+        .lock-banner .lb-time{font-size:11px;color:var(--text-muted);margin-left:auto;font-family:var(--font-mono)}
         .pv-container{display:flex;height:100%;overflow:hidden;background:var(--bg-deep)}
 
         .tree-sidebar{width:260px;min-width:260px;background:var(--bg-surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto}
@@ -680,8 +840,11 @@ export default function ProjectViewPage() {
         .ec-source{font-size:11px;color:var(--text-muted);margin-top:4px;display:flex;align-items:center;gap:4px}
         .source-dot{width:6px;height:6px;border-radius:50%;display:inline-block}
         .source-dot.company_data{background:var(--accent-green)}
+        .source-dot.onrc{background:var(--accent-green)}
         .source-dot.solomon_chat{background:var(--accent-blue)}
+        .source-dot.solomon{background:var(--accent-blue)}
         .source-dot.manual{background:var(--accent-purple)}
+        .source-dot.document{background:var(--accent-orange)}
 
         .elem-detail{width:350px;min-width:350px;border-left:1px solid var(--border);background:var(--bg-surface);overflow-y:auto;padding:20px}
         .ed-header{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text-muted);margin-bottom:16px}
@@ -845,13 +1008,21 @@ export default function ProjectViewPage() {
         .coming-soon .cs-desc{font-size:13px;color:var(--text-secondary)}
       `}</style>
 
-      <div className="pv-container">
-        {/* --- SIDEBAR TREE --- */}
+      {lockError && (
+        <div className="lock-banner">
+          <span className="lb-icon">&#128274;</span>
+          Proiectul este deschis de <span className="lb-name">{lockError.lockedByName}</span> — vizualizare doar în citire
+          {lockError.lockedAt && <span className="lb-time">din {new Date(lockError.lockedAt).toLocaleTimeString("ro-RO", { hour: "2-digit", minute: "2-digit" })}</span>}
+        </div>
+      )}
+
+      <div className="pv-container" style={lockError ? { height: "calc(100% - 44px)" } : undefined}>
+        {/* SIDEBAR TREE */}
         <div className="tree-sidebar">
           <div className="tree-header">
             <h2>Proiect</h2>
-            <div className="project-name">{project.name}</div>
-            <div className="project-meta">{project.company?.denumire} &middot; {project.company?.cui}</div>
+            <div className="project-name">{projectName}</div>
+            <div className="project-meta">{projectFirma} &middot; {projectCui}</div>
             <div className="project-path">
               {projectPath.map((seg, i) => (
                 <span key={i}>
@@ -861,8 +1032,8 @@ export default function ProjectViewPage() {
               ))}
             </div>
             <div style={{ marginTop: 8 }}>
-              <span className="status-badge" style={{ background: statusInfo.bg, color: statusInfo.color }}>
-                {statusInfo.label}
+              <span className="status-badge" style={{ background: (STATUS_MAP[projectStatus] || STATUS_MAP.draft).bg, color: (STATUS_MAP[projectStatus] || STATUS_MAP.draft).color }}>
+                {(STATUS_MAP[projectStatus] || STATUS_MAP.draft).label}
               </span>
             </div>
           </div>
@@ -883,7 +1054,7 @@ export default function ProjectViewPage() {
                 <div>
                   <div className={`tree-leaf ${activeLeaf === "eligibilitate" ? "active" : ""}`} onClick={() => setActiveLeaf("eligibilitate")}>
                     <span>&#128737;</span> Eligibilitate
-                    <span className={`leaf-badge ${eligPassed === eligTotal ? "green" : eligPassed > 0 ? "blue" : "red"}`}>{eligPassed}/{eligTotal}</span>
+                    <span className={`leaf-badge ${eligPassed === eligTotal && eligTotal > 0 ? "green" : eligPassed > 0 ? "blue" : "red"}`}>{eligPassed}/{eligTotal}</span>
                   </div>
                   <div className={`tree-leaf ${activeLeaf === "ghid" ? "active" : ""}`} onClick={() => setActiveLeaf("ghid")}>
                     <span>&#128214;</span> Ghid Finanțare
@@ -895,15 +1066,15 @@ export default function ProjectViewPage() {
                   </div>
                   <div className={`tree-leaf ${activeLeaf === "elemente" ? "active" : ""}`} onClick={() => setActiveLeaf("elemente")}>
                     <span>&#128202;</span> Elemente
-                    <span className={`leaf-badge ${elemFilled === elemTotal ? "green" : "blue"}`}>{elemFilled}/{elemTotal}</span>
+                    <span className={`leaf-badge ${elemFilled === elemTotal && elemTotal > 0 ? "green" : "blue"}`}>{elemFilled}/{elemTotal}</span>
                   </div>
                   <div className={`tree-leaf ${activeLeaf === "checklist" ? "active" : ""}`} onClick={() => setActiveLeaf("checklist")}>
                     <span>&#128203;</span> Checklist doc
-                    <span className={`leaf-badge ${checkDone === checkTotal ? "green" : checkDone > 0 ? "blue" : "red"}`}>{checkDone}/{checkTotal}</span>
+                    <span className={`leaf-badge ${checkDone === checkTotal && checkTotal > 0 ? "green" : checkDone > 0 ? "blue" : "red"}`}>{checkDone}/{checkTotal}</span>
                   </div>
                   <div className={`tree-leaf ${activeLeaf === "neemia" ? "active" : ""}`} onClick={() => setActiveLeaf("neemia")}>
                     <span>&#128196;</span> Neemia
-                    <span className="leaf-badge muted">{neemiaDocs.length}/{neemiaDocs.length || 0}</span>
+                    <span className="leaf-badge muted">{neemiaTemplates.filter(t => t.status === "generated" || t.status === "validated").length}/{neemiaTemplates.length}</span>
                   </div>
                 </div>
               )}
@@ -935,7 +1106,7 @@ export default function ProjectViewPage() {
           </div>
         </div>
 
-        {/* --- MAIN CONTENT --- */}
+        {/* MAIN CONTENT */}
         <div className="main-content">
           <div className="content-header">
             <h1>
@@ -954,15 +1125,15 @@ export default function ProjectViewPage() {
             {activeLeaf === "sumar" && (
               <div className="sumar-panel">
                 <div className="sumar-status">
-                  <span style={{ fontSize: 20, fontWeight: 800 }}>{project.name}</span>
+                  <span style={{ fontSize: 20, fontWeight: 800 }}>{projectName}</span>
                 </div>
 
                 <div className="sumar-progress">
                   {[
-                    { label: "Eligibilitate", val: `${eligPassed}/${eligTotal}`, p: pct(eligPassed, eligTotal), color: eligPassed === eligTotal ? "#34d399" : "#fbbf24", leaf: "eligibilitate" as LeafType },
-                    { label: "Elemente", val: `${elemFilled}/${elemTotal}`, p: pct(elemFilled, elemTotal), color: elemFilled === elemTotal ? "#34d399" : "#4d8bff", leaf: "elemente" as LeafType },
-                    { label: "Checklist doc", val: `${checkDone}/${checkTotal}`, p: pct(checkDone, checkTotal), color: checkDone === checkTotal ? "#34d399" : "#fb923c", leaf: "checklist" as LeafType },
-                    { label: "Neemia", val: `${neemiaDocs.length}/${neemiaDocs.length || 0}`, p: neemiaDocs.length > 0 ? 100 : 0, color: "#a78bfa", leaf: "neemia" as LeafType },
+                    { label: "Eligibilitate", val: `${eligPassed}/${eligTotal}`, p: pct(eligPassed, eligTotal), color: eligPassed === eligTotal && eligTotal > 0 ? "#34d399" : "#fbbf24", leaf: "eligibilitate" as LeafType },
+                    { label: "Elemente", val: `${elemFilled}/${elemTotal}`, p: pct(elemFilled, elemTotal), color: elemFilled === elemTotal && elemTotal > 0 ? "#34d399" : "#4d8bff", leaf: "elemente" as LeafType },
+                    { label: "Checklist doc", val: `${checkDone}/${checkTotal}`, p: pct(checkDone, checkTotal), color: checkDone === checkTotal && checkTotal > 0 ? "#34d399" : "#fb923c", leaf: "checklist" as LeafType },
+                    { label: "Neemia", val: `${neemiaTemplates.filter(t => t.status === "generated" || t.status === "validated").length}/${neemiaTemplates.length}`, p: neemiaTemplates.length > 0 ? pct(neemiaTemplates.filter(t => t.status === "generated" || t.status === "validated").length, neemiaTemplates.length) : 0, color: "#a78bfa", leaf: "neemia" as LeafType },
                   ].map(item => (
                     <div className="sp-card" key={item.label} onClick={() => setActiveLeaf(item.leaf)}>
                       <div className="sp-val" style={{ color: item.color }}>{item.val}</div>
@@ -975,16 +1146,16 @@ export default function ProjectViewPage() {
                 <div className="sumar-info">
                   <div className="si-card">
                     <h3>Date firmă</h3>
-                    <div className="si-row"><span className="si-label">CUI</span><span className="si-value">{project.company?.cui}</span></div>
-                    <div className="si-row"><span className="si-label">Forma juridică</span><span className="si-value">{project.company?.formaJuridica}</span></div>
-                    <div className="si-row"><span className="si-label">CAEN</span><span className="si-value">{project.company?.caen}</span></div>
-                    <div className="si-row"><span className="si-label">Localitate</span><span className="si-value">{project.company?.localitate || "—"}{project.company?.judet ? `, ${project.company.judet}` : ""}</span></div>
+                    <div className="si-row"><span className="si-label">CUI</span><span className="si-value">{projectCui}</span></div>
+                    <div className="si-row"><span className="si-label">Forma juridică</span><span className="si-value">{companyData?.formaJuridica || "-"}</span></div>
+                    <div className="si-row"><span className="si-label">CAEN</span><span className="si-value">{companyData?.caen || "-"}</span></div>
+                    <div className="si-row"><span className="si-label">Localitate</span><span className="si-value">{localitate}, {judet}</span></div>
                   </div>
                   <div className="si-card">
                     <h3>Date financiare</h3>
-                    <div className="si-row"><span className="si-label">Capital social</span><span className="si-value">{project.company?.capitalSocial || "—"}</span></div>
-                    <div className="si-row"><span className="si-label">Cifra afaceri</span><span className="si-value">{project.company?.cifraAfaceri || "—"}</span></div>
-                    <div className="si-row"><span className="si-label">Valoare proiect</span><span className="si-value">{project.valoare || "—"}</span></div>
+                    <div className="si-row"><span className="si-label">Capital social</span><span className="si-value">{capitalSocial}</span></div>
+                    <div className="si-row"><span className="si-label">Cifra afaceri</span><span className="si-value">{cifraAfaceri}</span></div>
+                    <div className="si-row"><span className="si-label">Valoare proiect</span><span className="si-value">{projectValoare}</span></div>
                   </div>
                 </div>
 
@@ -1001,24 +1172,24 @@ export default function ProjectViewPage() {
               <div className="elig-panel">
                 <div className="elig-summary">
                   <div className="elig-stat">
-                    <div className="number" style={{ color: "var(--accent-green)" }}>{eligMapped.filter(r => r.status === "pass").length}</div>
+                    <div className="number" style={{ color: "var(--accent-green)" }}>{eligibilityRules.filter(r => r.status === "pass").length}</div>
                     <div className="label">Trecute</div>
                   </div>
                   <div className="elig-stat">
-                    <div className="number" style={{ color: "var(--accent-red)" }}>{eligMapped.filter(r => r.status === "fail").length}</div>
+                    <div className="number" style={{ color: "var(--accent-red)" }}>{eligibilityRules.filter(r => r.status === "fail").length}</div>
                     <div className="label">Eșuate</div>
                   </div>
                   <div className="elig-stat">
-                    <div className="number" style={{ color: "var(--accent-yellow)" }}>{eligMapped.filter(r => r.status === "pending").length}</div>
+                    <div className="number" style={{ color: "var(--accent-yellow)" }}>{eligibilityRules.filter(r => r.status === "pending").length}</div>
                     <div className="label">Pending</div>
                   </div>
                   <div className="elig-stat">
-                    <div className="number">{eligMapped.length}</div>
+                    <div className="number">{eligibilityRules.length}</div>
                     <div className="label">Total</div>
                   </div>
                 </div>
 
-                {eligMapped.map(rule => (
+                {eligibilityRules.map(rule => (
                   <div className="elig-rule" key={rule.id}>
                     <div className={`elig-icon ${rule.status}`}>
                       {rule.status === "pass" ? "✓" : rule.status === "fail" ? "✕" : "?"}
@@ -1037,12 +1208,14 @@ export default function ProjectViewPage() {
                 ))}
 
                 <div style={{ marginTop: 16 }}>
-                  <button className="sa-btn primary" style={{ display: "inline-flex" }} onClick={handleReCheckEligibility}>&#128260; Re-verifică eligibilitate</button>
+                  <button className="sa-btn primary" style={{ display: "inline-flex" }} onClick={handleRecheckEligibility} disabled={recheckLoading}>
+                    {recheckLoading ? "Se verifică..." : "🔄 Re-verifică eligibilitate"}
+                  </button>
                 </div>
               </div>
             )}
 
-            {/* GHID FINANTARE */}
+            {/* GHID FINANȚARE */}
             {activeLeaf === "ghid" && (
               <div className="ghid-layout">
                 <div className="ghid-sub-tabs">
@@ -1061,8 +1234,8 @@ export default function ProjectViewPage() {
                             </div>
                             <div className="rule-text">{r.text}</div>
                             <div className="rule-meta">
-                              {r.page != null && <span>Pag. {r.page}</span>}
-                              {r.section && <span>§{r.section}</span>}
+                              <span>Pag. {r.page}</span>
+                              <span>§{r.section}</span>
                               <span>
                                 {Math.round(r.confidence * 100)}%
                                 <span className="confidence-bar"><span className="confidence-fill" style={{ width: `${r.confidence * 100}%`, background: r.confidence > 0.9 ? "var(--accent-green)" : r.confidence > 0.8 ? "var(--accent-blue)" : "var(--accent-yellow)" }} /></span>
@@ -1070,11 +1243,6 @@ export default function ProjectViewPage() {
                             </div>
                           </div>
                         ))}
-                        {guideRules.length === 0 && (
-                          <div style={{ padding: 24, textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
-                            Nu sunt reguli disponibile. Încărcați ghidul de finanțare pentru extragere automată.
-                          </div>
-                        )}
                       </div>
                       <div className="pdf-viewer">
                         <div className="pdf-page-mock">
@@ -1213,7 +1381,7 @@ export default function ProjectViewPage() {
                       )}
                       {el.status === "propus_ai" && (
                         <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
-                          <button className="ed-btn">✓ Confirmă</button>
+                          <button className="ed-btn" onClick={() => handleConfirmElementApi(el.id)}>✓ Confirmă</button>
                           <button className="ed-btn" style={{ borderColor: "var(--accent-yellow)", color: "var(--accent-yellow)" }}>&#9998; Editează</button>
                         </div>
                       )}
@@ -1259,7 +1427,7 @@ export default function ProjectViewPage() {
                       {!isCollapsed && catItems.map(item => (
                         <div className="check-item" key={item.id}>
                           <div className={`check-box ${item.done ? "done" : ""}`}
-                            onClick={() => handleChecklistToggle(item)}>
+                            onClick={() => handleChecklistToggle(item.id, item.done)}>
                             {item.done && "✓"}
                           </div>
                           <span className={`check-name ${item.done ? "done-text" : ""}`}>{item.name}</span>
@@ -1290,8 +1458,8 @@ export default function ProjectViewPage() {
                       <div className="sn-status"><span className="sn-status-dot" /> Activ &middot; Agent colectare date</div>
                     </div>
                     <div className="model-selector">
-                      <button className={`model-btn ${solomonModel === "sonnet" ? "active" : ""}`} onClick={() => setSolomonModel("sonnet")}>Sonnet</button>
-                      <button className={`model-btn ${solomonModel === "opus" ? "active" : ""}`} onClick={() => setSolomonModel("opus")}>Opus</button>
+                      <button className={`model-btn ${solomonModel === "sonnet" ? "active" : ""}`} onClick={() => handleSolomonModelChange("sonnet")}>Sonnet</button>
+                      <button className={`model-btn ${solomonModel === "opus" ? "active" : ""}`} onClick={() => handleSolomonModelChange("opus")}>Opus</button>
                     </div>
                     <button className={`et-toggle ${solomonET ? "on" : ""}`} onClick={() => setSolomonET(!solomonET)}>
                       &#10024; ET
@@ -1347,11 +1515,6 @@ export default function ProjectViewPage() {
                         )}
                       </div>
                     ))}
-                    {solomonSending && (
-                      <div className="chat-msg assistant" style={{ opacity: 0.6 }}>
-                        <span style={{ animation: "statusPulse 1s ease infinite" }}>Solomon se gândește...</span>
-                      </div>
-                    )}
                   </div>
 
                   {/* Input area */}
@@ -1381,7 +1544,7 @@ export default function ProjectViewPage() {
                           }
                         }}
                       />
-                      <button className="chat-btn send" onClick={handleSolomonSend} disabled={solomonSending}>
+                      <button className="chat-btn send" onClick={handleSolomonSend} disabled={solomonStreaming}>
                         &#10148;
                       </button>
                     </div>
@@ -1444,72 +1607,103 @@ export default function ProjectViewPage() {
               </div>
             )}
 
-            {/* NEEMIA --- 3 PANE LAYOUT */}
+            {/* NEEMIA — 3 PANE LAYOUT */}
             {activeLeaf === "neemia" && (
               <div className="neemia-layout">
-                {/* Left: Templates list / Generated docs */}
+                {/* Left: Templates list */}
                 <div className="neemia-templates">
-                  <h3>Documente generate</h3>
-                  {neemiaDocs.length > 0 ? neemiaDocs.map((doc, i) => (
-                    <div
-                      key={doc.id}
-                      className={`template-card ${neemiaActiveTemplate === i ? "active" : ""}`}
-                      onClick={() => handleNeemiaTemplateClick(i)}
-                    >
-                      <div className="tc-name">
-                        {doc.name}
-                        <span className="tc-badge">{doc.type || "DOCX"}</span>
+                  <h3>Template-uri Proiect</h3>
+                  {neemiaTemplates.map((tmpl, i) => {
+                    const p = neemiaProgressPct(tmpl);
+                    return (
+                      <div
+                        key={tmpl.id || i}
+                        className={`template-card ${neemiaActiveTemplate === i ? "active" : ""}`}
+                        onClick={() => handleNeemiaTemplateClick(i)}
+                      >
+                        <div className="tc-name">
+                          {tmpl.name}
+                          <span className="tc-badge">{tmpl.type}</span>
+                        </div>
+                        <div className="tc-info">{tmpl.pages.length || "?"} pagini &middot; {tmpl.totalFields} câmpuri</div>
+                        <div className="tc-progress">
+                          <div className="tc-progress-fill" style={{ width: `${p}%`, background: neemiaProgressColor(p) }} />
+                        </div>
+                        {tmpl.filledFields > 0 && (
+                          <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 4 }}>
+                            {tmpl.filledFields}/{tmpl.totalFields} câmpuri completate
+                          </div>
+                        )}
                       </div>
-                      <div className="tc-info">{doc.status}</div>
-                    </div>
-                  )) : (
-                    <div style={{ padding: 16, textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
-                      Niciun document generat încă.
-                    </div>
-                  )}
-                  <button
-                    className="sa-btn primary"
-                    style={{ marginTop: 12, width: "100%", justifyContent: "center" }}
-                    onClick={handleNeemiaGenerate}
-                  >
-                    &#128196; Generează documente
-                  </button>
+                    );
+                  })}
                 </div>
 
                 {/* Center + Right: Doc preview + Fields */}
                 <div className="neemia-doc-view">
-                  {neemiaDocs.length > 0 ? (
+                  {neemiaTemplate && neemiaTemplate.pages.length > 0 ? (
                     <>
+                      {/* Page navigation */}
                       <div className="neemia-page-nav">
-                        <span className="nav-label">{neemiaDocs[neemiaActiveTemplate]?.name || "Document"}</span>
-                        <button className="download-btn">
+                        <span className="nav-label">{neemiaTemplate.name}</span>
+                        {neemiaTemplate.pages.map((pg, i) => (
+                          <div
+                            key={i}
+                            className={`page-thumb ${pg.status} ${neemiaActivePage === i ? "active" : ""}`}
+                            onClick={() => handleNeemiaPageClick(i)}
+                          >
+                            {pg.num}
+                          </div>
+                        ))}
+                        <button className="download-btn" onClick={async () => {
+                          if (neemiaTemplate.downloadUrl) {
+                            window.open(neemiaTemplate.downloadUrl, "_blank");
+                          } else if (neemiaTemplate.id) {
+                            try {
+                              const res = await apiGet<any>(`/api/neemia/documents/${neemiaTemplate.id}/download`);
+                              if (res.downloadUrl) window.open(res.downloadUrl, "_blank");
+                            } catch {}
+                          }
+                        }}>
                           &#8595; Descarcă
                         </button>
                       </div>
 
                       <div className="neemia-preview-area">
+                        {/* Document preview */}
                         <div className="neemia-doc-preview">
-                          <div className="doc-page" key={neemiaAnimKey}>
-                            <div className="doc-header-label">DOCUMENT OFICIAL &middot; GENERARE AUTOMATĂ</div>
-                            <div className="doc-page-title">{neemiaDocs[neemiaActiveTemplate]?.name || "Document"}</div>
-                            <div style={{ fontSize: 13, color: "#555", lineHeight: 1.8 }}>
-                              Documentul a fost generat automat pe baza elementelor completate în proiect.
+                          {neemiaPage && (
+                            <div className="doc-page" key={neemiaAnimKey}>
+                              <div className="doc-header-label">DOCUMENT OFICIAL &middot; GENERARE AUTOMATĂ</div>
+                              <div className="doc-page-title">Pag. {neemiaPage.num}: {neemiaPage.title}</div>
+                              {neemiaPage.fields.map((f, fi) => (
+                                <div className="doc-field-group" key={fi}>
+                                  <div className="doc-field-label">{f.name}</div>
+                                  {f.value ? (
+                                    <div className="doc-field-value">{f.value}</div>
+                                  ) : (
+                                    <div className="doc-field-missing">(lipsă)</div>
+                                  )}
+                                </div>
+                              ))}
+                              <div className="doc-page-number">Pag. {neemiaPage.num}</div>
                             </div>
-                            <div className="doc-page-number">Generat</div>
-                          </div>
+                          )}
                         </div>
+
+                        {/* Fields panel */}
                         <div className="neemia-fields-panel">
-                          <h3>Elemente utilizate</h3>
-                          {elements.filter(e => e.value).slice(0, 8).map((el, fi) => (
+                          <h3>Câmpuri Pag. {neemiaPage?.num}</h3>
+                          {neemiaPage?.fields.map((f, fi) => (
                             <div className="field-card" key={fi}>
-                              <div className="field-name">{el.label}</div>
-                              <div className={`field-val ${!el.value ? "missing" : ""}`}>
-                                {el.value || "Lipsă ⚠"}
+                              <div className="field-name">{f.name}</div>
+                              <div className={`field-val ${!f.value ? "missing" : ""}`}>
+                                {f.value || "Lipsă ⚠"}
                               </div>
-                              {el.sourceLabel && (
+                              {f.source && (
                                 <div className="field-source">
-                                  <span className={`source-dot ${el.source}`} />
-                                  {el.sourceLabel}
+                                  <span className={`source-dot ${f.source.toLowerCase()}`} />
+                                  {f.source === "Solomon" ? "Chat Solomon" : f.source}
                                 </div>
                               )}
                             </div>
@@ -1520,8 +1714,8 @@ export default function ProjectViewPage() {
                   ) : (
                     <div className="neemia-empty">
                       <div className="ne-icon">&#128196;</div>
-                      <div className="ne-label">Niciun document generat</div>
-                      <div className="ne-desc">Apasă &ldquo;Generează documente&rdquo; pentru a crea documentele proiectului</div>
+                      <div className="ne-label">Niciun template procesat</div>
+                      <div className="ne-desc">Selectează un template pentru a vedea completarea automată</div>
                     </div>
                   )}
                 </div>

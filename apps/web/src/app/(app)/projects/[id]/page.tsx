@@ -1,86 +1,81 @@
 "use client";
 import { useState, useRef, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
+import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api";
 
-/* ═══ MOCK DATA ═══ */
-const PROJECT = {
-  id: "1", name: "Modernizare fabrică CNC", firma: "COMEXIM R SRL", cui: "2146135", status: "in_progress",
-  valoare: "200.000 EUR",
-  path: [
-    { label: "Accesare finanțări", level: "program" },
-    { label: "Măsura 1", level: "masura" },
-    { label: "Sesiunea 1", level: "sesiune" },
-  ],
-  company: { formaJuridica: "SRL", caen: "2562", localitate: "Arad", judet: "Arad", capitalSocial: "5.000 RON", cifraAfaceri: "187.000 EUR" },
+/* ═══ TYPES ═══ */
+type ProjectElement = {
+  id: string;
+  value: string | null;
+  source: string | null;
+  confirmed: boolean;
+  templateElement?: {
+    key: string;
+    label: string;
+    type: string;
+  };
 };
 
-const ELIGIBILITY_RULES = [
-  { id: "1", name: "Firmă înregistrată în România", status: "pass", detail: "CUI 2146135 — COMEXIM R SRL", type: "fixed" },
-  { id: "2", name: "Minim 1 an vechime", status: "pass", detail: "Înregistrată din 1991", type: "fixed" },
-  { id: "3", name: "Cod CAEN eligibil", status: "pass", detail: "2562 — Operațiuni de mecanică generală", type: "fixed" },
-  { id: "4", name: "Nu e în insolvență/faliment", status: "pass", detail: "Verificare ONRC OK", type: "fixed" },
-  { id: "5", name: "Nu are datorii la ANAF", status: "fail", detail: "Datorii restante: 2,340 RON", type: "fixed" },
-  { id: "6", name: "Minim 2 angajați", status: "pass", detail: "12 angajați declarați", type: "fixed" },
-  { id: "7", name: "Cifra afaceri > 50,000 EUR", status: "pass", detail: "CA 2024: 187,000 EUR", type: "fixed" },
-  { id: "8", name: "Capital social minim 200 RON", status: "pass", detail: "Capital social: 5,000 RON", type: "fixed" },
-  { id: "9", name: "Proiect în zona eligibilă", status: "pass", detail: "Județ Arad — eligibil", type: "fixed" },
-  { id: "10", name: "Dimensiune IMM eligibilă", status: "pass", detail: "Microîntreprindere", type: "fixed" },
-  { id: "11", name: "Intensitatea sprijinului: 50-70%", status: "pass", detail: "[AI 92%] Firma îndeplinește criteriul — zonă normală, intensitate 50%", type: "interpreted", confidence: 0.92 },
-  { id: "12", name: "Cofinanțare minim 30%", status: "pass", detail: "Confirmat de beneficiar", type: "fixed" },
-  { id: "13", name: "Criteriu selecție S3: CAEN + experiență", status: "pending", detail: "[AI 72%] Date insuficiente — necesită confirmare vechime activitate CAEN", type: "interpreted", confidence: 0.72 },
-];
+type EligibilityRule = {
+  id: string;
+  ruleId: string;
+  status: "passed" | "failed" | "pending";
+  details: string;
+  source: string;
+  confidence?: number;
+  rule?: {
+    description: string;
+    type: "fixed" | "interpreted";
+  };
+};
 
-const GUIDE_RULES = [
-  { id: "1", type: "fixed", text: "Beneficiarii eligibili sunt IMM-uri din mediul rural", confidence: 0.96, page: 8, section: "3.1" },
-  { id: "2", type: "fixed", text: "Valoarea minimă a proiectului: 30,000 EUR", confidence: 0.98, page: 12, section: "4.2" },
-  { id: "3", type: "fixed", text: "Valoarea maximă a proiectului: 200,000 EUR", confidence: 0.97, page: 12, section: "4.2" },
-  { id: "4", type: "fixed", text: "Durata maximă de implementare: 24 luni", confidence: 0.95, page: 15, section: "5.1" },
-  { id: "5", type: "interpreted", text: "Intensitatea sprijinului: 50% zonă normală, 70% zonă montană/defavorizată", confidence: 0.78, page: 18, section: "5.3" },
-  { id: "6", type: "interpreted", text: "Criteriul de selecție S3: punctaj suplimentar dacă activitatea CAEN corespunde", confidence: 0.72, page: 24, section: "7.2" },
-  { id: "7", type: "fixed", text: "Cheltuieli neeligibile: TVA recuperabil, achiziții second-hand, leasing", confidence: 0.94, page: 30, section: "8.1" },
-  { id: "8", type: "interpreted", text: "Calculul SO: diferențiat pe tip exploatație", confidence: 0.68, page: 35, section: "9" },
-];
+type ChecklistItem = {
+  id: string;
+  name: string;
+  category: string;
+  done: boolean;
+  source: string;
+  templateName?: string | null;
+};
 
-const ELEMENTS = [
-  { id: "e1", key: "denumire_firma", label: "Denumirea firmei", value: "COMEXIM R SRL", status: "confirmat", confidence: 99, source: "company_data", sourceLabel: "Date ONRC", templates: ["Cerere Finanțare", "Plan Afaceri"] },
-  { id: "e2", key: "cui", label: "Cod Unic de Înregistrare", value: "RO44123456", status: "confirmat", confidence: 100, source: "company_data", sourceLabel: "Date ONRC", templates: ["Cerere Finanțare"] },
-  { id: "e3", key: "nr_reg_comert", label: "Nr. Registrul Comerțului", value: "J12/441/2018", status: "confirmat", confidence: 100, source: "company_data", sourceLabel: "Date ONRC", templates: ["Cerere Finanțare"] },
-  { id: "e4", key: "adresa_sediu", label: "Adresă sediu social", value: "Str. Industriei 45, Arad", status: "confirmat", confidence: 98, source: "company_data", sourceLabel: "Date ONRC", templates: ["Cerere Finanțare", "Plan Afaceri"] },
-  { id: "e5", key: "cod_caen", label: "Cod CAEN principal", value: "2562", status: "confirmat", confidence: 100, source: "company_data", sourceLabel: "Date ONRC", templates: ["Cerere Finanțare"] },
-  { id: "e6", key: "nr_angajati", label: "Număr mediu angajați", value: "12", status: "confirmat", confidence: 95, source: "company_data", sourceLabel: "Date ONRC", templates: ["Plan Afaceri"] },
-  { id: "e7", key: "reprezentant_nume", label: "Reprezentant legal — Nume", value: "Popescu Ion", status: "propus_ai", confidence: 88, source: "solomon_chat", sourceLabel: "Chat Solomon", templates: ["Cerere Finanțare"] },
-  { id: "e8", key: "reprezentant_functie", label: "Funcția Reprezentant", value: "Administrator", status: "propus_ai", confidence: 92, source: "company_data", sourceLabel: "Date ONRC", templates: ["Cerere Finanțare"] },
-  { id: "e9", key: "descriere_proiect", label: "Descriere scurtă proiect", value: "Extindere capacitate producție prin achiziție echipamente CNC", status: "propus_ai", confidence: 85, source: "solomon_chat", sourceLabel: "Chat Solomon", templates: ["Cerere Finanțare", "Plan Afaceri"] },
-  { id: "e10", key: "echipamente_descr", label: "Descriere echipamente", value: "2x Centre de prelucrare CNC 5 axe", status: "propus_ai", confidence: 90, source: "solomon_chat", sourceLabel: "Chat Solomon", templates: ["Plan Afaceri", "Buget Estimativ"] },
-  { id: "e11", key: "valoare_estimata_eur", label: "Valoare estimată (EUR)", value: "150,000 EUR", status: "propus_ai", confidence: 82, source: "solomon_chat", sourceLabel: "Chat Solomon", templates: ["Plan Afaceri"] },
-  { id: "e12", key: "valoare_totala", label: "Valoarea totală proiect", value: null, status: "gol", confidence: 0, source: null, sourceLabel: null, templates: ["Cerere Finanțare", "Buget Estimativ"] },
-  { id: "e13", key: "contributie_proprie", label: "Contribuție proprie", value: null, status: "gol", confidence: 0, source: null, sourceLabel: null, templates: ["Cerere Finanțare"] },
-  { id: "e14", key: "obiective_specifice", label: "Obiective specifice", value: null, status: "gol", confidence: 0, source: null, sourceLabel: null, templates: ["Cerere Finanțare", "Plan Afaceri"] },
-  { id: "e15", key: "rezultate_asteptate", label: "Rezultate așteptate", value: null, status: "gol", confidence: 0, source: null, sourceLabel: null, templates: ["Cerere Finanțare"] },
-  { id: "e16", key: "calendar_implementare", label: "Calendar implementare", value: null, status: "gol", confidence: 0, source: null, sourceLabel: null, templates: ["Cerere Finanțare"] },
-  { id: "e17", key: "reprezentant_cnp", label: "CNP Reprezentant", value: "178********", status: "propus_ai", confidence: 75, source: "solomon_chat", sourceLabel: "Chat Solomon", templates: ["Cerere Finanțare"] },
-  { id: "e18", key: "act_identitate", label: "Act identitate Reprezentant", value: "CI seria AR nr. 456789", status: "confirmat", confidence: 100, source: "manual", sourceLabel: "Completare manuală", templates: ["Cerere Finanțare"] },
-];
+type GuideRule = {
+  id: string;
+  type: "fixed" | "interpreted";
+  text: string;
+  confidence: number;
+  page?: number;
+  section?: string;
+};
 
-const CHECKLIST = [
-  { id: "d1", name: "Cerere de finanțare", category: "Documente juridice", source: "ghid", templateName: "Cerere Finanțare", done: true },
-  { id: "d2", name: "Certificat constatator ORC", category: "Documente juridice", source: "ghid", templateName: null, done: true },
-  { id: "d3", name: "Copie act constitutiv actualizat", category: "Documente juridice", source: "ghid", templateName: null, done: false },
-  { id: "d4", name: "Copie CI administrator", category: "Documente juridice", source: "ghid", templateName: null, done: true },
-  { id: "d5", name: "Certificat de atestare fiscală ANAF", category: "Documente juridice", source: "ghid", templateName: null, done: false },
-  { id: "d6", name: "Plan de afaceri", category: "Documente financiare", source: "ghid", templateName: "Plan Afaceri", done: false },
-  { id: "d7", name: "Buget estimativ detaliat", category: "Documente financiare", source: "ghid", templateName: "Buget Estimativ", done: false },
-  { id: "d8", name: "Bilanț contabil ultimii 3 ani", category: "Documente financiare", source: "ghid", templateName: null, done: false },
-  { id: "d9", name: "Oferte de preț (min. 2 furnizori)", category: "Documente financiare", source: "ghid", templateName: null, done: false },
-  { id: "d10", name: "Extras de cont bancar", category: "Documente financiare", source: "manual", templateName: null, done: false },
-  { id: "d11", name: "Studiu de fezabilitate", category: "Documente tehnice", source: "ghid", templateName: "Studiu de fezabilitate", done: false },
-  { id: "d12", name: "Memoriu justificativ investiție", category: "Documente tehnice", source: "ghid", templateName: null, done: false },
-  { id: "d13", name: "Specificații tehnice echipamente CNC", category: "Documente tehnice", source: "manual", templateName: null, done: false },
-  { id: "d14", name: "Declarație pe propria răspundere", category: "Declarații & Angajamente", source: "ghid", templateName: "Declarație pe propria răspundere", done: false },
-  { id: "d15", name: "Declarație ajutoare de minimis", category: "Declarații & Angajamente", source: "ghid", templateName: null, done: false },
-  { id: "d16", name: "Angajament privind cofinanțarea", category: "Declarații & Angajamente", source: "ghid", templateName: null, done: false },
-  { id: "d17", name: "Declarație GDPR", category: "Declarații & Angajamente", source: "manual", templateName: null, done: false },
-];
+type ProjectDetail = {
+  id: string;
+  name: string;
+  status: string;
+  companyId: string;
+  folderId: string;
+  valoare: string | null;
+  company: {
+    id: string;
+    denumire: string;
+    cui: string;
+    formaJuridica: string;
+    caen: string;
+    localitate?: string;
+    judet?: string;
+    capitalSocial?: string;
+    cifraAfaceri?: string;
+  };
+  folder?: any;
+  programPath?: {
+    program: string;
+    masura: string;
+    sesiune: string;
+  };
+  elements: ProjectElement[];
+  eligibility: EligibilityRule[];
+  generatedDocs: any[];
+  checklist: ChecklistItem[];
+};
 
 type SolomonMessage = {
   role: "user" | "assistant";
@@ -88,72 +83,17 @@ type SolomonMessage = {
   extractions: Array<{ key: string; label: string; value: string; confidence: number }> | null;
 };
 
-const SOLOMON_MESSAGES: SolomonMessage[] = [
-  { role: "assistant", text: "Bună! Sunt **Solomon**, asistentul tău de colectare date.\n\nAm preluat deja datele firmei din ONRC — **9 din 12 câmpuri** completate automat ✓\n\nMai am nevoie de:\n• Valoarea totală a proiectului\n• Durata proiectului (luni)\n• IBAN cont dedicat proiect\n\nCare e bugetul estimat?", extractions: null },
-  { role: "user", text: "Proiectul vizează achiziția a 2 centre de prelucrare CNC cu 5 axe. Valoarea estimată e 150,000 EUR, durata 18 luni.", extractions: null },
-  { role: "assistant", text: "Am extras datele din mesajul tău:", extractions: [
-    { key: "echipamente_descr", label: "Descriere echipamente", value: "2× Centre de prelucrare CNC 5 axe", confidence: 90 },
-    { key: "valoare_estimata_eur", label: "Valoare estimată (EUR)", value: "150,000 EUR", confidence: 95 },
-    { key: "durata_proiect", label: "Durata proiectului", value: "18 luni", confidence: 92 },
-  ]},
-];
-
 type SolomonElement = {
   key: string; label: string; value: string; source: string; status: "confirmat" | "propus";
 };
 
-const SOLOMON_ELEMENTS: SolomonElement[] = [
-  { key: "denumire_firma", label: "Denumirea firmei", value: "SC CONSTRUCT NORD SRL", source: "Date ONRC", status: "confirmat" },
-  { key: "cui", label: "Cod Unic de Înregistrare", value: "RO44123456", source: "Date ONRC", status: "confirmat" },
-  { key: "nr_angajati", label: "Număr angajați", value: "47", source: "Document uploadat", status: "propus" },
-  { key: "cifra_afaceri", label: "Cifra de afaceri (2024)", value: "4.250.000 lei", source: "Document uploadat", status: "propus" },
-  { key: "profit_net", label: "Profit net (2024)", value: "380.000 lei", source: "Document uploadat", status: "propus" },
-  { key: "adresa_sediu", label: "Adresa sediu social", value: "Str. Industriei 14, Cluj", source: "Date ONRC", status: "confirmat" },
-  { key: "cod_caen", label: "Cod CAEN principal", value: "2562", source: "Date ONRC", status: "confirmat" },
-  { key: "reprezentant_nume", label: "Reprezentant legal", value: "Popescu Ion", source: "Chat Solomon", status: "propus" },
-];
-
-type TemplateField = { name: string; value: string | null; source: string | null };
-type TemplatePage = { num: number; title: string; status: "complete" | "partial" | "empty"; fields: TemplateField[] };
-
-const TEMPLATE_PAGES: TemplatePage[] = [
-  { num: 1, title: "Date identificare", status: "complete", fields: [
-    { name: "Denumire solicitant", value: "COMEXIM R SRL", source: "ONRC" },
-    { name: "CUI", value: "2146135", source: "ONRC" },
-    { name: "Nr. Reg. Comerț", value: "J02/123/1991", source: "ONRC" },
-    { name: "Adresă sediu social", value: "Str. Industriei 45, Arad", source: "ONRC" },
-  ]},
-  { num: 2, title: "Reprezentant legal", status: "complete", fields: [
-    { name: "Nume și prenume", value: "Popescu Ion", source: "Solomon" },
-    { name: "Funcția", value: "Administrator", source: "ONRC" },
-    { name: "CNP", value: "178********", source: "Solomon" },
-    { name: "Act identitate", value: "CI seria AR nr. 456789", source: "Solomon" },
-  ]},
-  { num: 3, title: "Descriere proiect", status: "partial", fields: [
-    { name: "Descriere scurtă proiect", value: "Extindere capacitate producție prin achiziție echipamente industriale CNC", source: "Solomon" },
-    { name: "Valoarea totală proiect", value: null, source: null },
-    { name: "Contribuție proprie", value: null, source: null },
-  ]},
-  { num: 4, title: "Plan investiție", status: "empty", fields: [
-    { name: "Obiective specifice", value: null, source: null },
-    { name: "Rezultate așteptate", value: null, source: null },
-    { name: "Calendar implementare", value: null, source: null },
-  ]},
-  { num: 5, title: "Declarații", status: "empty", fields: [
-    { name: "Declarație ajutor de stat", value: null, source: null },
-    { name: "Declarație angajament", value: null, source: null },
-  ]},
-];
-
-type NeemiaTemplate = {
-  name: string; type: string; pages: TemplatePage[]; totalFields: number; filledFields: number;
+type NeemiaDoc = {
+  id: string;
+  name: string;
+  type: string;
+  status: string;
+  url?: string;
 };
-
-const NEEMIA_TEMPLATES: NeemiaTemplate[] = [
-  { name: "Cerere Finanțare", type: "DOCX", pages: TEMPLATE_PAGES, totalFields: 10, filledFields: 7 },
-  { name: "Plan Afaceri", type: "DOCX", pages: [], totalFields: 14, filledFields: 0 },
-  { name: "Buget Estimativ", type: "XLSX", pages: [], totalFields: 8, filledFields: 0 },
-];
 
 const STATUS_MAP: Record<string, { label: string; color: string; bg: string }> = {
   draft: { label: "Ciornă", color: "#5a6478", bg: "rgba(90,100,120,0.12)" },
@@ -166,8 +106,57 @@ const pct = (a: number, b: number) => b > 0 ? Math.round((a / b) * 100) : 0;
 
 type LeafType = "sumar" | "eligibilitate" | "ghid" | "solomon" | "elemente" | "checklist" | "neemia";
 
+/* ═══ HELPER: map API element to UI element ═══ */
+function mapElementStatus(el: ProjectElement): "confirmat" | "propus_ai" | "gol" {
+  if (!el.value) return "gol";
+  if (el.confirmed) return "confirmat";
+  return "propus_ai";
+}
+
+function mapElementSourceLabel(source: string | null): string | null {
+  if (!source) return null;
+  switch (source) {
+    case "onrc": return "Date ONRC";
+    case "manual": return "Completare manuală";
+    case "solomon": return "Chat Solomon";
+    default: return source;
+  }
+}
+
+function mapElementSourceDot(source: string | null): string {
+  if (!source) return "";
+  switch (source) {
+    case "onrc": return "company_data";
+    case "manual": return "manual";
+    case "solomon": return "solomon_chat";
+    default: return source;
+  }
+}
+
+/* ═══ HELPER: map API eligibility status to UI status ═══ */
+function mapEligStatus(status: string): "pass" | "fail" | "pending" {
+  switch (status) {
+    case "passed": return "pass";
+    case "failed": return "fail";
+    default: return "pending";
+  }
+}
+
 export default function ProjectViewPage() {
   const router = useRouter();
+  const params = useParams();
+  const projectId = params.id as string;
+
+  // Core data state
+  const [project, setProject] = useState<ProjectDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [eligibilityData, setEligibilityData] = useState<{ flat: EligibilityRule[]; grouped?: any; summary?: any } | null>(null);
+  const [checklistData, setChecklistData] = useState<{ items: ChecklistItem[]; grouped?: Record<string, ChecklistItem[]>; summary?: any } | null>(null);
+  const [guideRules, setGuideRules] = useState<GuideRule[]>([]);
+  const [neemiaDocs, setNeemiaDocs] = useState<NeemiaDoc[]>([]);
+
+  // UI state
   const [activeLeaf, setActiveLeaf] = useState<LeafType>("sumar");
   const [branches, setBranches] = useState<Record<string, boolean>>({ scriere: true, implementare: false, monitorizare: false });
   const [selectedRule, setSelectedRule] = useState<string | null>(null);
@@ -175,20 +164,123 @@ export default function ProjectViewPage() {
   const [elemFilter, setElemFilter] = useState("all");
   const [elemSearch, setElemSearch] = useState("");
   const [ghidTab, setGhidTab] = useState<"reguli" | "ghid">("reguli");
-  const [checklistItems, setChecklistItems] = useState(CHECKLIST);
   const [collapsedCats, setCollapsedCats] = useState<Record<string, boolean>>({});
 
   // Solomon state
   const [solomonModel, setSolomonModel] = useState<"sonnet" | "opus">("opus");
   const [solomonET, setSolomonET] = useState(true);
-  const [solomonMessages, setSolomonMessages] = useState<SolomonMessage[]>(SOLOMON_MESSAGES);
+  const [solomonMessages, setSolomonMessages] = useState<SolomonMessage[]>([]);
   const [solomonInput, setSolomonInput] = useState("");
-  const [solomonElements, setSolomonElements] = useState<SolomonElement[]>(SOLOMON_ELEMENTS);
+  const [solomonElements, setSolomonElements] = useState<SolomonElement[]>([]);
   const [extractionStates, setExtractionStates] = useState<Record<string, "confirmed" | "rejected">>({});
   const [refinePopup, setRefinePopup] = useState<{ text: string; x: number; y: number } | null>(null);
   const [refineInput, setRefineInput] = useState("");
+  const [solomonConvId, setSolomonConvId] = useState<string | null>(null);
+  const [solomonSending, setSolomonSending] = useState(false);
   const chatRef = useRef<HTMLDivElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
+
+  // Neemia state
+  const [neemiaActiveTemplate, setNeemiaActiveTemplate] = useState(0);
+  const [neemiaActivePage, setNeemiaActivePage] = useState(0);
+  const [neemiaAnimKey, setNeemiaAnimKey] = useState(0);
+
+  /* ═══ DATA FETCHING ═══ */
+  useEffect(() => {
+    if (!projectId) return;
+    setLoading(true);
+    setError(null);
+
+    Promise.all([
+      apiGet<ProjectDetail>(`/api/projects/${projectId}`),
+      apiGet<{ flat: EligibilityRule[]; grouped?: any; summary?: any }>(`/api/projects/${projectId}/eligibility`).catch(() => null),
+      apiGet<{ items: ChecklistItem[]; grouped?: Record<string, ChecklistItem[]>; summary?: any }>(`/api/projects/${projectId}/checklist`).catch(() => null),
+      apiGet<NeemiaDoc[]>(`/api/neemia/projects/${projectId}/documents`).catch(() => []),
+    ])
+      .then(([proj, elig, check, docs]) => {
+        setProject(proj);
+        if (elig) setEligibilityData(elig);
+        if (check) setChecklistData(check);
+        setNeemiaDocs(Array.isArray(docs) ? docs : []);
+        setLoading(false);
+      })
+      .catch(err => {
+        setError(err.message || "Failed to load project");
+        setLoading(false);
+      });
+  }, [projectId]);
+
+  // Fetch guide rules when ghid tab is activated
+  useEffect(() => {
+    if (activeLeaf !== "ghid" || guideRules.length > 0) return;
+    if (!project?.folderId) return;
+    // Try to get guide document rules from the folder
+    apiGet<any[]>(`/api/rules/documents/${project.folderId}/rules`)
+      .then(rules => {
+        if (Array.isArray(rules)) {
+          setGuideRules(rules.map(r => ({
+            id: r.id,
+            type: r.type || "fixed",
+            text: r.description || r.text || "",
+            confidence: r.confidence ?? 1,
+            page: r.page,
+            section: r.section,
+          })));
+        }
+      })
+      .catch(() => {
+        // Guide rules may not be available yet
+      });
+  }, [activeLeaf, project?.folderId, guideRules.length]);
+
+  // Solomon: initialize conversation when tab is activated
+  useEffect(() => {
+    if (activeLeaf !== "solomon" || solomonConvId) return;
+    if (!projectId) return;
+
+    apiGet<any[]>(`/api/solomon/projects/${projectId}/conversations`)
+      .then(convs => {
+        if (Array.isArray(convs) && convs.length > 0) {
+          const conv = convs[0];
+          setSolomonConvId(conv.id);
+          // Load existing messages
+          return apiGet<any[]>(`/api/solomon/conversations/${conv.id}/messages`).then(msgs => {
+            if (Array.isArray(msgs)) {
+              setSolomonMessages(msgs.map((m: any) => ({
+                role: m.role,
+                text: m.content || m.text || "",
+                extractions: m.extractions || null,
+              })));
+            }
+          });
+        } else {
+          // Create a new conversation
+          return apiPost<any>(`/api/solomon/projects/${projectId}/conversations`, {
+            model: solomonModel,
+          }).then(conv => {
+            setSolomonConvId(conv.id);
+          });
+        }
+      })
+      .catch(() => {
+        // Solomon may not be available
+      });
+  }, [activeLeaf, projectId, solomonConvId, solomonModel]);
+
+  // Build solomon elements from project elements
+  useEffect(() => {
+    if (!project) return;
+    const mapped: SolomonElement[] = project.elements
+      .filter(el => el.value)
+      .map(el => ({
+        key: el.templateElement?.key || el.id,
+        label: el.templateElement?.label || el.templateElement?.key || "Element",
+        value: el.value!,
+        source: mapElementSourceLabel(el.source) || "Unknown",
+        status: el.confirmed ? "confirmat" as const : "propus" as const,
+      }));
+    setSolomonElements(mapped);
+  }, [project]);
 
   // Auto-scroll chat
   useEffect(() => {
@@ -204,21 +296,94 @@ export default function ProjectViewPage() {
     return () => document.removeEventListener("mousedown", close);
   }, []);
 
-  const handleSolomonSend = () => {
-    if (!solomonInput.trim()) return;
-    setSolomonMessages(prev => [...prev, { role: "user", text: solomonInput, extractions: null }]);
-    const inputCopy = solomonInput;
+  /* ═══ DERIVED DATA ═══ */
+  const eligRules = eligibilityData?.flat || project?.eligibility || [];
+  const eligMapped = eligRules.map(r => ({
+    id: r.id,
+    name: r.rule?.description || r.details || "Regulă",
+    status: mapEligStatus(r.status),
+    detail: r.details || "",
+    type: r.rule?.type || r.source || "fixed",
+    confidence: r.confidence,
+  }));
+
+  const elements = (project?.elements || []).map(el => ({
+    id: el.id,
+    key: el.templateElement?.key || el.id,
+    label: el.templateElement?.label || el.templateElement?.key || "Element",
+    value: el.value,
+    status: mapElementStatus(el),
+    confidence: el.confirmed ? 100 : 80,
+    source: mapElementSourceDot(el.source),
+    sourceLabel: mapElementSourceLabel(el.source),
+    templates: [] as string[],
+  }));
+
+  const checklistItems = checklistData?.items || project?.checklist || [];
+  const checkCategories = [...new Set(checklistItems.map(i => i.category))];
+
+  const eligPassed = eligMapped.filter(r => r.status === "pass").length;
+  const eligTotal = eligMapped.length;
+  const elemFilled = elements.filter(e => e.value).length;
+  const elemTotal = elements.length;
+  const checkDone = checklistItems.filter(i => i.done).length;
+  const checkTotal = checklistItems.length;
+
+  const filteredElements = elements.filter(e => {
+    if (elemFilter === "gol" && e.status !== "gol") return false;
+    if (elemFilter === "propus_ai" && e.status !== "propus_ai") return false;
+    if (elemFilter === "confirmat" && e.status !== "confirmat") return false;
+    if (elemSearch) {
+      const q = elemSearch.toLowerCase();
+      return e.label.toLowerCase().includes(q) || e.key.toLowerCase().includes(q) || (e.value || "").toLowerCase().includes(q);
+    }
+    return true;
+  });
+
+  const projectPath = project?.programPath
+    ? [
+        { label: project.programPath.program || "Program", level: "program" },
+        { label: project.programPath.masura || "Măsura", level: "masura" },
+        { label: project.programPath.sesiune || "Sesiunea", level: "sesiune" },
+      ]
+    : [];
+
+  const projectStatus = project?.status || "draft";
+  const statusInfo = STATUS_MAP[projectStatus] || STATUS_MAP.draft;
+
+  /* ═══ HANDLERS ═══ */
+  const handleSolomonSend = async () => {
+    if (!solomonInput.trim() || solomonSending) return;
+    const userText = solomonInput;
+    setSolomonMessages(prev => [...prev, { role: "user", text: userText, extractions: null }]);
     setSolomonInput("");
-    // Mock AI response with extraction
-    setTimeout(() => {
+    setSolomonSending(true);
+
+    try {
+      if (solomonConvId) {
+        const response = await apiPost<any>(`/api/solomon/conversations/${solomonConvId}/messages`, {
+          content: userText,
+          model: solomonModel,
+          extendedThinking: solomonET,
+        });
+        // Handle response - it may be a direct message or need parsing
+        const assistantText = response?.content || response?.text || response?.message || "Am procesat informația.";
+        const extractions = response?.extractions || null;
+        setSolomonMessages(prev => [...prev, {
+          role: "assistant",
+          text: assistantText,
+          extractions,
+        }]);
+      }
+    } catch (err: any) {
       setSolomonMessages(prev => [...prev, {
         role: "assistant",
-        text: "Am procesat informația. Iată ce am extras:",
-        extractions: [
-          { key: "nou_element", label: "Element nou", value: inputCopy.substring(0, 40) + (inputCopy.length > 40 ? "..." : ""), confidence: 78 },
-        ]
+        text: `Eroare: ${err.message || "Nu am putut procesa mesajul."}`,
+        extractions: null,
       }]);
-    }, 800);
+    } finally {
+      setSolomonSending(false);
+    }
   };
 
   const handleConfirmExtraction = (msgIdx: number, extIdx: number) => {
@@ -263,7 +428,7 @@ export default function ProjectViewPage() {
     if (!refineInput.trim() || !refinePopup) return;
     setSolomonMessages(prev => [...prev, {
       role: "assistant",
-      text: `✨ Fragment rescris conform instrucțiunii "${refineInput}":\n\n${refinePopup.text.substring(0, 60)}${refinePopup.text.length > 60 ? "..." : ""} [actualizat]`,
+      text: `Fragment rescris conform instrucțiunii "${refineInput}":\n\n${refinePopup.text.substring(0, 60)}${refinePopup.text.length > 60 ? "..." : ""} [actualizat]`,
       extractions: null,
     }]);
     setRefinePopup(null);
@@ -281,13 +446,57 @@ export default function ProjectViewPage() {
 
   const solomonConfirmedCount = solomonElements.filter(e => e.status === "confirmat").length;
 
-  // Neemia state
-  const [neemiaActiveTemplate, setNeemiaActiveTemplate] = useState(0);
-  const [neemiaActivePage, setNeemiaActivePage] = useState(0);
-  const [neemiaAnimKey, setNeemiaAnimKey] = useState(0);
+  const handleChecklistToggle = async (item: ChecklistItem) => {
+    const newDone = !item.done;
+    // Optimistic update
+    if (checklistData) {
+      setChecklistData({
+        ...checklistData,
+        items: checklistData.items.map(i => i.id === item.id ? { ...i, done: newDone } : i),
+        grouped: checklistData.grouped
+          ? Object.fromEntries(
+              Object.entries(checklistData.grouped).map(([cat, items]) => [
+                cat,
+                (items as ChecklistItem[]).map(i => i.id === item.id ? { ...i, done: newDone } : i),
+              ])
+            )
+          : undefined,
+      });
+    }
+    try {
+      await apiPut(`/api/projects/${projectId}/checklist/${item.id}`, { done: newDone });
+    } catch {
+      // Revert on error
+      if (checklistData) {
+        setChecklistData({
+          ...checklistData,
+          items: checklistData.items.map(i => i.id === item.id ? { ...i, done: !newDone } : i),
+        });
+      }
+    }
+  };
 
-  const neemiaTemplate = NEEMIA_TEMPLATES[neemiaActiveTemplate];
-  const neemiaPage = neemiaTemplate.pages[neemiaActivePage];
+  const handleReCheckEligibility = async () => {
+    try {
+      await apiPost(`/api/projects/${projectId}/check-eligibility`, {});
+      // Refresh eligibility data
+      const elig = await apiGet<{ flat: EligibilityRule[]; grouped?: any; summary?: any }>(`/api/projects/${projectId}/eligibility`);
+      setEligibilityData(elig);
+    } catch (err: any) {
+      // Could show error toast
+    }
+  };
+
+  const handleNeemiaGenerate = async () => {
+    try {
+      await apiPost(`/api/neemia/projects/${projectId}/generate`, {});
+      // Refresh docs
+      const docs = await apiGet<NeemiaDoc[]>(`/api/neemia/projects/${projectId}/documents`);
+      setNeemiaDocs(Array.isArray(docs) ? docs : []);
+    } catch {
+      // handle error
+    }
+  };
 
   const handleNeemiaTemplateClick = (idx: number) => {
     setNeemiaActiveTemplate(idx);
@@ -300,30 +509,34 @@ export default function ProjectViewPage() {
     setNeemiaAnimKey(k => k + 1);
   };
 
-  const neemiaProgressPct = (tmpl: NeemiaTemplate) => tmpl.totalFields > 0 ? Math.round(tmpl.filledFields / tmpl.totalFields * 100) : 0;
-  const neemiaProgressColor = (p: number) => p === 100 ? "var(--accent-green)" : p > 0 ? "var(--accent-yellow)" : "var(--accent-red)";
-
   const toggleBranch = (key: string) => setBranches(b => ({ ...b, [key]: !b[key] }));
 
-  const eligPassed = ELIGIBILITY_RULES.filter(r => r.status === "pass").length;
-  const eligTotal = ELIGIBILITY_RULES.length;
-  const elemFilled = ELEMENTS.filter(e => e.value).length;
-  const elemTotal = ELEMENTS.length;
-  const checkDone = checklistItems.filter(i => i.done).length;
-  const checkTotal = checklistItems.length;
+  /* ═══ LOADING STATE ═══ */
+  if (loading) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", background: "var(--bg-deep)", color: "var(--text-secondary)", fontSize: 15 }}>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 32, marginBottom: 12, animation: "spin 1s linear infinite" }}>&#9881;</div>
+          <div>Se încarcă proiectul...</div>
+          <style>{`@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}`}</style>
+        </div>
+      </div>
+    );
+  }
 
-  const filteredElements = ELEMENTS.filter(e => {
-    if (elemFilter === "gol" && e.status !== "gol") return false;
-    if (elemFilter === "propus_ai" && e.status !== "propus_ai") return false;
-    if (elemFilter === "confirmat" && e.status !== "confirmat") return false;
-    if (elemSearch) {
-      const q = elemSearch.toLowerCase();
-      return e.label.toLowerCase().includes(q) || e.key.toLowerCase().includes(q) || (e.value || "").toLowerCase().includes(q);
-    }
-    return true;
-  });
-
-  const checkCategories = [...new Set(checklistItems.map(i => i.category))];
+  if (error || !project) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", background: "var(--bg-deep)", color: "var(--accent-red)", fontSize: 15 }}>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 32, marginBottom: 12 }}>&#9888;</div>
+          <div>{error || "Proiectul nu a fost găsit."}</div>
+          <button onClick={() => router.push("/projects")} style={{ marginTop: 16, padding: "8px 20px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-surface)", color: "var(--text-primary)", cursor: "pointer", fontFamily: "var(--font-sans)", fontSize: 13 }}>
+            &larr; Înapoi la proiecte
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -503,7 +716,7 @@ export default function ProjectViewPage() {
         .check-template{font-size:11px;color:var(--accent-blue);cursor:pointer;white-space:nowrap}
         .check-template:hover{text-decoration:underline}
 
-        /* ═══ SOLOMON CHAT ═══ */
+        /* Solomon Chat */
         .solomon-layout{display:flex;height:100%;overflow:hidden}
         .solomon-chat{flex:1;display:flex;flex-direction:column;min-width:0;height:100%;overflow:hidden}
         .solomon-toolbar{padding:10px 20px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border);background:var(--bg-surface)}
@@ -578,7 +791,7 @@ export default function ProjectViewPage() {
         .refine-input:focus{border-color:var(--accent-blue)}
         .refine-submit{padding:8px 14px;border-radius:var(--r-sm);border:none;background:var(--accent-blue);color:white;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font-sans)}
 
-        /* ═══ NEEMIA ═══ */
+        /* Neemia */
         .neemia-layout{display:flex;height:100%}
         .neemia-templates{width:240px;min-width:240px;border-right:1px solid var(--border);padding:16px;overflow-y:auto}
         .neemia-templates h3{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text-muted);margin-bottom:12px}
@@ -633,14 +846,14 @@ export default function ProjectViewPage() {
       `}</style>
 
       <div className="pv-container">
-        {/* ─── SIDEBAR TREE ─── */}
+        {/* --- SIDEBAR TREE --- */}
         <div className="tree-sidebar">
           <div className="tree-header">
             <h2>Proiect</h2>
-            <div className="project-name">{PROJECT.name}</div>
-            <div className="project-meta">{PROJECT.firma} &middot; {PROJECT.cui}</div>
+            <div className="project-name">{project.name}</div>
+            <div className="project-meta">{project.company?.denumire} &middot; {project.company?.cui}</div>
             <div className="project-path">
-              {PROJECT.path.map((seg, i) => (
+              {projectPath.map((seg, i) => (
                 <span key={i}>
                   {i > 0 && <span className="pp-sep">&rsaquo;</span>}
                   <span className="pp-seg">{seg.label}</span>
@@ -648,8 +861,8 @@ export default function ProjectViewPage() {
               ))}
             </div>
             <div style={{ marginTop: 8 }}>
-              <span className="status-badge" style={{ background: STATUS_MAP[PROJECT.status].bg, color: STATUS_MAP[PROJECT.status].color }}>
-                {STATUS_MAP[PROJECT.status].label}
+              <span className="status-badge" style={{ background: statusInfo.bg, color: statusInfo.color }}>
+                {statusInfo.label}
               </span>
             </div>
           </div>
@@ -674,7 +887,7 @@ export default function ProjectViewPage() {
                   </div>
                   <div className={`tree-leaf ${activeLeaf === "ghid" ? "active" : ""}`} onClick={() => setActiveLeaf("ghid")}>
                     <span>&#128214;</span> Ghid Finanțare
-                    <span className="leaf-badge blue">{GUIDE_RULES.length}</span>
+                    <span className="leaf-badge blue">{guideRules.length}</span>
                   </div>
                   <div className={`tree-leaf ${activeLeaf === "solomon" ? "active" : ""}`} onClick={() => setActiveLeaf("solomon")}>
                     <span>&#129302;</span> Solomon
@@ -690,7 +903,7 @@ export default function ProjectViewPage() {
                   </div>
                   <div className={`tree-leaf ${activeLeaf === "neemia" ? "active" : ""}`} onClick={() => setActiveLeaf("neemia")}>
                     <span>&#128196;</span> Neemia
-                    <span className="leaf-badge muted">0/{NEEMIA_TEMPLATES.length}</span>
+                    <span className="leaf-badge muted">{neemiaDocs.length}/{neemiaDocs.length || 0}</span>
                   </div>
                 </div>
               )}
@@ -722,7 +935,7 @@ export default function ProjectViewPage() {
           </div>
         </div>
 
-        {/* ─── MAIN CONTENT ─── */}
+        {/* --- MAIN CONTENT --- */}
         <div className="main-content">
           <div className="content-header">
             <h1>
@@ -737,11 +950,11 @@ export default function ProjectViewPage() {
           </div>
 
           <div className="content-body">
-            {/* ═══ SUMAR ═══ */}
+            {/* SUMAR */}
             {activeLeaf === "sumar" && (
               <div className="sumar-panel">
                 <div className="sumar-status">
-                  <span style={{ fontSize: 20, fontWeight: 800 }}>{PROJECT.name}</span>
+                  <span style={{ fontSize: 20, fontWeight: 800 }}>{project.name}</span>
                 </div>
 
                 <div className="sumar-progress">
@@ -749,7 +962,7 @@ export default function ProjectViewPage() {
                     { label: "Eligibilitate", val: `${eligPassed}/${eligTotal}`, p: pct(eligPassed, eligTotal), color: eligPassed === eligTotal ? "#34d399" : "#fbbf24", leaf: "eligibilitate" as LeafType },
                     { label: "Elemente", val: `${elemFilled}/${elemTotal}`, p: pct(elemFilled, elemTotal), color: elemFilled === elemTotal ? "#34d399" : "#4d8bff", leaf: "elemente" as LeafType },
                     { label: "Checklist doc", val: `${checkDone}/${checkTotal}`, p: pct(checkDone, checkTotal), color: checkDone === checkTotal ? "#34d399" : "#fb923c", leaf: "checklist" as LeafType },
-                    { label: "Neemia", val: "0/3", p: 0, color: "#a78bfa", leaf: "neemia" as LeafType },
+                    { label: "Neemia", val: `${neemiaDocs.length}/${neemiaDocs.length || 0}`, p: neemiaDocs.length > 0 ? 100 : 0, color: "#a78bfa", leaf: "neemia" as LeafType },
                   ].map(item => (
                     <div className="sp-card" key={item.label} onClick={() => setActiveLeaf(item.leaf)}>
                       <div className="sp-val" style={{ color: item.color }}>{item.val}</div>
@@ -762,16 +975,16 @@ export default function ProjectViewPage() {
                 <div className="sumar-info">
                   <div className="si-card">
                     <h3>Date firmă</h3>
-                    <div className="si-row"><span className="si-label">CUI</span><span className="si-value">{PROJECT.cui}</span></div>
-                    <div className="si-row"><span className="si-label">Forma juridică</span><span className="si-value">{PROJECT.company.formaJuridica}</span></div>
-                    <div className="si-row"><span className="si-label">CAEN</span><span className="si-value">{PROJECT.company.caen}</span></div>
-                    <div className="si-row"><span className="si-label">Localitate</span><span className="si-value">{PROJECT.company.localitate}, {PROJECT.company.judet}</span></div>
+                    <div className="si-row"><span className="si-label">CUI</span><span className="si-value">{project.company?.cui}</span></div>
+                    <div className="si-row"><span className="si-label">Forma juridică</span><span className="si-value">{project.company?.formaJuridica}</span></div>
+                    <div className="si-row"><span className="si-label">CAEN</span><span className="si-value">{project.company?.caen}</span></div>
+                    <div className="si-row"><span className="si-label">Localitate</span><span className="si-value">{project.company?.localitate || "—"}{project.company?.judet ? `, ${project.company.judet}` : ""}</span></div>
                   </div>
                   <div className="si-card">
                     <h3>Date financiare</h3>
-                    <div className="si-row"><span className="si-label">Capital social</span><span className="si-value">{PROJECT.company.capitalSocial}</span></div>
-                    <div className="si-row"><span className="si-label">Cifra afaceri</span><span className="si-value">{PROJECT.company.cifraAfaceri}</span></div>
-                    <div className="si-row"><span className="si-label">Valoare proiect</span><span className="si-value">{PROJECT.valoare}</span></div>
+                    <div className="si-row"><span className="si-label">Capital social</span><span className="si-value">{project.company?.capitalSocial || "—"}</span></div>
+                    <div className="si-row"><span className="si-label">Cifra afaceri</span><span className="si-value">{project.company?.cifraAfaceri || "—"}</span></div>
+                    <div className="si-row"><span className="si-label">Valoare proiect</span><span className="si-value">{project.valoare || "—"}</span></div>
                   </div>
                 </div>
 
@@ -783,29 +996,29 @@ export default function ProjectViewPage() {
               </div>
             )}
 
-            {/* ═══ ELIGIBILITATE ═══ */}
+            {/* ELIGIBILITATE */}
             {activeLeaf === "eligibilitate" && (
               <div className="elig-panel">
                 <div className="elig-summary">
                   <div className="elig-stat">
-                    <div className="number" style={{ color: "var(--accent-green)" }}>{ELIGIBILITY_RULES.filter(r => r.status === "pass").length}</div>
+                    <div className="number" style={{ color: "var(--accent-green)" }}>{eligMapped.filter(r => r.status === "pass").length}</div>
                     <div className="label">Trecute</div>
                   </div>
                   <div className="elig-stat">
-                    <div className="number" style={{ color: "var(--accent-red)" }}>{ELIGIBILITY_RULES.filter(r => r.status === "fail").length}</div>
+                    <div className="number" style={{ color: "var(--accent-red)" }}>{eligMapped.filter(r => r.status === "fail").length}</div>
                     <div className="label">Eșuate</div>
                   </div>
                   <div className="elig-stat">
-                    <div className="number" style={{ color: "var(--accent-yellow)" }}>{ELIGIBILITY_RULES.filter(r => r.status === "pending").length}</div>
+                    <div className="number" style={{ color: "var(--accent-yellow)" }}>{eligMapped.filter(r => r.status === "pending").length}</div>
                     <div className="label">Pending</div>
                   </div>
                   <div className="elig-stat">
-                    <div className="number">{ELIGIBILITY_RULES.length}</div>
+                    <div className="number">{eligMapped.length}</div>
                     <div className="label">Total</div>
                   </div>
                 </div>
 
-                {ELIGIBILITY_RULES.map(rule => (
+                {eligMapped.map(rule => (
                   <div className="elig-rule" key={rule.id}>
                     <div className={`elig-icon ${rule.status}`}>
                       {rule.status === "pass" ? "✓" : rule.status === "fail" ? "✕" : "?"}
@@ -815,7 +1028,7 @@ export default function ProjectViewPage() {
                       <span className={`elig-type-badge ${rule.type}`}>
                         {rule.type === "fixed" ? "⚡ FIXĂ" : "🧠 INTERPRETATĂ"}
                       </span>
-                      {rule.type === "interpreted" && (rule as any).confidence < 0.85 && (
+                      {rule.type === "interpreted" && rule.confidence != null && rule.confidence < 0.85 && (
                         <span style={{ fontSize: 10, color: "var(--accent-yellow)", marginLeft: 6 }}>⚠️ Review</span>
                       )}
                     </div>
@@ -824,23 +1037,23 @@ export default function ProjectViewPage() {
                 ))}
 
                 <div style={{ marginTop: 16 }}>
-                  <button className="sa-btn primary" style={{ display: "inline-flex" }}>&#128260; Re-verifică eligibilitate</button>
+                  <button className="sa-btn primary" style={{ display: "inline-flex" }} onClick={handleReCheckEligibility}>&#128260; Re-verifică eligibilitate</button>
                 </div>
               </div>
             )}
 
-            {/* ═══ GHID FINANȚARE ═══ */}
+            {/* GHID FINANTARE */}
             {activeLeaf === "ghid" && (
               <div className="ghid-layout">
                 <div className="ghid-sub-tabs">
-                  <button className={`ghid-sub-tab ${ghidTab === "reguli" ? "active" : ""}`} onClick={() => setGhidTab("reguli")}>Reguli ({GUIDE_RULES.length})</button>
+                  <button className={`ghid-sub-tab ${ghidTab === "reguli" ? "active" : ""}`} onClick={() => setGhidTab("reguli")}>Reguli ({guideRules.length})</button>
                   <button className={`ghid-sub-tab ${ghidTab === "ghid" ? "active" : ""}`} onClick={() => setGhidTab("ghid")}>Ghid complet</button>
                 </div>
                 <div className="ghid-split">
                   {ghidTab === "reguli" ? (
                     <>
                       <div className="rules-panel">
-                        {GUIDE_RULES.map(r => (
+                        {guideRules.map(r => (
                           <div className={`rule-card ${selectedRule === r.id ? "active" : ""}`} key={r.id} onClick={() => setSelectedRule(r.id)}>
                             <div className={`rule-type-badge ${r.type}`}>
                               {r.type === "fixed" ? "FIXĂ" : "INTERPRETATĂ"}
@@ -848,8 +1061,8 @@ export default function ProjectViewPage() {
                             </div>
                             <div className="rule-text">{r.text}</div>
                             <div className="rule-meta">
-                              <span>Pag. {r.page}</span>
-                              <span>§{r.section}</span>
+                              {r.page != null && <span>Pag. {r.page}</span>}
+                              {r.section && <span>§{r.section}</span>}
                               <span>
                                 {Math.round(r.confidence * 100)}%
                                 <span className="confidence-bar"><span className="confidence-fill" style={{ width: `${r.confidence * 100}%`, background: r.confidence > 0.9 ? "var(--accent-green)" : r.confidence > 0.8 ? "var(--accent-blue)" : "var(--accent-yellow)" }} /></span>
@@ -857,17 +1070,22 @@ export default function ProjectViewPage() {
                             </div>
                           </div>
                         ))}
+                        {guideRules.length === 0 && (
+                          <div style={{ padding: 24, textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
+                            Nu sunt reguli disponibile. Încărcați ghidul de finanțare pentru extragere automată.
+                          </div>
+                        )}
                       </div>
                       <div className="pdf-viewer">
                         <div className="pdf-page-mock">
-                          <h3>Secțiunea {selectedRule ? GUIDE_RULES.find(r => r.id === selectedRule)?.section || "3.1" : "3.1"} — Eligibilitate</h3>
+                          <h3>Secțiunea {selectedRule ? guideRules.find(r => r.id === selectedRule)?.section || "3.1" : "3.1"} — Eligibilitate</h3>
                           <div className="pdf-text-line" style={{ width: "90%" }} />
                           <div className="pdf-text-line" style={{ width: "80%" }} />
                           <div className="pdf-text-line" style={{ width: "85%" }} />
                           {selectedRule && (
                             <div className="pdf-highlight">
                               <span style={{ fontSize: 13, lineHeight: 1.6 }}>
-                                {GUIDE_RULES.find(r => r.id === selectedRule)?.text}
+                                {guideRules.find(r => r.id === selectedRule)?.text}
                               </span>
                             </div>
                           )}
@@ -876,14 +1094,14 @@ export default function ProjectViewPage() {
                           <div className="pdf-text-line" style={{ width: "60%" }} />
                           <div className="pdf-text-line" style={{ width: "92%" }} />
                           <div className="pdf-text-line" style={{ width: "70%" }} />
-                          <div className="pdf-page-num">Pag. {selectedRule ? GUIDE_RULES.find(r => r.id === selectedRule)?.page || 8 : 8}</div>
+                          <div className="pdf-page-num">Pag. {selectedRule ? guideRules.find(r => r.id === selectedRule)?.page || 8 : 8}</div>
                         </div>
                       </div>
                     </>
                   ) : (
                     <div className="pdf-viewer" style={{ width: "100%" }}>
                       <div className="pdf-page-mock">
-                        <h3>Ghid de Finanțare — Măsura 1</h3>
+                        <h3>Ghid de Finanțare — {project.programPath?.masura || "Măsura"}</h3>
                         {Array.from({ length: 15 }).map((_, i) => (
                           <div className="pdf-text-line" key={i} style={{ width: `${60 + Math.random() * 35}%` }} />
                         ))}
@@ -895,7 +1113,7 @@ export default function ProjectViewPage() {
               </div>
             )}
 
-            {/* ═══ ELEMENTE ═══ */}
+            {/* ELEMENTE */}
             {activeLeaf === "elemente" && (
               <div className="elemente-layout">
                 <div className="elemente-list">
@@ -907,14 +1125,14 @@ export default function ProjectViewPage() {
                       </span>
                     </div>
                     <div className="progress-track">
-                      <div className="progress-seg" style={{ width: `${pct(ELEMENTS.filter(e => e.status === "confirmat").length, elemTotal) * 100 / 100}%`, background: "var(--accent-green)" }} />
-                      <div className="progress-seg" style={{ width: `${pct(ELEMENTS.filter(e => e.status === "propus_ai").length, elemTotal) * 100 / 100}%`, background: "var(--accent-yellow)" }} />
-                      <div className="progress-seg" style={{ width: `${pct(ELEMENTS.filter(e => e.status === "gol").length, elemTotal) * 100 / 100}%`, background: "var(--accent-red)", opacity: 0.4 }} />
+                      <div className="progress-seg" style={{ width: `${pct(elements.filter(e => e.status === "confirmat").length, elemTotal) * 100 / 100}%`, background: "var(--accent-green)" }} />
+                      <div className="progress-seg" style={{ width: `${pct(elements.filter(e => e.status === "propus_ai").length, elemTotal) * 100 / 100}%`, background: "var(--accent-yellow)" }} />
+                      <div className="progress-seg" style={{ width: `${pct(elements.filter(e => e.status === "gol").length, elemTotal) * 100 / 100}%`, background: "var(--accent-red)", opacity: 0.4 }} />
                     </div>
                     <div className="completitudine-legend">
-                      <div className="legend-item"><span className="legend-dot" style={{ background: "var(--accent-green)" }} /><span className="li-num">{ELEMENTS.filter(e => e.status === "confirmat").length}</span> Confirmate</div>
-                      <div className="legend-item"><span className="legend-dot" style={{ background: "var(--accent-yellow)" }} /><span className="li-num">{ELEMENTS.filter(e => e.status === "propus_ai").length}</span> Propuse AI</div>
-                      <div className="legend-item"><span className="legend-dot" style={{ background: "var(--accent-red)" }} /><span className="li-num">{ELEMENTS.filter(e => e.status === "gol").length}</span> Goale</div>
+                      <div className="legend-item"><span className="legend-dot" style={{ background: "var(--accent-green)" }} /><span className="li-num">{elements.filter(e => e.status === "confirmat").length}</span> Confirmate</div>
+                      <div className="legend-item"><span className="legend-dot" style={{ background: "var(--accent-yellow)" }} /><span className="li-num">{elements.filter(e => e.status === "propus_ai").length}</span> Propuse AI</div>
+                      <div className="legend-item"><span className="legend-dot" style={{ background: "var(--accent-red)" }} /><span className="li-num">{elements.filter(e => e.status === "gol").length}</span> Goale</div>
                     </div>
                   </div>
 
@@ -953,7 +1171,7 @@ export default function ProjectViewPage() {
                 </div>
 
                 {selectedElement && (() => {
-                  const el = ELEMENTS.find(e => e.id === selectedElement);
+                  const el = elements.find(e => e.id === selectedElement);
                   if (!el) return null;
                   return (
                     <div className="elem-detail">
@@ -1005,7 +1223,7 @@ export default function ProjectViewPage() {
               </div>
             )}
 
-            {/* ═══ CHECKLIST ═══ */}
+            {/* CHECKLIST */}
             {activeLeaf === "checklist" && (
               <div className="checklist-panel">
                 <div className="check-progress">
@@ -1014,7 +1232,7 @@ export default function ProjectViewPage() {
                       <circle cx="40" cy="40" r="34" fill="none" stroke="var(--bg-deep)" strokeWidth="6" />
                       <circle cx="40" cy="40" r="34" fill="none" stroke="var(--accent-green)" strokeWidth="6"
                         strokeDasharray={`${2 * Math.PI * 34}`}
-                        strokeDashoffset={`${2 * Math.PI * 34 * (1 - checkDone / checkTotal)}`}
+                        strokeDashoffset={`${2 * Math.PI * 34 * (1 - (checkTotal > 0 ? checkDone / checkTotal : 0))}`}
                         strokeLinecap="round"
                       />
                     </svg>
@@ -1041,7 +1259,7 @@ export default function ProjectViewPage() {
                       {!isCollapsed && catItems.map(item => (
                         <div className="check-item" key={item.id}>
                           <div className={`check-box ${item.done ? "done" : ""}`}
-                            onClick={() => setChecklistItems(items => items.map(i => i.id === item.id ? { ...i, done: !i.done } : i))}>
+                            onClick={() => handleChecklistToggle(item)}>
                             {item.done && "✓"}
                           </div>
                           <span className={`check-name ${item.done ? "done-text" : ""}`}>{item.name}</span>
@@ -1059,7 +1277,7 @@ export default function ProjectViewPage() {
               </div>
             )}
 
-            {/* ═══ SOLOMON CHAT ═══ */}
+            {/* SOLOMON CHAT */}
             {activeLeaf === "solomon" && (
               <div className="solomon-layout">
                 {/* Chat area */}
@@ -1129,6 +1347,11 @@ export default function ProjectViewPage() {
                         )}
                       </div>
                     ))}
+                    {solomonSending && (
+                      <div className="chat-msg assistant" style={{ opacity: 0.6 }}>
+                        <span style={{ animation: "statusPulse 1s ease infinite" }}>Solomon se gândește...</span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Input area */}
@@ -1158,7 +1381,7 @@ export default function ProjectViewPage() {
                           }
                         }}
                       />
-                      <button className="chat-btn send" onClick={handleSolomonSend}>
+                      <button className="chat-btn send" onClick={handleSolomonSend} disabled={solomonSending}>
                         &#10148;
                       </button>
                     </div>
@@ -1221,94 +1444,72 @@ export default function ProjectViewPage() {
               </div>
             )}
 
-            {/* ═══ NEEMIA — 3 PANE LAYOUT ═══ */}
+            {/* NEEMIA --- 3 PANE LAYOUT */}
             {activeLeaf === "neemia" && (
               <div className="neemia-layout">
-                {/* Left: Templates list */}
+                {/* Left: Templates list / Generated docs */}
                 <div className="neemia-templates">
-                  <h3>Template-uri Proiect</h3>
-                  {NEEMIA_TEMPLATES.map((tmpl, i) => {
-                    const p = neemiaProgressPct(tmpl);
-                    return (
-                      <div
-                        key={i}
-                        className={`template-card ${neemiaActiveTemplate === i ? "active" : ""}`}
-                        onClick={() => handleNeemiaTemplateClick(i)}
-                      >
-                        <div className="tc-name">
-                          {tmpl.name}
-                          <span className="tc-badge">{tmpl.type}</span>
-                        </div>
-                        <div className="tc-info">{tmpl.pages.length || "?"} pagini &middot; {tmpl.totalFields} câmpuri</div>
-                        <div className="tc-progress">
-                          <div className="tc-progress-fill" style={{ width: `${p}%`, background: neemiaProgressColor(p) }} />
-                        </div>
-                        {tmpl.filledFields > 0 && (
-                          <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 4 }}>
-                            {tmpl.filledFields}/{tmpl.totalFields} câmpuri completate
-                          </div>
-                        )}
+                  <h3>Documente generate</h3>
+                  {neemiaDocs.length > 0 ? neemiaDocs.map((doc, i) => (
+                    <div
+                      key={doc.id}
+                      className={`template-card ${neemiaActiveTemplate === i ? "active" : ""}`}
+                      onClick={() => handleNeemiaTemplateClick(i)}
+                    >
+                      <div className="tc-name">
+                        {doc.name}
+                        <span className="tc-badge">{doc.type || "DOCX"}</span>
                       </div>
-                    );
-                  })}
+                      <div className="tc-info">{doc.status}</div>
+                    </div>
+                  )) : (
+                    <div style={{ padding: 16, textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
+                      Niciun document generat încă.
+                    </div>
+                  )}
+                  <button
+                    className="sa-btn primary"
+                    style={{ marginTop: 12, width: "100%", justifyContent: "center" }}
+                    onClick={handleNeemiaGenerate}
+                  >
+                    &#128196; Generează documente
+                  </button>
                 </div>
 
                 {/* Center + Right: Doc preview + Fields */}
                 <div className="neemia-doc-view">
-                  {neemiaTemplate.pages.length > 0 ? (
+                  {neemiaDocs.length > 0 ? (
                     <>
-                      {/* Page navigation */}
                       <div className="neemia-page-nav">
-                        <span className="nav-label">{neemiaTemplate.name}</span>
-                        {neemiaTemplate.pages.map((pg, i) => (
-                          <div
-                            key={i}
-                            className={`page-thumb ${pg.status} ${neemiaActivePage === i ? "active" : ""}`}
-                            onClick={() => handleNeemiaPageClick(i)}
-                          >
-                            {pg.num}
-                          </div>
-                        ))}
+                        <span className="nav-label">{neemiaDocs[neemiaActiveTemplate]?.name || "Document"}</span>
                         <button className="download-btn">
                           &#8595; Descarcă
                         </button>
                       </div>
 
                       <div className="neemia-preview-area">
-                        {/* Document preview */}
                         <div className="neemia-doc-preview">
-                          {neemiaPage && (
-                            <div className="doc-page" key={neemiaAnimKey}>
-                              <div className="doc-header-label">DOCUMENT OFICIAL &middot; GENERARE AUTOMATĂ</div>
-                              <div className="doc-page-title">Pag. {neemiaPage.num}: {neemiaPage.title}</div>
-                              {neemiaPage.fields.map((f, fi) => (
-                                <div className="doc-field-group" key={fi}>
-                                  <div className="doc-field-label">{f.name}</div>
-                                  {f.value ? (
-                                    <div className="doc-field-value">{f.value}</div>
-                                  ) : (
-                                    <div className="doc-field-missing">(lipsă)</div>
-                                  )}
-                                </div>
-                              ))}
-                              <div className="doc-page-number">Pag. {neemiaPage.num}</div>
+                          <div className="doc-page" key={neemiaAnimKey}>
+                            <div className="doc-header-label">DOCUMENT OFICIAL &middot; GENERARE AUTOMATĂ</div>
+                            <div className="doc-page-title">{neemiaDocs[neemiaActiveTemplate]?.name || "Document"}</div>
+                            <div style={{ fontSize: 13, color: "#555", lineHeight: 1.8 }}>
+                              Documentul a fost generat automat pe baza elementelor completate în proiect.
                             </div>
-                          )}
+                            <div className="doc-page-number">Generat</div>
+                          </div>
                         </div>
-
-                        {/* Fields panel */}
                         <div className="neemia-fields-panel">
-                          <h3>Câmpuri Pag. {neemiaPage?.num}</h3>
-                          {neemiaPage?.fields.map((f, fi) => (
+                          <h3>Elemente utilizate</h3>
+                          {elements.filter(e => e.value).slice(0, 8).map((el, fi) => (
                             <div className="field-card" key={fi}>
-                              <div className="field-name">{f.name}</div>
-                              <div className={`field-val ${!f.value ? "missing" : ""}`}>
-                                {f.value || "Lipsă ⚠"}
+                              <div className="field-name">{el.label}</div>
+                              <div className={`field-val ${!el.value ? "missing" : ""}`}>
+                                {el.value || "Lipsă ⚠"}
                               </div>
-                              {f.source && (
+                              {el.sourceLabel && (
                                 <div className="field-source">
-                                  <span className={`source-dot ${f.source.toLowerCase()}`} />
-                                  {f.source === "Solomon" ? "Chat Solomon" : f.source}
+                                  <span className={`source-dot ${el.source}`} />
+                                  {el.sourceLabel}
                                 </div>
                               )}
                             </div>
@@ -1319,8 +1520,8 @@ export default function ProjectViewPage() {
                   ) : (
                     <div className="neemia-empty">
                       <div className="ne-icon">&#128196;</div>
-                      <div className="ne-label">Niciun template procesat</div>
-                      <div className="ne-desc">Selectează &ldquo;Cerere Finanțare&rdquo; pentru a vedea completarea automată</div>
+                      <div className="ne-label">Niciun document generat</div>
+                      <div className="ne-desc">Apasă &ldquo;Generează documente&rdquo; pentru a crea documentele proiectului</div>
                     </div>
                   )}
                 </div>

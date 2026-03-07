@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { SplitPane } from "@/components/layout/SplitPane";
+import { apiGet, apiPost, apiPut, apiDelete, api } from "@/lib/api";
 
 /* ══════════════════════════════════════════
-   MOCK DATA — Document Tree
+   INTERFACES
    ══════════════════════════════════════════ */
 
 interface TreeNode {
@@ -14,77 +15,32 @@ interface TreeNode {
   children?: TreeNode[];
 }
 
-const DOC_TREE: TreeNode[] = [
-  {
-    id: "af", label: "Accesare finanțări", type: "program", children: [
-      {
-        id: "m1", label: "Măsura 1 — Investiții productive", type: "masura", children: [
-          { id: "m1s1", label: "Sesiunea 1", type: "sesiune", children: [
-            { id: "m1s1g", label: "Ghiduri", type: "ghiduri" },
-            { id: "m1s1t", label: "Template-uri", type: "templateuri" },
-            { id: "m1s1cp", label: "Clienți Prospecți", type: "clienti_prospecti" },
-            { id: "m1s1cf", label: "Clienți Finali", type: "clienti_finali" },
-          ]},
-          { id: "m1s2", label: "Sesiunea 2", type: "sesiune", children: [
-            { id: "m1s2g", label: "Ghiduri", type: "ghiduri" },
-            { id: "m1s2t", label: "Template-uri", type: "templateuri" },
-            { id: "m1s2cp", label: "Clienți Prospecți", type: "clienti_prospecti" },
-            { id: "m1s2cf", label: "Clienți Finali", type: "clienti_finali" },
-          ]},
-        ]
-      },
-      {
-        id: "m2", label: "Măsura 2 — Dezvoltare rurală", type: "masura", children: [
-          { id: "m2s1", label: "Sesiunea 1", type: "sesiune", children: [
-            { id: "m2s1g", label: "Ghiduri", type: "ghiduri" },
-            { id: "m2s1t", label: "Template-uri", type: "templateuri" },
-            { id: "m2s1cp", label: "Clienți Prospecți", type: "clienti_prospecti" },
-            { id: "m2s1cf", label: "Clienți Finali", type: "clienti_finali" },
-          ]},
-        ]
-      },
-    ]
-  },
-  {
-    id: "pnrr", label: "PNRR", type: "program", children: [
-      {
-        id: "c7", label: "Componenta 7 — Digitalizare", type: "masura", children: [
-          { id: "c7s1", label: "Apel 1", type: "sesiune", children: [
-            { id: "c7s1g", label: "Ghiduri", type: "ghiduri" },
-            { id: "c7s1t", label: "Template-uri", type: "templateuri" },
-            { id: "c7s1cp", label: "Clienți Prospecți", type: "clienti_prospecti" },
-            { id: "c7s1cf", label: "Clienți Finali", type: "clienti_finali" },
-          ]},
-        ]
-      },
-    ]
-  },
-  {
-    id: "afm", label: "AFM", type: "program", children: [
-      {
-        id: "foto", label: "Fotovoltaice persoane juridice", type: "masura", children: [
-          { id: "fotos1", label: "Sesiunea 2025", type: "sesiune", children: [
-            { id: "fotos1g", label: "Ghiduri", type: "ghiduri" },
-            { id: "fotos1t", label: "Template-uri", type: "templateuri" },
-            { id: "fotos1cp", label: "Clienți Prospecți", type: "clienti_prospecti" },
-            { id: "fotos1cf", label: "Clienți Finali", type: "clienti_finali" },
-          ]},
-        ]
-      },
-    ]
-  },
-];
+interface ApiFolderNode {
+  id: string;
+  name: string;
+  type: string;
+  parentId: string | null;
+  position: number;
+  children: ApiFolderNode[];
+}
 
-/* ══════════════════════════════════════════
-   MOCK DATA — Documents per folder
-   ══════════════════════════════════════════ */
+interface ApiDocument {
+  id: string;
+  name: string;
+  fileType: "pdf" | "docx" | "xlsx" | "doc";
+  fileSize: number;
+  status: "uploaded" | "processing" | "processed" | "failed";
+  processingType: "ghid" | "template" | "reference";
+  tags: string[];
+  uploadedAt: string;
+  uploadedBy: string;
+}
 
 interface DocItem {
   id: string;
   name: string;
   type: "PDF" | "DOCX" | "XLSX" | "DOC";
   size: string;
-  pages: number;
   uploaded: string;
   uploadedBy: string;
   status: "procesat" | "neprocesat" | "template" | "referință";
@@ -92,38 +48,6 @@ interface DocItem {
   campuri?: number;
   tags: string[];
 }
-
-const DOCUMENTS: Record<string, DocItem[]> = {
-  m1s1g: [
-    { id: "d1", name: "Ghid Solicitant sM 4.1 — v3.2", type: "PDF", size: "4.8 MB", pages: 62, uploaded: "2026-01-15", uploadedBy: "Ion Popescu", status: "procesat", reguliExtrase: 28, tags: ["AFIR", "sM 4.1", "investiții"] },
-    { id: "d2", name: "Anexa 1 — Criterii de selecție", type: "PDF", size: "1.2 MB", pages: 18, uploaded: "2026-01-15", uploadedBy: "Ion Popescu", status: "procesat", reguliExtrase: 12, tags: ["AFIR", "criterii"] },
-    { id: "d3", name: "Instrucțiuni completare cerere", type: "PDF", size: "820 KB", pages: 8, uploaded: "2026-02-01", uploadedBy: "Ion Popescu", status: "neprocesat", reguliExtrase: 0, tags: ["instrucțiuni"] },
-  ],
-  m1s1t: [
-    { id: "d4", name: "Cerere de Finanțare — model AFIR", type: "DOCX", size: "245 KB", pages: 5, uploaded: "2026-01-20", uploadedBy: "Ion Popescu", status: "template", reguliExtrase: 0, campuri: 10, tags: ["cerere", "template"] },
-    { id: "d5", name: "Plan de Afaceri — model", type: "DOCX", size: "380 KB", pages: 8, uploaded: "2026-01-20", uploadedBy: "Ion Popescu", status: "template", reguliExtrase: 0, campuri: 14, tags: ["plan afaceri", "template"] },
-    { id: "d6", name: "Buget Estimativ — model", type: "XLSX", size: "95 KB", pages: 3, uploaded: "2026-01-20", uploadedBy: "Ion Popescu", status: "template", reguliExtrase: 0, campuri: 8, tags: ["buget", "template"] },
-    { id: "d7", name: "Declarație pe propria răspundere", type: "DOCX", size: "120 KB", pages: 2, uploaded: "2026-01-20", uploadedBy: "Ion Popescu", status: "template", reguliExtrase: 0, campuri: 4, tags: ["declarație", "template"] },
-    { id: "d8", name: "Studiu de fezabilitate — model", type: "DOCX", size: "520 KB", pages: 12, uploaded: "2026-02-05", uploadedBy: "Maria Ionescu", status: "template", reguliExtrase: 0, campuri: 22, tags: ["SF", "template"] },
-  ],
-  m1s1cp: [
-    { id: "d9", name: "SC CONSTRUCT NORD SRL — Dosar prospect", type: "PDF", size: "2.1 MB", pages: 12, uploaded: "2026-02-10", uploadedBy: "Ion Popescu", status: "procesat", reguliExtrase: 0, tags: ["prospect", "CONSTRUCT NORD"] },
-    { id: "d10", name: "GREEN ENERGY SRL — Evaluare inițială", type: "PDF", size: "890 KB", pages: 6, uploaded: "2026-02-15", uploadedBy: "Ion Popescu", status: "neprocesat", reguliExtrase: 0, tags: ["prospect", "GREEN ENERGY"] },
-    { id: "d10b", name: "PÂINE & TRADIȚIE SRL — Dosar analiză", type: "PDF", size: "1.5 MB", pages: 8, uploaded: "2026-02-20", uploadedBy: "Maria Ionescu", status: "procesat", reguliExtrase: 0, tags: ["prospect", "PÂINE & TRADIȚIE"] },
-  ],
-  m1s1cf: [
-    { id: "d10c", name: "SC CONSTRUCT NORD SRL — Dosar complet depus", type: "PDF", size: "8.2 MB", pages: 45, uploaded: "2026-03-01", uploadedBy: "Ion Popescu", status: "procesat", reguliExtrase: 0, tags: ["final", "CONSTRUCT NORD", "depus"] },
-  ],
-  m1s2g: [
-    { id: "d11", name: "Ghid Solicitant sM 4.1 — Sesiunea 2 (draft)", type: "PDF", size: "5.1 MB", pages: 65, uploaded: "2026-03-01", uploadedBy: "Ion Popescu", status: "neprocesat", reguliExtrase: 0, tags: ["AFIR", "sM 4.1", "draft"] },
-  ],
-  c7s1g: [
-    { id: "d12", name: "Ghid PNRR C7 — Digitalizare IMM-uri", type: "PDF", size: "3.5 MB", pages: 48, uploaded: "2025-11-20", uploadedBy: "Maria Ionescu", status: "procesat", reguliExtrase: 18, tags: ["PNRR", "C7", "digitalizare"] },
-  ],
-  c7s1t: [
-    { id: "d13", name: "Cerere Finanțare — PNRR C7", type: "DOCX", size: "290 KB", pages: 6, uploaded: "2025-11-22", uploadedBy: "Maria Ionescu", status: "template", reguliExtrase: 0, campuri: 12, tags: ["PNRR", "template"] },
-  ],
-};
 
 /* ══════════════════════════════════════════
    CONSTANTS
@@ -150,6 +74,47 @@ const NODE_DOTS: Record<string, { size: number; color: string }> = {
   masura: { size: 8, color: "#C9A84C" },
   sesiune: { size: 6, color: "#888888" },
 };
+
+/* ══════════════════════════════════════════
+   HELPERS
+   ══════════════════════════════════════════ */
+
+function mapApiStatusToLocal(status: ApiDocument["status"], processingType: ApiDocument["processingType"]): DocItem["status"] {
+  if (processingType === "template") return "template";
+  if (processingType === "reference") return "referință";
+  if (status === "processed") return "procesat";
+  return "neprocesat"; // uploaded, processing, failed all show as neprocesat
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes >= 1_000_000) return (bytes / 1_000_000).toFixed(1) + " MB";
+  if (bytes >= 1_000) return (bytes / 1_000).toFixed(0) + " KB";
+  return bytes + " B";
+}
+
+function mapApiDocToLocal(doc: ApiDocument): DocItem {
+  return {
+    id: doc.id,
+    name: doc.name,
+    type: doc.fileType.toUpperCase() as DocItem["type"],
+    size: formatFileSize(doc.fileSize),
+    uploaded: doc.uploadedAt ? doc.uploadedAt.slice(0, 10) : "",
+    uploadedBy: doc.uploadedBy || "",
+    status: mapApiStatusToLocal(doc.status, doc.processingType),
+    reguliExtrase: 0,
+    campuri: doc.processingType === "template" ? 0 : undefined,
+    tags: doc.tags || [],
+  };
+}
+
+function mapApiFolderToTreeNode(folder: ApiFolderNode): TreeNode {
+  return {
+    id: folder.id,
+    label: folder.name,
+    type: (folder.type || "folder") as TreeNode["type"],
+    children: folder.children?.length ? folder.children.map(mapApiFolderToTreeNode) : undefined,
+  };
+}
 
 /* ══════════════════════════════════════════
    TREE HELPERS
@@ -194,9 +159,10 @@ function getBreadcrumb(nodes: TreeNode[], targetId: string, path: string[] = [])
    ══════════════════════════════════════════ */
 
 export default function DocumentsPage() {
-  const [tree, setTree] = useState<TreeNode[]>(DOC_TREE);
-  const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({ af: true, m1: true, m1s1: true });
-  const [selectedFolder, setSelectedFolder] = useState<string | null>("m1s1g");
+  const [tree, setTree] = useState<TreeNode[]>([]);
+  const [treeLoading, setTreeLoading] = useState(true);
+  const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({});
+  const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   const [selectedDoc, setSelectedDoc] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [showUpload, setShowUpload] = useState(false);
@@ -204,6 +170,55 @@ export default function DocumentsPage() {
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; nodeId: string } | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameVal, setRenameVal] = useState("");
+  const [docs, setDocs] = useState<DocItem[]>([]);
+  const [docsLoading, setDocsLoading] = useState(false);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Fetch folder tree on mount
+  const fetchTree = useCallback(async () => {
+    try {
+      setTreeLoading(true);
+      const data = await apiGet<ApiFolderNode[]>("/api/documents/folders");
+      const mapped = data.map(mapApiFolderToTreeNode);
+      setTree(mapped);
+      // Auto-expand top-level nodes
+      const expanded: Record<string, boolean> = {};
+      mapped.forEach(n => { expanded[n.id] = true; });
+      setExpandedNodes(prev => ({ ...expanded, ...prev }));
+    } catch (err) {
+      console.error("Failed to fetch folder tree:", err);
+    } finally {
+      setTreeLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchTree();
+  }, [fetchTree]);
+
+  // Fetch documents when selectedFolder changes
+  const fetchDocs = useCallback(async (folderId: string) => {
+    try {
+      setDocsLoading(true);
+      const data = await apiGet<ApiDocument[]>(`/api/documents/folders/${folderId}/documents`);
+      setDocs(data.map(mapApiDocToLocal));
+    } catch (err) {
+      console.error("Failed to fetch documents:", err);
+      setDocs([]);
+    } finally {
+      setDocsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (selectedFolder) {
+      fetchDocs(selectedFolder);
+    } else {
+      setDocs([]);
+    }
+  }, [selectedFolder, fetchDocs]);
 
   // Close context menu on click outside
   useEffect(() => {
@@ -217,13 +232,21 @@ export default function DocumentsPage() {
     setExpandedNodes(prev => ({ ...prev, [id]: !prev[id] }));
   }, []);
 
-  const handleNewFolder = useCallback((parentId: string) => {
-    const newId = "f_" + Date.now();
-    const child: TreeNode = { id: newId, label: "Folder nou", type: "folder", children: [] };
-    setTree(prev => addChildToNode(prev, parentId, child));
-    setExpandedNodes(prev => ({ ...prev, [parentId]: true }));
-    setRenaming(newId);
-    setRenameVal("Folder nou");
+  const handleNewFolder = useCallback(async (parentId: string) => {
+    try {
+      const result = await apiPost<ApiFolderNode>("/api/documents/folders", {
+        name: "Folder nou",
+        type: "folder",
+        parentId,
+      });
+      const newNode = mapApiFolderToTreeNode(result);
+      setTree(prev => addChildToNode(prev, parentId, newNode));
+      setExpandedNodes(prev => ({ ...prev, [parentId]: true }));
+      setRenaming(newNode.id);
+      setRenameVal("Folder nou");
+    } catch (err) {
+      console.error("Failed to create folder:", err);
+    }
     setCtxMenu(null);
   }, []);
 
@@ -240,17 +263,27 @@ export default function DocumentsPage() {
     setCtxMenu(null);
   }, [tree]);
 
-  const commitRename = useCallback(() => {
+  const commitRename = useCallback(async () => {
     if (renaming && renameVal.trim()) {
-      setTree(prev => updateNodeInTree(prev, renaming, n => ({ ...n, label: renameVal.trim() })));
+      try {
+        await apiPut(`/api/documents/folders/${renaming}`, { name: renameVal.trim() });
+        setTree(prev => updateNodeInTree(prev, renaming, n => ({ ...n, label: renameVal.trim() })));
+      } catch (err) {
+        console.error("Failed to rename folder:", err);
+      }
     }
     setRenaming(null);
     setRenameVal("");
   }, [renaming, renameVal]);
 
-  const handleDelete = useCallback((nodeId: string) => {
-    if (selectedFolder === nodeId) setSelectedFolder(null);
-    setTree(prev => removeNodeFromTree(prev, nodeId));
+  const handleDelete = useCallback(async (nodeId: string) => {
+    try {
+      await apiDelete(`/api/documents/folders/${nodeId}`);
+      if (selectedFolder === nodeId) setSelectedFolder(null);
+      setTree(prev => removeNodeFromTree(prev, nodeId));
+    } catch (err) {
+      console.error("Failed to delete folder:", err);
+    }
     setCtxMenu(null);
   }, [selectedFolder]);
 
@@ -260,29 +293,100 @@ export default function DocumentsPage() {
     setCtxMenu({ x: e.clientX, y: e.clientY, nodeId });
   }, []);
 
+  const handleDocDelete = useCallback(async (docId: string) => {
+    if (!confirm("Sigur vrei sa stergi acest document?")) return;
+    try {
+      await apiDelete(`/api/documents/documents/${docId}`);
+      setDocs(prev => prev.filter(d => d.id !== docId));
+      if (selectedDoc === docId) setSelectedDoc(null);
+    } catch (err) {
+      console.error("Failed to delete document:", err);
+    }
+  }, [selectedDoc]);
+
+  const handleDocDownload = useCallback(async (docId: string) => {
+    try {
+      const detail = await apiGet<{ downloadUrl: string }>(`/api/documents/documents/${docId}`);
+      if (detail.downloadUrl) {
+        window.open(detail.downloadUrl, "_blank");
+      }
+    } catch (err) {
+      console.error("Failed to get download URL:", err);
+    }
+  }, []);
+
+  const handleDocProcess = useCallback(async (docId: string) => {
+    try {
+      await apiPost(`/api/documents/documents/${docId}/process`, {});
+      // Update local status to reflect processing
+      setDocs(prev => prev.map(d => d.id === docId ? { ...d, status: "neprocesat" as const } : d));
+      // Refetch docs after a moment to get updated status
+      if (selectedFolder) {
+        setTimeout(() => fetchDocs(selectedFolder), 1000);
+      }
+    } catch (err) {
+      console.error("Failed to trigger AI processing:", err);
+    }
+  }, [selectedFolder, fetchDocs]);
+
+  const handleUpload = useCallback(async () => {
+    if (!uploadFile || !selectedFolder) return;
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", uploadFile);
+      formData.append("tags", JSON.stringify([]));
+
+      const storedToken = typeof window !== "undefined" ? localStorage.getItem("df-token") : null;
+      const headers: Record<string, string> = {};
+      if (storedToken) {
+        headers["Authorization"] = `Bearer ${storedToken}`;
+      }
+
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+      const res = await fetch(`${API_URL}/api/documents/folders/${selectedFolder}/documents`, {
+        method: "POST",
+        headers,
+        credentials: "include",
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ error: "Upload failed" }));
+        throw new Error(body.error || `HTTP ${res.status}`);
+      }
+
+      setShowUpload(false);
+      setUploadFile(null);
+      fetchDocs(selectedFolder);
+    } catch (err) {
+      console.error("Failed to upload document:", err);
+    } finally {
+      setUploading(false);
+    }
+  }, [uploadFile, selectedFolder, fetchDocs]);
+
   // Filtered documents
-  const docs = (selectedFolder ? DOCUMENTS[selectedFolder] || [] : []).filter(d => {
+  const filteredDocs = docs.filter(d => {
     if (!search) return true;
     const q = search.toLowerCase();
     return d.name.toLowerCase().includes(q) || d.type.toLowerCase().includes(q) || d.tags.some(t => t.toLowerCase().includes(q));
   });
 
-  const selDoc = docs.find(d => d.id === selectedDoc) || null;
+  const selDoc = filteredDocs.find(d => d.id === selectedDoc) || null;
 
   const breadcrumb = selectedFolder ? getBreadcrumb(tree, selectedFolder) || [] : [];
 
-  // Stats
-  const allDocsFlat = Object.values(DOCUMENTS).flat();
-  const totalDocs = allDocsFlat.length;
-  const procesate = allDocsFlat.filter(d => d.status === "procesat").length;
-  const templates = allDocsFlat.filter(d => d.status === "template").length;
+  // Stats from currently loaded docs
+  const totalDocs = docs.length;
+  const procesate = docs.filter(d => d.status === "procesat").length;
+  const templates = docs.filter(d => d.status === "template").length;
 
   /* ─── Tree renderer ─── */
   const renderTree = (nodes: TreeNode[], depth = 0) => nodes.map(node => {
     const hasKids = node.children && node.children.length > 0;
     const isExpanded = expandedNodes[node.id];
     const isSelected = node.id === selectedFolder;
-    const docCount = DOCUMENTS[node.id]?.length;
     const isRenaming = renaming === node.id;
     const dot = NODE_DOTS[node.type];
     const icon = NODE_ICONS[node.type];
@@ -334,10 +438,6 @@ export default function DocumentsPage() {
               {node.label}
             </span>
           )}
-
-          {docCount != null && docCount > 0 && !isRenaming && (
-            <span className="doc-tree-count">{docCount}</span>
-          )}
         </div>
         {hasKids && isExpanded && renderTree(node.children!, depth + 1)}
       </div>
@@ -351,7 +451,18 @@ export default function DocumentsPage() {
         <span className="doc-tree-header-label">Structura programe</span>
       </div>
       <div className="doc-tree-scroll">
-        {renderTree(tree)}
+        {treeLoading ? (
+          <div className="doc-empty">
+            <div className="doc-empty-text">Se incarca...</div>
+          </div>
+        ) : tree.length === 0 ? (
+          <div className="doc-empty">
+            <div className="doc-empty-icon">{"\u{1F4C1}"}</div>
+            <div className="doc-empty-text">Niciun folder</div>
+          </div>
+        ) : (
+          renderTree(tree)
+        )}
       </div>
     </div>
   );
@@ -381,12 +492,16 @@ export default function DocumentsPage() {
         </div>
       </div>
       <div className="doc-list-scroll">
-        {docs.length === 0 ? (
+        {docsLoading ? (
+          <div className="doc-empty">
+            <div className="doc-empty-text">Se incarca documentele...</div>
+          </div>
+        ) : filteredDocs.length === 0 ? (
           <div className="doc-empty">
             <div className="doc-empty-icon">{"\u{1F4C4}"}</div>
             <div className="doc-empty-text">{search ? "Niciun document gasit" : "Niciun document in acest folder"}</div>
           </div>
-        ) : docs.map(d => {
+        ) : filteredDocs.map(d => {
           const st = STATUS_MAP[d.status];
           return (
             <div
@@ -399,7 +514,6 @@ export default function DocumentsPage() {
                 <div className="doc-card-name">{d.name}</div>
                 <div className="doc-card-meta">
                   <span>{d.type} {"\u00B7"} {d.size}</span>
-                  <span>{d.pages} pag.</span>
                   <span>{"\u{1F4C5}"} {d.uploaded}</span>
                   <span>{"\u{1F464}"} {d.uploadedBy}</span>
                 </div>
@@ -431,7 +545,7 @@ export default function DocumentsPage() {
         <button className="doc-detail-close" onClick={() => setSelectedDoc(null)}>{"\u2715"}</button>
         <div className="doc-detail-icon">{TYPE_ICONS[selDoc.type] || "\u{1F4C4}"}</div>
         <div className="doc-detail-name">{selDoc.name}</div>
-        <div className="doc-detail-type">{selDoc.type} {"\u00B7"} {selDoc.size} {"\u00B7"} {selDoc.pages} pagini</div>
+        <div className="doc-detail-type">{selDoc.type} {"\u00B7"} {selDoc.size}</div>
       </div>
 
       <div className="doc-detail-section">
@@ -449,7 +563,11 @@ export default function DocumentsPage() {
         })()}
         {selDoc.status === "neprocesat" && (
           <div style={{ marginTop: 10 }}>
-            <button className="doc-detail-btn primary" style={{ width: "auto", display: "inline-flex" }}>
+            <button
+              className="doc-detail-btn primary"
+              style={{ width: "auto", display: "inline-flex" }}
+              onClick={() => handleDocProcess(selDoc.id)}
+            >
               {"\u{1F916}"} Proceseaza cu AI
             </button>
           </div>
@@ -494,9 +612,9 @@ export default function DocumentsPage() {
       </div>
 
       <div className="doc-detail-actions">
-        <button className="doc-detail-btn primary">{"\u{1F4E5}"} Descarca</button>
+        <button className="doc-detail-btn primary" onClick={() => handleDocDownload(selDoc.id)}>{"\u{1F4E5}"} Descarca</button>
         <button className="doc-detail-btn">{"\u{1F441}"} Previzualizare</button>
-        <button className="doc-detail-btn danger">{"\u{1F5D1}"} Sterge</button>
+        <button className="doc-detail-btn danger" onClick={() => handleDocDelete(selDoc.id)}>{"\u{1F5D1}"} Sterge</button>
       </div>
     </div>
   ) : (
@@ -647,6 +765,19 @@ export default function DocumentsPage() {
         .doc-detail::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
       `}</style>
 
+      {/* Hidden file input for upload */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".pdf,.docx,.xlsx,.doc"
+        style={{ display: "none" }}
+        onChange={e => {
+          const file = e.target.files?.[0];
+          if (file) setUploadFile(file);
+          e.target.value = "";
+        }}
+      />
+
       {/* ─── TOPBAR ─── */}
       <div className="doc-topbar">
         <div className="doc-topbar-title">Documente</div>
@@ -709,7 +840,7 @@ export default function DocumentsPage() {
           <div className="doc-modal">
             <div className="doc-modal-title">
               Upload document
-              <button className="doc-modal-close" onClick={() => setShowUpload(false)}>{"\u2715"}</button>
+              <button className="doc-modal-close" onClick={() => { setShowUpload(false); setUploadFile(null); }}>{"\u2715"}</button>
             </div>
             <div className="doc-modal-sub">
               Destinatie: <strong style={{ color: "var(--text-primary)" }}>{breadcrumb.join(" \u203A ")}</strong>
@@ -728,15 +859,41 @@ export default function DocumentsPage() {
               ))}
             </div>
 
-            <div className="doc-upload-zone">
-              <div className="doc-upload-zone-icon">{"\u{1F4E4}"}</div>
-              <div className="doc-upload-zone-title">Trage fisierele aici sau click pentru a alege</div>
-              <div className="doc-upload-zone-sub">PDF, DOCX, XLSX — max 50 MB per fisier</div>
+            <div
+              className="doc-upload-zone"
+              onClick={() => fileInputRef.current?.click()}
+              onDragOver={e => { e.preventDefault(); e.stopPropagation(); }}
+              onDrop={e => {
+                e.preventDefault();
+                e.stopPropagation();
+                const file = e.dataTransfer.files?.[0];
+                if (file) setUploadFile(file);
+              }}
+            >
+              {uploadFile ? (
+                <>
+                  <div className="doc-upload-zone-icon">{"\u{1F4C4}"}</div>
+                  <div className="doc-upload-zone-title">{uploadFile.name}</div>
+                  <div className="doc-upload-zone-sub">{formatFileSize(uploadFile.size)}</div>
+                </>
+              ) : (
+                <>
+                  <div className="doc-upload-zone-icon">{"\u{1F4E4}"}</div>
+                  <div className="doc-upload-zone-title">Trage fisierele aici sau click pentru a alege</div>
+                  <div className="doc-upload-zone-sub">PDF, DOCX, XLSX — max 50 MB per fisier</div>
+                </>
+              )}
             </div>
 
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-              <button className="doc-btn-secondary" onClick={() => setShowUpload(false)}>Anuleaza</button>
-              <button className="doc-btn-primary" disabled>Upload & Proceseaza</button>
+              <button className="doc-btn-secondary" onClick={() => { setShowUpload(false); setUploadFile(null); }}>Anuleaza</button>
+              <button
+                className="doc-btn-primary"
+                disabled={!uploadFile || !selectedFolder || uploading}
+                onClick={handleUpload}
+              >
+                {uploading ? "Se uploadeaza..." : "Upload & Proceseaza"}
+              </button>
             </div>
           </div>
         </div>

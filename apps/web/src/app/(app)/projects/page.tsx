@@ -1,37 +1,9 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { apiGet, apiPost, apiDelete } from "@/lib/api";
 
-/* ═══ MOCK DATA ═══ */
-const PROJECTS = [
-  { id: "1", name: "Modernizare fabrică CNC", firma: "SC CONSTRUCT NORD SRL", firmaId: "1", program: "Accesare finanțări", masura: "Măsura 1", sesiune: "Sesiunea 1", status: "in_progress", created: "2026-01-15", updated: "Acum 12 min", eligibility: { passed: 12, total: 13 }, elements: { filled: 14, total: 18 }, docs: { done: 5, total: 17 }, templates: { done: 1, total: 3 }, valoare: "200.000 EUR", consultant: "Ion Popescu" },
-  { id: "2", name: "Extindere capacitate depozitare", firma: "AGRO INVEST SRL", firmaId: "2", program: "Accesare finanțări", masura: "Măsura 1", sesiune: "Sesiunea 1", status: "in_progress", created: "2026-01-20", updated: "Acum 2 ore", eligibility: { passed: 10, total: 10 }, elements: { filled: 8, total: 22 }, docs: { done: 3, total: 15 }, templates: { done: 0, total: 3 }, valoare: "150.000 EUR", consultant: "Ion Popescu" },
-  { id: "3", name: "Digitalizare procese interne", firma: "TECH SOLUTIONS SA", firmaId: "3", program: "PNRR", masura: "Componenta 7", sesiune: "Apel 1", status: "review", created: "2025-11-10", updated: "Ieri, 16:30", eligibility: { passed: 9, total: 11 }, elements: { filled: 20, total: 20 }, docs: { done: 14, total: 14 }, templates: { done: 3, total: 3 }, valoare: "450.000 EUR", consultant: "Maria Ionescu" },
-  { id: "4", name: "Panouri fotovoltaice 150kW", firma: "GREEN ENERGY SRL", firmaId: "4", program: "AFM", masura: "Fotovoltaice PJ", sesiune: "Sesiunea 2025", status: "draft", created: "2026-02-28", updated: "Ieri, 09:15", eligibility: { passed: 0, total: 8 }, elements: { filled: 3, total: 16 }, docs: { done: 0, total: 12 }, templates: { done: 0, total: 2 }, valoare: "95.000 EUR", consultant: "Ion Popescu" },
-  { id: "5", name: "Echipamente brutărie artizanală", firma: "PÂINE & TRADIȚIE SRL", firmaId: "5", program: "Accesare finanțări", masura: "Măsura 1", sesiune: "Sesiunea 2", status: "submitted", created: "2025-09-01", updated: "3 mar 2026", eligibility: { passed: 11, total: 11 }, elements: { filled: 18, total: 18 }, docs: { done: 16, total: 16 }, templates: { done: 3, total: 3 }, valoare: "180.000 EUR", consultant: "Ion Popescu" },
-  { id: "6", name: "Linie procesare legume", firma: "AGRO INVEST SRL", firmaId: "2", program: "Accesare finanțări", masura: "Măsura 2", sesiune: "Sesiunea 1", status: "draft", created: "2026-03-01", updated: "Azi, 08:00", eligibility: { passed: 0, total: 0 }, elements: { filled: 0, total: 0 }, docs: { done: 0, total: 0 }, templates: { done: 0, total: 0 }, valoare: "—", consultant: "Ion Popescu" },
-];
-
-const FIRME_LIST = [
-  { id: "1", name: "SC CONSTRUCT NORD SRL" },
-  { id: "2", name: "AGRO INVEST SRL" },
-  { id: "3", name: "TECH SOLUTIONS SA" },
-  { id: "4", name: "GREEN ENERGY SRL" },
-  { id: "5", name: "PÂINE & TRADIȚIE SRL" },
-];
-
-const PROGRAMS_TREE = [
-  { program: "Accesare finanțări", masuri: [
-    { name: "Măsura 1 — Investiții productive", sesiuni: ["Sesiunea 1", "Sesiunea 2"] },
-    { name: "Măsura 2 — Dezvoltare rurală", sesiuni: ["Sesiunea 1"] },
-  ]},
-  { program: "PNRR", masuri: [
-    { name: "Componenta 7 — Digitalizare", sesiuni: ["Apel 1"] },
-  ]},
-  { program: "AFM", masuri: [
-    { name: "Fotovoltaice persoane juridice", sesiuni: ["Sesiunea 2025"] },
-  ]},
-];
+/* ═══ HELPERS ═══ */
 
 const STATUS_MAP: Record<string, { label: string; color: string; bg: string }> = {
   draft: { label: "Ciornă", color: "#5a6478", bg: "rgba(90,100,120,0.12)" },
@@ -44,6 +16,61 @@ const STATUS_MAP: Record<string, { label: string; color: string; bg: string }> =
 
 const pct = (a: number, b: number) => b > 0 ? Math.round((a / b) * 100) : 0;
 
+function formatRelativeTime(dateStr: string): string {
+  const now = new Date();
+  const date = new Date(dateStr);
+  const diffMs = now.getTime() - date.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMin < 1) return "Acum";
+  if (diffMin < 60) return `Acum ${diffMin} min`;
+  if (diffHours < 24) return `Acum ${diffHours} ore`;
+  if (diffDays === 1) return "Ieri";
+  if (diffDays < 7) return `Acum ${diffDays} zile`;
+  return date.toLocaleDateString("ro-RO", { day: "numeric", month: "short", year: "numeric" });
+}
+
+function formatValoare(val: string | null | undefined): string {
+  if (!val) return "—";
+  const num = Number(val);
+  if (isNaN(num)) return val;
+  return new Intl.NumberFormat("ro-RO").format(num) + " EUR";
+}
+
+interface FolderNode {
+  id: string;
+  name: string;
+  type?: string;
+  children?: FolderNode[];
+}
+
+interface ProgramTree {
+  program: string;
+  masuri: { name: string; sesiuni: { name: string; folderId: string }[] }[];
+}
+
+function buildProgramTree(folders: FolderNode[]): ProgramTree[] {
+  const tree: ProgramTree[] = [];
+  for (const prog of folders) {
+    const entry: ProgramTree = { program: prog.name, masuri: [] };
+    if (prog.children) {
+      for (const masura of prog.children) {
+        const sesiuni: { name: string; folderId: string }[] = [];
+        if (masura.children) {
+          for (const sesiune of masura.children) {
+            sesiuni.push({ name: sesiune.name, folderId: sesiune.id });
+          }
+        }
+        entry.masuri.push({ name: masura.name, sesiuni });
+      }
+    }
+    tree.push(entry);
+  }
+  return tree;
+}
+
 export default function ProjectsPage() {
   const router = useRouter();
   const [search, setSearch] = useState("");
@@ -52,31 +79,91 @@ export default function ProjectsPage() {
   const [viewMode, setViewMode] = useState<"cards" | "table">("cards");
   const [showCreate, setShowCreate] = useState(false);
   const [createStep, setCreateStep] = useState(1);
-  const [createData, setCreateData] = useState<{ name: string; firmaId: string | null; program: string | null; masura: string | null; sesiune: string | null }>({ name: "", firmaId: null, program: null, masura: null, sesiune: null });
+  const [createData, setCreateData] = useState<{ name: string; firmaId: string | null; folderId: string | null; program: string | null; masura: string | null; sesiune: string | null }>({ name: "", firmaId: null, folderId: null, program: null, masura: null, sesiune: null });
+  const [creating, setCreating] = useState(false);
 
-  const filtered = PROJECTS.filter(p => {
+  /* ═══ DATA STATE ═══ */
+  const [projects, setProjects] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [companies, setCompanies] = useState<any[]>([]);
+  const [folderTree, setFolderTree] = useState<ProgramTree[]>([]);
+
+  /* ═══ FETCH PROJECTS ═══ */
+  useEffect(() => {
+    setLoading(true);
+    apiGet("/api/projects")
+      .then((data: any) => {
+        setProjects(Array.isArray(data) ? data : data.projects || []);
+      })
+      .catch(() => setProjects([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  /* ═══ FETCH COMPANIES + FOLDERS WHEN MODAL OPENS ═══ */
+  useEffect(() => {
+    if (!showCreate) return;
+    apiGet("/api/companies")
+      .then((data: any) => {
+        const list = Array.isArray(data) ? data : data.companies || [];
+        setCompanies(list.map((c: any) => ({ id: c.id, name: c.denumire || c.name })));
+      })
+      .catch(() => setCompanies([]));
+    apiGet("/api/documents/folders")
+      .then((data: any) => {
+        const folders = Array.isArray(data) ? data : data.folders || [];
+        setFolderTree(buildProgramTree(folders));
+      })
+      .catch(() => setFolderTree([]));
+  }, [showCreate]);
+
+  /* ═══ DERIVED ═══ */
+  const filtered = projects.filter(p => {
     if (statusFilter !== "all" && p.status !== statusFilter) return false;
-    if (programFilter !== "all" && p.program !== programFilter) return false;
+    const progName = p.programPath?.program || "";
+    if (programFilter !== "all" && progName !== programFilter) return false;
     if (search) {
       const q = search.toLowerCase();
-      return p.name.toLowerCase().includes(q) || p.firma.toLowerCase().includes(q) || p.program.toLowerCase().includes(q);
+      const firma = p.company?.denumire || "";
+      return p.name.toLowerCase().includes(q) || firma.toLowerCase().includes(q) || progName.toLowerCase().includes(q);
     }
     return true;
   });
 
   const stats = {
-    total: PROJECTS.length,
-    draft: PROJECTS.filter(p => p.status === "draft").length,
-    inProgress: PROJECTS.filter(p => p.status === "in_progress").length,
-    review: PROJECTS.filter(p => p.status === "review").length,
-    submitted: PROJECTS.filter(p => p.status === "submitted").length,
+    total: projects.length,
+    draft: projects.filter(p => p.status === "draft").length,
+    inProgress: projects.filter(p => p.status === "in_progress").length,
+    review: projects.filter(p => p.status === "review").length,
+    submitted: projects.filter(p => p.status === "submitted").length,
   };
 
-  const overallProgress = (p: typeof PROJECTS[0]) => {
-    const e = pct(p.elements.filled, p.elements.total);
-    const d = pct(p.docs.done, p.docs.total);
-    const t = pct(p.templates.done, p.templates.total);
-    return p.elements.total > 0 ? Math.round((e + d + t) / 3) : 0;
+  const overallProgress = (p: any) => {
+    const prog = p.progress || {};
+    const el = prog.elements || { filled: 0, total: 0 };
+    const doc = prog.docs || { done: 0, total: 0 };
+    const tpl = prog.templates || { done: 0, total: 0 };
+    const e = pct(el.filled, el.total);
+    const d = pct(doc.done, doc.total);
+    const t = pct(tpl.done, tpl.total);
+    return el.total > 0 ? Math.round((e + d + t) / 3) : 0;
+  };
+
+  /* ═══ CREATE PROJECT ═══ */
+  const handleCreate = async () => {
+    if (!createData.name.trim() || !createData.firmaId || !createData.folderId) return;
+    setCreating(true);
+    try {
+      const result: any = await apiPost("/api/projects", {
+        name: createData.name.trim(),
+        companyId: createData.firmaId,
+        folderId: createData.folderId,
+      });
+      setShowCreate(false);
+      router.push(`/projects/${result.id}`);
+    } catch (err) {
+      console.error("Failed to create project:", err);
+      setCreating(false);
+    }
   };
 
   return (
@@ -189,7 +276,7 @@ export default function ProjectsPage() {
       {/* Topbar */}
       <div className="px-7 py-3.5 flex items-center gap-4 flex-shrink-0" style={{ borderBottom: "1px solid var(--border)", background: "var(--bg-surface)" }}>
         <div className="text-xl font-extrabold flex-1" style={{ letterSpacing: "-.3px" }}>Proiecte</div>
-        <button className="btn-create" onClick={() => { setShowCreate(true); setCreateStep(1); setCreateData({ name: "", firmaId: null, program: null, masura: null, sesiune: null }); }}>+ Proiect nou</button>
+        <button className="btn-create" onClick={() => { setShowCreate(true); setCreateStep(1); setCreateData({ name: "", firmaId: null, folderId: null, program: null, masura: null, sesiune: null }); }}>+ Proiect nou</button>
       </div>
 
       {/* Stats pills */}
@@ -220,7 +307,7 @@ export default function ProjectsPage() {
         <input className="fi" placeholder="Caută proiect, firmă, program..." value={search} onChange={e => setSearch(e.target.value)} style={{ width: 280 }} />
         <div className="pill-group">
           <button className={`pill ${programFilter === "all" ? "on" : ""}`} onClick={() => setProgramFilter("all")}>Toate</button>
-          {[...new Set(PROJECTS.map(p => p.program))].map(pr => (
+          {[...new Set(projects.map(p => p.programPath?.program).filter(Boolean))].map(pr => (
             <button key={pr} className={`pill ${programFilter === pr ? "on" : ""}`} onClick={() => setProgramFilter(pr)}>{pr}</button>
           ))}
         </div>
@@ -232,23 +319,32 @@ export default function ProjectsPage() {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto" style={{ padding: "20px 28px" }}>
-        {filtered.length === 0 ? (
+        {loading ? (
+          <div className="empty-state"><div className="es-icon">&#8987;</div><div className="es-text">Se încarcă proiectele...</div></div>
+        ) : filtered.length === 0 ? (
           <div className="empty-state"><div className="es-icon">&#128188;</div><div className="es-text">Niciun proiect găsit</div></div>
         ) : viewMode === "cards" ? (
           <div className="proj-grid">
             {filtered.map(p => {
-              const st = STATUS_MAP[p.status];
+              const st = STATUS_MAP[p.status] || STATUS_MAP.draft;
+              const prog = p.progress || {};
+              const eligibility = prog.eligibility || { passed: 0, total: 0 };
+              const elements = prog.elements || { filled: 0, total: 0 };
+              const docs = prog.docs || { done: 0, total: 0 };
+              const templates = prog.templates || { done: 0, total: 0 };
+              const programPath = p.programPath || {};
+              const valDisplay = formatValoare(p.valoare);
               return (
                 <div className="proj-card" key={p.id} onClick={() => router.push(`/projects/${p.id}`)}>
                   <div className="pc-top">
                     <div className="pc-info">
                       <div className="pc-name">{p.name}</div>
-                      <div className="pc-firma">{p.firma}</div>
+                      <div className="pc-firma">{p.company?.denumire || "—"}</div>
                       <div className="pc-path">
                         <span className="pp-dot" />
-                        {p.program} &rsaquo; {p.masura} &rsaquo; {p.sesiune}
+                        {programPath.program || "—"} &rsaquo; {programPath.masura || "—"} &rsaquo; {programPath.sesiune || "—"}
                       </div>
-                      {p.valoare !== "—" && <div className="pc-valoare">{p.valoare}</div>}
+                      {valDisplay !== "—" && <div className="pc-valoare">{valDisplay}</div>}
                     </div>
                     <div>
                       <span className="status-badge" style={{ background: st.bg, color: st.color }}>{st.label}</span>
@@ -257,10 +353,10 @@ export default function ProjectsPage() {
 
                   <div className="pc-progress">
                     {[
-                      { label: "Eligibilitate", a: p.eligibility.passed, b: p.eligibility.total, fullColor: "#34d399", partColor: "#fbbf24" },
-                      { label: "Elemente", a: p.elements.filled, b: p.elements.total, fullColor: "#34d399", partColor: "#4d8bff" },
-                      { label: "Documente", a: p.docs.done, b: p.docs.total, fullColor: "#34d399", partColor: "#fb923c" },
-                      { label: "Template-uri", a: p.templates.done, b: p.templates.total, fullColor: "#34d399", partColor: "#a78bfa" },
+                      { label: "Eligibilitate", a: eligibility.passed, b: eligibility.total, fullColor: "#34d399", partColor: "#fbbf24" },
+                      { label: "Elemente", a: elements.filled, b: elements.total, fullColor: "#34d399", partColor: "#4d8bff" },
+                      { label: "Documente", a: docs.done, b: docs.total, fullColor: "#34d399", partColor: "#fb923c" },
+                      { label: "Template-uri", a: templates.done, b: templates.total, fullColor: "#34d399", partColor: "#a78bfa" },
                     ].map(bar => (
                       <div className="pc-bar-row" key={bar.label}>
                         <span className="pc-bar-label">{bar.label}</span>
@@ -271,8 +367,8 @@ export default function ProjectsPage() {
                   </div>
 
                   <div className="pc-footer">
-                    <span className="pc-consultant">&#128100; {p.consultant}</span>
-                    <span className="pc-updated">{p.updated}</span>
+                    <span className="pc-consultant">&#128100; {p.consultantId || "—"}</span>
+                    <span className="pc-updated">{p.updatedAt ? formatRelativeTime(p.updatedAt) : "—"}</span>
                   </div>
                 </div>
               );
@@ -290,25 +386,30 @@ export default function ProjectsPage() {
               <div>Actualizat</div>
             </div>
             {filtered.map(p => {
-              const st = STATUS_MAP[p.status];
+              const st = STATUS_MAP[p.status] || STATUS_MAP.draft;
+              const prog = p.progress || {};
+              const eligibility = prog.eligibility || { passed: 0, total: 0 };
+              const elements = prog.elements || { filled: 0, total: 0 };
+              const docs = prog.docs || { done: 0, total: 0 };
+              const programPath = p.programPath || {};
               return (
                 <div className="pt-row" key={p.id} onClick={() => router.push(`/projects/${p.id}`)}>
-                  <div><div className="pt-name">{p.name}</div><div className="pt-firma">{p.firma}</div></div>
-                  <div className="pt-program">{p.masura}</div>
+                  <div><div className="pt-name">{p.name}</div><div className="pt-firma">{p.company?.denumire || "—"}</div></div>
+                  <div className="pt-program">{programPath.masura || "—"}</div>
                   <div><span className="status-badge" style={{ background: st.bg, color: st.color }}>{st.label}</span></div>
                   <div>
-                    <div className="mini-bar"><div className="mini-fill" style={{ width: `${pct(p.eligibility.passed, p.eligibility.total)}%`, background: pct(p.eligibility.passed, p.eligibility.total) === 100 ? "#34d399" : "#fbbf24" }} /></div>
-                    <div className="mini-pct">{p.eligibility.passed}/{p.eligibility.total}</div>
+                    <div className="mini-bar"><div className="mini-fill" style={{ width: `${pct(eligibility.passed, eligibility.total)}%`, background: pct(eligibility.passed, eligibility.total) === 100 ? "#34d399" : "#fbbf24" }} /></div>
+                    <div className="mini-pct">{eligibility.passed}/{eligibility.total}</div>
                   </div>
                   <div>
-                    <div className="mini-bar"><div className="mini-fill" style={{ width: `${pct(p.elements.filled, p.elements.total)}%`, background: "#4d8bff" }} /></div>
-                    <div className="mini-pct">{p.elements.filled}/{p.elements.total}</div>
+                    <div className="mini-bar"><div className="mini-fill" style={{ width: `${pct(elements.filled, elements.total)}%`, background: "#4d8bff" }} /></div>
+                    <div className="mini-pct">{elements.filled}/{elements.total}</div>
                   </div>
                   <div>
-                    <div className="mini-bar"><div className="mini-fill" style={{ width: `${pct(p.docs.done, p.docs.total)}%`, background: "#fb923c" }} /></div>
-                    <div className="mini-pct">{p.docs.done}/{p.docs.total}</div>
+                    <div className="mini-bar"><div className="mini-fill" style={{ width: `${pct(docs.done, docs.total)}%`, background: "#fb923c" }} /></div>
+                    <div className="mini-pct">{docs.done}/{docs.total}</div>
                   </div>
-                  <div className="pt-time">{p.updated}</div>
+                  <div className="pt-time">{p.updatedAt ? formatRelativeTime(p.updatedAt) : "—"}</div>
                 </div>
               );
             })}
@@ -339,7 +440,7 @@ export default function ProjectsPage() {
               <div className="fg">
                 <label className="fl">Selectează firma</label>
                 <div className="firma-grid">
-                  {FIRME_LIST.map(f => (
+                  {companies.map(f => (
                     <div key={f.id} className={`firma-option ${createData.firmaId === f.id ? "on" : ""}`}
                       onClick={() => setCreateData(p => ({ ...p, firmaId: f.id }))}>
                       &#127970; {f.name}
@@ -357,17 +458,17 @@ export default function ProjectsPage() {
             {createStep === 2 && (<>
               <div className="fg">
                 <label className="fl">Selectează programul și sesiunea</label>
-                {PROGRAMS_TREE.map(prog => (
+                {folderTree.map(prog => (
                   <div className="prog-section" key={prog.program}>
                     <div className="prog-header"><span className="ph-dot" /> {prog.program}</div>
                     {prog.masuri.map(m => (
                       <div key={m.name}>
                         <div className="masura-row"><span className="mr-dot" /> {m.name}</div>
                         {m.sesiuni.map(s => (
-                          <div key={s}
-                            className={`sesiune-row ${createData.program === prog.program && createData.masura === m.name && createData.sesiune === s ? "on" : ""}`}
-                            onClick={() => setCreateData(p => ({ ...p, program: prog.program, masura: m.name, sesiune: s }))}>
-                            <span className="sr-dot" /> {s}
+                          <div key={s.folderId}
+                            className={`sesiune-row ${createData.folderId === s.folderId ? "on" : ""}`}
+                            onClick={() => setCreateData(p => ({ ...p, folderId: s.folderId, program: prog.program, masura: m.name, sesiune: s.name }))}>
+                            <span className="sr-dot" /> {s.name}
                           </div>
                         ))}
                       </div>
@@ -377,7 +478,7 @@ export default function ProjectsPage() {
               </div>
               <div className="btn-row">
                 <button className="btn-s" onClick={() => setCreateStep(1)}>&larr; Înapoi</button>
-                <button className="btn-p" disabled={!createData.sesiune} onClick={() => setCreateStep(3)}>Continuă &rarr;</button>
+                <button className="btn-p" disabled={!createData.folderId} onClick={() => setCreateStep(3)}>Continuă &rarr;</button>
               </div>
             </>)}
 
@@ -389,7 +490,7 @@ export default function ProjectsPage() {
               </div>
 
               <div className="summary-card">
-                <div className="summary-row"><span className="sr-label">Firmă:</span><span className="sr-value">{FIRME_LIST.find(f => f.id === createData.firmaId)?.name}</span></div>
+                <div className="summary-row"><span className="sr-label">Firmă:</span><span className="sr-value">{companies.find(f => f.id === createData.firmaId)?.name}</span></div>
                 <div className="summary-row"><span className="sr-label">Program:</span><span className="sr-value">{createData.program}</span></div>
                 <div className="summary-row"><span className="sr-label">Măsură:</span><span className="sr-value">{createData.masura}</span></div>
                 <div className="summary-row"><span className="sr-label">Sesiune:</span><span className="sr-value">{createData.sesiune}</span></div>
@@ -401,8 +502,8 @@ export default function ProjectsPage() {
 
               <div className="btn-row">
                 <button className="btn-s" onClick={() => setCreateStep(2)}>&larr; Înapoi</button>
-                <button className="btn-p" disabled={!createData.name.trim()} onClick={() => { setShowCreate(false); router.push("/projects/1"); }}>
-                  Creează proiect
+                <button className="btn-p" disabled={!createData.name.trim() || creating} onClick={handleCreate}>
+                  {creating ? "Se creează..." : "Creează proiect"}
                 </button>
               </div>
             </>)}

@@ -9,6 +9,8 @@ import { companyRoutes } from "./routes/companies";
 import { documentRoutes } from "./routes/documents";
 import { ruleRoutes } from "./routes/rules";
 import { templateRoutes } from "./routes/templates";
+import { projectRoutes } from "./routes/projects";
+import { dashboardRoutes } from "./routes/dashboard";
 import { authMiddleware } from "./middleware/auth";
 import { auditMiddleware } from "./middleware/audit";
 
@@ -32,6 +34,8 @@ app.route("/api/companies", companyRoutes);
 app.route("/api/documents", documentRoutes);
 app.route("/api/rules", ruleRoutes);
 app.route("/api/templates", templateRoutes);
+app.route("/api/projects", projectRoutes);
+app.route("/api/dashboard", dashboardRoutes);
 
 // Health check
 app.get("/health", (c) => c.json({ status: "ok", timestamp: new Date().toISOString() }));

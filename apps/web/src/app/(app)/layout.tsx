@@ -6,6 +6,8 @@ import { useAuthState } from "@/hooks/useAuth";
 import { AuthContext } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { ToastProvider } from "@/components/shared/Toast";
 
 function AppShell({ children }: { children: React.ReactNode }) {
   const auth = useAuthState();
@@ -133,7 +135,11 @@ function PendingCabinetScreen() {
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <ThemeProvider>
-      <AppShell>{children}</AppShell>
+      <ToastProvider>
+        <ErrorBoundary>
+          <AppShell>{children}</AppShell>
+        </ErrorBoundary>
+      </ToastProvider>
     </ThemeProvider>
   );
 }

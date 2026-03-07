@@ -15,8 +15,10 @@ import { solomonRoutes } from "./routes/solomon";
 import { neemiaRoutes } from "./routes/neemia";
 import { adminRoutes } from "./routes/admin";
 import { configRoutes } from "./routes/config";
+import { exportRoutes } from "./routes/export";
 import { authMiddleware } from "./middleware/auth";
 import { auditMiddleware } from "./middleware/audit";
+import { errorHandler } from "./middleware/errorHandler";
 
 const app = new Hono();
 
@@ -44,6 +46,10 @@ app.route("/api/solomon", solomonRoutes);
 app.route("/api/neemia", neemiaRoutes);
 app.route("/api/admin", adminRoutes);
 app.route("/api/config", configRoutes);
+app.route("/api/export", exportRoutes);
+
+// Global error handler
+app.onError(errorHandler);
 
 // Health check
 app.get("/health", (c) => c.json({ status: "ok", timestamp: new Date().toISOString() }));

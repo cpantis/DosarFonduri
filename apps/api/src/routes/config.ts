@@ -105,6 +105,7 @@ const apiIntegrationSchema = z.object({
   type: z.string().min(1),
   url: z.string().url(),
   apiKey: z.string().optional(),
+  enabled: z.boolean().optional(),
   autoSync: z.boolean().optional(),
   syncIntervalDays: z.number().optional(),
 });
@@ -163,6 +164,7 @@ configRoutes.put("/api-integrations/:id", async (c) => {
   if (body.apiKey !== undefined) {
     updates.apiKeyEncrypted = body.apiKey ? encrypt(body.apiKey) : null;
   }
+  if (body.enabled !== undefined) updates.enabled = body.enabled;
   if (body.autoSync !== undefined) updates.autoSync = body.autoSync;
   if (body.syncIntervalDays !== undefined) updates.syncIntervalDays = body.syncIntervalDays;
 

@@ -80,6 +80,7 @@ export const companies = pgTable("companies", {
   telefon: varchar("telefon", { length: 50 }),
   email: varchar("email", { length: 255 }),
   website: varchar("website", { length: 255 }),
+  caen: varchar("caen", { length: 10 }),
   stare: companyStatusEnum("stare").notNull().default("functiune"),
   durata: varchar("durata", { length: 50 }),
   anInfiintare: integer("an_infiintare"),

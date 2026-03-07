@@ -85,7 +85,7 @@ async function buildSystemPrompt(projectId: string, organizationId: string): Pro
 - Denumire: ${company.denumire}
 - CUI: ${company.cui}
 - Forma juridică: ${company.formaJuridica}
-- CAEN: ${(company as any).caen || "nespecificat"}
+- CAEN: ${company.caen || "nespecificat"}
 - Adresă: ${company.adresa}, ${company.judet}
 - Angajați: ${(latestFinancial?.f30 as any)?.numarMediuSalariati || "necunoscut"}
 - Cifra afaceri: ${(latestFinancial?.f20 as any)?.cifraAfaceriNeta || "necunoscut"} RON

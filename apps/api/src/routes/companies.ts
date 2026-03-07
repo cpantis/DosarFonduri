@@ -378,8 +378,17 @@ companyRoutes.post("/:id/upload-bilant", async (c) => {
 
 // --- FINANCIALS PER YEAR ---
 companyRoutes.get("/:id/financials", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const id = c.req.param("id");
+
+  // Verify company belongs to user's organization
+  const company = await db.query.companies.findFirst({
+    where: and(eq(companies.id, id), eq(companies.organizationId, auth.organizationId!)),
+  });
+  if (!company) return c.json({ error: "Not found" }, 404);
+
   const financials = await db.query.companyFinancials.findMany({
-    where: eq(companyFinancials.companyId, c.req.param("id")),
+    where: eq(companyFinancials.companyId, id),
     orderBy: (f, { desc }) => [desc(f.year)],
   });
 
@@ -397,10 +406,13 @@ companyRoutes.put("/:id", async (c) => {
   });
   if (!company) return c.json({ error: "Not found" }, 404);
 
-  const [updated] = await db.update(companies).set({
-    ...body,
-    updatedAt: new Date(),
-  }).where(eq(companies.id, id)).returning();
+  const allowedFields = ["denumire", "formaJuridica", "caen", "adresa", "localitate", "judet", "telefon", "email", "website", "capitalSocial", "moneda", "partiSociale", "valoareParte"];
+  const updateData: Record<string, any> = { updatedAt: new Date() };
+  for (const field of allowedFields) {
+    if (body[field] !== undefined) updateData[field] = body[field];
+  }
+
+  const [updated] = await db.update(companies).set(updateData).where(eq(companies.id, id)).returning();
 
   return c.json(updated);
 });

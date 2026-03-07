@@ -12,6 +12,17 @@ import { logAIUsage } from "./aiUsage";
 
 const anthropic = new Anthropic();
 
+const MODEL_COSTS: Record<string, { input: number; output: number }> = {
+  "claude-sonnet-4-20250514": { input: 3 / 1_000_000, output: 15 / 1_000_000 },
+  "claude-opus-4-6": { input: 15 / 1_000_000, output: 75 / 1_000_000 },
+  "claude-haiku-4-5-20251001": { input: 0.25 / 1_000_000, output: 1.25 / 1_000_000 },
+};
+
+function calculateCost(model: string, tokensIn: number, tokensOut: number): string {
+  const pricing = MODEL_COSTS[model] || { input: 15 / 1_000_000, output: 75 / 1_000_000 };
+  return ((tokensIn * pricing.input) + (tokensOut * pricing.output)).toFixed(6);
+}
+
 // ═══ BUILD SYSTEM PROMPT ═══
 async function buildSystemPrompt(projectId: string, organizationId: string): Promise<string> {
   const project = await db.query.projects.findFirst({
@@ -170,7 +181,7 @@ export async function processInlineRefine(params: {
           content: `✨ Fragment rescris:\n\n${fullResponse}`,
           tokensInput: tokensIn,
           tokensOutput: tokensOut,
-          cost: ((tokensIn * 15 / 1_000_000) + (tokensOut * 75 / 1_000_000)).toFixed(6),
+          cost: calculateCost(model, tokensIn, tokensOut),
           model,
         });
 
@@ -254,6 +265,11 @@ export async function processSolomonMessage(params: {
     userContent.push({ type: "text", text: content });
   }
 
+  // Ensure userContent is not empty (Anthropic API requires at least one content block)
+  if (userContent.length === 0) {
+    userContent.push({ type: "text", text: "(mesaj gol)" });
+  }
+
   messages.push({ role: "user", content: userContent });
 
   // Save user message
@@ -267,7 +283,7 @@ export async function processSolomonMessage(params: {
   // API call with streaming
   const requestParams: any = {
     model,
-    max_tokens: 4000,
+    max_tokens: useET ? 16000 : 4000,
     system: systemPrompt,
     messages,
     stream: true,
@@ -304,11 +320,11 @@ export async function processSolomonMessage(params: {
         }
 
         // Extract elements from response (hidden JSON format)
-        const elementsMatch = fullResponse.match(/<!--ELEMENTS_JSON\[(.*?)\]ELEMENTS_JSON-->/s);
+        const elementsMatch = fullResponse.match(/<!--ELEMENTS_JSON(\[[\s\S]*?\])ELEMENTS_JSON-->/);
         let extractedElements: any[] = [];
         if (elementsMatch) {
           try {
-            extractedElements = JSON.parse(`[${elementsMatch[1]}]`);
+            extractedElements = JSON.parse(elementsMatch[1]);
           } catch {}
         }
 
@@ -344,7 +360,7 @@ export async function processSolomonMessage(params: {
         }
 
         // Save assistant message (clean hidden JSON)
-        const cleanResponse = fullResponse.replace(/<!--ELEMENTS_JSON\[.*?\]ELEMENTS_JSON-->/s, "").trim();
+        const cleanResponse = fullResponse.replace(/<!--ELEMENTS_JSON\[[\s\S]*?\]ELEMENTS_JSON-->/g, "").trim();
 
         await db.insert(solomonMessages).values({
           conversationId,
@@ -353,7 +369,7 @@ export async function processSolomonMessage(params: {
           elementsExtracted: extractedElements.length > 0 ? JSON.stringify(extractedElements) : null,
           tokensInput: tokensIn,
           tokensOutput: tokensOut,
-          cost: ((tokensIn * 15 / 1_000_000) + (tokensOut * 75 / 1_000_000)).toFixed(6),
+          cost: calculateCost(model, tokensIn, tokensOut),
           model,
         });
 

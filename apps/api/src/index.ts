@@ -12,6 +12,7 @@ import { templateRoutes } from "./routes/templates";
 import { projectRoutes } from "./routes/projects";
 import { dashboardRoutes } from "./routes/dashboard";
 import { solomonRoutes } from "./routes/solomon";
+import { neemiaRoutes } from "./routes/neemia";
 import { authMiddleware } from "./middleware/auth";
 import { auditMiddleware } from "./middleware/audit";
 
@@ -38,6 +39,7 @@ app.route("/api/templates", templateRoutes);
 app.route("/api/projects", projectRoutes);
 app.route("/api/dashboard", dashboardRoutes);
 app.route("/api/solomon", solomonRoutes);
+app.route("/api/neemia", neemiaRoutes);
 
 // Health check
 app.get("/health", (c) => c.json({ status: "ok", timestamp: new Date().toISOString() }));

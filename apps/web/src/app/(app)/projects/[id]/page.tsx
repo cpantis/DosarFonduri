@@ -113,6 +113,48 @@ const SOLOMON_ELEMENTS: SolomonElement[] = [
   { key: "reprezentant_nume", label: "Reprezentant legal", value: "Popescu Ion", source: "Chat Solomon", status: "propus" },
 ];
 
+type TemplateField = { name: string; value: string | null; source: string | null };
+type TemplatePage = { num: number; title: string; status: "complete" | "partial" | "empty"; fields: TemplateField[] };
+
+const TEMPLATE_PAGES: TemplatePage[] = [
+  { num: 1, title: "Date identificare", status: "complete", fields: [
+    { name: "Denumire solicitant", value: "COMEXIM R SRL", source: "ONRC" },
+    { name: "CUI", value: "2146135", source: "ONRC" },
+    { name: "Nr. Reg. Comerț", value: "J02/123/1991", source: "ONRC" },
+    { name: "Adresă sediu social", value: "Str. Industriei 45, Arad", source: "ONRC" },
+  ]},
+  { num: 2, title: "Reprezentant legal", status: "complete", fields: [
+    { name: "Nume și prenume", value: "Popescu Ion", source: "Solomon" },
+    { name: "Funcția", value: "Administrator", source: "ONRC" },
+    { name: "CNP", value: "178********", source: "Solomon" },
+    { name: "Act identitate", value: "CI seria AR nr. 456789", source: "Solomon" },
+  ]},
+  { num: 3, title: "Descriere proiect", status: "partial", fields: [
+    { name: "Descriere scurtă proiect", value: "Extindere capacitate producție prin achiziție echipamente industriale CNC", source: "Solomon" },
+    { name: "Valoarea totală proiect", value: null, source: null },
+    { name: "Contribuție proprie", value: null, source: null },
+  ]},
+  { num: 4, title: "Plan investiție", status: "empty", fields: [
+    { name: "Obiective specifice", value: null, source: null },
+    { name: "Rezultate așteptate", value: null, source: null },
+    { name: "Calendar implementare", value: null, source: null },
+  ]},
+  { num: 5, title: "Declarații", status: "empty", fields: [
+    { name: "Declarație ajutor de stat", value: null, source: null },
+    { name: "Declarație angajament", value: null, source: null },
+  ]},
+];
+
+type NeemiaTemplate = {
+  name: string; type: string; pages: TemplatePage[]; totalFields: number; filledFields: number;
+};
+
+const NEEMIA_TEMPLATES: NeemiaTemplate[] = [
+  { name: "Cerere Finanțare", type: "DOCX", pages: TEMPLATE_PAGES, totalFields: 10, filledFields: 7 },
+  { name: "Plan Afaceri", type: "DOCX", pages: [], totalFields: 14, filledFields: 0 },
+  { name: "Buget Estimativ", type: "XLSX", pages: [], totalFields: 8, filledFields: 0 },
+];
+
 const STATUS_MAP: Record<string, { label: string; color: string; bg: string }> = {
   draft: { label: "Ciornă", color: "#5a6478", bg: "rgba(90,100,120,0.12)" },
   in_progress: { label: "În lucru", color: "#4d8bff", bg: "rgba(77,139,255,0.12)" },
@@ -238,6 +280,28 @@ export default function ProjectViewPage() {
   };
 
   const solomonConfirmedCount = solomonElements.filter(e => e.status === "confirmat").length;
+
+  // Neemia state
+  const [neemiaActiveTemplate, setNeemiaActiveTemplate] = useState(0);
+  const [neemiaActivePage, setNeemiaActivePage] = useState(0);
+  const [neemiaAnimKey, setNeemiaAnimKey] = useState(0);
+
+  const neemiaTemplate = NEEMIA_TEMPLATES[neemiaActiveTemplate];
+  const neemiaPage = neemiaTemplate.pages[neemiaActivePage];
+
+  const handleNeemiaTemplateClick = (idx: number) => {
+    setNeemiaActiveTemplate(idx);
+    setNeemiaActivePage(0);
+    setNeemiaAnimKey(k => k + 1);
+  };
+
+  const handleNeemiaPageClick = (idx: number) => {
+    setNeemiaActivePage(idx);
+    setNeemiaAnimKey(k => k + 1);
+  };
+
+  const neemiaProgressPct = (tmpl: NeemiaTemplate) => tmpl.totalFields > 0 ? Math.round(tmpl.filledFields / tmpl.totalFields * 100) : 0;
+  const neemiaProgressColor = (p: number) => p === 100 ? "var(--accent-green)" : p > 0 ? "var(--accent-yellow)" : "var(--accent-red)";
 
   const toggleBranch = (key: string) => setBranches(b => ({ ...b, [key]: !b[key] }));
 
@@ -514,6 +578,54 @@ export default function ProjectViewPage() {
         .refine-input:focus{border-color:var(--accent-blue)}
         .refine-submit{padding:8px 14px;border-radius:var(--r-sm);border:none;background:var(--accent-blue);color:white;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font-sans)}
 
+        /* ═══ NEEMIA ═══ */
+        .neemia-layout{display:flex;height:100%}
+        .neemia-templates{width:240px;min-width:240px;border-right:1px solid var(--border);padding:16px;overflow-y:auto}
+        .neemia-templates h3{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text-muted);margin-bottom:12px}
+        .template-card{padding:12px 14px;border-radius:var(--r-sm);border:1px solid var(--border);margin-bottom:8px;cursor:pointer;transition:all .15s;background:var(--bg-surface)}
+        .template-card:hover{border-color:var(--border-active)}
+        .template-card.active{border-color:var(--accent-blue);background:rgba(77,139,255,.05)}
+        .template-card .tc-name{font-size:14px;font-weight:600;display:flex;align-items:center;gap:6px;margin-bottom:4px}
+        .tc-badge{font-size:10px;font-weight:700;padding:1px 5px;border-radius:3px;background:var(--bg-hover);color:var(--text-muted);font-family:var(--font-mono)}
+        .template-card .tc-info{font-size:12px;color:var(--text-secondary)}
+        .template-card .tc-progress{height:3px;background:var(--bg-deep);border-radius:2px;margin-top:8px;overflow:hidden}
+        .tc-progress-fill{height:100%;border-radius:2px;transition:width .5s ease}
+        .neemia-doc-view{flex:1;display:flex;flex-direction:column;min-width:0}
+        .neemia-page-nav{padding:12px 20px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);background:var(--bg-surface)}
+        .neemia-page-nav .nav-label{font-size:13px;font-weight:600;color:var(--text-secondary);margin-right:8px}
+        .page-thumb{width:36px;height:36px;border-radius:var(--r-sm);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;cursor:pointer;border:2px solid transparent;transition:all .15s;font-family:var(--font-mono)}
+        .page-thumb.complete{background:rgba(52,211,153,.15);color:var(--accent-green)}
+        .page-thumb.partial{background:rgba(251,191,36,.15);color:var(--accent-yellow)}
+        .page-thumb.empty{background:rgba(248,113,113,.12);color:var(--accent-red)}
+        .page-thumb.active{border-color:var(--accent-blue);box-shadow:0 0 0 2px rgba(77,139,255,.3)}
+        .download-btn{margin-left:auto;display:flex;align-items:center;gap:6px;padding:8px 16px;border-radius:var(--r-sm);border:none;background:var(--accent-green);color:#0a0c10;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--font-sans);transition:all .15s}
+        .download-btn:hover{background:#4ae3a9}
+        .neemia-preview-area{flex:1;display:flex;overflow:hidden}
+        .neemia-doc-preview{flex:1;display:flex;align-items:center;justify-content:center;background:var(--bg-deep);padding:24px}
+        .doc-page{width:460px;min-height:580px;background:#fff;border-radius:4px;box-shadow:0 4px 24px rgba(0,0,0,.4);padding:40px 36px;color:#1a1a2e;position:relative;animation:pageSlide .55s ease}
+        @keyframes pageSlide{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+        .doc-page .doc-header-label{font-size:10px;text-transform:uppercase;letter-spacing:1.2px;color:#888;margin-bottom:4px}
+        .doc-page .doc-page-title{font-size:20px;font-weight:700;margin-bottom:24px;color:#1a1a2e}
+        .doc-field-group{margin-bottom:18px}
+        .doc-field-label{font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:#888;margin-bottom:4px}
+        .doc-field-value{font-size:15px;font-weight:600;color:#1a1a2e;padding-bottom:4px;border-bottom:2px solid #4d8bff}
+        .doc-field-missing{font-size:15px;font-style:italic;color:#e74c3c;padding-bottom:4px;border-bottom:2px dashed #e74c3c}
+        .doc-page-number{position:absolute;bottom:16px;right:24px;font-size:12px;color:#aaa;font-family:var(--font-mono)}
+        .neemia-fields-panel{width:300px;min-width:300px;border-left:1px solid var(--border);overflow-y:auto;padding:16px;background:var(--bg-surface)}
+        .neemia-fields-panel h3{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text-muted);margin-bottom:12px}
+        .field-card{padding:10px 12px;border-radius:var(--r-sm);border:1px solid var(--border);margin-bottom:6px;background:var(--bg-elevated)}
+        .field-card .field-name{font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:3px}
+        .field-card .field-val{font-size:13px;color:var(--accent-blue);font-weight:500}
+        .field-card .field-val.missing{color:var(--accent-red);font-style:italic}
+        .field-source{font-size:10px;color:var(--text-muted);margin-top:3px;display:flex;align-items:center;gap:4px}
+        .source-dot{width:6px;height:6px;border-radius:50%;display:inline-block}
+        .source-dot.solomon{background:var(--accent-blue)}
+        .source-dot.onrc{background:var(--accent-green)}
+        .neemia-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--text-muted);gap:12px}
+        .neemia-empty .ne-icon{font-size:40px;opacity:.5}
+        .neemia-empty .ne-label{font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:1px}
+        .neemia-empty .ne-desc{font-size:13px;color:var(--text-secondary)}
+
         .coming-soon{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--text-muted);gap:12px}
         .coming-soon .cs-icon{font-size:48px;opacity:.5}
         .coming-soon .cs-label{font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:1px}
@@ -578,7 +690,7 @@ export default function ProjectViewPage() {
                   </div>
                   <div className={`tree-leaf ${activeLeaf === "neemia" ? "active" : ""}`} onClick={() => setActiveLeaf("neemia")}>
                     <span>&#128196;</span> Neemia
-                    <span className="leaf-badge muted">0/3</span>
+                    <span className="leaf-badge muted">0/{NEEMIA_TEMPLATES.length}</span>
                   </div>
                 </div>
               )}
@@ -1109,12 +1221,109 @@ export default function ProjectViewPage() {
               </div>
             )}
 
-            {/* ═══ NEEMIA (placeholder for Phase 6) ═══ */}
+            {/* ═══ NEEMIA — 3 PANE LAYOUT ═══ */}
             {activeLeaf === "neemia" && (
-              <div className="coming-soon">
-                <div className="cs-icon">&#128196;</div>
-                <div className="cs-label">Neemia</div>
-                <div className="cs-desc">Generare automată documente DOCX/XLSX/PDF — va fi implementat în Faza 6</div>
+              <div className="neemia-layout">
+                {/* Left: Templates list */}
+                <div className="neemia-templates">
+                  <h3>Template-uri Proiect</h3>
+                  {NEEMIA_TEMPLATES.map((tmpl, i) => {
+                    const p = neemiaProgressPct(tmpl);
+                    return (
+                      <div
+                        key={i}
+                        className={`template-card ${neemiaActiveTemplate === i ? "active" : ""}`}
+                        onClick={() => handleNeemiaTemplateClick(i)}
+                      >
+                        <div className="tc-name">
+                          {tmpl.name}
+                          <span className="tc-badge">{tmpl.type}</span>
+                        </div>
+                        <div className="tc-info">{tmpl.pages.length || "?"} pagini &middot; {tmpl.totalFields} câmpuri</div>
+                        <div className="tc-progress">
+                          <div className="tc-progress-fill" style={{ width: `${p}%`, background: neemiaProgressColor(p) }} />
+                        </div>
+                        {tmpl.filledFields > 0 && (
+                          <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 4 }}>
+                            {tmpl.filledFields}/{tmpl.totalFields} câmpuri completate
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Center + Right: Doc preview + Fields */}
+                <div className="neemia-doc-view">
+                  {neemiaTemplate.pages.length > 0 ? (
+                    <>
+                      {/* Page navigation */}
+                      <div className="neemia-page-nav">
+                        <span className="nav-label">{neemiaTemplate.name}</span>
+                        {neemiaTemplate.pages.map((pg, i) => (
+                          <div
+                            key={i}
+                            className={`page-thumb ${pg.status} ${neemiaActivePage === i ? "active" : ""}`}
+                            onClick={() => handleNeemiaPageClick(i)}
+                          >
+                            {pg.num}
+                          </div>
+                        ))}
+                        <button className="download-btn">
+                          &#8595; Descarcă
+                        </button>
+                      </div>
+
+                      <div className="neemia-preview-area">
+                        {/* Document preview */}
+                        <div className="neemia-doc-preview">
+                          {neemiaPage && (
+                            <div className="doc-page" key={neemiaAnimKey}>
+                              <div className="doc-header-label">DOCUMENT OFICIAL &middot; GENERARE AUTOMATĂ</div>
+                              <div className="doc-page-title">Pag. {neemiaPage.num}: {neemiaPage.title}</div>
+                              {neemiaPage.fields.map((f, fi) => (
+                                <div className="doc-field-group" key={fi}>
+                                  <div className="doc-field-label">{f.name}</div>
+                                  {f.value ? (
+                                    <div className="doc-field-value">{f.value}</div>
+                                  ) : (
+                                    <div className="doc-field-missing">(lipsă)</div>
+                                  )}
+                                </div>
+                              ))}
+                              <div className="doc-page-number">Pag. {neemiaPage.num}</div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Fields panel */}
+                        <div className="neemia-fields-panel">
+                          <h3>Câmpuri Pag. {neemiaPage?.num}</h3>
+                          {neemiaPage?.fields.map((f, fi) => (
+                            <div className="field-card" key={fi}>
+                              <div className="field-name">{f.name}</div>
+                              <div className={`field-val ${!f.value ? "missing" : ""}`}>
+                                {f.value || "Lipsă ⚠"}
+                              </div>
+                              {f.source && (
+                                <div className="field-source">
+                                  <span className={`source-dot ${f.source.toLowerCase()}`} />
+                                  {f.source === "Solomon" ? "Chat Solomon" : f.source}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="neemia-empty">
+                      <div className="ne-icon">&#128196;</div>
+                      <div className="ne-label">Niciun template procesat</div>
+                      <div className="ne-desc">Selectează &ldquo;Cerere Finanțare&rdquo; pentru a vedea completarea automată</div>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>

@@ -1,3 +1,4 @@
+# ─── API Service (default) ───
 [build]
   builder = "DOCKERFILE"
   dockerfilePath = "apps/api/Dockerfile"
@@ -7,3 +8,29 @@
   healthcheckPath = "/health"
   healthcheckTimeout = 10
   restartPolicyType = "ON_FAILURE"
+
+# ─── Railway Project Setup ───
+# Create 3 services in Railway:
+#
+# 1. API Service (uses this config)
+#    - Dockerfile: apps/api/Dockerfile
+#    - Start: node dist/index.js
+#    - Port: 8080
+#    - Env: DATABASE_URL, REDIS_URL, JWT_SECRET, ENCRYPTION_KEY,
+#           ANTHROPIC_API_KEY, RESEND_API_KEY, S3_*, FRONTEND_URL
+#
+# 2. Web Service (separate Railway service)
+#    - Dockerfile: apps/web/Dockerfile
+#    - Start: node apps/web/server.js
+#    - Port: 3000
+#    - Env: NEXT_PUBLIC_API_URL (points to API service URL)
+#
+# 3. Worker Service (separate Railway service)
+#    - Dockerfile: apps/api/Dockerfile
+#    - Override start: node dist/jobs/worker.js
+#    - No port needed
+#    - Same env as API
+#
+# Shared services (Railway plugins):
+#    - PostgreSQL
+#    - Redis

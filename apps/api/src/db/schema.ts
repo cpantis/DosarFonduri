@@ -287,9 +287,15 @@ export const projectDocuments = pgTable("project_documents", {
   templateDocumentId: uuid("template_document_id").references(() => documents.id).notNull(),
   generatedFileId: uuid("generated_file_id").references(() => files.id),
   status: generatedDocStatusEnum("status").notNull().default("generating"),
+  version: integer("version").notNull().default(1),
   pagesCompleted: integer("pages_completed").default(0),
   totalPages: integer("total_pages").default(0),
+  filledCount: integer("filled_count"),
+  missingCount: integer("missing_count"),
+  missingKeys: jsonb("missing_keys").$type<string[]>(),
+  generatedBy: uuid("generated_by").references(() => users.id),
   validatedBy: uuid("validated_by").references(() => users.id),
+  validatedAt: timestamp("validated_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

@@ -134,6 +134,25 @@ export default function SettingsPage() {
     }
   };
 
+  const handleExport = async (path: string, filename: string) => {
+    try {
+      const token = localStorage.getItem("df-token");
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"}${path}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Export failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
   const handleDeleteApi = async (id: string) => {
     try {
       await apiDelete(`/api/config/api-integrations/${id}`);
@@ -666,22 +685,22 @@ export default function SettingsPage() {
               </div>
 
               <div className="export-grid">
-                <div className="export-btn">
+                <div className="export-btn" onClick={() => handleExport("/api/export/projects", `dosarfonduri_projects_${new Date().toISOString().slice(0, 10)}.json`)}>
                   <div className="text-2xl mb-1.5">📦</div>
                   <div className="text-[13px] font-semibold mb-0.5" style={{ color: "var(--text-primary)" }}>Export toate proiectele</div>
-                  <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>ZIP cu elemente, documente, template-uri completate</div>
+                  <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>JSON cu elemente, documente, template-uri completate</div>
                 </div>
-                <div className="export-btn">
+                <div className="export-btn" onClick={() => handleExport("/api/export/config", `dosarfonduri_config_${new Date().toISOString().slice(0, 10)}.json`)}>
                   <div className="text-2xl mb-1.5">⚙️</div>
                   <div className="text-[13px] font-semibold mb-0.5" style={{ color: "var(--text-primary)" }}>Export configurari</div>
                   <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>JSON cu toate setarile curente</div>
                 </div>
-                <div className="export-btn">
+                <div className="export-btn" style={{ opacity: 0.5, cursor: "not-allowed" }}>
                   <div className="text-2xl mb-1.5">🗄</div>
                   <div className="text-[13px] font-semibold mb-0.5" style={{ color: "var(--text-primary)" }}>Backup baza de date</div>
-                  <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>PostgreSQL dump complet</div>
+                  <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>PostgreSQL dump (disponibil in curand)</div>
                 </div>
-                <div className="export-btn">
+                <div className="export-btn" onClick={() => handleExport("/api/export/activity", `dosarfonduri_activity_${new Date().toISOString().slice(0, 10)}.csv`)}>
                   <div className="text-2xl mb-1.5">📊</div>
                   <div className="text-[13px] font-semibold mb-0.5" style={{ color: "var(--text-primary)" }}>Raport activitate</div>
                   <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>CSV cu toate actiunile pe ultimele 30 zile</div>

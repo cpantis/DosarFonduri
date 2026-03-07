@@ -4,7 +4,7 @@ import {
   projects, companies, documents, projectElements, projectEligibility,
   projectDocuments, projectChecklist, auditLog, documentFolders, users,
 } from "../db/schema";
-import { eq, count, desc, and, ne, gte, sql } from "drizzle-orm";
+import { eq, count, desc, and, ne } from "drizzle-orm";
 import type { AuthContext } from "../middleware/auth";
 
 export const dashboardRoutes = new Hono();

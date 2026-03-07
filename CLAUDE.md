@@ -179,4 +179,4 @@ Fișierul `REVIEW_Prototipuri_vs_Specs.md` documentează procesul de aliniere. *
 - **AI**: Anthropic API (Haiku/Sonnet/Opus + Extended Thinking)
 - **Storage**: Cloudflare R2 / S3
 - **Queue**: BullMQ + Redis
-- **Deploy**: Railway (API + Worker) + Vercel (Frontend)
+- **Deploy**: Railway (API + Web + Worker)

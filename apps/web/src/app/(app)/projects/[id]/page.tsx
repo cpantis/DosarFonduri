@@ -385,6 +385,10 @@ export default function ProjectViewPage() {
       } else {
         const newConv = await apiPost<any>(`/api/solomon/projects/${projectId}/conversations`, {});
         setSolomonConvId(newConv.id);
+        // Display auto-greeting from Solomon with program context
+        if (newConv.greeting) {
+          setSolomonMessages([{ role: "assistant", text: newConv.greeting, extractions: [] }]);
+        }
       }
     } catch (err) {
       console.error("Failed to init Solomon conversation:", err);

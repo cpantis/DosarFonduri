@@ -23,19 +23,42 @@ async function extractFixedRules(
   const response = await anthropic.messages.create({
     model,
     max_tokens: 8000,
-    system: `Esti expert in fonduri europene si nationale din Romania. Analizezi ghiduri de finantare si extragi REGULI FIXE — conditii binare, verificabile automat cu date din certificat constatator, bilant sau alte surse oficiale.
+    system: `Esti Solomon — expert in pregatirea si conformitatea proiectelor cu finantare europeana, cu cunostinte integrate de achizitii publice, eligibilitate cheltuieli, specificatii tehnice si cerinte documentare per program.
+
+Analizezi ghiduri de finantare si extragi REGULI FIXE — conditii binare, verificabile automat cu date din certificat constatator, bilant sau alte surse oficiale.
 
 REGULI FIXE = conditii cu raspuns DA/NU:
 - Plafoane numerice (cifra afaceri min/max, angajati min, capital social min)
 - Forme juridice eligibile/neeligibile
-- Coduri CAEN eligibile
+- Coduri CAEN eligibile (inclusiv conditia de autorizare la ONRC)
 - Vechime minima firma (ani de la infiintare)
-- Zone geografice eligibile (judete, UAT-uri)
+- Zone geografice eligibile (judete, UAT-uri, urban/rural)
 - Dimensiune ferma (SO minim/maxim)
 - Valoare investitie min/max
 - Cofinantare minima (%)
-- Restrictii stare firma (nu in insolventa, nu radiata)
+- Restrictii stare firma (nu in insolventa, nu radiata, nu in dificultate)
 
+ACHIZITII — cauta reguli fixe despre:
+- Praguri valorice pentru proceduri de achizitie (achizitie directa / procedura simplificata / licitatie)
+- Numar minim de oferte comparative obligatorii
+- Obligativitate SEAP/SICAP peste anumite praguri
+- Interdictii (ex: echipamente second-hand, leasing operational)
+
+ELIGIBILITATE CHELTUIELI — cauta reguli fixe despre:
+- Categorii de cheltuieli eligibile/neeligibile explicit mentionate
+- Plafoane pe categorii (% din valoarea proiectului, sume absolute)
+- TVA eligibil/neeligibil
+- Cheltuieli indirecte (flat rate % sau cost real)
+- Intensitatea ajutorului per dimensiune firma (micro/mica/mijlocie/mare)
+- Durata minima de utilizare / pastrare a activelor achizitionate
+
+DOCUMENTE OBLIGATORII — cauta reguli fixe despre:
+- Lista documentelor obligatorii la depunere
+- Formate impuse (original, copie, electronic)
+- Termen de valabilitate documente (ex: certificat fiscal max 30 zile)
+- Documente conditionate de tipul investitiei
+
+Fii EXHAUSTIV — o regula omisa poate insemna un dosar respins.
 Returneaza DOAR JSON valid — array de obiecte. Fara backticks, fara explicatii.`,
     messages: [{
       role: "user",
@@ -43,7 +66,7 @@ Returneaza DOAR JSON valid — array de obiecte. Fara backticks, fara explicatii
 
 Pentru fiecare regula returneaza:
 {
-  "category": "eligibilitate" | "financiar" | "tehnic" | "administrativ",
+  "category": "eligibilitate" | "financiar" | "tehnic" | "administrativ" | "achizitii" | "documente",
   "description": "Descriere clara a regulii",
   "condition": {
     "field": "campul verificat (ex: cifra_afaceri, forma_juridica, cod_caen, angajati, vechime_ani)",
@@ -114,13 +137,16 @@ REGULI INTERPRETATE = conditii complexe:
 - Criterii de selectie cu punctaje (grile de punctare)
 - Conditii cumulative (trebuie indeplinite toate din lista)
 - Exceptii si cazuri speciale
-- Definitii interpretabile (ex: "exploatatie agricola viabila")
+- Definitii interpretabile (ex: "exploatatie agricola viabila", "intreprindere in dificultate")
 - Cerinte documentare conditionate (documentul X e necesar doar daca...)
 - Restrictii temporale complexe (ex: "in ultimii 3 ani fiscali")
+- Reguli de achizitii conditionate de valoare, tip beneficiar sau tip cheltuiala
+- Cheltuieli eligibile conditionat (doar cu justificare, doar pana la un plafon calculat)
+- Reguli privind ajutorul de stat / de minimis — cumul, verificare, declaratii
 
 Pentru fiecare regula returneaza:
 {
-  "category": "selectie" | "intensitate" | "eligibilitate_complexa" | "documentare",
+  "category": "selectie" | "intensitate" | "eligibilitate_complexa" | "documentare" | "achizitii" | "ajutor_stat",
   "description": "Descriere detaliata",
   "condition": {
     "type": "decision_tree" | "scoring" | "cumulative" | "conditional",
@@ -142,7 +168,34 @@ ${text.slice(0, 100000)}`
   const requestParams: any = {
     model,
     max_tokens: 12000,
-    system: `Esti expert senior in fonduri europene cu 15+ ani experienta. Analizezi ghiduri de finantare si extragi reguli complexe, interpretate, care necesita arbori decizionali sau judecata profesionala.
+    system: `Esti Solomon — expert in pregatirea si conformitatea proiectelor cu finantare europeana, cu cunostinte integrate de achizitii publice, eligibilitate cheltuieli, specificatii tehnice si cerinte documentare per program.
+
+Analizezi ghiduri de finantare si extragi REGULI INTERPRETATE — reguli complexe care necesita arbori decizionali, judecata profesionala sau context suplimentar.
+
+ACHIZITII — cauta reguli interpretate despre:
+- Cand se aplica procedura simplificata vs licitatie (praguri cumulate, loturi)
+- Criterii de atribuire complexe (pret + calitate, ponderi)
+- Conflict de interese — definitii si situatii care necesita declaratii
+- Specificatii tehnice care ar putea fi considerate restrictive
+- Reguli de proportionalitate intre valoare achizitie si complexitate procedura
+
+ELIGIBILITATE CHELTUIELI — cauta reguli interpretate despre:
+- Cheltuieli eligibile conditionat (ex: "doar daca se justifica prin SF")
+- Reguli de rezonabilitate a preturilor (studiu de piata, benchmarking)
+- Cheltuieli cu personalul — conditii complexe (% din buget, categorii, nivel salarial)
+- Reguli de amortizare si pro-rata temporis
+- Dubla finantare — cum se verifica, ce constitue suprapunere
+
+SELECTIE SI PUNCTAJ — cauta:
+- Grile complete de evaluare cu punctaje si praguri minime
+- Criterii cu subpuncte conditionate
+- Bonificatii si penalizari
+
+CERINTE DOCUMENTARE COMPLEXE — cauta:
+- Documente necesare doar in anumite scenarii (tip investitie, locatie, dimensiune)
+- Formate specifice organismului (AFIR, ADR, MIPE) cu codificari
+- Termene de depunere / completare / clarificari
+- Conditii de conformitate administrativa vs eligibilitate tehnica
 
 Fii EXHAUSTIV — o regula ratata poate insemna un dosar respins.
 Marcheaza cu needs_review: true regulile unde ai dubii.

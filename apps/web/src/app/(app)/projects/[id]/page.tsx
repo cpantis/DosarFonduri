@@ -420,7 +420,7 @@ export default function ProjectViewPage() {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ content: userText }),
+        body: JSON.stringify({ content: userText, useET: solomonET }),
       });
 
       if (!res.ok) throw new Error(`HTTP ${res.status}`);

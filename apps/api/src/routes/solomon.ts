@@ -62,7 +62,7 @@ solomonRoutes.post("/conversations/:convId/messages", async (c) => {
   });
   if (!conv) return c.json({ error: "Conversation not found" }, 404);
 
-  const { content } = await c.req.json();
+  const { content, useET } = await c.req.json();
 
   const stream = await processSolomonMessage({
     conversationId: convId,
@@ -70,6 +70,7 @@ solomonRoutes.post("/conversations/:convId/messages", async (c) => {
     organizationId: auth.organizationId!,
     userId: auth.userId,
     content,
+    useETOverride: typeof useET === "boolean" ? useET : undefined,
   });
 
   return new Response(stream, {

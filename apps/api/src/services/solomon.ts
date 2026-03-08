@@ -1033,8 +1033,9 @@ export async function processSolomonMessage(params: {
   userId: string;
   content: string;
   attachments?: Array<{ fileId: string; fileName: string; mimeType: string; extractedText?: string }>;
+  useETOverride?: boolean;
 }): Promise<ReadableStream> {
-  const { conversationId, projectId, organizationId, userId, content, attachments } = params;
+  const { conversationId, projectId, organizationId, userId, content, attachments, useETOverride } = params;
 
   // Get model config
   const config = await db.query.orgConfig.findFirst({
@@ -1046,7 +1047,8 @@ export async function processSolomonMessage(params: {
     where: eq(solomonConversations.id, conversationId),
   });
   const model = conv?.model || config?.solomonModel || "claude-opus-4-6";
-  const useET = config?.solomonET ?? true;
+  // Per-message ET override from frontend toggle, fallback to org config
+  const useET = useETOverride !== undefined ? useETOverride : (config?.solomonET ?? true);
 
   // Build system prompt
   const systemPrompt = await buildSystemPrompt(projectId, organizationId);

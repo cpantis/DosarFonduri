@@ -498,20 +498,20 @@ export default function ProjectViewPage() {
           try {
             const evt = JSON.parse(jsonStr);
             if (evt.type === "text") {
-              assistantText += evt.content;
+              assistantText += evt.text;
               setSolomonMessages(prev => {
                 const updated = [...prev];
                 updated[updated.length - 1] = { role: "assistant", text: assistantText, extractions: assistantExtractions };
                 return updated;
               });
-            } else if (evt.type === "extraction") {
-              assistantExtractions = evt.extractions || [];
+            } else if (evt.type === "elements_extracted") {
+              assistantExtractions = evt.elements || [];
               setSolomonMessages(prev => {
                 const updated = [...prev];
                 updated[updated.length - 1] = { role: "assistant", text: assistantText, extractions: assistantExtractions };
                 return updated;
               });
-              for (const ext of (evt.extractions || [])) {
+              for (const ext of (evt.elements || [])) {
                 setSolomonElements(prev => {
                   const exists = prev.some(e => e.key === ext.key);
                   if (exists) return prev.map(e => e.key === ext.key ? { ...e, value: ext.value, status: "propus" as const } : e);
@@ -669,7 +669,7 @@ export default function ProjectViewPage() {
           try {
             const evt = JSON.parse(jsonStr);
             if (evt.type === "text") {
-              refinedText += evt.content;
+              refinedText += evt.text;
               setSolomonMessages(prev => {
                 const updated = [...prev];
                 updated[updated.length - 1] = { role: "assistant", text: refinedText, extractions: null };
@@ -718,10 +718,13 @@ export default function ProjectViewPage() {
 
       // Step 2: Generate via SSE
       setNeemiaGenStatus("Se generează documentul...");
-      const res = await fetch(`/api/neemia/projects/${projectId}/generate`, {
+      const neeToken = typeof window !== "undefined" ? localStorage.getItem("df-token") : null;
+      const res = await fetch(`${API_URL}/api/neemia/projects/${projectId}/generate`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          ...(neeToken ? { Authorization: `Bearer ${neeToken}` } : {}),
+        },
         body: JSON.stringify({ templateDocumentId }),
       });
 
@@ -768,10 +771,13 @@ export default function ProjectViewPage() {
     setNeemiaBulkGenerating(true);
     setNeemiaGenStatus("Se pregătește generarea dosarului complet...");
     try {
-      const res = await fetch(`/api/neemia/projects/${projectId}/generate-all`, {
+      const bulkToken = typeof window !== "undefined" ? localStorage.getItem("df-token") : null;
+      const res = await fetch(`${API_URL}/api/neemia/projects/${projectId}/generate-all`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          ...(bulkToken ? { Authorization: `Bearer ${bulkToken}` } : {}),
+        },
       });
 
       const reader = res.body?.getReader();

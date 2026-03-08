@@ -80,6 +80,27 @@ documentRoutes.delete("/folders/:id", async (c) => {
   const auth = c.get("auth") as AuthContext;
   const id = c.req.param("id");
 
+  // Delete R2 files for all documents in this folder (and sub-folders recursively)
+  async function deleteFilesInFolder(folderId: string) {
+    const docs = await db.query.documents.findMany({
+      where: and(eq(documents.folderId, folderId), eq(documents.organizationId, auth.organizationId!)),
+    });
+    for (const doc of docs) {
+      await deleteFile(doc.fileId).catch(() => {});
+    }
+
+    // Recurse into child folders
+    const children = await db.query.documentFolders.findMany({
+      where: and(eq(documentFolders.parentId, folderId), eq(documentFolders.organizationId, auth.organizationId!)),
+    });
+    for (const child of children) {
+      await deleteFilesInFolder(child.id);
+    }
+  }
+
+  await deleteFilesInFolder(id);
+
+  // Delete folder (documents cascade via onDelete)
   await db.delete(documentFolders).where(
     and(eq(documentFolders.id, id), eq(documentFolders.organizationId, auth.organizationId!))
   );

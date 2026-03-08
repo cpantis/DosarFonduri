@@ -9,6 +9,7 @@ import {
 import { eq, and, count, asc, desc, sql } from "drizzle-orm";
 import { AuthContext } from "../middleware/auth";
 import { checkEligibility } from "../services/eligibility";
+import { deleteFile } from "../services/storage";
 
 export const projectRoutes = new Hono();
 
@@ -541,7 +542,12 @@ projectRoutes.get("/:id/checklist", async (c) => {
 });
 
 projectRoutes.post("/:id/checklist", async (c) => {
+  const auth = c.get("auth") as AuthContext;
   const id = c.req.param("id");
+
+  const lockErr = await requireLock(id, auth.userId);
+  if (lockErr) return c.json({ error: lockErr }, 423);
+
   const body = await c.req.json();
 
   const [item] = await db.insert(projectChecklist).values({
@@ -577,7 +583,13 @@ projectRoutes.put("/:id/checklist/:itemId", async (c) => {
 });
 
 projectRoutes.delete("/:id/checklist/:itemId", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const id = c.req.param("id");
   const { itemId } = c.req.param();
+
+  const lockErr = await requireLock(id, auth.userId);
+  if (lockErr) return c.json({ error: lockErr }, 423);
+
   await db.delete(projectChecklist).where(eq(projectChecklist.id, itemId));
   return c.json({ ok: true });
 });
@@ -701,6 +713,17 @@ projectRoutes.delete("/:id", async (c) => {
     return c.json({ error: "Proiectele depuse sau aprobate nu pot fi șterse" }, 400);
   }
 
+  // Delete R2 files for generated documents (Neemia output)
+  const generatedDocs = await db.query.projectDocuments.findMany({
+    where: eq(projectDocuments.projectId, id),
+  });
+  for (const doc of generatedDocs) {
+    if (doc.generatedFileId) {
+      await deleteFile(doc.generatedFileId).catch(() => {});
+    }
+  }
+
+  // Cascade deletes handle elements, eligibility, checklist, conversations, messages, projectDocuments
   await db.delete(projects).where(eq(projects.id, id));
   return c.json({ ok: true });
 });

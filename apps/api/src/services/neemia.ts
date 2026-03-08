@@ -378,8 +378,15 @@ export async function validateBeforeGenerate(
     warnings.push(`${unconfirmedSolomon.length} câmpuri completate de Solomon dar neconfirmate de consultant`);
   }
 
+  const unconfirmedCalculated = projectEls.filter(pe =>
+    pe.value && pe.value.trim() !== "" && !pe.confirmed && pe.source === "calculated"
+  );
+  if (unconfirmedCalculated.length > 0) {
+    warnings.push(`${unconfirmedCalculated.length} câmpuri calculate automat neconfirmate de consultant (cofinanțare, intensitate, TVA, etc.)`);
+  }
+
   const unconfirmedOther = projectEls.filter(pe =>
-    pe.value && pe.value.trim() !== "" && !pe.confirmed && pe.source !== "solomon"
+    pe.value && pe.value.trim() !== "" && !pe.confirmed && pe.source !== "solomon" && pe.source !== "calculated"
   );
   if (unconfirmedOther.length > 0) {
     warnings.push(`${unconfirmedOther.length} câmpuri completate dar neconfirmate`);
@@ -566,6 +573,7 @@ export async function computeCalculatedFields(
       });
 
       // Auto-update in project if key exists and field is empty or source is "calculated"
+      // IMPORTANT: calculated fields are saved as unconfirmed — consultant must review & confirm
       const tmplEl = tmplEls.find(t => t.key === calc.targetKey);
       if (tmplEl) {
         const projEl = projectEls.find(pe => pe.templateElementId === tmplEl.id);
@@ -573,6 +581,8 @@ export async function computeCalculatedFields(
           await db.update(projectElements).set({
             value: result,
             source: "calculated",
+            confirmed: false,
+            confirmedBy: null,
             updatedAt: new Date(),
           }).where(eq(projectElements.id, projEl.id));
         }

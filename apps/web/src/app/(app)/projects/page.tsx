@@ -499,7 +499,7 @@ export default function ProjectsPage() {
               </div>
 
               <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 16, lineHeight: 1.5 }}>
-                La creare, proiectul va prelua automat ghidurile, template-urile și regulile din sesiunea selectată. Solomon va fi disponibil pentru colectare date.
+                La creare, proiectul va prelua automat ghidurile, template-urile și regulile din sesiunea selectată. Solomon va fi disponibil pentru pregătirea și verificarea conformității dosarului.
               </div>
 
               <div className="btn-row">

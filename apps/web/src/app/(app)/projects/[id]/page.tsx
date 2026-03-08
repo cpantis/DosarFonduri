@@ -1734,7 +1734,7 @@ export default function ProjectViewPage() {
                     <div className="solomon-avatar">S</div>
                     <div className="solomon-name-block">
                       <div className="sn-name">Solomon</div>
-                      <div className="sn-status"><span className="sn-status-dot" /> Activ &middot; Agent colectare date</div>
+                      <div className="sn-status"><span className="sn-status-dot" /> Activ &middot; Expert fonduri europene</div>
                     </div>
                     <div className="model-selector">
                       <button className={`model-btn ${solomonModel === "sonnet" ? "active" : ""}`} onClick={() => handleSolomonModelChange("sonnet")}>Sonnet</button>

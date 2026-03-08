@@ -225,6 +225,10 @@ export default function ProjectViewPage() {
   const [neemiaActiveTemplate, setNeemiaActiveTemplate] = useState(0);
   const [neemiaActivePage, setNeemiaActivePage] = useState(0);
   const [neemiaAnimKey, setNeemiaAnimKey] = useState(0);
+  const [neemiaGenerating, setNeemiaGenerating] = useState(false);
+  const [neemiaGenStatus, setNeemiaGenStatus] = useState<string | null>(null);
+  const [neemiaValidation, setNeemiaValidation] = useState<{ warnings: string[]; stats?: any } | null>(null);
+  const [neemiaBulkGenerating, setNeemiaBulkGenerating] = useState(false);
 
   // ─── LOCK STATE ───
   const [lockOwned, setLockOwned] = useState(false);
@@ -456,11 +460,16 @@ export default function ProjectViewPage() {
                 return updated;
               });
               for (const ext of (evt.extractions || [])) {
-                setSolomonElements(prev => [
-                  { key: ext.key, label: ext.label, value: ext.value, source: "Chat Solomon", status: "propus" },
-                  ...prev,
-                ]);
+                setSolomonElements(prev => {
+                  const exists = prev.some(e => e.key === ext.key);
+                  if (exists) return prev.map(e => e.key === ext.key ? { ...e, value: ext.value, status: "propus" as const } : e);
+                  return [{ key: ext.key, label: ext.label, value: ext.value, source: "Chat Solomon", status: "propus" as const }, ...prev];
+                });
               }
+              // Refresh elements from DB — Solomon backend already saved these values
+              apiGet<any>(`/api/projects/${projectId}`).then(proj => {
+                setElements(mapElements(proj.elements || []));
+              }).catch(() => {});
             }
           } catch {}
         }
@@ -505,6 +514,8 @@ export default function ProjectViewPage() {
         } catch (err) {
           console.error("Failed to persist Solomon extraction:", err);
         }
+      } else {
+        console.warn(`Solomon extraction key "${ext.key}" not found in template elements — value not saved to project`);
       }
     }
   };
@@ -624,6 +635,118 @@ export default function ProjectViewPage() {
 
   const solomonConfirmedCount = solomonElements.filter(e => e.status === "confirmat").length;
 
+  // ─── NEEMIA: Generate single template ───
+  const handleNeemiaGenerate = async (templateDocumentId: string) => {
+    if (readOnly || neemiaGenerating) return;
+    setNeemiaGenerating(true);
+    setNeemiaGenStatus("Se validează...");
+    setNeemiaValidation(null);
+    try {
+      // Step 1: Validate
+      const validation = await apiPost<any>(`/api/neemia/projects/${projectId}/validate`, { templateDocumentId });
+      setNeemiaValidation({ warnings: validation.warnings || [], stats: validation.stats });
+
+      if (!validation.canGenerate) {
+        setNeemiaGenStatus("Generarea nu este posibilă — vezi erorile.");
+        setNeemiaGenerating(false);
+        return;
+      }
+
+      // Step 2: Generate via SSE
+      setNeemiaGenStatus("Se generează documentul...");
+      const res = await fetch(`/api/neemia/projects/${projectId}/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ templateDocumentId }),
+      });
+
+      const reader = res.body?.getReader();
+      const decoder = new TextDecoder();
+      if (!reader) throw new Error("No stream");
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value);
+        for (const line of chunk.split("\n")) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const evt = JSON.parse(line.slice(6));
+            if (evt.type === "status") setNeemiaGenStatus(evt.message);
+            else if (evt.type === "progress") setNeemiaGenStatus(`Elemente: ${evt.filled} completate, ${evt.missing} lipsă`);
+            else if (evt.type === "warning") setNeemiaGenStatus(`⚠ ${evt.message}`);
+            else if (evt.type === "complete") {
+              setNeemiaGenStatus(`✓ Document generat (v${evt.version || "?"}) — ${evt.filledCount} câmpuri completate`);
+              // Refresh Neemia documents list
+              const docs = await apiGet<any[]>(`/api/neemia/projects/${projectId}/documents`).catch(() => []);
+              setNeemiaTemplates((docs || []).map((doc: any) => ({
+                id: doc.id, name: doc.templateName || "Document",
+                type: (doc.templateFileType || "DOCX").toUpperCase(),
+                pages: [], totalFields: doc.filledCount || 0, filledFields: doc.filledCount || 0,
+                templateDocumentId: doc.templateDocumentId, status: doc.status, downloadUrl: doc.downloadUrl || null,
+              })));
+            }
+            else if (evt.type === "error") setNeemiaGenStatus(`Eroare: ${evt.message}`);
+          } catch {}
+        }
+      }
+    } catch (err) {
+      setNeemiaGenStatus(`Eroare: ${(err as Error).message}`);
+    } finally {
+      setNeemiaGenerating(false);
+    }
+  };
+
+  // ─── NEEMIA: Bulk generate all templates ───
+  const handleNeemiaBulkGenerate = async () => {
+    if (readOnly || neemiaBulkGenerating) return;
+    setNeemiaBulkGenerating(true);
+    setNeemiaGenStatus("Se pregătește generarea dosarului complet...");
+    try {
+      const res = await fetch(`/api/neemia/projects/${projectId}/generate-all`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      });
+
+      const reader = res.body?.getReader();
+      const decoder = new TextDecoder();
+      if (!reader) throw new Error("No stream");
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value);
+        for (const line of chunk.split("\n")) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const evt = JSON.parse(line.slice(6));
+            if (evt.type === "status") setNeemiaGenStatus(evt.message);
+            else if (evt.type === "doc_progress") setNeemiaGenStatus(`Generare ${evt.current}/${evt.total}: ${evt.templateName}...`);
+            else if (evt.type === "consistency_warning") setNeemiaGenStatus(`⚠ ${evt.message}`);
+            else if (evt.type === "calculated_fields") setNeemiaGenStatus(`Câmpuri calculate: ${evt.fields.length}`);
+            else if (evt.type === "bulk_complete") {
+              setNeemiaGenStatus(`✓ Dosar complet: ${evt.totalGenerated} documente generate, ${evt.totalFailed} eșuate`);
+              const docs = await apiGet<any[]>(`/api/neemia/projects/${projectId}/documents`).catch(() => []);
+              setNeemiaTemplates((docs || []).map((doc: any) => ({
+                id: doc.id, name: doc.templateName || "Document",
+                type: (doc.templateFileType || "DOCX").toUpperCase(),
+                pages: [], totalFields: doc.filledCount || 0, filledFields: doc.filledCount || 0,
+                templateDocumentId: doc.templateDocumentId, status: doc.status, downloadUrl: doc.downloadUrl || null,
+              })));
+            }
+            else if (evt.type === "error") setNeemiaGenStatus(`Eroare: ${evt.message}`);
+          } catch {}
+        }
+      }
+    } catch (err) {
+      setNeemiaGenStatus(`Eroare: ${(err as Error).message}`);
+    } finally {
+      setNeemiaBulkGenerating(false);
+    }
+  };
+
   const handleRecheckEligibility = async () => {
     if (readOnly) return;
     setRecheckLoading(true);
@@ -652,8 +775,12 @@ export default function ProjectViewPage() {
 
   const handleConfirmElementApi = async (elId: string) => {
     if (readOnly) return;
+    const el = elements.find(e => e.id === elId);
     try {
-      await apiPut(`/api/projects/${projectId}/elements/${elId}`, { confirmed: true });
+      await apiPut(`/api/projects/${projectId}/elements/${elId}`, {
+        value: el?.value || undefined,
+        confirmed: true,
+      });
       setElements(prev => prev.map(e => e.id === elId ? { ...e, status: "confirmat" as const, confidence: 100 } : e));
     } catch (err) {
       console.error("Confirm element failed:", err);
@@ -667,9 +794,9 @@ export default function ProjectViewPage() {
     if (toConfirm.length === 0) return;
     setBulkConfirming(true);
     try {
-      await Promise.all(toConfirm.map(e =>
-        apiPut(`/api/projects/${projectId}/elements/${e.id}`, { confirmed: true })
-      ));
+      await apiPut(`/api/projects/${projectId}/elements-bulk/confirm`, {
+        elementIds: toConfirm.map(e => e.id),
+      });
       setElements(prev => prev.map(e =>
         toConfirm.some(tc => tc.id === e.id)
           ? { ...e, status: "confirmat" as const, confidence: 100 }
@@ -1075,6 +1202,19 @@ export default function ProjectViewPage() {
         .source-dot{width:6px;height:6px;border-radius:50%;display:inline-block}
         .source-dot.solomon{background:var(--accent-blue)}
         .source-dot.onrc{background:var(--accent-green)}
+        .neemia-bulk-btn{width:100%;padding:8px 16px;border-radius:var(--r-sm);border:1px solid var(--accent-green);background:rgba(52,211,153,.08);color:var(--accent-green);font-size:13px;font-weight:700;cursor:pointer;font-family:var(--font-sans);transition:all .15s;margin-bottom:10px}
+        .neemia-bulk-btn:hover:not(:disabled){background:rgba(52,211,153,.18)}
+        .neemia-bulk-btn:disabled{opacity:.5;cursor:not-allowed}
+        .neemia-gen-status{font-size:12px;color:var(--accent-blue);background:rgba(77,139,255,.06);border:1px solid rgba(77,139,255,.15);border-radius:var(--r-sm);padding:8px 12px;margin-bottom:10px;line-height:1.5}
+        .neemia-warnings{font-size:11px;color:var(--accent-yellow);background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.15);border-radius:var(--r-sm);padding:8px 12px;margin-bottom:10px}
+        .nw-item{margin-bottom:4px;line-height:1.4}
+        .nw-item:last-child{margin-bottom:0}
+        .tc-action-btn{padding:3px 10px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--font-sans);transition:all .15s;border:1px solid var(--border);background:transparent}
+        .tc-action-btn:hover:not(:disabled){border-color:var(--accent-blue)}
+        .tc-action-btn:disabled{opacity:.4;cursor:not-allowed}
+        .tc-download{color:var(--accent-blue);border-color:var(--accent-blue)}
+        .tc-generate{color:var(--accent-green);border-color:var(--accent-green)}
+        .tc-generate:hover:not(:disabled){background:rgba(52,211,153,.08);border-color:var(--accent-green)}
         .neemia-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--text-muted);gap:12px}
         .neemia-empty .ne-icon{font-size:40px;opacity:.5}
         .neemia-empty .ne-label{font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:1px}
@@ -1747,7 +1887,31 @@ export default function ProjectViewPage() {
               <div className="neemia-layout">
                 {/* Left: Templates list */}
                 <div className="neemia-templates">
-                  <h3>Template-uri Proiect</h3>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                    <h3 style={{ margin: 0 }}>Template-uri Proiect</h3>
+                  </div>
+                  <button
+                    className="neemia-bulk-btn"
+                    onClick={handleNeemiaBulkGenerate}
+                    disabled={neemiaBulkGenerating || readOnly}
+                  >
+                    {neemiaBulkGenerating ? "Se generează..." : "Generează tot dosarul"}
+                  </button>
+
+                  {neemiaGenStatus && (
+                    <div className="neemia-gen-status">
+                      {neemiaGenStatus}
+                    </div>
+                  )}
+
+                  {neemiaValidation && neemiaValidation.warnings.length > 0 && (
+                    <div className="neemia-warnings">
+                      {neemiaValidation.warnings.map((w, i) => (
+                        <div key={i} className="nw-item">⚠ {w}</div>
+                      ))}
+                    </div>
+                  )}
+
                   {neemiaTemplates.map((tmpl, i) => {
                     const p = neemiaProgressPct(tmpl);
                     return (
@@ -1769,6 +1933,22 @@ export default function ProjectViewPage() {
                             {tmpl.filledFields}/{tmpl.totalFields} câmpuri completate
                           </div>
                         )}
+                        <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                          {tmpl.status === "generated" && tmpl.downloadUrl && (
+                            <button className="tc-action-btn tc-download" onClick={(e) => { e.stopPropagation(); window.open(tmpl.downloadUrl!, "_blank"); }}>
+                              &#8595; Descarcă
+                            </button>
+                          )}
+                          {tmpl.templateDocumentId && (
+                            <button
+                              className="tc-action-btn tc-generate"
+                              onClick={(e) => { e.stopPropagation(); handleNeemiaGenerate(tmpl.templateDocumentId); }}
+                              disabled={neemiaGenerating || readOnly}
+                            >
+                              {tmpl.status === "generated" ? "Regenerează" : "Generează"}
+                            </button>
+                          )}
+                        </div>
                       </div>
                     );
                   })}

@@ -354,18 +354,46 @@ projectRoutes.put("/:id/elements/:eid", async (c) => {
 
   const body = await c.req.json();
 
-  const [updated] = await db.update(projectElements).set({
-    value: body.value,
-    source: body.source || "manual",
-    confirmed: body.confirmed ?? false,
-    confirmedBy: body.confirmed ? auth.userId : null,
-    updatedAt: new Date(),
-  }).where(eq(projectElements.id, eid)).returning();
+  // Only update fields that are explicitly provided — avoid overwriting with undefined
+  const updateData: Record<string, any> = { updatedAt: new Date() };
+  if (body.value !== undefined) updateData.value = body.value;
+  if (body.source !== undefined) updateData.source = body.source;
+  if (body.confirmed !== undefined) {
+    updateData.confirmed = body.confirmed;
+    updateData.confirmedBy = body.confirmed ? auth.userId : null;
+  }
+
+  const [updated] = await db.update(projectElements).set(updateData)
+    .where(eq(projectElements.id, eid)).returning();
 
   // Re-check eligibility if relevant value changed
   await checkEligibility(id, auth.organizationId!);
 
   return c.json(updated);
+});
+
+// ─── BULK CONFIRM ELEMENTS ───
+projectRoutes.put("/:id/elements-bulk/confirm", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const { id } = c.req.param();
+
+  const lockErr = await requireLock(id, auth.userId);
+  if (lockErr) return c.json({ error: lockErr }, 423);
+
+  const { elementIds } = await c.req.json<{ elementIds: string[] }>();
+  if (!elementIds || !Array.isArray(elementIds) || elementIds.length === 0) {
+    return c.json({ error: "elementIds required" }, 400);
+  }
+
+  const results = await Promise.all(elementIds.map(eid =>
+    db.update(projectElements).set({
+      confirmed: true,
+      confirmedBy: auth.userId,
+      updatedAt: new Date(),
+    }).where(eq(projectElements.id, eid)).returning()
+  ));
+
+  return c.json({ confirmed: results.flat().length });
 });
 
 // ─── ELIGIBILITY ───

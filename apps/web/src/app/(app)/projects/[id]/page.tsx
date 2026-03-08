@@ -157,6 +157,7 @@ function mapElements(elements: any[]): ElementItem[] {
       manual: "Completare manuală",
       solomon: "Chat Solomon",
       document: "Document uploadat",
+      calculated: "Calculat automat",
     };
 
     return {
@@ -477,7 +478,7 @@ export default function ProjectViewPage() {
     }
   };
 
-  const handleConfirmExtraction = (msgIdx: number, extIdx: number) => {
+  const handleConfirmExtraction = async (msgIdx: number, extIdx: number) => {
     const k = `${msgIdx}-${extIdx}`;
     setExtractionStates(prev => ({ ...prev, [k]: "confirmed" }));
     const msg = solomonMessages[msgIdx];
@@ -487,6 +488,24 @@ export default function ProjectViewPage() {
         { key: ext.key, label: ext.label, value: ext.value, source: "Chat Solomon", status: "confirmat" },
         ...prev.filter(e => e.key !== ext.key),
       ]);
+
+      // Persist to API — find matching element by key and update value + confirm
+      const matchingEl = elements.find(e => e.key === ext.key);
+      if (matchingEl) {
+        try {
+          await apiPut(`/api/projects/${projectId}/elements/${matchingEl.id}`, {
+            value: ext.value,
+            source: "solomon",
+            confirmed: true,
+          });
+          setElements(prev => prev.map(e => e.id === matchingEl.id
+            ? { ...e, value: ext.value, source: "solomon", sourceLabel: "Chat Solomon", status: "confirmat" as const, confidence: 100 }
+            : e
+          ));
+        } catch (err) {
+          console.error("Failed to persist Solomon extraction:", err);
+        }
+      }
     }
   };
 
@@ -494,9 +513,28 @@ export default function ProjectViewPage() {
     setExtractionStates(prev => ({ ...prev, [`${msgIdx}-${extIdx}`]: "rejected" }));
   };
 
-  const handleConfirmElement = (idx: number) => {
+  const handleConfirmElement = async (idx: number) => {
     if (readOnly) return;
-    setSolomonElements(prev => prev.map((el, i) => i === idx ? { ...el, status: "confirmat" } : el));
+    const el = solomonElements[idx];
+    setSolomonElements(prev => prev.map((e, i) => i === idx ? { ...e, status: "confirmat" } : e));
+
+    // Persist to API
+    const matchingEl = elements.find(e => e.key === el.key);
+    if (matchingEl) {
+      try {
+        await apiPut(`/api/projects/${projectId}/elements/${matchingEl.id}`, {
+          value: el.value,
+          source: "solomon",
+          confirmed: true,
+        });
+        setElements(prev => prev.map(e => e.id === matchingEl.id
+          ? { ...e, value: el.value, source: "solomon", sourceLabel: "Chat Solomon", status: "confirmat" as const, confidence: 100 }
+          : e
+        ));
+      } catch (err) {
+        console.error("Failed to persist Solomon element confirmation:", err);
+      }
+    }
   };
 
   const handleRejectElement = (idx: number) => {
@@ -844,6 +882,7 @@ export default function ProjectViewPage() {
         .source-dot.solomon_chat{background:var(--accent-blue)}
         .source-dot.solomon{background:var(--accent-blue)}
         .source-dot.manual{background:var(--accent-purple)}
+        .source-dot.calculated{background:var(--accent-purple);box-shadow:0 0 4px rgba(167,139,250,.4)}
         .source-dot.document{background:var(--accent-orange)}
 
         .elem-detail{width:350px;min-width:350px;border-left:1px solid var(--border);background:var(--bg-surface);overflow-y:auto;padding:20px}
@@ -1322,6 +1361,9 @@ export default function ProjectViewPage() {
                           <span className={`ec-status ${el.status}`}>
                             {el.status === "confirmat" ? "✓ Confirmat" : el.status === "propus_ai" ? "AI Propus" : "Gol"}
                           </span>
+                          {el.source === "calculated" && el.status !== "confirmat" && (
+                            <span style={{ fontSize: 9, fontWeight: 700, color: "var(--accent-purple)", background: "rgba(167,139,250,.12)", padding: "1px 6px", borderRadius: 8 }}>CALC</span>
+                          )}
                         </div>
                         <div className="ec-label">{el.label}</div>
                         <div className={`ec-value ${!el.value ? "missing" : ""}`}>
@@ -1376,6 +1418,20 @@ export default function ProjectViewPage() {
                           <div className="ed-label">Folosit în template-uri</div>
                           <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
                             {el.templates.join(", ")}
+                          </div>
+                        </div>
+                      )}
+                      {el.source === "calculated" && (
+                        <div className="ed-field">
+                          <div className="ed-label">Formula</div>
+                          <div style={{ fontSize: 12, fontFamily: "var(--font-mono)", color: "var(--accent-purple)", background: "rgba(167,139,250,.08)", padding: "6px 10px", borderRadius: "var(--r-sm)", border: "1px solid rgba(167,139,250,.2)" }}>
+                            {el.key === "cofinantare_proprie" && "valoare_totala - ajutor_nerambursabil"}
+                            {el.key === "intensitate_ajutor" && "(ajutor_nerambursabil / valoare_totala) × 100%"}
+                            {el.key === "tva_total" && "valoare_cu_tva - valoare_fara_tva"}
+                            {el.key === "durata_sustenabilitate_end" && "data_finalizare + 3 ani (IMM)"}
+                          </div>
+                          <div style={{ fontSize: 11, color: "var(--accent-yellow)", marginTop: 6, display: "flex", alignItems: "center", gap: 4 }}>
+                            ⚠ Verifică valoarea înainte de confirmare
                           </div>
                         </div>
                       )}

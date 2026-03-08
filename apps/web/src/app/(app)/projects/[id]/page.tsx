@@ -48,6 +48,12 @@ type GuideRule = {
   confidence: number;
   page: number;
   section: string;
+  category: string;
+  sourceText: string | null;
+  condition: any;
+  validated: boolean;
+  needsReview: boolean;
+  sourceDocument: { id: string; name: string; fileType: string } | null;
 };
 
 type ElementItem = {
@@ -135,9 +141,15 @@ function mapGuideRules(grouped: any[]): GuideRule[] {
         id: item.id,
         type: item.rule?.type || "fixed",
         text: item.rule?.description || "",
-        confidence: item.rule?.confidence ?? 0.5,
-        page: item.rule?.page ?? 0,
-        section: item.rule?.section || "",
+        confidence: parseFloat(item.rule?.confidence) || 0.5,
+        page: item.rule?.sourcePage ?? item.rule?.page ?? 0,
+        section: item.rule?.category || "",
+        category: item.rule?.category || "",
+        sourceText: item.rule?.sourceText || null,
+        condition: item.rule?.condition || null,
+        validated: item.rule?.validated ?? false,
+        needsReview: item.rule?.needsReview ?? (parseFloat(item.rule?.confidence) < 0.85),
+        sourceDocument: item.rule?.sourceDocument || group.document || null,
       });
     }
   }
@@ -205,6 +217,7 @@ export default function ProjectViewPage() {
   const [elemFilter, setElemFilter] = useState("all");
   const [elemSearch, setElemSearch] = useState("");
   const [ghidTab, setGhidTab] = useState<"reguli" | "ghid">("reguli");
+  const [ghidCategoryFilter, setGhidCategoryFilter] = useState<string>("all");
   const [collapsedCats, setCollapsedCats] = useState<Record<string, boolean>>({});
 
   const [solomonModel, setSolomonModel] = useState<"sonnet" | "opus">("opus");
@@ -979,21 +992,77 @@ export default function ProjectViewPage() {
         .ghid-sub-tab:hover{color:var(--text-primary)}
         .ghid-sub-tab.active{color:var(--accent-blue);border-bottom-color:var(--accent-blue)}
         .ghid-split{display:flex;flex:1;overflow:hidden}
-        .rules-panel{width:400px;min-width:400px;overflow-y:auto;padding:16px;border-right:1px solid var(--border)}
+        .rules-panel{width:400px;min-width:400px;display:flex;flex-direction:column;border-right:1px solid var(--border)}
+        .rule-category-filters{display:flex;flex-wrap:wrap;gap:6px;padding:12px 16px;border-bottom:1px solid var(--border);background:var(--bg-surface)}
+        .rcf-chip{padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--bg-elevated);color:var(--text-secondary);font-family:var(--font-sans);transition:all .15s;display:inline-flex;align-items:center;gap:4px}
+        .rcf-chip:hover{border-color:var(--border-active);color:var(--text-primary)}
+        .rcf-chip.active{border-color:var(--accent-blue);background:rgba(77,139,255,.1);color:var(--accent-blue)}
+        .rcf-count{font-size:10px;font-family:var(--font-mono);opacity:.7}
+        .rules-scroll{flex:1;overflow-y:auto;padding:12px 16px}
         .rule-card{padding:12px 14px;border-radius:var(--r-sm);border:1px solid var(--border);margin-bottom:8px;cursor:pointer;transition:all .2s;background:var(--bg-surface)}
         .rule-card:hover,.rule-card.active{border-color:var(--accent-blue);background:rgba(77,139,255,.05)}
-        .rule-type-badge{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:3px 10px;border-radius:4px;display:inline-block;margin-bottom:8px}
+        .rule-card-top{display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap}
+        .rule-type-badge{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:3px 10px;border-radius:4px;display:inline-block}
         .rule-type-badge.fixed{color:var(--accent-green);background:rgba(52,211,153,.12);border:1px solid rgba(52,211,153,.25)}
         .rule-type-badge.interpreted{color:var(--accent-orange);background:rgba(251,146,60,.12);border:1px solid rgba(251,146,60,.25)}
+        .rule-cat-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+        .rule-cat-label{font-size:10px;color:var(--text-muted);font-weight:600}
+        .rule-review-flag{font-size:10px;color:var(--accent-yellow);font-weight:600;margin-left:auto}
+        .rule-validated-flag{font-size:12px;color:var(--accent-green);margin-left:auto}
         .rule-text{font-size:13px;line-height:1.5;color:var(--text-primary)}
-        .rule-meta{font-size:11px;color:var(--text-muted);margin-top:6px;font-family:var(--font-mono);display:flex;gap:12px}
+        .rule-meta{font-size:11px;color:var(--text-muted);margin-top:6px;font-family:var(--font-mono);display:flex;gap:12px;align-items:center}
+        .rule-doc-ref{font-size:10px;color:var(--text-muted);margin-left:auto;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
         .confidence-bar{width:48px;height:4px;background:var(--bg-deep);border-radius:2px;overflow:hidden;display:inline-block;vertical-align:middle;margin-left:4px}
         .confidence-fill{height:100%;border-radius:2px}
+
+        /* Rule detail panel */
+        .rule-detail-panel{flex:1;overflow-y:auto;background:var(--bg-deep);min-width:0}
+        .rd-content{padding:28px 32px}
+        .rd-header{margin-bottom:24px}
+        .rd-badges{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+        .rd-cat-pill{font-size:11px;font-weight:700;padding:3px 12px;border-radius:20px;text-transform:uppercase;letter-spacing:.5px}
+        .rd-validated{font-size:11px;color:var(--accent-green);font-weight:700;display:flex;align-items:center;gap:3px}
+        .rd-needs-review{font-size:11px;color:var(--accent-yellow);font-weight:700;display:flex;align-items:center;gap:3px}
+        .rd-confidence-row{display:flex;align-items:center;gap:10px}
+        .rd-conf-label{font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px}
+        .rd-conf-value{font-size:20px;font-weight:800;font-family:var(--font-mono)}
+        .rd-conf-bar{flex:1;height:6px;background:var(--bg-elevated);border-radius:3px;overflow:hidden;max-width:200px}
+        .rd-conf-fill{height:100%;border-radius:3px;transition:width .4s}
+        .rd-section{margin-bottom:20px}
+        .rd-section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text-muted);margin-bottom:10px;display:flex;align-items:center;gap:8px}
+        .rd-page-ref{font-size:10px;font-weight:600;color:var(--accent-blue);background:rgba(77,139,255,.1);padding:2px 8px;border-radius:10px;margin-left:auto}
+        .rd-description{font-size:14px;line-height:1.7;color:var(--text-primary);padding:14px 18px;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--r-md)}
+        .rd-source-text{background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--r-md);overflow:hidden}
+        .rd-source-quote{font-size:13px;line-height:1.8;color:var(--text-primary);padding:16px 20px;border-left:3px solid var(--accent-blue);font-style:italic;background:rgba(77,139,255,.03)}
+        .rd-condition{background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--r-md);padding:14px 18px}
+        .rd-cond-row{display:flex;align-items:center;gap:8px;font-family:var(--font-mono);font-size:13px}
+        .rd-cond-field{color:var(--accent-blue);font-weight:700}
+        .rd-cond-op{color:var(--accent-orange);font-weight:600;padding:2px 8px;background:rgba(251,146,60,.1);border-radius:4px;font-size:11px}
+        .rd-cond-val{color:var(--accent-green);font-weight:600}
+        .rd-logic-type{margin-bottom:10px}
+        .rd-logic-badge{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:4px 12px;border-radius:4px;background:rgba(167,139,250,.12);color:var(--accent-purple);border:1px solid rgba(167,139,250,.25)}
+        .rd-logic-desc{font-size:13px;line-height:1.7;color:var(--text-primary);margin-bottom:12px}
+        .rd-factors{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+        .rd-factors-label{font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px}
+        .rd-factor-chip{font-size:11px;padding:3px 10px;border-radius:12px;background:var(--bg-elevated);border:1px solid var(--border);color:var(--text-secondary);font-family:var(--font-mono)}
+        .rd-outcomes{display:flex;flex-direction:column;gap:6px}
+        .rd-outcome-row{display:flex;align-items:flex-start;gap:6px;font-size:12px;line-height:1.6;padding:6px 10px;background:var(--bg-elevated);border-radius:var(--r-sm)}
+        .rd-outcome-if{font-size:10px;font-weight:700;color:var(--accent-blue);padding:1px 6px;border-radius:3px;background:rgba(77,139,255,.1);flex-shrink:0;margin-top:1px}
+        .rd-outcome-cond{color:var(--text-primary);flex:1}
+        .rd-outcome-then{color:var(--text-muted);flex-shrink:0}
+        .rd-outcome-result{color:var(--accent-green);font-weight:600;flex:1}
+        .rd-doc-ref{display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--r-md)}
+        .rd-doc-icon{font-size:18px}
+        .rd-doc-name{font-size:13px;font-weight:600;color:var(--text-primary);flex:1}
+        .rd-doc-page{font-size:11px;font-family:var(--font-mono);color:var(--text-muted);padding:2px 8px;background:var(--bg-elevated);border-radius:4px}
+        .rd-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--text-muted);gap:12px;padding:40px}
+        .rd-empty-icon{font-size:48px;opacity:.4}
+        .rd-empty-title{font-size:16px;font-weight:700;color:var(--text-secondary)}
+        .rd-empty-desc{font-size:13px;text-align:center;max-width:280px;line-height:1.6}
+
         .pdf-viewer{flex:1;background:var(--bg-deep);display:flex;align-items:center;justify-content:center;position:relative}
         .pdf-page-mock{width:480px;background:#fff;border-radius:4px;box-shadow:0 4px 24px rgba(0,0,0,.4);padding:48px 40px;min-height:620px;color:#1a1a2e;position:relative}
         .pdf-page-mock h3{font-size:16px;font-weight:700;margin-bottom:16px;color:#1a1a2e}
-        .pdf-highlight{background:rgba(77,139,255,.2);border-left:3px solid var(--accent-blue);padding:8px 12px;margin:8px 0;border-radius:0 4px 4px 0;animation:highlightPulse 1.5s ease infinite}
-        @keyframes highlightPulse{0%,100%{background:rgba(77,139,255,.15)}50%{background:rgba(77,139,255,.3)}}
         .pdf-text-line{height:10px;background:#d4d8e0;border-radius:2px;margin:8px 0}
         .pdf-page-num{position:absolute;bottom:16px;right:24px;font-size:12px;color:#888;font-family:var(--font-mono)}
 
@@ -1438,7 +1507,22 @@ export default function ProjectViewPage() {
             )}
 
             {/* GHID FINANȚARE */}
-            {activeLeaf === "ghid" && (
+            {activeLeaf === "ghid" && (() => {
+              const categoryLabels: Record<string, string> = {
+                eligibilitate: "Eligibilitate", financiar: "Financiar", tehnic: "Tehnic", administrativ: "Administrativ",
+                achizitii: "Achiziții", documente: "Documente", selectie: "Selecție", intensitate: "Intensitate",
+                eligibilitate_complexa: "Elig. complexă", documentare: "Documentare", ajutor_stat: "Ajutor stat",
+              };
+              const categoryColors: Record<string, string> = {
+                eligibilitate: "#4d8bff", financiar: "#34d399", tehnic: "#a78bfa", administrativ: "#8892a8",
+                achizitii: "#fb923c", documente: "#fbbf24", selectie: "#f87171", intensitate: "#34d399",
+                eligibilitate_complexa: "#4d8bff", documentare: "#fbbf24", ajutor_stat: "#a78bfa",
+              };
+              const categories = [...new Set(guideRules.map(r => r.category))].filter(Boolean);
+              const filteredRules = ghidCategoryFilter === "all" ? guideRules : guideRules.filter(r => r.category === ghidCategoryFilter);
+              const sel = selectedRule ? guideRules.find(r => r.id === selectedRule) : null;
+
+              return (
               <div className="ghid-layout">
                 <div className="ghid-sub-tabs">
                   <button className={`ghid-sub-tab ${ghidTab === "reguli" ? "active" : ""}`} onClick={() => setGhidTab("reguli")}>Reguli ({guideRules.length})</button>
@@ -1448,44 +1532,161 @@ export default function ProjectViewPage() {
                   {ghidTab === "reguli" ? (
                     <>
                       <div className="rules-panel">
-                        {guideRules.map(r => (
-                          <div className={`rule-card ${selectedRule === r.id ? "active" : ""}`} key={r.id} onClick={() => setSelectedRule(r.id)}>
-                            <div className={`rule-type-badge ${r.type}`}>
-                              {r.type === "fixed" ? "FIXĂ" : "INTERPRETATĂ"}
-                              {r.type === "interpreted" && r.confidence < 0.85 && <span style={{ marginLeft: 6, color: "var(--accent-yellow)", fontSize: 10 }}>⚠️ Review</span>}
-                            </div>
-                            <div className="rule-text">{r.text}</div>
-                            <div className="rule-meta">
-                              <span>Pag. {r.page}</span>
-                              <span>§{r.section}</span>
-                              <span>
-                                {Math.round(r.confidence * 100)}%
-                                <span className="confidence-bar"><span className="confidence-fill" style={{ width: `${r.confidence * 100}%`, background: r.confidence > 0.9 ? "var(--accent-green)" : r.confidence > 0.8 ? "var(--accent-blue)" : "var(--accent-yellow)" }} /></span>
-                              </span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="pdf-viewer">
-                        <div className="pdf-page-mock">
-                          <h3>Secțiunea {selectedRule ? guideRules.find(r => r.id === selectedRule)?.section || "3.1" : "3.1"} — Eligibilitate</h3>
-                          <div className="pdf-text-line" style={{ width: "90%" }} />
-                          <div className="pdf-text-line" style={{ width: "80%" }} />
-                          <div className="pdf-text-line" style={{ width: "85%" }} />
-                          {selectedRule && (
-                            <div className="pdf-highlight">
-                              <span style={{ fontSize: 13, lineHeight: 1.6 }}>
-                                {guideRules.find(r => r.id === selectedRule)?.text}
-                              </span>
-                            </div>
-                          )}
-                          <div className="pdf-text-line" style={{ width: "75%" }} />
-                          <div className="pdf-text-line" style={{ width: "88%" }} />
-                          <div className="pdf-text-line" style={{ width: "60%" }} />
-                          <div className="pdf-text-line" style={{ width: "92%" }} />
-                          <div className="pdf-text-line" style={{ width: "70%" }} />
-                          <div className="pdf-page-num">Pag. {selectedRule ? guideRules.find(r => r.id === selectedRule)?.page || 8 : 8}</div>
+                        {/* Category filter chips */}
+                        <div className="rule-category-filters">
+                          <button className={`rcf-chip ${ghidCategoryFilter === "all" ? "active" : ""}`} onClick={() => setGhidCategoryFilter("all")}>
+                            Toate <span className="rcf-count">{guideRules.length}</span>
+                          </button>
+                          {categories.map(cat => (
+                            <button key={cat} className={`rcf-chip ${ghidCategoryFilter === cat ? "active" : ""}`} onClick={() => setGhidCategoryFilter(cat)}
+                              style={{ "--chip-color": categoryColors[cat] || "var(--text-muted)" } as React.CSSProperties}>
+                              {categoryLabels[cat] || cat} <span className="rcf-count">{guideRules.filter(r => r.category === cat).length}</span>
+                            </button>
+                          ))}
                         </div>
+
+                        <div className="rules-scroll">
+                          {filteredRules.map(r => (
+                            <div className={`rule-card ${selectedRule === r.id ? "active" : ""}`} key={r.id} onClick={() => setSelectedRule(r.id)}>
+                              <div className="rule-card-top">
+                                <div className={`rule-type-badge ${r.type}`}>
+                                  {r.type === "fixed" ? "FIXĂ" : "INTERPRETATĂ"}
+                                </div>
+                                <span className="rule-cat-dot" style={{ background: categoryColors[r.category] || "var(--text-muted)" }} />
+                                <span className="rule-cat-label">{categoryLabels[r.category] || r.category}</span>
+                                {r.needsReview && <span className="rule-review-flag">⚠ Review</span>}
+                                {r.validated && <span className="rule-validated-flag">✓</span>}
+                              </div>
+                              <div className="rule-text">{r.text}</div>
+                              <div className="rule-meta">
+                                <span>Pag. {r.page}</span>
+                                <span>
+                                  {Math.round(r.confidence * 100)}%
+                                  <span className="confidence-bar"><span className="confidence-fill" style={{ width: `${r.confidence * 100}%`, background: r.confidence > 0.9 ? "var(--accent-green)" : r.confidence > 0.8 ? "var(--accent-blue)" : "var(--accent-yellow)" }} /></span>
+                                </span>
+                                {r.sourceDocument && <span className="rule-doc-ref">{r.sourceDocument.name}</span>}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Rule detail panel */}
+                      <div className="rule-detail-panel">
+                        {sel ? (
+                          <div className="rd-content">
+                            {/* Header */}
+                            <div className="rd-header">
+                              <div className="rd-badges">
+                                <div className={`rule-type-badge ${sel.type}`}>{sel.type === "fixed" ? "REGULĂ FIXĂ" : "REGULĂ INTERPRETATĂ"}</div>
+                                <span className="rd-cat-pill" style={{ background: `${categoryColors[sel.category] || "#8892a8"}20`, color: categoryColors[sel.category] || "var(--text-muted)", border: `1px solid ${categoryColors[sel.category] || "#8892a8"}40` }}>
+                                  {categoryLabels[sel.category] || sel.category}
+                                </span>
+                                {sel.validated && <span className="rd-validated">✓ Validată</span>}
+                                {sel.needsReview && <span className="rd-needs-review">⚠ Necesită review</span>}
+                              </div>
+                              <div className="rd-confidence-row">
+                                <span className="rd-conf-label">Încredere</span>
+                                <span className="rd-conf-value" style={{ color: sel.confidence > 0.9 ? "var(--accent-green)" : sel.confidence > 0.8 ? "var(--accent-blue)" : "var(--accent-yellow)" }}>
+                                  {Math.round(sel.confidence * 100)}%
+                                </span>
+                                <div className="rd-conf-bar">
+                                  <div className="rd-conf-fill" style={{ width: `${sel.confidence * 100}%`, background: sel.confidence > 0.9 ? "var(--accent-green)" : sel.confidence > 0.8 ? "var(--accent-blue)" : "var(--accent-yellow)" }} />
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Description */}
+                            <div className="rd-section">
+                              <div className="rd-section-title">Descriere regulă</div>
+                              <div className="rd-description">{sel.text}</div>
+                            </div>
+
+                            {/* Source text from guide */}
+                            {sel.sourceText && (
+                              <div className="rd-section">
+                                <div className="rd-section-title">
+                                  Text original din ghid
+                                  <span className="rd-page-ref">Pag. {sel.page}</span>
+                                </div>
+                                <div className="rd-source-text">
+                                  <div className="rd-source-quote">{sel.sourceText}</div>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Condition / logic */}
+                            {sel.condition && (
+                              <div className="rd-section">
+                                <div className="rd-section-title">
+                                  {sel.type === "fixed" ? "Condiție verificare" : "Logică decizională"}
+                                </div>
+                                <div className="rd-condition">
+                                  {sel.type === "fixed" && sel.condition.field && (
+                                    <div className="rd-cond-row">
+                                      <span className="rd-cond-field">{sel.condition.field}</span>
+                                      <span className="rd-cond-op">{sel.condition.operator}</span>
+                                      <span className="rd-cond-val">
+                                        {Array.isArray(sel.condition.value) ? sel.condition.value.join(", ") : String(sel.condition.value)}
+                                        {sel.condition.value2 && ` — ${sel.condition.value2}`}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {sel.type === "interpreted" && (
+                                    <>
+                                      {sel.condition.type && (
+                                        <div className="rd-logic-type">
+                                          <span className="rd-logic-badge">{sel.condition.type.replace(/_/g, " ")}</span>
+                                        </div>
+                                      )}
+                                      {sel.condition.logic && (
+                                        <div className="rd-logic-desc">{sel.condition.logic}</div>
+                                      )}
+                                      {sel.condition.factors && sel.condition.factors.length > 0 && (
+                                        <div className="rd-factors">
+                                          <span className="rd-factors-label">Factori:</span>
+                                          {sel.condition.factors.map((f: string, i: number) => (
+                                            <span key={i} className="rd-factor-chip">{f}</span>
+                                          ))}
+                                        </div>
+                                      )}
+                                      {sel.condition.outcomes && sel.condition.outcomes.length > 0 && (
+                                        <div className="rd-outcomes">
+                                          {sel.condition.outcomes.map((o: any, i: number) => (
+                                            <div key={i} className="rd-outcome-row">
+                                              <span className="rd-outcome-if">DACĂ</span>
+                                              <span className="rd-outcome-cond">{o.if}</span>
+                                              <span className="rd-outcome-then">→</span>
+                                              <span className="rd-outcome-result">{o.then}</span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Source document */}
+                            {sel.sourceDocument && (
+                              <div className="rd-section">
+                                <div className="rd-section-title">Sursă document</div>
+                                <div className="rd-doc-ref">
+                                  <span className="rd-doc-icon">{sel.sourceDocument.fileType === "pdf" ? "📕" : sel.sourceDocument.fileType === "docx" ? "📘" : "📗"}</span>
+                                  <span className="rd-doc-name">{sel.sourceDocument.name}</span>
+                                  <span className="rd-doc-page">Pag. {sel.page}</span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="rd-empty">
+                            <div className="rd-empty-icon">📖</div>
+                            <div className="rd-empty-title">Selectează o regulă</div>
+                            <div className="rd-empty-desc">Alege o regulă din lista din stânga pentru a vedea detaliile complete, textul original din ghid și condiția de verificare.</div>
+                          </div>
+                        )}
                       </div>
                     </>
                   ) : (
@@ -1501,7 +1702,8 @@ export default function ProjectViewPage() {
                   )}
                 </div>
               </div>
-            )}
+              );
+            })()}
 
             {/* ELEMENTE */}
             {activeLeaf === "elemente" && (

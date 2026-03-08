@@ -541,7 +541,12 @@ projectRoutes.get("/:id/checklist", async (c) => {
 });
 
 projectRoutes.post("/:id/checklist", async (c) => {
+  const auth = c.get("auth") as AuthContext;
   const id = c.req.param("id");
+
+  const lockErr = await requireLock(id, auth.userId);
+  if (lockErr) return c.json({ error: lockErr }, 423);
+
   const body = await c.req.json();
 
   const [item] = await db.insert(projectChecklist).values({
@@ -577,7 +582,13 @@ projectRoutes.put("/:id/checklist/:itemId", async (c) => {
 });
 
 projectRoutes.delete("/:id/checklist/:itemId", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const id = c.req.param("id");
   const { itemId } = c.req.param();
+
+  const lockErr = await requireLock(id, auth.userId);
+  if (lockErr) return c.json({ error: lockErr }, 423);
+
   await db.delete(projectChecklist).where(eq(projectChecklist.id, itemId));
   return c.json({ ok: true });
 });

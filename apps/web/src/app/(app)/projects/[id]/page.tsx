@@ -660,6 +660,28 @@ export default function ProjectViewPage() {
     }
   };
 
+  const [bulkConfirming, setBulkConfirming] = useState(false);
+  const handleBulkConfirm = async () => {
+    if (readOnly || bulkConfirming) return;
+    const toConfirm = filteredElements.filter(e => e.status === "propus_ai");
+    if (toConfirm.length === 0) return;
+    setBulkConfirming(true);
+    try {
+      await Promise.all(toConfirm.map(e =>
+        apiPut(`/api/projects/${projectId}/elements/${e.id}`, { confirmed: true })
+      ));
+      setElements(prev => prev.map(e =>
+        toConfirm.some(tc => tc.id === e.id)
+          ? { ...e, status: "confirmat" as const, confidence: 100 }
+          : e
+      ));
+    } catch (err) {
+      console.error("Bulk confirm failed:", err);
+    } finally {
+      setBulkConfirming(false);
+    }
+  };
+
   const handleNeemiaTemplateClick = (idx: number) => {
     setNeemiaActiveTemplate(idx);
     setNeemiaActivePage(0);
@@ -687,6 +709,10 @@ export default function ProjectViewPage() {
     if (elemFilter === "gol" && e.status !== "gol") return false;
     if (elemFilter === "propus_ai" && e.status !== "propus_ai") return false;
     if (elemFilter === "confirmat" && e.status !== "confirmat") return false;
+    if (elemFilter === "de_confirmat" && (e.status !== "propus_ai")) return false;
+    if (elemFilter === "src_solomon" && !(e.status === "propus_ai" && e.source === "solomon")) return false;
+    if (elemFilter === "src_calculated" && !(e.status === "propus_ai" && e.source === "calculated")) return false;
+    if (elemFilter === "src_manual" && !(e.status === "propus_ai" && e.source !== "solomon" && e.source !== "calculated")) return false;
     if (elemSearch) {
       const q = elemSearch.toLowerCase();
       return e.label.toLowerCase().includes(q) || e.key.toLowerCase().includes(q) || (e.value || "").toLowerCase().includes(q);
@@ -862,6 +888,19 @@ export default function ProjectViewPage() {
         .fp.on-green{background:var(--accent-green);color:var(--bg-deep)}
         .fp.on-yellow{background:var(--accent-yellow);color:var(--bg-deep)}
         .fp.on-red{background:var(--accent-red);color:#fff}
+        .fp.on-orange{background:var(--accent-orange);color:var(--bg-deep)}
+        .fp-count{font-size:10px;opacity:.7;margin-left:2px}
+        .fp-sub-group{display:flex;align-items:center;gap:4px;margin-left:4px;padding-left:8px;border-left:1px solid var(--border)}
+        .fp-sub-label{font-size:11px;color:var(--text-muted);font-weight:600;white-space:nowrap}
+        .fp-sub{padding:3px 10px;border-radius:5px;font-size:11px;font-weight:600;border:1px solid var(--border);cursor:pointer;background:transparent;color:var(--text-secondary);font-family:var(--font-sans);transition:all .15s;white-space:nowrap}
+        .fp-sub:hover{border-color:var(--accent-orange);color:var(--accent-orange)}
+        .fp-sub.active{background:rgba(251,146,60,.12);border-color:var(--accent-orange);color:var(--accent-orange)}
+        .elemente-filter-bar{flex-wrap:wrap}
+        .bulk-confirm-bar{display:flex;align-items:center;justify-content:space-between;padding:8px 24px;background:rgba(251,146,60,.06);border-bottom:1px solid rgba(251,146,60,.2)}
+        .bc-text{font-size:12px;color:var(--accent-orange);font-weight:600}
+        .bc-btn{padding:5px 16px;border-radius:var(--r-sm);border:1px solid var(--accent-green);background:rgba(52,211,153,.08);color:var(--accent-green);font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font-sans);transition:all .15s}
+        .bc-btn:hover:not(:disabled){background:rgba(52,211,153,.18)}
+        .bc-btn:disabled{opacity:.5;cursor:not-allowed}
         .elemente-scroll{flex:1;overflow-y:auto;padding:16px 24px;display:flex;flex-direction:column;gap:10px}
         .elem-card{background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--r-md);padding:14px 18px;cursor:pointer;transition:all .18s}
         .elem-card:hover{border-color:var(--border-active);background:var(--bg-elevated)}
@@ -1346,12 +1385,52 @@ export default function ProjectViewPage() {
                   <div className="elemente-filter-bar">
                     <input className="elem-search" placeholder="Caută element..." value={elemSearch} onChange={e => setElemSearch(e.target.value)} />
                     <div className="fp-group">
-                      <button className={`fp ${elemFilter === "all" ? "on" : ""}`} onClick={() => setElemFilter("all")}>Toate</button>
-                      <button className={`fp ${elemFilter === "confirmat" ? "on-green" : ""}`} onClick={() => setElemFilter("confirmat")}>Confirmate</button>
-                      <button className={`fp ${elemFilter === "propus_ai" ? "on-yellow" : ""}`} onClick={() => setElemFilter("propus_ai")}>Propuse AI</button>
-                      <button className={`fp ${elemFilter === "gol" ? "on-red" : ""}`} onClick={() => setElemFilter("gol")}>Goale</button>
+                      <button className={`fp ${elemFilter === "all" ? "on" : ""}`} onClick={() => setElemFilter("all")}>
+                        Toate <span className="fp-count">{elements.length}</span>
+                      </button>
+                      <button className={`fp ${elemFilter === "de_confirmat" ? "on-orange" : ""}`} onClick={() => setElemFilter("de_confirmat")}>
+                        De confirmat <span className="fp-count">{elements.filter(e => e.status === "propus_ai").length}</span>
+                      </button>
+                      <button className={`fp ${elemFilter === "confirmat" ? "on-green" : ""}`} onClick={() => setElemFilter("confirmat")}>
+                        Confirmate <span className="fp-count">{elements.filter(e => e.status === "confirmat").length}</span>
+                      </button>
+                      <button className={`fp ${elemFilter === "gol" ? "on-red" : ""}`} onClick={() => setElemFilter("gol")}>
+                        Goale <span className="fp-count">{elements.filter(e => e.status === "gol").length}</span>
+                      </button>
                     </div>
+                    {(elemFilter === "de_confirmat" || elemFilter === "src_solomon" || elemFilter === "src_calculated" || elemFilter === "src_manual") && (
+                      <div className="fp-sub-group">
+                        <span className="fp-sub-label">Sursă:</span>
+                        <button className={`fp-sub ${elemFilter === "de_confirmat" ? "active" : ""}`} onClick={() => setElemFilter("de_confirmat")}>
+                          Toate ({elements.filter(e => e.status === "propus_ai").length})
+                        </button>
+                        {elements.some(e => e.status === "propus_ai" && e.source === "solomon") && (
+                          <button className={`fp-sub ${elemFilter === "src_solomon" ? "active" : ""}`} onClick={() => setElemFilter("src_solomon")}>
+                            Solomon ({elements.filter(e => e.status === "propus_ai" && e.source === "solomon").length})
+                          </button>
+                        )}
+                        {elements.some(e => e.status === "propus_ai" && e.source === "calculated") && (
+                          <button className={`fp-sub ${elemFilter === "src_calculated" ? "active" : ""}`} onClick={() => setElemFilter("src_calculated")}>
+                            Calculate ({elements.filter(e => e.status === "propus_ai" && e.source === "calculated").length})
+                          </button>
+                        )}
+                        {elements.some(e => e.status === "propus_ai" && e.source !== "solomon" && e.source !== "calculated") && (
+                          <button className={`fp-sub ${elemFilter === "src_manual" ? "active" : ""}`} onClick={() => setElemFilter("src_manual")}>
+                            Alte surse ({elements.filter(e => e.status === "propus_ai" && e.source !== "solomon" && e.source !== "calculated").length})
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
+
+                  {(elemFilter === "de_confirmat" || elemFilter === "src_solomon" || elemFilter === "src_calculated" || elemFilter === "src_manual") && filteredElements.some(e => e.status === "propus_ai") && (
+                    <div className="bulk-confirm-bar">
+                      <span className="bc-text">{filteredElements.filter(e => e.status === "propus_ai").length} elemente de confirmat</span>
+                      <button className="bc-btn" onClick={handleBulkConfirm} disabled={bulkConfirming || readOnly}>
+                        {bulkConfirming ? "Se confirmă..." : `✓ Confirmă toate (${filteredElements.filter(e => e.status === "propus_ai").length})`}
+                      </button>
+                    </div>
+                  )}
 
                   <div className="elemente-scroll">
                     {filteredElements.map(el => (

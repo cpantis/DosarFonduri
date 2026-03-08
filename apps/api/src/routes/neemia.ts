@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { db } from "../db";
-import { projectDocuments, documents } from "../db/schema";
-import { eq } from "drizzle-orm";
+import { projectDocuments, documents, templateElements, projectElements } from "../db/schema";
+import { eq, and } from "drizzle-orm";
 import { AuthContext } from "../middleware/auth";
 import {
   generateDocument, validateBeforeGenerate,
@@ -156,6 +156,90 @@ neemiaRoutes.post("/projects/:projectId/calculate", async (c) => {
   const projectId = c.req.param("projectId");
   const results = await computeCalculatedFields(projectId, auth.organizationId!);
   return c.json(results);
+});
+
+// Get template pages with filled elements — for document preview
+neemiaRoutes.get("/projects/:projectId/template-pages/:templateDocId", async (c) => {
+  const projectId = c.req.param("projectId");
+  const templateDocId = c.req.param("templateDocId");
+
+  const templateDoc = await db.query.documents.findFirst({
+    where: eq(documents.id, templateDocId),
+  });
+  if (!templateDoc) return c.json({ error: "Template not found" }, 404);
+
+  const tmplEls = await db.query.templateElements.findMany({
+    where: eq(templateElements.documentId, templateDocId),
+  });
+
+  const projEls = await db.query.projectElements.findMany({
+    where: eq(projectElements.projectId, projectId),
+  });
+
+  // Group by page
+  const pageMap = new Map<number, Array<{
+    key: string;
+    label: string;
+    fieldType: string;
+    lineNum: number | null;
+    group: string | null;
+    value: string | null;
+    source: string | null;
+    confirmed: boolean;
+    templateElementId: string;
+  }>>();
+
+  for (const te of tmplEls) {
+    const pageNum = te.pageNum || 1;
+    const pe = projEls.find(p => p.templateElementId === te.id);
+
+    const field = {
+      key: te.key,
+      label: te.label,
+      fieldType: te.fieldType,
+      lineNum: te.lineNum,
+      group: te.group,
+      value: pe?.value || null,
+      source: pe?.source || null,
+      confirmed: pe?.confirmed ?? false,
+      templateElementId: te.id,
+    };
+
+    const existing = pageMap.get(pageNum) || [];
+    existing.push(field);
+    pageMap.set(pageNum, existing);
+  }
+
+  // Sort pages and fields within pages
+  const pages = [...pageMap.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([num, fields]) => {
+      fields.sort((a, b) => (a.lineNum || 0) - (b.lineNum || 0));
+      const filled = fields.filter(f => f.value && f.value.trim() !== "").length;
+      const confirmed = fields.filter(f => f.confirmed).length;
+      return {
+        num,
+        fields,
+        totalFields: fields.length,
+        filledFields: filled,
+        confirmedFields: confirmed,
+        status: filled === fields.length ? "complete" : filled > 0 ? "partial" : "empty",
+      };
+    });
+
+  const totalFields = tmplEls.length;
+  const filledFields = pages.reduce((sum, p) => sum + p.filledFields, 0);
+  const confirmedFields = pages.reduce((sum, p) => sum + p.confirmedFields, 0);
+
+  return c.json({
+    templateName: templateDoc.name,
+    templateFileType: templateDoc.fileType,
+    totalPages: pages.length,
+    totalFields,
+    filledFields,
+    confirmedFields,
+    pages,
+  });
 });
 
 // Bulk generate all documents

@@ -15,8 +15,8 @@ type SolomonElement = {
   key: string; label: string; value: string; source: string; status: "confirmat" | "propus";
 };
 
-type TemplateField = { name: string; value: string | null; source: string | null };
-type TemplatePage = { num: number; title: string; status: "complete" | "partial" | "empty"; fields: TemplateField[] };
+type TemplateField = { key: string; name: string; value: string | null; source: string | null; confirmed: boolean; fieldType: string; group: string | null };
+type TemplatePage = { num: number; title: string; status: "complete" | "partial" | "empty"; fields: TemplateField[]; totalFields: number; filledFields: number; confirmedFields: number };
 
 type NeemiaTemplate = {
   id: string;
@@ -48,6 +48,12 @@ type GuideRule = {
   confidence: number;
   page: number;
   section: string;
+  category: string;
+  sourceText: string | null;
+  condition: any;
+  validated: boolean;
+  needsReview: boolean;
+  sourceDocument: { id: string; name: string; fileType: string } | null;
 };
 
 type ElementItem = {
@@ -135,9 +141,15 @@ function mapGuideRules(grouped: any[]): GuideRule[] {
         id: item.id,
         type: item.rule?.type || "fixed",
         text: item.rule?.description || "",
-        confidence: item.rule?.confidence ?? 0.5,
-        page: item.rule?.page ?? 0,
-        section: item.rule?.section || "",
+        confidence: parseFloat(item.rule?.confidence) || 0.5,
+        page: item.rule?.sourcePage ?? item.rule?.page ?? 0,
+        section: item.rule?.category || "",
+        category: item.rule?.category || "",
+        sourceText: item.rule?.sourceText || null,
+        condition: item.rule?.condition || null,
+        validated: item.rule?.validated ?? false,
+        needsReview: item.rule?.needsReview ?? (parseFloat(item.rule?.confidence) < 0.85),
+        sourceDocument: item.rule?.sourceDocument || group.document || null,
       });
     }
   }
@@ -205,6 +217,7 @@ export default function ProjectViewPage() {
   const [elemFilter, setElemFilter] = useState("all");
   const [elemSearch, setElemSearch] = useState("");
   const [ghidTab, setGhidTab] = useState<"reguli" | "ghid">("reguli");
+  const [ghidCategoryFilter, setGhidCategoryFilter] = useState<string>("all");
   const [collapsedCats, setCollapsedCats] = useState<Record<string, boolean>>({});
 
   const [solomonModel, setSolomonModel] = useState<"sonnet" | "opus">("opus");
@@ -226,6 +239,24 @@ export default function ProjectViewPage() {
   const [neemiaActivePage, setNeemiaActivePage] = useState(0);
   const [neemiaAnimKey, setNeemiaAnimKey] = useState(0);
   const [neemiaGenerating, setNeemiaGenerating] = useState(false);
+  const [neemiaSplitWidth, setNeemiaSplitWidth] = useState(380);
+  const neemiaSplitDragging = useRef(false);
+  const neemiaSplitRef = useRef<HTMLDivElement>(null);
+
+  // Drag handler for Neemia split pane
+  useEffect(() => {
+    const onMouseMove = (e: MouseEvent) => {
+      if (!neemiaSplitDragging.current || !neemiaSplitRef.current) return;
+      const rect = neemiaSplitRef.current.getBoundingClientRect();
+      const newWidth = Math.min(Math.max(e.clientX - rect.left, 260), 600);
+      setNeemiaSplitWidth(newWidth);
+    };
+    const onMouseUp = () => { neemiaSplitDragging.current = false; document.body.style.cursor = ""; document.body.style.userSelect = ""; };
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+    return () => { document.removeEventListener("mousemove", onMouseMove); document.removeEventListener("mouseup", onMouseUp); };
+  }, []);
+
   const [neemiaGenStatus, setNeemiaGenStatus] = useState<string | null>(null);
   const [neemiaValidation, setNeemiaValidation] = useState<{ warnings: string[]; stats?: any } | null>(null);
   const [neemiaBulkGenerating, setNeemiaBulkGenerating] = useState(false);
@@ -813,10 +844,46 @@ export default function ProjectViewPage() {
     }
   };
 
-  const handleNeemiaTemplateClick = (idx: number) => {
+  const handleNeemiaTemplateClick = async (idx: number) => {
     setNeemiaActiveTemplate(idx);
     setNeemiaActivePage(0);
     setNeemiaAnimKey(k => k + 1);
+
+    // Load template pages with filled elements
+    const tmpl = neemiaTemplates[idx];
+    if (tmpl?.templateDocumentId && projectId) {
+      try {
+        const data = await apiGet<any>(`/api/neemia/projects/${projectId}/template-pages/${tmpl.templateDocumentId}`);
+        if (data?.pages) {
+          const sourceLabels: Record<string, string> = { onrc: "ONRC", solomon: "Solomon", manual: "Manual", calculated: "Calculat", ghid: "Ghid" };
+          const mappedPages: TemplatePage[] = data.pages.map((p: any) => ({
+            num: p.num,
+            title: `Pagina ${p.num}`,
+            status: p.status,
+            totalFields: p.totalFields,
+            filledFields: p.filledFields,
+            confirmedFields: p.confirmedFields,
+            fields: (p.fields || []).map((f: any) => ({
+              key: f.key,
+              name: f.label,
+              value: f.value,
+              source: f.source ? (sourceLabels[f.source] || f.source) : null,
+              confirmed: f.confirmed,
+              fieldType: f.fieldType,
+              group: f.group,
+            })),
+          }));
+          setNeemiaTemplates(prev => prev.map((t, i) => i === idx ? {
+            ...t,
+            pages: mappedPages,
+            totalFields: data.totalFields,
+            filledFields: data.filledFields,
+          } : t));
+        }
+      } catch (err) {
+        console.error("Failed to load template pages:", err);
+      }
+    }
   };
 
   const handleNeemiaPageClick = (idx: number) => {
@@ -979,21 +1046,77 @@ export default function ProjectViewPage() {
         .ghid-sub-tab:hover{color:var(--text-primary)}
         .ghid-sub-tab.active{color:var(--accent-blue);border-bottom-color:var(--accent-blue)}
         .ghid-split{display:flex;flex:1;overflow:hidden}
-        .rules-panel{width:400px;min-width:400px;overflow-y:auto;padding:16px;border-right:1px solid var(--border)}
+        .rules-panel{width:400px;min-width:400px;display:flex;flex-direction:column;border-right:1px solid var(--border)}
+        .rule-category-filters{display:flex;flex-wrap:wrap;gap:6px;padding:12px 16px;border-bottom:1px solid var(--border);background:var(--bg-surface)}
+        .rcf-chip{padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--bg-elevated);color:var(--text-secondary);font-family:var(--font-sans);transition:all .15s;display:inline-flex;align-items:center;gap:4px}
+        .rcf-chip:hover{border-color:var(--border-active);color:var(--text-primary)}
+        .rcf-chip.active{border-color:var(--accent-blue);background:rgba(77,139,255,.1);color:var(--accent-blue)}
+        .rcf-count{font-size:10px;font-family:var(--font-mono);opacity:.7}
+        .rules-scroll{flex:1;overflow-y:auto;padding:12px 16px}
         .rule-card{padding:12px 14px;border-radius:var(--r-sm);border:1px solid var(--border);margin-bottom:8px;cursor:pointer;transition:all .2s;background:var(--bg-surface)}
         .rule-card:hover,.rule-card.active{border-color:var(--accent-blue);background:rgba(77,139,255,.05)}
-        .rule-type-badge{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:3px 10px;border-radius:4px;display:inline-block;margin-bottom:8px}
+        .rule-card-top{display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap}
+        .rule-type-badge{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:3px 10px;border-radius:4px;display:inline-block}
         .rule-type-badge.fixed{color:var(--accent-green);background:rgba(52,211,153,.12);border:1px solid rgba(52,211,153,.25)}
         .rule-type-badge.interpreted{color:var(--accent-orange);background:rgba(251,146,60,.12);border:1px solid rgba(251,146,60,.25)}
+        .rule-cat-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+        .rule-cat-label{font-size:10px;color:var(--text-muted);font-weight:600}
+        .rule-review-flag{font-size:10px;color:var(--accent-yellow);font-weight:600;margin-left:auto}
+        .rule-validated-flag{font-size:12px;color:var(--accent-green);margin-left:auto}
         .rule-text{font-size:13px;line-height:1.5;color:var(--text-primary)}
-        .rule-meta{font-size:11px;color:var(--text-muted);margin-top:6px;font-family:var(--font-mono);display:flex;gap:12px}
+        .rule-meta{font-size:11px;color:var(--text-muted);margin-top:6px;font-family:var(--font-mono);display:flex;gap:12px;align-items:center}
+        .rule-doc-ref{font-size:10px;color:var(--text-muted);margin-left:auto;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
         .confidence-bar{width:48px;height:4px;background:var(--bg-deep);border-radius:2px;overflow:hidden;display:inline-block;vertical-align:middle;margin-left:4px}
         .confidence-fill{height:100%;border-radius:2px}
+
+        /* Rule detail panel */
+        .rule-detail-panel{flex:1;overflow-y:auto;background:var(--bg-deep);min-width:0}
+        .rd-content{padding:28px 32px}
+        .rd-header{margin-bottom:24px}
+        .rd-badges{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+        .rd-cat-pill{font-size:11px;font-weight:700;padding:3px 12px;border-radius:20px;text-transform:uppercase;letter-spacing:.5px}
+        .rd-validated{font-size:11px;color:var(--accent-green);font-weight:700;display:flex;align-items:center;gap:3px}
+        .rd-needs-review{font-size:11px;color:var(--accent-yellow);font-weight:700;display:flex;align-items:center;gap:3px}
+        .rd-confidence-row{display:flex;align-items:center;gap:10px}
+        .rd-conf-label{font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px}
+        .rd-conf-value{font-size:20px;font-weight:800;font-family:var(--font-mono)}
+        .rd-conf-bar{flex:1;height:6px;background:var(--bg-elevated);border-radius:3px;overflow:hidden;max-width:200px}
+        .rd-conf-fill{height:100%;border-radius:3px;transition:width .4s}
+        .rd-section{margin-bottom:20px}
+        .rd-section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text-muted);margin-bottom:10px;display:flex;align-items:center;gap:8px}
+        .rd-page-ref{font-size:10px;font-weight:600;color:var(--accent-blue);background:rgba(77,139,255,.1);padding:2px 8px;border-radius:10px;margin-left:auto}
+        .rd-description{font-size:14px;line-height:1.7;color:var(--text-primary);padding:14px 18px;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--r-md)}
+        .rd-source-text{background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--r-md);overflow:hidden}
+        .rd-source-quote{font-size:13px;line-height:1.8;color:var(--text-primary);padding:16px 20px;border-left:3px solid var(--accent-blue);font-style:italic;background:rgba(77,139,255,.03)}
+        .rd-condition{background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--r-md);padding:14px 18px}
+        .rd-cond-row{display:flex;align-items:center;gap:8px;font-family:var(--font-mono);font-size:13px}
+        .rd-cond-field{color:var(--accent-blue);font-weight:700}
+        .rd-cond-op{color:var(--accent-orange);font-weight:600;padding:2px 8px;background:rgba(251,146,60,.1);border-radius:4px;font-size:11px}
+        .rd-cond-val{color:var(--accent-green);font-weight:600}
+        .rd-logic-type{margin-bottom:10px}
+        .rd-logic-badge{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:4px 12px;border-radius:4px;background:rgba(167,139,250,.12);color:var(--accent-purple);border:1px solid rgba(167,139,250,.25)}
+        .rd-logic-desc{font-size:13px;line-height:1.7;color:var(--text-primary);margin-bottom:12px}
+        .rd-factors{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+        .rd-factors-label{font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px}
+        .rd-factor-chip{font-size:11px;padding:3px 10px;border-radius:12px;background:var(--bg-elevated);border:1px solid var(--border);color:var(--text-secondary);font-family:var(--font-mono)}
+        .rd-outcomes{display:flex;flex-direction:column;gap:6px}
+        .rd-outcome-row{display:flex;align-items:flex-start;gap:6px;font-size:12px;line-height:1.6;padding:6px 10px;background:var(--bg-elevated);border-radius:var(--r-sm)}
+        .rd-outcome-if{font-size:10px;font-weight:700;color:var(--accent-blue);padding:1px 6px;border-radius:3px;background:rgba(77,139,255,.1);flex-shrink:0;margin-top:1px}
+        .rd-outcome-cond{color:var(--text-primary);flex:1}
+        .rd-outcome-then{color:var(--text-muted);flex-shrink:0}
+        .rd-outcome-result{color:var(--accent-green);font-weight:600;flex:1}
+        .rd-doc-ref{display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--r-md)}
+        .rd-doc-icon{font-size:18px}
+        .rd-doc-name{font-size:13px;font-weight:600;color:var(--text-primary);flex:1}
+        .rd-doc-page{font-size:11px;font-family:var(--font-mono);color:var(--text-muted);padding:2px 8px;background:var(--bg-elevated);border-radius:4px}
+        .rd-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--text-muted);gap:12px;padding:40px}
+        .rd-empty-icon{font-size:48px;opacity:.4}
+        .rd-empty-title{font-size:16px;font-weight:700;color:var(--text-secondary)}
+        .rd-empty-desc{font-size:13px;text-align:center;max-width:280px;line-height:1.6}
+
         .pdf-viewer{flex:1;background:var(--bg-deep);display:flex;align-items:center;justify-content:center;position:relative}
         .pdf-page-mock{width:480px;background:#fff;border-radius:4px;box-shadow:0 4px 24px rgba(0,0,0,.4);padding:48px 40px;min-height:620px;color:#1a1a2e;position:relative}
         .pdf-page-mock h3{font-size:16px;font-weight:700;margin-bottom:16px;color:#1a1a2e}
-        .pdf-highlight{background:rgba(77,139,255,.2);border-left:3px solid var(--accent-blue);padding:8px 12px;margin:8px 0;border-radius:0 4px 4px 0;animation:highlightPulse 1.5s ease infinite}
-        @keyframes highlightPulse{0%,100%{background:rgba(77,139,255,.15)}50%{background:rgba(77,139,255,.3)}}
         .pdf-text-line{height:10px;background:#d4d8e0;border-radius:2px;margin:8px 0}
         .pdf-page-num{position:absolute;bottom:16px;right:24px;font-size:12px;color:#888;font-family:var(--font-mono)}
 
@@ -1165,7 +1288,7 @@ export default function ProjectViewPage() {
 
         /* Neemia */
         .neemia-layout{display:flex;height:100%}
-        .neemia-templates{width:240px;min-width:240px;border-right:1px solid var(--border);padding:16px;overflow-y:auto}
+        .neemia-templates{width:260px;min-width:260px;border-right:1px solid var(--border);padding:16px;overflow-y:auto}
         .neemia-templates h3{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text-muted);margin-bottom:12px}
         .template-card{padding:12px 14px;border-radius:var(--r-sm);border:1px solid var(--border);margin-bottom:8px;cursor:pointer;transition:all .15s;background:var(--bg-surface)}
         .template-card:hover{border-color:var(--border-active)}
@@ -1176,36 +1299,91 @@ export default function ProjectViewPage() {
         .template-card .tc-progress{height:3px;background:var(--bg-deep);border-radius:2px;margin-top:8px;overflow:hidden}
         .tc-progress-fill{height:100%;border-radius:2px;transition:width .5s ease}
         .neemia-doc-view{flex:1;display:flex;flex-direction:column;min-width:0}
-        .neemia-page-nav{padding:12px 20px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);background:var(--bg-surface)}
-        .neemia-page-nav .nav-label{font-size:13px;font-weight:600;color:var(--text-secondary);margin-right:8px}
-        .page-thumb{width:36px;height:36px;border-radius:var(--r-sm);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;cursor:pointer;border:2px solid transparent;transition:all .15s;font-family:var(--font-mono)}
-        .page-thumb.complete{background:rgba(52,211,153,.15);color:var(--accent-green)}
-        .page-thumb.partial{background:rgba(251,191,36,.15);color:var(--accent-yellow)}
-        .page-thumb.empty{background:rgba(248,113,113,.12);color:var(--accent-red)}
-        .page-thumb.active{border-color:var(--accent-blue);box-shadow:0 0 0 2px rgba(77,139,255,.3)}
-        .download-btn{margin-left:auto;display:flex;align-items:center;gap:6px;padding:8px 16px;border-radius:var(--r-sm);border:none;background:var(--accent-green);color:#0a0c10;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--font-sans);transition:all .15s}
+        .neemia-page-nav{padding:10px 20px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);background:var(--bg-surface)}
+        .neemia-page-nav .nav-label{font-size:13px;font-weight:600;color:var(--text-secondary);margin-right:4px;white-space:nowrap;max-width:160px;overflow:hidden;text-overflow:ellipsis}
+        .nav-pages-scroll{display:flex;gap:4px;overflow-x:auto;flex:1;padding:2px 0}
+        .page-thumb{min-width:32px;height:32px;border-radius:var(--r-sm);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:12px;font-weight:700;cursor:pointer;border:2px solid transparent;transition:all .15s;font-family:var(--font-mono);padding:2px 6px}
+        .pt-num{font-size:12px;line-height:1}
+        .pt-dot{width:4px;height:4px;border-radius:50%}
+        .pt-dot.complete{background:var(--accent-green)}
+        .pt-dot.partial{background:var(--accent-yellow)}
+        .pt-dot.empty{background:var(--accent-red)}
+        .page-thumb.complete{background:rgba(52,211,153,.12);color:var(--accent-green)}
+        .page-thumb.partial{background:rgba(251,191,36,.12);color:var(--accent-yellow)}
+        .page-thumb.empty{background:rgba(248,113,113,.1);color:var(--accent-red)}
+        .page-thumb.active{border-color:var(--accent-blue);box-shadow:0 0 0 2px rgba(77,139,255,.25)}
+        .nav-stats{display:flex;align-items:center;gap:6px;margin-left:auto;white-space:nowrap}
+        .nav-stat-filled{font-size:12px;font-weight:600;color:var(--text-secondary);font-family:var(--font-mono)}
+        .nav-stat-pct{font-size:14px;font-weight:800;font-family:var(--font-mono)}
+        .download-btn{display:flex;align-items:center;gap:6px;padding:6px 14px;border-radius:var(--r-sm);border:none;background:var(--accent-green);color:#0a0c10;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font-sans);transition:all .15s;white-space:nowrap}
         .download-btn:hover{background:#4ae3a9}
         .neemia-preview-area{flex:1;display:flex;overflow:hidden}
-        .neemia-doc-preview{flex:1;display:flex;align-items:center;justify-content:center;background:var(--bg-deep);padding:24px}
-        .doc-page{width:460px;min-height:580px;background:#fff;border-radius:4px;box-shadow:0 4px 24px rgba(0,0,0,.4);padding:40px 36px;color:#1a1a2e;position:relative;animation:pageSlide .55s ease}
-        @keyframes pageSlide{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
-        .doc-page .doc-header-label{font-size:10px;text-transform:uppercase;letter-spacing:1.2px;color:#888;margin-bottom:4px}
-        .doc-page .doc-page-title{font-size:20px;font-weight:700;margin-bottom:24px;color:#1a1a2e}
-        .doc-field-group{margin-bottom:18px}
-        .doc-field-label{font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:#888;margin-bottom:4px}
-        .doc-field-value{font-size:15px;font-weight:600;color:#1a1a2e;padding-bottom:4px;border-bottom:2px solid #4d8bff}
-        .doc-field-missing{font-size:15px;font-style:italic;color:#e74c3c;padding-bottom:4px;border-bottom:2px dashed #e74c3c}
-        .doc-page-number{position:absolute;bottom:16px;right:24px;font-size:12px;color:#aaa;font-family:var(--font-mono)}
-        .neemia-fields-panel{width:300px;min-width:300px;border-left:1px solid var(--border);overflow-y:auto;padding:16px;background:var(--bg-surface)}
-        .neemia-fields-panel h3{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text-muted);margin-bottom:12px}
-        .field-card{padding:10px 12px;border-radius:var(--r-sm);border:1px solid var(--border);margin-bottom:6px;background:var(--bg-elevated)}
-        .field-card .field-name{font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:3px}
-        .field-card .field-val{font-size:13px;color:var(--accent-blue);font-weight:500}
-        .field-card .field-val.missing{color:var(--accent-red);font-style:italic}
-        .field-source{font-size:10px;color:var(--text-muted);margin-top:3px;display:flex;align-items:center;gap:4px}
+
+        /* Document page preview — pixel-perfect document */
+        .neemia-doc-preview{flex:1;display:flex;align-items:flex-start;justify-content:center;background:var(--bg-deep);padding:24px;overflow-y:auto}
+        .ndp-page{width:520px;background:#ffffff;border-radius:4px;box-shadow:0 4px 32px rgba(0,0,0,.45);padding:44px 40px 60px;color:#1a1e28;position:relative;animation:pageSlide .4s ease}
+        @keyframes pageSlide{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+        .ndp-header{margin-bottom:28px;padding-bottom:16px;border-bottom:2px solid #1a1e28}
+        .ndp-header-bar{height:4px;background:linear-gradient(90deg,#4d8bff,#a78bfa,#34d399);border-radius:2px;margin-bottom:12px}
+        .ndp-doc-type{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#8892a8;margin-bottom:4px}
+        .ndp-doc-title{font-size:16px;font-weight:800;color:#1a1e28;line-height:1.3}
+        .ndp-group{margin-bottom:20px}
+        .ndp-group-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#5a6478;margin-bottom:10px;padding:4px 0;border-bottom:1px solid #e0e4ea}
+        .ndp-field{margin-bottom:12px}
+        .ndp-field-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.6px;color:#8892a8;margin-bottom:3px}
+        .ndp-field-line{display:flex;align-items:center;gap:6px;min-height:28px;padding:4px 0;border-bottom:1.5px solid #e0e4ea}
+        .ndp-field.filled .ndp-field-line{border-bottom-color:#4d8bff}
+        .ndp-field.confirmed .ndp-field-line{border-bottom-color:#34d399}
+        .ndp-field-value{font-size:14px;font-weight:600;color:#1a1e28;flex:1;word-break:break-word}
+        .ndp-field.confirmed .ndp-field-value{color:#059669}
+        .ndp-field-placeholder{font-size:13px;font-family:'JetBrains Mono',monospace;color:#c8cdd6;font-style:italic;flex:1}
+        .ndp-field-indicator{width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0}
+        .ndp-field-indicator.confirmed{background:#dcfce7;color:#059669;border:1.5px solid #34d399}
+        .ndp-field-indicator.proposed{background:#fef3c7;color:#d97706;border:1.5px solid #fbbf24}
+        .ndp-footer{position:absolute;bottom:16px;left:40px;right:40px;display:flex;justify-content:space-between;font-size:11px;color:#8892a8;font-family:'JetBrains Mono',monospace}
+        .ndp-footer-stats{color:#5a6478}
+
+        /* Left fields panel */
+        .neemia-fields-panel{width:380px;min-width:260px;max-width:600px;border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;background:var(--bg-surface);flex-shrink:0}
+        /* Split drag handle */
+        .neemia-split-handle{width:6px;cursor:col-resize;background:var(--bg-surface);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .15s;position:relative;z-index:2}
+        .neemia-split-handle:hover,.neemia-split-handle:active{background:var(--border-active)}
+        .nsh-dots{width:2px;height:32px;background:var(--text-muted);border-radius:1px;opacity:.4;transition:opacity .15s}
+        .neemia-split-handle:hover .nsh-dots{opacity:.8}
+        .nfp-header{padding:14px 16px;border-bottom:1px solid var(--border)}
+        .nfp-header h3{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text-muted);margin:0 0 8px}
+        .nfp-stats{display:flex;gap:10px}
+        .nfp-stat{font-size:10px;font-weight:600;display:flex;align-items:center;gap:3px}
+        .nfp-stat::before{content:'';width:6px;height:6px;border-radius:50%}
+        .nfp-stat.confirmed::before{background:var(--accent-green)}
+        .nfp-stat.confirmed{color:var(--accent-green)}
+        .nfp-stat.filled::before{background:var(--accent-yellow)}
+        .nfp-stat.filled{color:var(--accent-yellow)}
+        .nfp-stat.empty::before{background:var(--accent-red)}
+        .nfp-stat.empty{color:var(--accent-red)}
+        .nfp-scroll{flex:1;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+        .nfp-card{padding:10px 12px;border-radius:var(--r-sm);border:1px solid var(--border);background:var(--bg-elevated);transition:all .15s}
+        .nfp-card:hover{border-color:var(--border-active)}
+        .nfp-card.is-confirmed{border-left:3px solid var(--accent-green)}
+        .nfp-card.is-proposed{border-left:3px solid var(--accent-yellow)}
+        .nfp-card.is-empty{border-left:3px solid var(--accent-red);opacity:.7}
+        .nfp-card-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}
+        .nfp-card-label{font-size:12px;font-weight:600;color:var(--text-primary);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+        .nfp-card-status{font-size:10px;font-weight:700;flex-shrink:0}
+        .nfp-card-status.confirmed{color:var(--accent-green)}
+        .nfp-card-status.proposed{color:var(--accent-yellow)}
+        .nfp-card-status.empty{color:var(--accent-red)}
+        .nfp-card-value{font-size:13px;font-weight:500;color:var(--accent-blue);font-family:var(--font-mono);word-break:break-word}
+        .nfp-card-value.missing{color:var(--text-muted);font-style:italic;font-size:11px}
+        .nfp-card-source{font-size:10px;color:var(--text-muted);margin-top:4px;display:flex;align-items:center;gap:4px}
+        .nfp-card-type{font-size:9px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-top:3px;letter-spacing:.5px}
         .source-dot{width:6px;height:6px;border-radius:50%;display:inline-block}
         .source-dot.solomon{background:var(--accent-blue)}
         .source-dot.onrc{background:var(--accent-green)}
+        .source-dot.manual{background:var(--accent-purple)}
+        .source-dot.calculat{background:var(--accent-orange)}
+        .source-dot.ghid{background:var(--accent-yellow)}
+
         .neemia-bulk-btn{width:100%;padding:8px 16px;border-radius:var(--r-sm);border:1px solid var(--accent-green);background:rgba(52,211,153,.08);color:var(--accent-green);font-size:13px;font-weight:700;cursor:pointer;font-family:var(--font-sans);transition:all .15s;margin-bottom:10px}
         .neemia-bulk-btn:hover:not(:disabled){background:rgba(52,211,153,.18)}
         .neemia-bulk-btn:disabled{opacity:.5;cursor:not-allowed}
@@ -1222,7 +1400,7 @@ export default function ProjectViewPage() {
         .neemia-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--text-muted);gap:12px}
         .neemia-empty .ne-icon{font-size:40px;opacity:.5}
         .neemia-empty .ne-label{font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:1px}
-        .neemia-empty .ne-desc{font-size:13px;color:var(--text-secondary)}
+        .neemia-empty .ne-desc{font-size:13px;color:var(--text-secondary);text-align:center;max-width:280px}
 
         .coming-soon{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--text-muted);gap:12px}
         .coming-soon .cs-icon{font-size:48px;opacity:.5}
@@ -1438,7 +1616,22 @@ export default function ProjectViewPage() {
             )}
 
             {/* GHID FINANȚARE */}
-            {activeLeaf === "ghid" && (
+            {activeLeaf === "ghid" && (() => {
+              const categoryLabels: Record<string, string> = {
+                eligibilitate: "Eligibilitate", financiar: "Financiar", tehnic: "Tehnic", administrativ: "Administrativ",
+                achizitii: "Achiziții", documente: "Documente", selectie: "Selecție", intensitate: "Intensitate",
+                eligibilitate_complexa: "Elig. complexă", documentare: "Documentare", ajutor_stat: "Ajutor stat",
+              };
+              const categoryColors: Record<string, string> = {
+                eligibilitate: "#4d8bff", financiar: "#34d399", tehnic: "#a78bfa", administrativ: "#8892a8",
+                achizitii: "#fb923c", documente: "#fbbf24", selectie: "#f87171", intensitate: "#34d399",
+                eligibilitate_complexa: "#4d8bff", documentare: "#fbbf24", ajutor_stat: "#a78bfa",
+              };
+              const categories = [...new Set(guideRules.map(r => r.category))].filter(Boolean);
+              const filteredRules = ghidCategoryFilter === "all" ? guideRules : guideRules.filter(r => r.category === ghidCategoryFilter);
+              const sel = selectedRule ? guideRules.find(r => r.id === selectedRule) : null;
+
+              return (
               <div className="ghid-layout">
                 <div className="ghid-sub-tabs">
                   <button className={`ghid-sub-tab ${ghidTab === "reguli" ? "active" : ""}`} onClick={() => setGhidTab("reguli")}>Reguli ({guideRules.length})</button>
@@ -1448,44 +1641,161 @@ export default function ProjectViewPage() {
                   {ghidTab === "reguli" ? (
                     <>
                       <div className="rules-panel">
-                        {guideRules.map(r => (
-                          <div className={`rule-card ${selectedRule === r.id ? "active" : ""}`} key={r.id} onClick={() => setSelectedRule(r.id)}>
-                            <div className={`rule-type-badge ${r.type}`}>
-                              {r.type === "fixed" ? "FIXĂ" : "INTERPRETATĂ"}
-                              {r.type === "interpreted" && r.confidence < 0.85 && <span style={{ marginLeft: 6, color: "var(--accent-yellow)", fontSize: 10 }}>⚠️ Review</span>}
-                            </div>
-                            <div className="rule-text">{r.text}</div>
-                            <div className="rule-meta">
-                              <span>Pag. {r.page}</span>
-                              <span>§{r.section}</span>
-                              <span>
-                                {Math.round(r.confidence * 100)}%
-                                <span className="confidence-bar"><span className="confidence-fill" style={{ width: `${r.confidence * 100}%`, background: r.confidence > 0.9 ? "var(--accent-green)" : r.confidence > 0.8 ? "var(--accent-blue)" : "var(--accent-yellow)" }} /></span>
-                              </span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="pdf-viewer">
-                        <div className="pdf-page-mock">
-                          <h3>Secțiunea {selectedRule ? guideRules.find(r => r.id === selectedRule)?.section || "3.1" : "3.1"} — Eligibilitate</h3>
-                          <div className="pdf-text-line" style={{ width: "90%" }} />
-                          <div className="pdf-text-line" style={{ width: "80%" }} />
-                          <div className="pdf-text-line" style={{ width: "85%" }} />
-                          {selectedRule && (
-                            <div className="pdf-highlight">
-                              <span style={{ fontSize: 13, lineHeight: 1.6 }}>
-                                {guideRules.find(r => r.id === selectedRule)?.text}
-                              </span>
-                            </div>
-                          )}
-                          <div className="pdf-text-line" style={{ width: "75%" }} />
-                          <div className="pdf-text-line" style={{ width: "88%" }} />
-                          <div className="pdf-text-line" style={{ width: "60%" }} />
-                          <div className="pdf-text-line" style={{ width: "92%" }} />
-                          <div className="pdf-text-line" style={{ width: "70%" }} />
-                          <div className="pdf-page-num">Pag. {selectedRule ? guideRules.find(r => r.id === selectedRule)?.page || 8 : 8}</div>
+                        {/* Category filter chips */}
+                        <div className="rule-category-filters">
+                          <button className={`rcf-chip ${ghidCategoryFilter === "all" ? "active" : ""}`} onClick={() => setGhidCategoryFilter("all")}>
+                            Toate <span className="rcf-count">{guideRules.length}</span>
+                          </button>
+                          {categories.map(cat => (
+                            <button key={cat} className={`rcf-chip ${ghidCategoryFilter === cat ? "active" : ""}`} onClick={() => setGhidCategoryFilter(cat)}
+                              style={{ "--chip-color": categoryColors[cat] || "var(--text-muted)" } as React.CSSProperties}>
+                              {categoryLabels[cat] || cat} <span className="rcf-count">{guideRules.filter(r => r.category === cat).length}</span>
+                            </button>
+                          ))}
                         </div>
+
+                        <div className="rules-scroll">
+                          {filteredRules.map(r => (
+                            <div className={`rule-card ${selectedRule === r.id ? "active" : ""}`} key={r.id} onClick={() => setSelectedRule(r.id)}>
+                              <div className="rule-card-top">
+                                <div className={`rule-type-badge ${r.type}`}>
+                                  {r.type === "fixed" ? "FIXĂ" : "INTERPRETATĂ"}
+                                </div>
+                                <span className="rule-cat-dot" style={{ background: categoryColors[r.category] || "var(--text-muted)" }} />
+                                <span className="rule-cat-label">{categoryLabels[r.category] || r.category}</span>
+                                {r.needsReview && <span className="rule-review-flag">⚠ Review</span>}
+                                {r.validated && <span className="rule-validated-flag">✓</span>}
+                              </div>
+                              <div className="rule-text">{r.text}</div>
+                              <div className="rule-meta">
+                                <span>Pag. {r.page}</span>
+                                <span>
+                                  {Math.round(r.confidence * 100)}%
+                                  <span className="confidence-bar"><span className="confidence-fill" style={{ width: `${r.confidence * 100}%`, background: r.confidence > 0.9 ? "var(--accent-green)" : r.confidence > 0.8 ? "var(--accent-blue)" : "var(--accent-yellow)" }} /></span>
+                                </span>
+                                {r.sourceDocument && <span className="rule-doc-ref">{r.sourceDocument.name}</span>}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Rule detail panel */}
+                      <div className="rule-detail-panel">
+                        {sel ? (
+                          <div className="rd-content">
+                            {/* Header */}
+                            <div className="rd-header">
+                              <div className="rd-badges">
+                                <div className={`rule-type-badge ${sel.type}`}>{sel.type === "fixed" ? "REGULĂ FIXĂ" : "REGULĂ INTERPRETATĂ"}</div>
+                                <span className="rd-cat-pill" style={{ background: `${categoryColors[sel.category] || "#8892a8"}20`, color: categoryColors[sel.category] || "var(--text-muted)", border: `1px solid ${categoryColors[sel.category] || "#8892a8"}40` }}>
+                                  {categoryLabels[sel.category] || sel.category}
+                                </span>
+                                {sel.validated && <span className="rd-validated">✓ Validată</span>}
+                                {sel.needsReview && <span className="rd-needs-review">⚠ Necesită review</span>}
+                              </div>
+                              <div className="rd-confidence-row">
+                                <span className="rd-conf-label">Încredere</span>
+                                <span className="rd-conf-value" style={{ color: sel.confidence > 0.9 ? "var(--accent-green)" : sel.confidence > 0.8 ? "var(--accent-blue)" : "var(--accent-yellow)" }}>
+                                  {Math.round(sel.confidence * 100)}%
+                                </span>
+                                <div className="rd-conf-bar">
+                                  <div className="rd-conf-fill" style={{ width: `${sel.confidence * 100}%`, background: sel.confidence > 0.9 ? "var(--accent-green)" : sel.confidence > 0.8 ? "var(--accent-blue)" : "var(--accent-yellow)" }} />
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Description */}
+                            <div className="rd-section">
+                              <div className="rd-section-title">Descriere regulă</div>
+                              <div className="rd-description">{sel.text}</div>
+                            </div>
+
+                            {/* Source text from guide */}
+                            {sel.sourceText && (
+                              <div className="rd-section">
+                                <div className="rd-section-title">
+                                  Text original din ghid
+                                  <span className="rd-page-ref">Pag. {sel.page}</span>
+                                </div>
+                                <div className="rd-source-text">
+                                  <div className="rd-source-quote">{sel.sourceText}</div>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Condition / logic */}
+                            {sel.condition && (
+                              <div className="rd-section">
+                                <div className="rd-section-title">
+                                  {sel.type === "fixed" ? "Condiție verificare" : "Logică decizională"}
+                                </div>
+                                <div className="rd-condition">
+                                  {sel.type === "fixed" && sel.condition.field && (
+                                    <div className="rd-cond-row">
+                                      <span className="rd-cond-field">{sel.condition.field}</span>
+                                      <span className="rd-cond-op">{sel.condition.operator}</span>
+                                      <span className="rd-cond-val">
+                                        {Array.isArray(sel.condition.value) ? sel.condition.value.join(", ") : String(sel.condition.value)}
+                                        {sel.condition.value2 && ` — ${sel.condition.value2}`}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {sel.type === "interpreted" && (
+                                    <>
+                                      {sel.condition.type && (
+                                        <div className="rd-logic-type">
+                                          <span className="rd-logic-badge">{sel.condition.type.replace(/_/g, " ")}</span>
+                                        </div>
+                                      )}
+                                      {sel.condition.logic && (
+                                        <div className="rd-logic-desc">{sel.condition.logic}</div>
+                                      )}
+                                      {sel.condition.factors && sel.condition.factors.length > 0 && (
+                                        <div className="rd-factors">
+                                          <span className="rd-factors-label">Factori:</span>
+                                          {sel.condition.factors.map((f: string, i: number) => (
+                                            <span key={i} className="rd-factor-chip">{f}</span>
+                                          ))}
+                                        </div>
+                                      )}
+                                      {sel.condition.outcomes && sel.condition.outcomes.length > 0 && (
+                                        <div className="rd-outcomes">
+                                          {sel.condition.outcomes.map((o: any, i: number) => (
+                                            <div key={i} className="rd-outcome-row">
+                                              <span className="rd-outcome-if">DACĂ</span>
+                                              <span className="rd-outcome-cond">{o.if}</span>
+                                              <span className="rd-outcome-then">→</span>
+                                              <span className="rd-outcome-result">{o.then}</span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Source document */}
+                            {sel.sourceDocument && (
+                              <div className="rd-section">
+                                <div className="rd-section-title">Sursă document</div>
+                                <div className="rd-doc-ref">
+                                  <span className="rd-doc-icon">{sel.sourceDocument.fileType === "pdf" ? "📕" : sel.sourceDocument.fileType === "docx" ? "📘" : "📗"}</span>
+                                  <span className="rd-doc-name">{sel.sourceDocument.name}</span>
+                                  <span className="rd-doc-page">Pag. {sel.page}</span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="rd-empty">
+                            <div className="rd-empty-icon">📖</div>
+                            <div className="rd-empty-title">Selectează o regulă</div>
+                            <div className="rd-empty-desc">Alege o regulă din lista din stânga pentru a vedea detaliile complete, textul original din ghid și condiția de verificare.</div>
+                          </div>
+                        )}
                       </div>
                     </>
                   ) : (
@@ -1501,7 +1811,8 @@ export default function ProjectViewPage() {
                   )}
                 </div>
               </div>
-            )}
+              );
+            })()}
 
             {/* ELEMENTE */}
             {activeLeaf === "elemente" && (
@@ -1962,18 +2273,33 @@ export default function ProjectViewPage() {
                 <div className="neemia-doc-view">
                   {neemiaTemplate && neemiaTemplate.pages.length > 0 ? (
                     <>
-                      {/* Page navigation */}
+                      {/* Page navigation bar */}
                       <div className="neemia-page-nav">
                         <span className="nav-label">{neemiaTemplate.name}</span>
-                        {neemiaTemplate.pages.map((pg, i) => (
-                          <div
-                            key={i}
-                            className={`page-thumb ${pg.status} ${neemiaActivePage === i ? "active" : ""}`}
-                            onClick={() => handleNeemiaPageClick(i)}
-                          >
-                            {pg.num}
-                          </div>
-                        ))}
+                        <div className="nav-pages-scroll">
+                          {neemiaTemplate.pages.map((pg, i) => {
+                            const pgFilled = pg.filledFields || pg.fields.filter(f => f.value).length;
+                            const pgTotal = pg.totalFields || pg.fields.length;
+                            const pgPct = pgTotal > 0 ? Math.round(pgFilled / pgTotal * 100) : 0;
+                            return (
+                              <div
+                                key={i}
+                                className={`page-thumb ${pg.status} ${neemiaActivePage === i ? "active" : ""}`}
+                                onClick={() => handleNeemiaPageClick(i)}
+                                title={`Pag. ${pg.num}: ${pgFilled}/${pgTotal} câmpuri (${pgPct}%)`}
+                              >
+                                <span className="pt-num">{pg.num}</span>
+                                <span className={`pt-dot ${pg.status}`} />
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div className="nav-stats">
+                          <span className="nav-stat-filled">{neemiaTemplate.filledFields}/{neemiaTemplate.totalFields}</span>
+                          <span className="nav-stat-pct" style={{ color: neemiaProgressColor(neemiaProgressPct(neemiaTemplate)) }}>
+                            {neemiaProgressPct(neemiaTemplate)}%
+                          </span>
+                        </div>
                         <button className="download-btn" onClick={async () => {
                           if (neemiaTemplate.downloadUrl) {
                             window.open(neemiaTemplate.downloadUrl, "_blank");
@@ -1988,53 +2314,120 @@ export default function ProjectViewPage() {
                         </button>
                       </div>
 
-                      <div className="neemia-preview-area">
-                        {/* Document preview */}
-                        <div className="neemia-doc-preview">
-                          {neemiaPage && (
-                            <div className="doc-page" key={neemiaAnimKey}>
-                              <div className="doc-header-label">DOCUMENT OFICIAL &middot; GENERARE AUTOMATĂ</div>
-                              <div className="doc-page-title">Pag. {neemiaPage.num}: {neemiaPage.title}</div>
-                              {neemiaPage.fields.map((f, fi) => (
-                                <div className="doc-field-group" key={fi}>
-                                  <div className="doc-field-label">{f.name}</div>
-                                  {f.value ? (
-                                    <div className="doc-field-value">{f.value}</div>
-                                  ) : (
-                                    <div className="doc-field-missing">(lipsă)</div>
-                                  )}
+                      <div className="neemia-preview-area" ref={neemiaSplitRef}>
+                        {/* Left panel: Fields for current page */}
+                        <div className="neemia-fields-panel" style={{ width: neemiaSplitWidth }}>
+                          <div className="nfp-header">
+                            <h3>Câmpuri — Pag. {neemiaPage?.num}</h3>
+                            {neemiaPage && (
+                              <div className="nfp-stats">
+                                <span className="nfp-stat confirmed">{neemiaPage.fields.filter(f => f.confirmed).length} confirmate</span>
+                                <span className="nfp-stat filled">{neemiaPage.fields.filter(f => f.value && !f.confirmed).length} propuse</span>
+                                <span className="nfp-stat empty">{neemiaPage.fields.filter(f => !f.value).length} goale</span>
+                              </div>
+                            )}
+                          </div>
+                          <div className="nfp-scroll">
+                            {neemiaPage?.fields.map((f, fi) => (
+                              <div className={`nfp-card ${f.value ? (f.confirmed ? "is-confirmed" : "is-proposed") : "is-empty"}`} key={fi}>
+                                <div className="nfp-card-top">
+                                  <span className="nfp-card-label">{f.name}</span>
+                                  <span className={`nfp-card-status ${f.confirmed ? "confirmed" : f.value ? "proposed" : "empty"}`}>
+                                    {f.confirmed ? "✓ Confirmat" : f.value ? "○ Propus" : "— Gol"}
+                                  </span>
                                 </div>
-                              ))}
-                              <div className="doc-page-number">Pag. {neemiaPage.num}</div>
-                            </div>
-                          )}
+                                <div className={`nfp-card-value ${!f.value ? "missing" : ""}`}>
+                                  {f.value || `{{${f.key}}}`}
+                                </div>
+                                {f.source && (
+                                  <div className="nfp-card-source">
+                                    <span className={`source-dot ${f.source.toLowerCase()}`} />
+                                    {f.source}
+                                  </div>
+                                )}
+                                {f.fieldType !== "text" && (
+                                  <div className="nfp-card-type">{f.fieldType}</div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
                         </div>
 
-                        {/* Fields panel */}
-                        <div className="neemia-fields-panel">
-                          <h3>Câmpuri Pag. {neemiaPage?.num}</h3>
-                          {neemiaPage?.fields.map((f, fi) => (
-                            <div className="field-card" key={fi}>
-                              <div className="field-name">{f.name}</div>
-                              <div className={`field-val ${!f.value ? "missing" : ""}`}>
-                                {f.value || "Lipsă ⚠"}
+                        {/* Drag handle */}
+                        <div
+                          className="neemia-split-handle"
+                          onMouseDown={() => { neemiaSplitDragging.current = true; document.body.style.cursor = "col-resize"; document.body.style.userSelect = "none"; }}
+                        >
+                          <div className="nsh-dots" />
+                        </div>
+
+                        {/* Right: Document page preview — pixel-perfect document look */}
+                        <div className="neemia-doc-preview">
+                          {neemiaPage && (
+                            <div className="ndp-page" key={neemiaAnimKey}>
+                              <div className="ndp-header">
+                                <div className="ndp-header-bar" />
+                                <div className="ndp-doc-type">{neemiaTemplate.type}</div>
+                                <div className="ndp-doc-title">{neemiaTemplate.name}</div>
                               </div>
-                              {f.source && (
-                                <div className="field-source">
-                                  <span className={`source-dot ${f.source.toLowerCase()}`} />
-                                  {f.source}
-                                </div>
-                              )}
+
+                              {/* Group fields by group name */}
+                              {(() => {
+                                const groups: Array<{ name: string | null; fields: typeof neemiaPage.fields }> = [];
+                                let currentGroup: string | null = null;
+                                let currentFields: typeof neemiaPage.fields = [];
+
+                                for (const f of neemiaPage.fields) {
+                                  if (f.group !== currentGroup) {
+                                    if (currentFields.length > 0) groups.push({ name: currentGroup, fields: currentFields });
+                                    currentGroup = f.group;
+                                    currentFields = [f];
+                                  } else {
+                                    currentFields.push(f);
+                                  }
+                                }
+                                if (currentFields.length > 0) groups.push({ name: currentGroup, fields: currentFields });
+
+                                return groups.map((g, gi) => (
+                                  <div className="ndp-group" key={gi}>
+                                    {g.name && <div className="ndp-group-title">{g.name}</div>}
+                                    {g.fields.map((f, fi) => (
+                                      <div className={`ndp-field ${f.value ? "filled" : "empty"} ${f.confirmed ? "confirmed" : ""}`} key={fi}>
+                                        <div className="ndp-field-label">{f.name}</div>
+                                        <div className="ndp-field-line">
+                                          {f.value ? (
+                                            <span className="ndp-field-value">{f.value}</span>
+                                          ) : (
+                                            <span className="ndp-field-placeholder">{'{{' + f.key + '}}'}</span>
+                                          )}
+                                          {f.value && (
+                                            <span className={`ndp-field-indicator ${f.confirmed ? "confirmed" : "proposed"}`}>
+                                              {f.confirmed ? "✓" : "○"}
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ));
+                              })()}
+
+                              <div className="ndp-footer">
+                                <span>Pag. {neemiaPage.num} / {neemiaTemplate.pages.length}</span>
+                                <span className="ndp-footer-stats">
+                                  {neemiaPage.fields.filter(f => f.value).length}/{neemiaPage.fields.length} completate
+                                </span>
+                              </div>
                             </div>
-                          ))}
+                          )}
                         </div>
                       </div>
                     </>
                   ) : (
                     <div className="neemia-empty">
                       <div className="ne-icon">&#128196;</div>
-                      <div className="ne-label">Niciun template procesat</div>
-                      <div className="ne-desc">Selectează un template pentru a vedea completarea automată</div>
+                      <div className="ne-label">Selectează un template</div>
+                      <div className="ne-desc">Alege un template din stânga pentru a vedea paginile, câmpurile completate și starea fiecărui element</div>
                     </div>
                   )}
                 </div>

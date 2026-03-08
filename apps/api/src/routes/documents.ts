@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { db } from "../db";
-import { documentFolders, documents } from "../db/schema";
+import { documentFolders, documents, templateElements } from "../db/schema";
 import { eq, and, isNull } from "drizzle-orm";
 import { uploadFile, getFileUrl, deleteFile } from "../services/storage";
 import { AuthContext } from "../middleware/auth";
@@ -214,4 +214,133 @@ documentRoutes.post("/documents/:id/process", async (c) => {
   }
 
   return c.json({ ok: true, message: "Procesare pornită" });
+});
+
+// --- TEMPLATE ELEMENTS FOR DOCUMENT ---
+documentRoutes.get("/documents/:id/elements", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const id = c.req.param("id");
+
+  const doc = await db.query.documents.findFirst({
+    where: and(eq(documents.id, id), eq(documents.organizationId, auth.organizationId!)),
+  });
+  if (!doc) return c.json({ error: "Not found" }, 404);
+
+  const elements = await db.query.templateElements.findMany({
+    where: eq(templateElements.documentId, id),
+    orderBy: (e, { asc }) => [asc(e.pageNum), asc(e.lineNum)],
+  });
+
+  // Group by page
+  const pageMap = new Map<number, typeof elements>();
+  for (const el of elements) {
+    const pg = el.pageNum || 1;
+    const arr = pageMap.get(pg) || [];
+    arr.push(el);
+    pageMap.set(pg, arr);
+  }
+
+  const pages = [...pageMap.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([num, els]) => ({
+      num,
+      elements: els,
+      totalElements: els.length,
+      validatedElements: els.filter(e => e.validated).length,
+    }));
+
+  return c.json({
+    documentId: id,
+    documentName: doc.name,
+    fileType: doc.fileType,
+    pageCount: doc.pageCount || pages.length,
+    totalElements: elements.length,
+    validatedElements: elements.filter(e => e.validated).length,
+    pages,
+  });
+});
+
+// --- VALIDATE / UPDATE TEMPLATE ELEMENT ---
+documentRoutes.put("/documents/:docId/elements/:elId", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const { docId, elId } = c.req.param() as { docId: string; elId: string };
+  const body = await c.req.json();
+
+  const el = await db.query.templateElements.findFirst({
+    where: and(eq(templateElements.id, elId), eq(templateElements.documentId, docId)),
+  });
+  if (!el) return c.json({ error: "Element not found" }, 404);
+
+  const updateData: Record<string, any> = {};
+  if (body.validated !== undefined) {
+    updateData.validated = body.validated;
+    updateData.validatedBy = body.validated ? auth.userId : null;
+  }
+  if (body.label !== undefined) updateData.label = body.label;
+  if (body.fieldType !== undefined) updateData.fieldType = body.fieldType;
+  if (body.group !== undefined) updateData.group = body.group;
+
+  const [updated] = await db.update(templateElements)
+    .set(updateData)
+    .where(eq(templateElements.id, elId))
+    .returning();
+
+  return c.json(updated);
+});
+
+// --- BATCH VALIDATE ALL ELEMENTS ON A PAGE ---
+documentRoutes.put("/documents/:docId/elements-validate-page", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const docId = c.req.param("docId");
+  const { pageNum, validated } = await c.req.json();
+
+  const elements = await db.query.templateElements.findMany({
+    where: and(eq(templateElements.documentId, docId), eq(templateElements.pageNum, pageNum)),
+  });
+
+  for (const el of elements) {
+    await db.update(templateElements)
+      .set({ validated, validatedBy: validated ? auth.userId : null })
+      .where(eq(templateElements.id, el.id));
+  }
+
+  return c.json({ ok: true, count: elements.length });
+});
+
+// --- ADD MANUAL TEMPLATE ELEMENT ---
+documentRoutes.post("/documents/:docId/elements", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const docId = c.req.param("docId");
+  const body = await c.req.json();
+
+  const doc = await db.query.documents.findFirst({
+    where: and(eq(documents.id, docId), eq(documents.organizationId, auth.organizationId!)),
+  });
+  if (!doc) return c.json({ error: "Document not found" }, 404);
+
+  const [el] = await db.insert(templateElements).values({
+    documentId: docId,
+    organizationId: auth.organizationId!,
+    key: body.key,
+    label: body.label,
+    fieldType: body.fieldType || "text",
+    pageNum: body.pageNum || 1,
+    lineNum: body.lineNum || 0,
+    group: body.group || null,
+    detected: false,
+    validated: false,
+  }).returning();
+
+  return c.json(el, 201);
+});
+
+// --- DELETE TEMPLATE ELEMENT ---
+documentRoutes.delete("/documents/:docId/elements/:elId", async (c) => {
+  const { docId, elId } = c.req.param() as { docId: string; elId: string };
+
+  await db.delete(templateElements).where(
+    and(eq(templateElements.id, elId), eq(templateElements.documentId, docId))
+  );
+
+  return c.json({ ok: true });
 });

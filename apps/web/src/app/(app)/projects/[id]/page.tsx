@@ -1,7 +1,7 @@
 "use client";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { apiGet, apiPost, apiPut } from "@/lib/api";
+import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
@@ -73,8 +73,10 @@ type ChecklistItem = {
   name: string;
   category: string;
   source: string;
+  templateId: string | null;
   templateName: string | null;
   done: boolean;
+  notes: string | null;
 };
 
 type ProjectData = {
@@ -192,8 +194,10 @@ function mapChecklist(items: any[]): ChecklistItem[] {
     name: item.name,
     category: item.category || "General",
     source: item.source || "manual",
-    templateName: item.templateId ? item.name : null,
+    templateId: item.templateId || null,
+    templateName: item.templateName || null,
     done: item.done,
+    notes: item.notes || null,
   }));
 }
 
@@ -219,6 +223,11 @@ export default function ProjectViewPage() {
   const [ghidTab, setGhidTab] = useState<"reguli" | "ghid">("reguli");
   const [ghidCategoryFilter, setGhidCategoryFilter] = useState<string>("all");
   const [collapsedCats, setCollapsedCats] = useState<Record<string, boolean>>({});
+  const [checkAddOpen, setCheckAddOpen] = useState(false);
+  const [checkNewName, setCheckNewName] = useState("");
+  const [checkNewCat, setCheckNewCat] = useState("");
+  const [checkActionId, setCheckActionId] = useState<string | null>(null);
+  const [checkMapOpen, setCheckMapOpen] = useState<string | null>(null);
 
   const [solomonModel, setSolomonModel] = useState<"sonnet" | "opus">("opus");
   const [solomonET, setSolomonET] = useState(true);
@@ -808,6 +817,54 @@ export default function ProjectViewPage() {
     }
   };
 
+  const handleChecklistAdd = async () => {
+    if (readOnly || !checkNewName.trim() || !checkNewCat.trim()) return;
+    try {
+      const item = await apiPost<any>(`/api/projects/${projectId}/checklist`, { name: checkNewName.trim(), category: checkNewCat.trim() });
+      setChecklistItems(prev => [...prev, mapChecklist([item])[0]]);
+      setCheckNewName("");
+      setCheckNewCat("");
+      setCheckAddOpen(false);
+    } catch (err) { console.error("Checklist add failed:", err); }
+  };
+
+  const handleChecklistDelete = async (itemId: string) => {
+    if (readOnly) return;
+    try {
+      await apiDelete(`/api/projects/${projectId}/checklist/${itemId}`);
+      setChecklistItems(prev => prev.filter(i => i.id !== itemId));
+      setCheckActionId(null);
+    } catch (err) { console.error("Checklist delete failed:", err); }
+  };
+
+  const handleChecklistMapTemplate = async (itemId: string, templateId: string | null) => {
+    if (readOnly) return;
+    try {
+      await apiPut(`/api/projects/${projectId}/checklist/${itemId}`, { templateId });
+      // Find template name from neemiaTemplates
+      const tmpl = neemiaTemplates.find(t => t.id === templateId);
+      setChecklistItems(prev => prev.map(i => i.id === itemId ? { ...i, templateId, templateName: tmpl?.name || null } : i));
+      setCheckMapOpen(null);
+    } catch (err) { console.error("Checklist map template failed:", err); }
+  };
+
+  const handleChecklistMoveCategory = async (itemId: string, newCategory: string) => {
+    if (readOnly) return;
+    try {
+      await apiPut(`/api/projects/${projectId}/checklist/${itemId}`, { category: newCategory });
+      setChecklistItems(prev => prev.map(i => i.id === itemId ? { ...i, category: newCategory } : i));
+      setCheckActionId(null);
+    } catch (err) { console.error("Checklist move failed:", err); }
+  };
+
+  // Close checklist actions menu on outside click
+  useEffect(() => {
+    if (!checkActionId) return;
+    const handler = () => { setCheckActionId(null); setCheckMapOpen(null); };
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
+  }, [checkActionId]);
+
   const handleConfirmElementApi = async (elId: string) => {
     if (readOnly) return;
     const el = elements.find(e => e.id === elId);
@@ -919,6 +976,8 @@ export default function ProjectViewPage() {
   });
 
   const checkCategories = [...new Set(checklistItems.map(i => i.category))];
+  const checkMappedTemplateIds = new Set(checklistItems.filter(i => i.templateId).map(i => i.templateId));
+  const checkUnmappedTemplates = neemiaTemplates.filter(t => !checkMappedTemplateIds.has(t.id));
 
   const neemiaTemplate = neemiaTemplates[neemiaActiveTemplate] || null;
   const neemiaPage = neemiaTemplate?.pages?.[neemiaActivePage] || null;
@@ -1210,6 +1269,49 @@ export default function ProjectViewPage() {
         .check-source-badge.manual{background:rgba(167,139,250,.12);color:var(--accent-purple)}
         .check-template{font-size:11px;color:var(--accent-blue);cursor:pointer;white-space:nowrap}
         .check-template:hover{text-decoration:underline}
+
+        /* Checklist Add Form */
+        .check-add-bar{display:flex;gap:8px;margin-bottom:16px}
+        .check-add-btn{padding:8px 16px;border-radius:var(--r-sm);border:1px dashed var(--border);background:transparent;color:var(--text-muted);font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font-sans);transition:all .15s;display:flex;align-items:center;gap:6px}
+        .check-add-btn:hover{border-color:var(--accent-purple);color:var(--accent-purple)}
+        .check-add-form{padding:14px;background:var(--bg-elevated);border-radius:var(--r-md);border:1px solid var(--border);margin-bottom:16px;display:flex;flex-direction:column;gap:8px}
+        .check-add-form-row{display:flex;gap:8px}
+        .check-add-input{flex:1;padding:7px 12px;border-radius:var(--r-sm);border:1px solid var(--border);background:var(--bg-deep);color:var(--text-primary);font-size:13px;font-family:var(--font-sans);outline:none}
+        .check-add-input:focus{border-color:var(--accent-blue)}
+        .check-add-input::placeholder{color:var(--text-muted)}
+        .check-add-submit{padding:7px 16px;border-radius:var(--r-sm);border:none;background:var(--accent-blue);color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font-sans)}
+        .check-add-submit:disabled{opacity:.4;cursor:not-allowed}
+        .check-add-cancel{padding:7px 12px;border-radius:var(--r-sm);border:1px solid var(--border);background:transparent;color:var(--text-muted);font-size:12px;cursor:pointer;font-family:var(--font-sans)}
+
+        /* Checklist Item Actions */
+        .check-item-actions{position:relative}
+        .check-actions-btn{background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:14px;padding:2px 6px;border-radius:3px;transition:all .12s;line-height:1}
+        .check-actions-btn:hover{background:var(--bg-hover);color:var(--text-primary)}
+        .check-actions-menu{position:absolute;right:0;top:100%;z-index:20;background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--r-md);box-shadow:0 8px 24px rgba(0,0,0,.3);min-width:200px;padding:4px;animation:menuSlide .15s ease}
+        @keyframes menuSlide{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+        .check-menu-item{display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:var(--r-sm);font-size:12px;font-weight:500;cursor:pointer;transition:all .12s;color:var(--text-secondary);border:none;background:none;width:100%;text-align:left;font-family:var(--font-sans)}
+        .check-menu-item:hover{background:var(--bg-hover);color:var(--text-primary)}
+        .check-menu-item.danger{color:var(--accent-red)}
+        .check-menu-item.danger:hover{background:rgba(248,113,113,.08)}
+        .check-menu-divider{height:1px;background:var(--border);margin:4px 0}
+        .check-menu-sub{padding:4px 8px}
+        .check-menu-sub-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);padding:4px 4px 6px;display:block}
+        .check-menu-sub-item{display:block;padding:6px 8px;border-radius:var(--r-sm);font-size:12px;cursor:pointer;color:var(--text-secondary);transition:all .12s;border:none;background:none;width:100%;text-align:left;font-family:var(--font-sans)}
+        .check-menu-sub-item:hover{background:var(--bg-hover);color:var(--text-primary)}
+        .check-menu-sub-item.active{color:var(--accent-blue);font-weight:600}
+
+        /* Template Mapper */
+        .check-template-list{padding:4px 8px}
+        .check-template-option{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:var(--r-sm);font-size:12px;cursor:pointer;color:var(--text-secondary);transition:all .12s;border:none;background:none;width:100%;text-align:left;font-family:var(--font-sans)}
+        .check-template-option:hover{background:var(--bg-hover);color:var(--text-primary)}
+        .check-template-option.mapped{color:var(--accent-green);font-weight:600}
+        .check-template-badge{font-size:9px;font-weight:700;text-transform:uppercase;padding:2px 5px;border-radius:3px;background:rgba(77,139,255,.1);color:var(--accent-blue)}
+
+        /* Unmapped Templates Warning */
+        .check-unmapped{display:flex;align-items:center;gap:10px;padding:12px 16px;border-radius:var(--r-md);border:1px solid rgba(251,191,36,.2);background:rgba(251,191,36,.04);margin-bottom:16px;font-size:12px;color:var(--accent-yellow)}
+        .check-unmapped-icon{font-size:16px;flex-shrink:0}
+        .check-unmapped-text{flex:1;line-height:1.5}
+        .check-unmapped strong{font-weight:700}
 
         /* Solomon Chat */
         .solomon-layout{display:flex;height:100%;overflow:hidden}
@@ -1984,6 +2086,7 @@ export default function ProjectViewPage() {
             {/* CHECKLIST */}
             {activeLeaf === "checklist" && (
               <div className="checklist-panel">
+                {/* Progress */}
                 <div className="check-progress">
                   <div className="check-ring">
                     <svg width="80" height="80" viewBox="0 0 80 80">
@@ -2002,6 +2105,43 @@ export default function ProjectViewPage() {
                   </div>
                 </div>
 
+                {/* Unmapped templates warning */}
+                {checkUnmappedTemplates.length > 0 && (
+                  <div className="check-unmapped">
+                    <span className="check-unmapped-icon">&#9888;</span>
+                    <div className="check-unmapped-text">
+                      <strong>{checkUnmappedTemplates.length} template-uri nemapate:</strong>{" "}
+                      {checkUnmappedTemplates.map(t => t.name).join(", ")}
+                    </div>
+                  </div>
+                )}
+
+                {/* Add document button / form */}
+                {!readOnly && (
+                  checkAddOpen ? (
+                    <div className="check-add-form">
+                      <div className="check-add-form-row">
+                        <input className="check-add-input" placeholder="Nume document (ex: Certificat constatator)" value={checkNewName} onChange={e => setCheckNewName(e.target.value)} />
+                      </div>
+                      <div className="check-add-form-row">
+                        <input className="check-add-input" placeholder="Categorie (ex: Documente juridice)" value={checkNewCat} onChange={e => setCheckNewCat(e.target.value)} list="check-cats" />
+                        <datalist id="check-cats">
+                          {checkCategories.map(c => <option key={c} value={c} />)}
+                        </datalist>
+                      </div>
+                      <div className="check-add-form-row">
+                        <button className="check-add-submit" disabled={!checkNewName.trim() || !checkNewCat.trim()} onClick={handleChecklistAdd}>Adauga</button>
+                        <button className="check-add-cancel" onClick={() => { setCheckAddOpen(false); setCheckNewName(""); setCheckNewCat(""); }}>Anuleaza</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="check-add-bar">
+                      <button className="check-add-btn" onClick={() => setCheckAddOpen(true)}>+ Adauga document</button>
+                    </div>
+                  )
+                )}
+
+                {/* Categories */}
                 {checkCategories.map(cat => {
                   const catItems = checklistItems.filter(i => i.category === cat);
                   const catDone = catItems.filter(i => i.done).length;
@@ -2018,7 +2158,7 @@ export default function ProjectViewPage() {
                         <div className="check-item" key={item.id}>
                           <div className={`check-box ${item.done ? "done" : ""}`}
                             onClick={() => handleChecklistToggle(item.id, item.done)}>
-                            {item.done && "✓"}
+                            {item.done && "\u2713"}
                           </div>
                           <span className={`check-name ${item.done ? "done-text" : ""}`}>{item.name}</span>
                           <span className={`check-source-badge ${item.source}`}>{item.source}</span>
@@ -2027,11 +2167,70 @@ export default function ProjectViewPage() {
                               &#128196; {item.templateName}
                             </span>
                           )}
+
+                          {/* Actions menu */}
+                          {!readOnly && (
+                            <div className="check-item-actions">
+                              <button className="check-actions-btn" onClick={(e) => { e.stopPropagation(); setCheckActionId(checkActionId === item.id ? null : item.id); setCheckMapOpen(null); }}>&#8943;</button>
+                              {checkActionId === item.id && (
+                                <div className="check-actions-menu" onClick={e => e.stopPropagation()}>
+                                  {/* Map template */}
+                                  <button className="check-menu-item" onClick={() => setCheckMapOpen(checkMapOpen === item.id ? null : item.id)}>
+                                    &#128196; {item.templateId ? "Schimba template" : "Mapeaza template"}
+                                  </button>
+                                  {checkMapOpen === item.id && (
+                                    <div className="check-template-list">
+                                      {item.templateId && (
+                                        <button className="check-template-option" onClick={() => handleChecklistMapTemplate(item.id, null)}>
+                                          &#10005; Sterge mapare
+                                        </button>
+                                      )}
+                                      {neemiaTemplates.map(t => (
+                                        <button key={t.id} className={`check-template-option ${item.templateId === t.id ? "mapped" : ""}`} onClick={() => handleChecklistMapTemplate(item.id, t.id)}>
+                                          <span className="check-template-badge">{t.type}</span>
+                                          {t.name}
+                                          {item.templateId === t.id && " \u2713"}
+                                        </button>
+                                      ))}
+                                      {neemiaTemplates.length === 0 && (
+                                        <div style={{ padding: "8px", fontSize: 11, color: "var(--text-muted)" }}>Niciun template disponibil</div>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  <div className="check-menu-divider" />
+
+                                  {/* Move category */}
+                                  <div className="check-menu-sub">
+                                    <span className="check-menu-sub-label">Muta in categorie</span>
+                                    {checkCategories.filter(c => c !== item.category).map(c => (
+                                      <button key={c} className="check-menu-sub-item" onClick={() => handleChecklistMoveCategory(item.id, c)}>
+                                        {c}
+                                      </button>
+                                    ))}
+                                  </div>
+
+                                  <div className="check-menu-divider" />
+
+                                  {/* Delete */}
+                                  <button className="check-menu-item danger" onClick={() => handleChecklistDelete(item.id)}>
+                                    &#128465; Sterge document
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
                   );
                 })}
+
+                {checklistItems.length === 0 && (
+                  <div style={{ textAlign: "center", padding: 40, color: "var(--text-muted)", fontSize: 13 }}>
+                    Niciun document in checklist. Adauga manual sau proceseaza un ghid.
+                  </div>
+                )}
               </div>
             )}
 

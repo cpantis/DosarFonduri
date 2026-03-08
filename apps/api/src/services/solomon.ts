@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { db } from "../db";
 import {
   projects, projectElements, templateElements,
-  projectEligibility, rules,
+  projectEligibility, rules, documents, documentFolders,
   companies, companyFinancials,
   solomonConversations, solomonMessages,
   orgConfig, solomonKnowledge,
@@ -24,6 +24,133 @@ function calculateCost(model: string, tokensIn: number, tokensOut: number): stri
 }
 
 // ═══ BUILD SYSTEM PROMPT ═══
+// ═══ PROGRAM DETECTION ═══
+// Deduce funding program from project context (folder hierarchy, name, templates, rules)
+async function detectProgramContext(projectId: string, organizationId: string, project: any, company: any): Promise<{
+  programDetected: string | null;
+  masura: string | null;
+  sesiune: string | null;
+  organism: string | null;
+  confidence: "high" | "medium" | "low";
+  signals: string[];
+}> {
+  const signals: string[] = [];
+  let programDetected: string | null = null;
+  let masura: string | null = null;
+  let sesiune: string | null = null;
+  let organism: string | null = null;
+  let confidence: "high" | "medium" | "low" = "low";
+
+  // Signal 1: Project name often contains program info
+  const nameSignals = project.name?.toLowerCase() || "";
+  const programPatterns: Array<{ pattern: RegExp; program: string; org: string }> = [
+    { pattern: /afir|pndr|feadr|gal|leader|masura\s*6/i, program: "PNDR/AFIR", org: "AFIR" },
+    { pattern: /por\b|regio|urban|competitivitate\s*regional/i, program: "POR/Regio", org: "AM POR" },
+    { pattern: /pocu|capital\s*uman|fse\+?/i, program: "POCU/FSE+", org: "AM POCU" },
+    { pattern: /pocidif|poci|infrastructur.*digital|competitivitate/i, program: "POCIDIF", org: "AM POCIDIF" },
+    { pattern: /pnrr|rezilienta|next\s*gen|reforma/i, program: "PNRR", org: "MIPE" },
+    { pattern: /horizon|orizont|cercetare.*inovare/i, program: "Horizon Europe", org: "Comisia Europeană" },
+    { pattern: /imm\s*invest|start-?up|micro.*intrepri/i, program: "IMM Invest/Start-Up", org: "FNGCIMM/MEAT" },
+    { pattern: /minimis|de\s*minimis/i, program: "Ajutor de minimis", org: "Variat" },
+    { pattern: /gber|schema\s*ajutor|ajutor\s*stat/i, program: "Schemă ajutor de stat", org: "Variat" },
+    { pattern: /pr\s*nord|pr\s*sud|pr\s*vest|pr\s*centru|program.*regional/i, program: "Program Regional 2021-2027", org: "ADR" },
+    { pattern: /pescuit|fep|popam|feampa/i, program: "POPAM/FEAMPA", org: "AM POPAM" },
+  ];
+
+  for (const pp of programPatterns) {
+    if (pp.pattern.test(nameSignals)) {
+      programDetected = pp.program;
+      organism = pp.org;
+      signals.push(`Numele proiectului conține referință: "${project.name}"`);
+      break;
+    }
+  }
+
+  // Signal 2: Folder hierarchy (session/program structure)
+  if (project.folderId) {
+    const folder = await db.query.documentFolders.findFirst({
+      where: eq(documentFolders.id, project.folderId),
+    });
+    if (folder) {
+      signals.push(`Folder proiect: "${folder.name}"`);
+      // Walk up the folder tree to find program/session context
+      if (folder.parentId) {
+        const parentFolder = await db.query.documentFolders.findFirst({
+          where: eq(documentFolders.id, folder.parentId),
+        });
+        if (parentFolder) {
+          signals.push(`Folder părinte: "${parentFolder.name}"`);
+          for (const pp of programPatterns) {
+            if (pp.pattern.test(parentFolder.name)) {
+              if (!programDetected) { programDetected = pp.program; organism = pp.org; }
+              break;
+            }
+          }
+          // Check for session pattern (e.g., "Sesiunea 2024", "Apel nr. 3")
+          const sesMatch = parentFolder.name.match(/sesiune?a?\s*(\d{4}|\d+)/i) || folder.name.match(/sesiune?a?\s*(\d{4}|\d+)/i);
+          if (sesMatch) sesiune = sesMatch[0];
+        }
+      }
+    }
+  }
+
+  // Signal 3: Template document names
+  const projectEls = await db.query.projectElements.findMany({
+    where: eq(projectElements.projectId, projectId),
+    limit: 5,
+  });
+  const templateDocIds = new Set<string>();
+  for (const pe of projectEls.slice(0, 5)) {
+    const te = await db.query.templateElements.findFirst({
+      where: eq(templateElements.id, pe.templateElementId),
+    });
+    if (te) templateDocIds.add(te.documentId);
+  }
+  for (const docId of templateDocIds) {
+    const doc = await db.query.documents.findFirst({ where: eq(documents.id, docId) });
+    if (doc) {
+      signals.push(`Template: "${doc.name}"`);
+      for (const pp of programPatterns) {
+        if (pp.pattern.test(doc.name)) {
+          if (!programDetected) { programDetected = pp.program; organism = pp.org; }
+          break;
+        }
+      }
+      // Detect masura from document name (e.g., "M6.4", "Masura 4.1")
+      const masuraMatch = doc.name.match(/m[aă]sura?\s*(\d+\.?\d*)/i) || doc.name.match(/\bM(\d+\.?\d+)/);
+      if (masuraMatch && !masura) masura = `Măsura ${masuraMatch[1]}`;
+    }
+  }
+
+  // Signal 4: Guide rules content
+  const allRules = await db.query.rules.findMany({
+    where: eq(rules.organizationId, organizationId),
+    limit: 10,
+  });
+  for (const rule of allRules.slice(0, 5)) {
+    const ruleText = rule.description + " " + (rule.sourceText || "");
+    for (const pp of programPatterns) {
+      if (pp.pattern.test(ruleText)) {
+        if (!programDetected) { programDetected = pp.program; organism = pp.org; }
+        signals.push(`Regulă din ghid menționează: ${pp.program}`);
+        break;
+      }
+    }
+  }
+
+  // Detect masura from project name
+  const masuraFromName = nameSignals.match(/m[aă]sura?\s*(\d+\.?\d*)/i) || nameSignals.match(/\bM(\d+\.?\d+)/);
+  if (masuraFromName && !masura) masura = `Măsura ${masuraFromName[1]}`;
+
+  // Determine confidence
+  const signalCount = signals.length;
+  if (programDetected && signalCount >= 3) confidence = "high";
+  else if (programDetected && signalCount >= 1) confidence = "medium";
+  else confidence = "low";
+
+  return { programDetected, masura, sesiune, organism, confidence, signals };
+}
+
 async function buildSystemPrompt(projectId: string, organizationId: string): Promise<string> {
   const project = await db.query.projects.findFirst({
     where: eq(projects.id, projectId),
@@ -133,7 +260,7 @@ async function buildSystemPrompt(projectId: string, organizationId: string): Pro
   const profitNet = (latestFinancial?.f20 as any)?.profitNet;
   const nrAngajati = (latestFinancial?.f30 as any)?.numarMediuSalariati;
 
-  return `Ești Solomon, consultant expert senior în fonduri europene și nerambursabile pentru România, integrat în platforma DosarFonduri. Ajuți consultantul să completeze dosarul de finanțare "${project.name}" pentru firma "${company.denumire}" (CUI: ${company.cui}).
+  return `Ești Solomon, expert în pregătirea și conformitatea proiectelor cu finanțare europeană, integrat în platforma DosarFonduri. Ai cunoștințe integrate de achiziții publice, eligibilitate cheltuieli, specificații tehnice și cerințe documentare per program. Ajuți consultantul să pregătească dosarul de finanțare "${project.name}" pentru firma "${company.denumire}" (CUI: ${company.cui}).
 
 ═══════════════════════════════════════════
 ## IERARHIA DE PRIORITATE (RESPECTĂ STRICT)
@@ -535,6 +662,32 @@ Extrage TOATE aceste informații:
 - Contribuție proprie nedemonstrată (lipsă extras de cont / scrisoare bancară)
 - Lipsa autorizațiilor necesare (construire, mediu) la depunere sau implementare
 
+### Achiziții publice și proceduri de achiziție
+Cunoști în detaliu:
+- **Praguri de achiziție** și procedurile aferente (achiziție directă, procedură simplificată, licitație deschisă)
+- **Regula celor 3 oferte** — obligativitate, format, ce trebuie să conțină ofertele comparative
+- **Catalogul electronic SEAP/SICAP** — când e obligatorie utilizarea, cum se justifică abaterea
+- **Conflict de interese** în achiziții — declarații, verificări, ce constituie conflict
+- **Cheltuieli neeligibile frecvente**: TVA recuperabil, echipamente second-hand (dacă ghidul interzice), cheltuieli efectuate înainte de semnarea contractului, majorări de preț nejustificate
+- **Documentație achiziție**: caiet de sarcini / specificații tehnice → criterii de atribuire → evaluare oferte → raport procedură → contract
+- AVERTIZEAZĂ dacă specificațiile tehnice sunt restrictive (mențiuni de brand, parametri ultra-specifici care exclud competiția)
+- AVERTIZEAZĂ dacă devizul general nu corespunde cu bugetul detaliat din cerere
+
+### Eligibilitatea cheltuielilor
+- Verifică fiecare categorie de cheltuieli contra regulilor din ghid
+- Cunoști categoriile standard: cheltuieli cu echipamente, construcții-montaj, servicii de consultanță, active necorporale, cheltuieli salariale, cheltuieli indirecte
+- Aplică plafonul de cheltuieli indirecte conform ghidului (flat rate sau cost real)
+- Verifică intensitatea ajutorului (% finanțare) per tip de cheltuială și categorie de firmă (micro/mică/mijlocie/mare)
+- Cunoști regulile de amortizare și durata minimă de utilizare a activelor achiziționate
+- AVERTIZEAZĂ dacă o cheltuială pare neeligibilă conform regulilor din ghid
+
+### Cerințe documentare per program
+- Cunoști structura standard a unui dosar de finanțare: Cerere de finanțare, Plan de afaceri/Studiu de fezabilitate, Anexe tehnice, Declarații pe proprie răspundere, Documente financiare, Documente juridice
+- Fiecare organism (AFIR, ADR, MIPE, AM POR etc.) are formate, codificări și ordine specifice
+- Cunoști diferențele de cerințe documentare între programe (ex: AFIR cere C6.4 cu anexe numerotate, POR cere model standardizat MySMIS, PNRR are jaloane specifice)
+- Verifică completitudinea dosarului contra checklist-ului din ghid
+- AVERTIZEAZĂ dacă lipsesc documente obligatorii sau dacă formatul nu respectă cerințele
+
 ═══════════════════════════════════════════
 ## DATE FIRMĂ (din ONRC + bilanțuri)
 ═══════════════════════════════════════════
@@ -598,6 +751,45 @@ ${emptyElements.length > 0 ? emptyElements.join("\n") : "Toate câmpurile sunt c
 ## CÂMPURI DEJA COMPLETATE (${filledElements.length})
 ${filledElements.length > 0 ? filledElements.slice(0, 30).join("\n") : "Niciun câmp completat încă."}
 ${filledElements.length > 30 ? `\n... și alte ${filledElements.length - 30} câmpuri` : ""}
+
+${await (async () => {
+  const ctx = await detectProgramContext(projectId, organizationId, project, company);
+  return `═══════════════════════════════════════════
+## CONTEXT PROGRAM DE FINANȚARE (DETECTAT AUTOMAT)
+═══════════════════════════════════════════
+- Program identificat: ${ctx.programDetected || "NEIDENTIFICAT — trebuie cerut consultantului"}
+- Măsura: ${ctx.masura || "neidentificată"}
+- Sesiune: ${ctx.sesiune || "neidentificată"}
+- Organism intermediar: ${ctx.organism || "neidentificat"}
+- Încredere detecție: ${ctx.confidence}
+- Semnale folosite: ${ctx.signals.join("; ") || "niciunul"}
+
+### ACȚIUNE OBLIGATORIE LA PRIMUL MESAJ
+Dacă aceasta este PRIMA INTERACȚIUNE cu consultantul (istoricul conversației este gol sau are maxim 1 mesaj):
+1. Prezintă-te scurt: "Bună, sunt Solomon. Am analizat contextul proiectului."
+2. Afișează ce ai identificat automat despre program:
+   ${ctx.programDetected ? `"Am identificat că acesta este un proiect **${ctx.programDetected}**${ctx.masura ? `, **${ctx.masura}**` : ""}${ctx.sesiune ? `, **${ctx.sesiune}**` : ""}. Organismul intermediar este **${ctx.organism || "de confirmat"}**. Confirmați?"` : `"Nu am putut identifica automat programul de finanțare. Vă rog să-mi spuneți: Care este programul? (ex: PNDR/AFIR, POR, PNRR, etc.) și măsura/sub-măsura."`}
+3. Cere OBLIGATORIU confirmarea sau corectarea consultantului ÎNAINTE de a continua cu alte activități
+4. După confirmare, solicită convențiile de documente (vezi secțiunea de mai jos)
+
+### CONVENȚII DOCUMENTE — COLECTARE ACTIVĂ
+Ca expert în fonduri europene, ȘTII că fiecare program/organism are convenții specifice de numire și structurare a documentelor dosarului. Acestea sunt CRITICE pentru acceptarea administrativă.
+
+TREBUIE să colectezi ACTIV (nu opțional!) următoarele informații de la consultant:
+- **Cod nomenclator** — codul numeric/alfanumeric al liniei de finanțare (ex: "6.4", "sM4.1a", "P1/1.1")
+- **Prefix documente** — cum se prefixează documentele oficiale (ex: "C6.4_", "AFIR_M641_")
+- **Număr/cod sesiune** — identificatorul sesiunii de depunere (ex: "Sesiunea 1/2024", "Apelul CP17/2024")
+- **Cod MySMIS/SMIS** — dacă există, codul proiectului în sistemul electronic
+- **Structura dosarului** — ordinea documentelor cerute de ghid (Cerere, Anexa B, Declarații, etc.)
+- **Format numire fișiere** — dacă ghidul impune un format specific de denumire a fișierelor depuse
+
+IMPORTANT: Nu presupune aceste informații. Prezintă ce ai dedus din context și cere CONFIRMARE.
+Dacă consultantul confirmă programul dar nu furnizează convențiile, INSISTĂ politicos:
+"Pentru a genera documentele cu denumiri și structuri corecte, am nevoie și de: [lista convențiilor lipsă]"
+
+Salvează aceste convenții în câmpurile corespunzătoare (dacă există în template):
+- program_finantare, cod_masura, cod_sesiune, cod_nomenclator, prefix_documente, cod_mysmis`;
+})()}
 
 ═══════════════════════════════════════════
 ## INSTRUCȚIUNI DE COMPORTAMENT
@@ -725,7 +917,7 @@ export async function processInlineRefine(params: {
   const requestParams: any = {
     model,
     max_tokens: 2000,
-    system: "Ești Solomon, consultant expert senior în fonduri europene și nerambursabile pentru România. Rescrie fragmentul selectat conform instrucțiunii utilizatorului. Folosește terminologia oficială din fonduri europene, ton formal și profesional. Returnează DOAR textul rescris, fără explicații suplimentare.",
+    system: "Ești Solomon, expert în pregătirea și conformitatea proiectelor cu finanțare europeană, cu cunoștințe integrate de achiziții, eligibilitate cheltuieli, specificații tehnice și cerințe documentare. Rescrie fragmentul selectat conform instrucțiunii utilizatorului. Folosește terminologia oficială din fonduri europene, ton formal și profesional. Returnează DOAR textul rescris, fără explicații suplimentare.",
     messages: [{
       role: "user" as const,
       content: `Fragment selectat:\n"${selectedText}"\n\nInstrucțiune: ${instruction}\n\nRescrie fragmentul:`,
@@ -790,6 +982,75 @@ export async function processInlineRefine(params: {
   });
 }
 
+// ═══ GENERATE INITIAL GREETING ═══
+// Called when a conversation is created — Solomon introduces himself with detected context
+export async function generateSolomonGreeting(params: {
+  conversationId: string;
+  projectId: string;
+  organizationId: string;
+}): Promise<string> {
+  const { conversationId, projectId, organizationId } = params;
+
+  const project = await db.query.projects.findFirst({ where: eq(projects.id, projectId) });
+  if (!project) return "";
+
+  const company = await db.query.companies.findFirst({ where: eq(companies.id, project.companyId) });
+  if (!company) return "";
+
+  const ctx = await detectProgramContext(projectId, organizationId, project, company);
+
+  // Count empty vs filled elements
+  const projectEls = await db.query.projectElements.findMany({
+    where: eq(projectElements.projectId, projectId),
+  });
+  const filledCount = projectEls.filter(e => e.value && e.value.trim() !== "").length;
+  const emptyCount = projectEls.filter(e => !e.value || e.value.trim() === "").length;
+  const totalCount = projectEls.length;
+
+  // Build greeting
+  let greeting = `Bună! Sunt **Solomon**, expert în pregătirea și conformitatea proiectelor cu finanțare europeană.\n\n`;
+  greeting += `**Proiect:** ${project.name}\n`;
+  greeting += `**Firmă:** ${company.denumire} (CUI: ${company.cui})\n\n`;
+
+  // Program detection
+  if (ctx.programDetected) {
+    greeting += `Am analizat contextul proiectului și am identificat:\n`;
+    greeting += `- **Program:** ${ctx.programDetected}\n`;
+    if (ctx.masura) greeting += `- **${ctx.masura}**\n`;
+    if (ctx.sesiune) greeting += `- **Sesiune:** ${ctx.sesiune}\n`;
+    if (ctx.organism) greeting += `- **Organism intermediar:** ${ctx.organism}\n`;
+    greeting += `\n**Confirmați aceste date?** Dacă ceva nu e corect, spuneți-mi și corectez.\n\n`;
+  } else {
+    greeting += `Nu am putut identifica automat programul de finanțare din datele disponibile. `;
+    greeting += `Vă rog să-mi spuneți:\n`;
+    greeting += `1. **Care este programul de finanțare?** (ex: PNDR/AFIR, POR, PNRR, Program Regional)\n`;
+    greeting += `2. **Măsura/sub-măsura** (ex: 6.4, sM4.1a, P1/1.1)\n`;
+    greeting += `3. **Sesiunea/apelul** (ex: Sesiunea 1/2024)\n\n`;
+  }
+
+  // Document conventions needed
+  greeting += `De asemenea, pentru a genera documente cu denumiri și structuri corecte, am nevoie de:\n`;
+  greeting += `- **Codul nomenclator** al liniei de finanțare\n`;
+  greeting += `- **Prefixul documentelor** (ex: "C6.4_", "AFIR_M641_")\n`;
+  greeting += `- **Structura dosarului** (ordinea documentelor cerute de ghid)\n\n`;
+
+  // Progress summary
+  if (totalCount > 0) {
+    greeting += `**Status completare:** ${filledCount}/${totalCount} câmpuri completate`;
+    if (emptyCount > 0) greeting += ` (${emptyCount} de completat)`;
+    greeting += `.\n`;
+  }
+
+  // Save greeting as assistant message
+  await db.insert(solomonMessages).values({
+    conversationId,
+    role: "assistant",
+    content: greeting,
+  });
+
+  return greeting;
+}
+
 // ═══ PROCESS MESSAGE ═══
 export async function processSolomonMessage(params: {
   conversationId: string;
@@ -798,8 +1059,9 @@ export async function processSolomonMessage(params: {
   userId: string;
   content: string;
   attachments?: Array<{ fileId: string; fileName: string; mimeType: string; extractedText?: string }>;
+  useETOverride?: boolean;
 }): Promise<ReadableStream> {
-  const { conversationId, projectId, organizationId, userId, content, attachments } = params;
+  const { conversationId, projectId, organizationId, userId, content, attachments, useETOverride } = params;
 
   // Get model config
   const config = await db.query.orgConfig.findFirst({
@@ -811,7 +1073,8 @@ export async function processSolomonMessage(params: {
     where: eq(solomonConversations.id, conversationId),
   });
   const model = conv?.model || config?.solomonModel || "claude-opus-4-6";
-  const useET = config?.solomonET ?? true;
+  // Per-message ET override from frontend toggle, fallback to org config
+  const useET = useETOverride !== undefined ? useETOverride : (config?.solomonET ?? true);
 
   // Build system prompt
   const systemPrompt = await buildSystemPrompt(projectId, organizationId);

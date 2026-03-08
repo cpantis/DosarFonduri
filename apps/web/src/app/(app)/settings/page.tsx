@@ -35,12 +35,12 @@ interface ApiIntegration {
 const AI_MODELS = [
   { id: "claude-haiku-4-5-20251001", short: "haiku", name: "Claude Haiku", speed: "Rapid", cost: "~$0.001/apel", use: "Clasificare, OCR text nativ", color: "#34d399" },
   { id: "claude-sonnet-4-20250514", short: "sonnet", name: "Claude Sonnet", speed: "Mediu", cost: "~$0.04/apel", use: "Extragere date, reguli fixe, completare template", color: "#4d8bff" },
-  { id: "claude-opus-4-6", short: "opus", name: "Claude Opus", speed: "Lent", cost: "~$0.25/apel", use: "Eligibilitate complexa, reguli interpretate, chat Solomon", color: "#a78bfa" },
+  { id: "claude-opus-4-6", short: "opus", name: "Claude Opus", speed: "Lent", cost: "~$0.25/apel", use: "Eligibilitate complexa, reguli interpretate, Solomon expert", color: "#a78bfa" },
 ];
 
 const SECTIONS = [
-  { id: "solomon", icon: "🤖", label: "Solomon (Chat AI)" },
-  { id: "neemia", icon: "📝", label: "Neemia (Template)" },
+  { id: "solomon", icon: "🤖", label: "Solomon (Expert Fonduri)" },
+  { id: "neemia", icon: "📝", label: "Neemia (Generare Dosar)" },
   { id: "ghid", icon: "📖", label: "Ghid Finantare (Reguli)" },
   { id: "api", icon: "🔌", label: "Integrare API" },
   { id: "notificari", icon: "🔔", label: "Notificari" },
@@ -252,9 +252,9 @@ export default function SettingsPage() {
           {/* ═══ SOLOMON ═══ */}
           {activeSection === "solomon" && (
             <>
-              <div className="text-[22px] font-extrabold mb-1">🤖 Solomon — Agent Chat AI</div>
+              <div className="text-[22px] font-extrabold mb-1">🤖 Solomon — Expert Fonduri Europene</div>
               <div className="text-sm mb-7 leading-relaxed" style={{ color: "var(--text-secondary)" }}>
-                Configureaza modelul AI pentru agentul Solomon care colecteaza date din conversatie, documente uploadate si surse oficiale.
+                Configureaza modelul AI pentru Solomon — expert in pregatirea si conformitatea proiectelor cu finantare europeana, cu cunostinte de achizitii, eligibilitate cheltuieli, specificatii tehnice si cerinte documentare.
               </div>
 
               <div className="mb-7">
@@ -302,9 +302,9 @@ export default function SettingsPage() {
           {/* ═══ NEEMIA ═══ */}
           {activeSection === "neemia" && (
             <>
-              <div className="text-[22px] font-extrabold mb-1">📝 Neemia — Completare Template-uri</div>
+              <div className="text-[22px] font-extrabold mb-1">📝 Neemia — Expert Generare Dosar</div>
               <div className="text-sm mb-7 leading-relaxed" style={{ color: "var(--text-secondary)" }}>
-                Configureaza cum Neemia completeaza automat template-urile DOCX/XLSX cu datele colectate din Elemente.
+                Configureaza modelul AI pentru Neemia — expert in generarea dosarului complet de finantare, completarea template-urilor DOCX/XLSX, verificarea consistentei intre documente si validarea conformitatii.
               </div>
 
               <div className="mb-7">
@@ -338,7 +338,7 @@ export default function SettingsPage() {
               <div className="setting">
                 <div className="flex-1">
                   <div className="text-sm font-semibold mb-0.5">Validare automata elemente inainte de completare</div>
-                  <div className="text-xs" style={{ color: "var(--text-muted)" }}>Neemia verifica daca toate elementele necesare sunt confirmate inainte de a completa un template.</div>
+                  <div className="text-xs" style={{ color: "var(--text-muted)" }}>Neemia verifica daca toate elementele necesare sunt confirmate, valideaza consistenta datelor intre documente si se asigura ca dosarul respecta cerintele programului inainte de generare.</div>
                 </div>
                 <div className="toggle on"><div className="toggle-knob" /></div>
               </div>
@@ -654,9 +654,9 @@ export default function SettingsPage() {
               <div className="mb-7">
                 <div className="text-[11px] font-bold uppercase mb-3" style={{ letterSpacing: ".8px", color: "var(--text-muted)" }}>Evenimente</div>
                 {[
-                  { key: "notifNewElement" as const, label: "Element nou extras de Solomon", desc: "Cand Solomon extrage un element din conversatie sau document." },
+                  { key: "notifNewElement" as const, label: "Element nou identificat de Solomon", desc: "Cand Solomon identifica si extrage un element din conversatie, document sau analiza." },
                   { key: "notifEligFail" as const, label: "Eligibilitate esuata", desc: "Cand o verificare de eligibilitate nu trece." },
-                  { key: "notifTemplateReady" as const, label: "Template completat", desc: "Cand Neemia finalizeaza completarea unui template." },
+                  { key: "notifTemplateReady" as const, label: "Document generat", desc: "Cand Neemia finalizeaza generarea si verificarea unui document din dosar." },
                   { key: "notifDeadline" as const, label: "Termen apropiat", desc: "Cu 7 zile inainte de deadline-ul sesiunii de depunere." },
                 ].map((n) => (
                   <div key={n.key} className="setting">

@@ -232,7 +232,7 @@ export default function DashboardPage() {
                     <div className="quick-btn" onClick={() => router.push("/projects")}><div className="qb-icon">&#10133;</div><div className="qb-label">Proiect nou</div></div>
                     <div className="quick-btn" onClick={() => router.push("/companies")}><div className="qb-icon">&#127970;</div><div className="qb-label">Firmă nouă</div></div>
                     <div className="quick-btn" onClick={() => router.push("/documents")}><div className="qb-icon">&#128228;</div><div className="qb-label">Upload doc</div></div>
-                    <div className="quick-btn"><div className="qb-icon">&#129302;</div><div className="qb-label">Chat Solomon</div></div>
+                    <div className="quick-btn"><div className="qb-icon">&#129302;</div><div className="qb-label">Solomon</div></div>
                   </div>
                 </div>
 

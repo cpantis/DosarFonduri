@@ -37,7 +37,7 @@ const ROLES: Record<string, { label: string; color: string; bg: string; perms: s
     label: "Consultant",
     color: "var(--accent-blue)",
     bg: "rgba(77,139,255,0.12)",
-    perms: ["Creare/editare proiecte", "Chat Solomon & Neemia", "Upload documente", "Validare elemente", "Export proiecte proprii"],
+    perms: ["Creare/editare proiecte", "Solomon & Neemia", "Upload documente", "Validare elemente", "Export proiecte proprii"],
   },
   viewer: {
     label: "Vizualizare",
@@ -412,7 +412,7 @@ export default function AdminPage() {
               </div>
               {["solomon", "neemia", "ocr", "ghid_rules"].map((agent) => {
                 const agentData = costs?.byAgent?.find((a: any) => a.agent === agent);
-                const labels: Record<string, string> = { solomon: "Solomon (Chat AI)", neemia: "Neemia (Template)", ocr: "OCR", ghid_rules: "Ghid Reguli" };
+                const labels: Record<string, string> = { solomon: "Solomon (Expert Fonduri)", neemia: "Neemia (Generare Dosar)", ocr: "OCR", ghid_rules: "Ghid Reguli" };
                 return (
                   <div key={agent} className="cost-card">
                     <div className="text-[11px] font-semibold uppercase mb-1.5" style={{ letterSpacing: ".6px", color: "var(--text-muted)" }}>

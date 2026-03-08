@@ -155,7 +155,7 @@ function mapElements(elements: any[]): ElementItem[] {
     const sourceMap: Record<string, string> = {
       onrc: "Date ONRC",
       manual: "Completare manuală",
-      solomon: "Chat Solomon",
+      solomon: "Solomon",
       document: "Document uploadat",
       calculated: "Calculat automat",
     };
@@ -377,7 +377,7 @@ export default function ProjectViewPage() {
           if (m.extractions) {
             const exts = typeof m.extractions === "string" ? JSON.parse(m.extractions) : m.extractions;
             for (const ext of exts) {
-              elems.push({ key: ext.key, label: ext.label, value: ext.value, source: "Chat Solomon", status: "propus" });
+              elems.push({ key: ext.key, label: ext.label, value: ext.value, source: "Solomon", status: "propus" });
             }
           }
         }
@@ -385,6 +385,10 @@ export default function ProjectViewPage() {
       } else {
         const newConv = await apiPost<any>(`/api/solomon/projects/${projectId}/conversations`, {});
         setSolomonConvId(newConv.id);
+        // Display auto-greeting from Solomon with program context
+        if (newConv.greeting) {
+          setSolomonMessages([{ role: "assistant", text: newConv.greeting, extractions: [] }]);
+        }
       }
     } catch (err) {
       console.error("Failed to init Solomon conversation:", err);
@@ -416,7 +420,7 @@ export default function ProjectViewPage() {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ content: userText }),
+        body: JSON.stringify({ content: userText, useET: solomonET }),
       });
 
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -463,7 +467,7 @@ export default function ProjectViewPage() {
                 setSolomonElements(prev => {
                   const exists = prev.some(e => e.key === ext.key);
                   if (exists) return prev.map(e => e.key === ext.key ? { ...e, value: ext.value, status: "propus" as const } : e);
-                  return [{ key: ext.key, label: ext.label, value: ext.value, source: "Chat Solomon", status: "propus" as const }, ...prev];
+                  return [{ key: ext.key, label: ext.label, value: ext.value, source: "Solomon", status: "propus" as const }, ...prev];
                 });
               }
               // Refresh elements from DB — Solomon backend already saved these values
@@ -494,7 +498,7 @@ export default function ProjectViewPage() {
     if (msg?.extractions?.[extIdx]) {
       const ext = msg.extractions[extIdx];
       setSolomonElements(prev => [
-        { key: ext.key, label: ext.label, value: ext.value, source: "Chat Solomon", status: "confirmat" },
+        { key: ext.key, label: ext.label, value: ext.value, source: "Solomon", status: "confirmat" },
         ...prev.filter(e => e.key !== ext.key),
       ]);
 
@@ -508,7 +512,7 @@ export default function ProjectViewPage() {
             confirmed: true,
           });
           setElements(prev => prev.map(e => e.id === matchingEl.id
-            ? { ...e, value: ext.value, source: "solomon", sourceLabel: "Chat Solomon", status: "confirmat" as const, confidence: 100 }
+            ? { ...e, value: ext.value, source: "solomon", sourceLabel: "Solomon", status: "confirmat" as const, confidence: 100 }
             : e
           ));
         } catch (err) {
@@ -539,7 +543,7 @@ export default function ProjectViewPage() {
           confirmed: true,
         });
         setElements(prev => prev.map(e => e.id === matchingEl.id
-          ? { ...e, value: el.value, source: "solomon", sourceLabel: "Chat Solomon", status: "confirmat" as const, confidence: 100 }
+          ? { ...e, value: el.value, source: "solomon", sourceLabel: "Solomon", status: "confirmat" as const, confidence: 100 }
           : e
         ));
       } catch (err) {
@@ -1730,7 +1734,7 @@ export default function ProjectViewPage() {
                     <div className="solomon-avatar">S</div>
                     <div className="solomon-name-block">
                       <div className="sn-name">Solomon</div>
-                      <div className="sn-status"><span className="sn-status-dot" /> Activ &middot; Agent colectare date</div>
+                      <div className="sn-status"><span className="sn-status-dot" /> Activ &middot; Expert fonduri europene</div>
                     </div>
                     <div className="model-selector">
                       <button className={`model-btn ${solomonModel === "sonnet" ? "active" : ""}`} onClick={() => handleSolomonModelChange("sonnet")}>Sonnet</button>
@@ -2018,7 +2022,7 @@ export default function ProjectViewPage() {
                               {f.source && (
                                 <div className="field-source">
                                   <span className={`source-dot ${f.source.toLowerCase()}`} />
-                                  {f.source === "Solomon" ? "Chat Solomon" : f.source}
+                                  {f.source}
                                 </div>
                               )}
                             </div>

@@ -3,7 +3,7 @@ import { db } from "../db";
 import { solomonConversations, solomonMessages } from "../db/schema";
 import { eq } from "drizzle-orm";
 import { AuthContext } from "../middleware/auth";
-import { processSolomonMessage, processInlineRefine } from "../services/solomon";
+import { processSolomonMessage, processInlineRefine, generateSolomonGreeting } from "../services/solomon";
 import { uploadFile } from "../services/storage";
 import { extractTextFromPDF, extractTextFromDOCX, extractTextFromXLSX } from "../services/ocr";
 import { orgConfig } from "../db/schema";
@@ -25,7 +25,19 @@ solomonRoutes.post("/projects/:projectId/conversations", async (c) => {
     model: config?.solomonModel || "claude-opus-4-6",
   }).returning();
 
-  return c.json(conv, 201);
+  // Generate auto-greeting with program context detection
+  let greeting: string | null = null;
+  try {
+    greeting = await generateSolomonGreeting({
+      conversationId: conv.id,
+      projectId,
+      organizationId: auth.organizationId!,
+    });
+  } catch (err) {
+    console.error("Failed to generate Solomon greeting:", err);
+  }
+
+  return c.json({ ...conv, greeting }, 201);
 });
 
 // List conversations
@@ -50,7 +62,7 @@ solomonRoutes.post("/conversations/:convId/messages", async (c) => {
   });
   if (!conv) return c.json({ error: "Conversation not found" }, 404);
 
-  const { content } = await c.req.json();
+  const { content, useET } = await c.req.json();
 
   const stream = await processSolomonMessage({
     conversationId: convId,
@@ -58,6 +70,7 @@ solomonRoutes.post("/conversations/:convId/messages", async (c) => {
     organizationId: auth.organizationId!,
     userId: auth.userId,
     content,
+    useETOverride: typeof useET === "boolean" ? useET : undefined,
   });
 
   return new Response(stream, {

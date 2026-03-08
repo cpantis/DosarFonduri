@@ -3,7 +3,11 @@ import { db } from "../db";
 import { projectDocuments, documents } from "../db/schema";
 import { eq } from "drizzle-orm";
 import { AuthContext } from "../middleware/auth";
-import { generateDocument, validateBeforeGenerate } from "../services/neemia";
+import {
+  generateDocument, validateBeforeGenerate,
+  checkCrossDocumentConsistency, computeCalculatedFields,
+  generateAllDocuments,
+} from "../services/neemia";
 import { getFileUrl } from "../services/storage";
 
 export const neemiaRoutes = new Hono();
@@ -92,7 +96,7 @@ neemiaRoutes.put("/documents/:docId/validate", async (c) => {
   return c.json(updated);
 });
 
-// Regenerate document
+// Regenerate document (creates new version, keeps history)
 neemiaRoutes.post("/documents/:docId/regenerate", async (c) => {
   const auth = c.get("auth") as AuthContext;
   const docId = c.req.param("docId");
@@ -105,6 +109,62 @@ neemiaRoutes.post("/documents/:docId/regenerate", async (c) => {
   const stream = await generateDocument({
     projectId: projDoc.projectId,
     templateDocumentId: projDoc.templateDocumentId,
+    organizationId: auth.organizationId!,
+    userId: auth.userId,
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      "Connection": "keep-alive",
+    },
+  });
+});
+
+// Version history for a template document
+neemiaRoutes.get("/projects/:projectId/documents/:templateDocId/versions", async (c) => {
+  const projectId = c.req.param("projectId");
+  const templateDocId = c.req.param("templateDocId");
+
+  const versions = await db.query.projectDocuments.findMany({
+    where: and(
+      eq(projectDocuments.projectId, projectId),
+      eq(projectDocuments.templateDocumentId, templateDocId),
+    ),
+    orderBy: (d, { desc }) => [desc(d.version)],
+  });
+
+  const enriched = await Promise.all(versions.map(async (v) => {
+    const downloadUrl = v.generatedFileId ? await getFileUrl(v.generatedFileId) : null;
+    return { ...v, downloadUrl };
+  }));
+
+  return c.json(enriched);
+});
+
+// Cross-document consistency check
+neemiaRoutes.get("/projects/:projectId/consistency", async (c) => {
+  const projectId = c.req.param("projectId");
+  const result = await checkCrossDocumentConsistency(projectId);
+  return c.json(result);
+});
+
+// Compute calculated fields
+neemiaRoutes.post("/projects/:projectId/calculate", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const projectId = c.req.param("projectId");
+  const results = await computeCalculatedFields(projectId, auth.organizationId!);
+  return c.json(results);
+});
+
+// Bulk generate all documents
+neemiaRoutes.post("/projects/:projectId/generate-all", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const projectId = c.req.param("projectId");
+
+  const stream = await generateAllDocuments({
+    projectId,
     organizationId: auth.organizationId!,
     userId: auth.userId,
   });

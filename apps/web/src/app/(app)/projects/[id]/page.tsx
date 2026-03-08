@@ -157,6 +157,7 @@ function mapElements(elements: any[]): ElementItem[] {
       manual: "Completare manuală",
       solomon: "Chat Solomon",
       document: "Document uploadat",
+      calculated: "Calculat automat",
     };
 
     return {
@@ -224,6 +225,10 @@ export default function ProjectViewPage() {
   const [neemiaActiveTemplate, setNeemiaActiveTemplate] = useState(0);
   const [neemiaActivePage, setNeemiaActivePage] = useState(0);
   const [neemiaAnimKey, setNeemiaAnimKey] = useState(0);
+  const [neemiaGenerating, setNeemiaGenerating] = useState(false);
+  const [neemiaGenStatus, setNeemiaGenStatus] = useState<string | null>(null);
+  const [neemiaValidation, setNeemiaValidation] = useState<{ warnings: string[]; stats?: any } | null>(null);
+  const [neemiaBulkGenerating, setNeemiaBulkGenerating] = useState(false);
 
   // ─── LOCK STATE ───
   const [lockOwned, setLockOwned] = useState(false);
@@ -455,11 +460,16 @@ export default function ProjectViewPage() {
                 return updated;
               });
               for (const ext of (evt.extractions || [])) {
-                setSolomonElements(prev => [
-                  { key: ext.key, label: ext.label, value: ext.value, source: "Chat Solomon", status: "propus" },
-                  ...prev,
-                ]);
+                setSolomonElements(prev => {
+                  const exists = prev.some(e => e.key === ext.key);
+                  if (exists) return prev.map(e => e.key === ext.key ? { ...e, value: ext.value, status: "propus" as const } : e);
+                  return [{ key: ext.key, label: ext.label, value: ext.value, source: "Chat Solomon", status: "propus" as const }, ...prev];
+                });
               }
+              // Refresh elements from DB — Solomon backend already saved these values
+              apiGet<any>(`/api/projects/${projectId}`).then(proj => {
+                setElements(mapElements(proj.elements || []));
+              }).catch(() => {});
             }
           } catch {}
         }
@@ -477,7 +487,7 @@ export default function ProjectViewPage() {
     }
   };
 
-  const handleConfirmExtraction = (msgIdx: number, extIdx: number) => {
+  const handleConfirmExtraction = async (msgIdx: number, extIdx: number) => {
     const k = `${msgIdx}-${extIdx}`;
     setExtractionStates(prev => ({ ...prev, [k]: "confirmed" }));
     const msg = solomonMessages[msgIdx];
@@ -487,6 +497,26 @@ export default function ProjectViewPage() {
         { key: ext.key, label: ext.label, value: ext.value, source: "Chat Solomon", status: "confirmat" },
         ...prev.filter(e => e.key !== ext.key),
       ]);
+
+      // Persist to API — find matching element by key and update value + confirm
+      const matchingEl = elements.find(e => e.key === ext.key);
+      if (matchingEl) {
+        try {
+          await apiPut(`/api/projects/${projectId}/elements/${matchingEl.id}`, {
+            value: ext.value,
+            source: "solomon",
+            confirmed: true,
+          });
+          setElements(prev => prev.map(e => e.id === matchingEl.id
+            ? { ...e, value: ext.value, source: "solomon", sourceLabel: "Chat Solomon", status: "confirmat" as const, confidence: 100 }
+            : e
+          ));
+        } catch (err) {
+          console.error("Failed to persist Solomon extraction:", err);
+        }
+      } else {
+        console.warn(`Solomon extraction key "${ext.key}" not found in template elements — value not saved to project`);
+      }
     }
   };
 
@@ -494,9 +524,28 @@ export default function ProjectViewPage() {
     setExtractionStates(prev => ({ ...prev, [`${msgIdx}-${extIdx}`]: "rejected" }));
   };
 
-  const handleConfirmElement = (idx: number) => {
+  const handleConfirmElement = async (idx: number) => {
     if (readOnly) return;
-    setSolomonElements(prev => prev.map((el, i) => i === idx ? { ...el, status: "confirmat" } : el));
+    const el = solomonElements[idx];
+    setSolomonElements(prev => prev.map((e, i) => i === idx ? { ...e, status: "confirmat" } : e));
+
+    // Persist to API
+    const matchingEl = elements.find(e => e.key === el.key);
+    if (matchingEl) {
+      try {
+        await apiPut(`/api/projects/${projectId}/elements/${matchingEl.id}`, {
+          value: el.value,
+          source: "solomon",
+          confirmed: true,
+        });
+        setElements(prev => prev.map(e => e.id === matchingEl.id
+          ? { ...e, value: el.value, source: "solomon", sourceLabel: "Chat Solomon", status: "confirmat" as const, confidence: 100 }
+          : e
+        ));
+      } catch (err) {
+        console.error("Failed to persist Solomon element confirmation:", err);
+      }
+    }
   };
 
   const handleRejectElement = (idx: number) => {
@@ -586,6 +635,118 @@ export default function ProjectViewPage() {
 
   const solomonConfirmedCount = solomonElements.filter(e => e.status === "confirmat").length;
 
+  // ─── NEEMIA: Generate single template ───
+  const handleNeemiaGenerate = async (templateDocumentId: string) => {
+    if (readOnly || neemiaGenerating) return;
+    setNeemiaGenerating(true);
+    setNeemiaGenStatus("Se validează...");
+    setNeemiaValidation(null);
+    try {
+      // Step 1: Validate
+      const validation = await apiPost<any>(`/api/neemia/projects/${projectId}/validate`, { templateDocumentId });
+      setNeemiaValidation({ warnings: validation.warnings || [], stats: validation.stats });
+
+      if (!validation.canGenerate) {
+        setNeemiaGenStatus("Generarea nu este posibilă — vezi erorile.");
+        setNeemiaGenerating(false);
+        return;
+      }
+
+      // Step 2: Generate via SSE
+      setNeemiaGenStatus("Se generează documentul...");
+      const res = await fetch(`/api/neemia/projects/${projectId}/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ templateDocumentId }),
+      });
+
+      const reader = res.body?.getReader();
+      const decoder = new TextDecoder();
+      if (!reader) throw new Error("No stream");
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value);
+        for (const line of chunk.split("\n")) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const evt = JSON.parse(line.slice(6));
+            if (evt.type === "status") setNeemiaGenStatus(evt.message);
+            else if (evt.type === "progress") setNeemiaGenStatus(`Elemente: ${evt.filled} completate, ${evt.missing} lipsă`);
+            else if (evt.type === "warning") setNeemiaGenStatus(`⚠ ${evt.message}`);
+            else if (evt.type === "complete") {
+              setNeemiaGenStatus(`✓ Document generat (v${evt.version || "?"}) — ${evt.filledCount} câmpuri completate`);
+              // Refresh Neemia documents list
+              const docs = await apiGet<any[]>(`/api/neemia/projects/${projectId}/documents`).catch(() => []);
+              setNeemiaTemplates((docs || []).map((doc: any) => ({
+                id: doc.id, name: doc.templateName || "Document",
+                type: (doc.templateFileType || "DOCX").toUpperCase(),
+                pages: [], totalFields: doc.filledCount || 0, filledFields: doc.filledCount || 0,
+                templateDocumentId: doc.templateDocumentId, status: doc.status, downloadUrl: doc.downloadUrl || null,
+              })));
+            }
+            else if (evt.type === "error") setNeemiaGenStatus(`Eroare: ${evt.message}`);
+          } catch {}
+        }
+      }
+    } catch (err) {
+      setNeemiaGenStatus(`Eroare: ${(err as Error).message}`);
+    } finally {
+      setNeemiaGenerating(false);
+    }
+  };
+
+  // ─── NEEMIA: Bulk generate all templates ───
+  const handleNeemiaBulkGenerate = async () => {
+    if (readOnly || neemiaBulkGenerating) return;
+    setNeemiaBulkGenerating(true);
+    setNeemiaGenStatus("Se pregătește generarea dosarului complet...");
+    try {
+      const res = await fetch(`/api/neemia/projects/${projectId}/generate-all`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      });
+
+      const reader = res.body?.getReader();
+      const decoder = new TextDecoder();
+      if (!reader) throw new Error("No stream");
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value);
+        for (const line of chunk.split("\n")) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const evt = JSON.parse(line.slice(6));
+            if (evt.type === "status") setNeemiaGenStatus(evt.message);
+            else if (evt.type === "doc_progress") setNeemiaGenStatus(`Generare ${evt.current}/${evt.total}: ${evt.templateName}...`);
+            else if (evt.type === "consistency_warning") setNeemiaGenStatus(`⚠ ${evt.message}`);
+            else if (evt.type === "calculated_fields") setNeemiaGenStatus(`Câmpuri calculate: ${evt.fields.length}`);
+            else if (evt.type === "bulk_complete") {
+              setNeemiaGenStatus(`✓ Dosar complet: ${evt.totalGenerated} documente generate, ${evt.totalFailed} eșuate`);
+              const docs = await apiGet<any[]>(`/api/neemia/projects/${projectId}/documents`).catch(() => []);
+              setNeemiaTemplates((docs || []).map((doc: any) => ({
+                id: doc.id, name: doc.templateName || "Document",
+                type: (doc.templateFileType || "DOCX").toUpperCase(),
+                pages: [], totalFields: doc.filledCount || 0, filledFields: doc.filledCount || 0,
+                templateDocumentId: doc.templateDocumentId, status: doc.status, downloadUrl: doc.downloadUrl || null,
+              })));
+            }
+            else if (evt.type === "error") setNeemiaGenStatus(`Eroare: ${evt.message}`);
+          } catch {}
+        }
+      }
+    } catch (err) {
+      setNeemiaGenStatus(`Eroare: ${(err as Error).message}`);
+    } finally {
+      setNeemiaBulkGenerating(false);
+    }
+  };
+
   const handleRecheckEligibility = async () => {
     if (readOnly) return;
     setRecheckLoading(true);
@@ -614,11 +775,37 @@ export default function ProjectViewPage() {
 
   const handleConfirmElementApi = async (elId: string) => {
     if (readOnly) return;
+    const el = elements.find(e => e.id === elId);
     try {
-      await apiPut(`/api/projects/${projectId}/elements/${elId}`, { confirmed: true });
+      await apiPut(`/api/projects/${projectId}/elements/${elId}`, {
+        value: el?.value || undefined,
+        confirmed: true,
+      });
       setElements(prev => prev.map(e => e.id === elId ? { ...e, status: "confirmat" as const, confidence: 100 } : e));
     } catch (err) {
       console.error("Confirm element failed:", err);
+    }
+  };
+
+  const [bulkConfirming, setBulkConfirming] = useState(false);
+  const handleBulkConfirm = async () => {
+    if (readOnly || bulkConfirming) return;
+    const toConfirm = filteredElements.filter(e => e.status === "propus_ai");
+    if (toConfirm.length === 0) return;
+    setBulkConfirming(true);
+    try {
+      await apiPut(`/api/projects/${projectId}/elements-bulk/confirm`, {
+        elementIds: toConfirm.map(e => e.id),
+      });
+      setElements(prev => prev.map(e =>
+        toConfirm.some(tc => tc.id === e.id)
+          ? { ...e, status: "confirmat" as const, confidence: 100 }
+          : e
+      ));
+    } catch (err) {
+      console.error("Bulk confirm failed:", err);
+    } finally {
+      setBulkConfirming(false);
     }
   };
 
@@ -649,6 +836,10 @@ export default function ProjectViewPage() {
     if (elemFilter === "gol" && e.status !== "gol") return false;
     if (elemFilter === "propus_ai" && e.status !== "propus_ai") return false;
     if (elemFilter === "confirmat" && e.status !== "confirmat") return false;
+    if (elemFilter === "de_confirmat" && (e.status !== "propus_ai")) return false;
+    if (elemFilter === "src_solomon" && !(e.status === "propus_ai" && e.source === "solomon")) return false;
+    if (elemFilter === "src_calculated" && !(e.status === "propus_ai" && e.source === "calculated")) return false;
+    if (elemFilter === "src_manual" && !(e.status === "propus_ai" && e.source !== "solomon" && e.source !== "calculated")) return false;
     if (elemSearch) {
       const q = elemSearch.toLowerCase();
       return e.label.toLowerCase().includes(q) || e.key.toLowerCase().includes(q) || (e.value || "").toLowerCase().includes(q);
@@ -824,6 +1015,19 @@ export default function ProjectViewPage() {
         .fp.on-green{background:var(--accent-green);color:var(--bg-deep)}
         .fp.on-yellow{background:var(--accent-yellow);color:var(--bg-deep)}
         .fp.on-red{background:var(--accent-red);color:#fff}
+        .fp.on-orange{background:var(--accent-orange);color:var(--bg-deep)}
+        .fp-count{font-size:10px;opacity:.7;margin-left:2px}
+        .fp-sub-group{display:flex;align-items:center;gap:4px;margin-left:4px;padding-left:8px;border-left:1px solid var(--border)}
+        .fp-sub-label{font-size:11px;color:var(--text-muted);font-weight:600;white-space:nowrap}
+        .fp-sub{padding:3px 10px;border-radius:5px;font-size:11px;font-weight:600;border:1px solid var(--border);cursor:pointer;background:transparent;color:var(--text-secondary);font-family:var(--font-sans);transition:all .15s;white-space:nowrap}
+        .fp-sub:hover{border-color:var(--accent-orange);color:var(--accent-orange)}
+        .fp-sub.active{background:rgba(251,146,60,.12);border-color:var(--accent-orange);color:var(--accent-orange)}
+        .elemente-filter-bar{flex-wrap:wrap}
+        .bulk-confirm-bar{display:flex;align-items:center;justify-content:space-between;padding:8px 24px;background:rgba(251,146,60,.06);border-bottom:1px solid rgba(251,146,60,.2)}
+        .bc-text{font-size:12px;color:var(--accent-orange);font-weight:600}
+        .bc-btn{padding:5px 16px;border-radius:var(--r-sm);border:1px solid var(--accent-green);background:rgba(52,211,153,.08);color:var(--accent-green);font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font-sans);transition:all .15s}
+        .bc-btn:hover:not(:disabled){background:rgba(52,211,153,.18)}
+        .bc-btn:disabled{opacity:.5;cursor:not-allowed}
         .elemente-scroll{flex:1;overflow-y:auto;padding:16px 24px;display:flex;flex-direction:column;gap:10px}
         .elem-card{background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--r-md);padding:14px 18px;cursor:pointer;transition:all .18s}
         .elem-card:hover{border-color:var(--border-active);background:var(--bg-elevated)}
@@ -844,6 +1048,7 @@ export default function ProjectViewPage() {
         .source-dot.solomon_chat{background:var(--accent-blue)}
         .source-dot.solomon{background:var(--accent-blue)}
         .source-dot.manual{background:var(--accent-purple)}
+        .source-dot.calculated{background:var(--accent-purple);box-shadow:0 0 4px rgba(167,139,250,.4)}
         .source-dot.document{background:var(--accent-orange)}
 
         .elem-detail{width:350px;min-width:350px;border-left:1px solid var(--border);background:var(--bg-surface);overflow-y:auto;padding:20px}
@@ -997,6 +1202,19 @@ export default function ProjectViewPage() {
         .source-dot{width:6px;height:6px;border-radius:50%;display:inline-block}
         .source-dot.solomon{background:var(--accent-blue)}
         .source-dot.onrc{background:var(--accent-green)}
+        .neemia-bulk-btn{width:100%;padding:8px 16px;border-radius:var(--r-sm);border:1px solid var(--accent-green);background:rgba(52,211,153,.08);color:var(--accent-green);font-size:13px;font-weight:700;cursor:pointer;font-family:var(--font-sans);transition:all .15s;margin-bottom:10px}
+        .neemia-bulk-btn:hover:not(:disabled){background:rgba(52,211,153,.18)}
+        .neemia-bulk-btn:disabled{opacity:.5;cursor:not-allowed}
+        .neemia-gen-status{font-size:12px;color:var(--accent-blue);background:rgba(77,139,255,.06);border:1px solid rgba(77,139,255,.15);border-radius:var(--r-sm);padding:8px 12px;margin-bottom:10px;line-height:1.5}
+        .neemia-warnings{font-size:11px;color:var(--accent-yellow);background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.15);border-radius:var(--r-sm);padding:8px 12px;margin-bottom:10px}
+        .nw-item{margin-bottom:4px;line-height:1.4}
+        .nw-item:last-child{margin-bottom:0}
+        .tc-action-btn{padding:3px 10px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--font-sans);transition:all .15s;border:1px solid var(--border);background:transparent}
+        .tc-action-btn:hover:not(:disabled){border-color:var(--accent-blue)}
+        .tc-action-btn:disabled{opacity:.4;cursor:not-allowed}
+        .tc-download{color:var(--accent-blue);border-color:var(--accent-blue)}
+        .tc-generate{color:var(--accent-green);border-color:var(--accent-green)}
+        .tc-generate:hover:not(:disabled){background:rgba(52,211,153,.08);border-color:var(--accent-green)}
         .neemia-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--text-muted);gap:12px}
         .neemia-empty .ne-icon{font-size:40px;opacity:.5}
         .neemia-empty .ne-label{font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:1px}
@@ -1307,12 +1525,52 @@ export default function ProjectViewPage() {
                   <div className="elemente-filter-bar">
                     <input className="elem-search" placeholder="Caută element..." value={elemSearch} onChange={e => setElemSearch(e.target.value)} />
                     <div className="fp-group">
-                      <button className={`fp ${elemFilter === "all" ? "on" : ""}`} onClick={() => setElemFilter("all")}>Toate</button>
-                      <button className={`fp ${elemFilter === "confirmat" ? "on-green" : ""}`} onClick={() => setElemFilter("confirmat")}>Confirmate</button>
-                      <button className={`fp ${elemFilter === "propus_ai" ? "on-yellow" : ""}`} onClick={() => setElemFilter("propus_ai")}>Propuse AI</button>
-                      <button className={`fp ${elemFilter === "gol" ? "on-red" : ""}`} onClick={() => setElemFilter("gol")}>Goale</button>
+                      <button className={`fp ${elemFilter === "all" ? "on" : ""}`} onClick={() => setElemFilter("all")}>
+                        Toate <span className="fp-count">{elements.length}</span>
+                      </button>
+                      <button className={`fp ${elemFilter === "de_confirmat" ? "on-orange" : ""}`} onClick={() => setElemFilter("de_confirmat")}>
+                        De confirmat <span className="fp-count">{elements.filter(e => e.status === "propus_ai").length}</span>
+                      </button>
+                      <button className={`fp ${elemFilter === "confirmat" ? "on-green" : ""}`} onClick={() => setElemFilter("confirmat")}>
+                        Confirmate <span className="fp-count">{elements.filter(e => e.status === "confirmat").length}</span>
+                      </button>
+                      <button className={`fp ${elemFilter === "gol" ? "on-red" : ""}`} onClick={() => setElemFilter("gol")}>
+                        Goale <span className="fp-count">{elements.filter(e => e.status === "gol").length}</span>
+                      </button>
                     </div>
+                    {(elemFilter === "de_confirmat" || elemFilter === "src_solomon" || elemFilter === "src_calculated" || elemFilter === "src_manual") && (
+                      <div className="fp-sub-group">
+                        <span className="fp-sub-label">Sursă:</span>
+                        <button className={`fp-sub ${elemFilter === "de_confirmat" ? "active" : ""}`} onClick={() => setElemFilter("de_confirmat")}>
+                          Toate ({elements.filter(e => e.status === "propus_ai").length})
+                        </button>
+                        {elements.some(e => e.status === "propus_ai" && e.source === "solomon") && (
+                          <button className={`fp-sub ${elemFilter === "src_solomon" ? "active" : ""}`} onClick={() => setElemFilter("src_solomon")}>
+                            Solomon ({elements.filter(e => e.status === "propus_ai" && e.source === "solomon").length})
+                          </button>
+                        )}
+                        {elements.some(e => e.status === "propus_ai" && e.source === "calculated") && (
+                          <button className={`fp-sub ${elemFilter === "src_calculated" ? "active" : ""}`} onClick={() => setElemFilter("src_calculated")}>
+                            Calculate ({elements.filter(e => e.status === "propus_ai" && e.source === "calculated").length})
+                          </button>
+                        )}
+                        {elements.some(e => e.status === "propus_ai" && e.source !== "solomon" && e.source !== "calculated") && (
+                          <button className={`fp-sub ${elemFilter === "src_manual" ? "active" : ""}`} onClick={() => setElemFilter("src_manual")}>
+                            Alte surse ({elements.filter(e => e.status === "propus_ai" && e.source !== "solomon" && e.source !== "calculated").length})
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
+
+                  {(elemFilter === "de_confirmat" || elemFilter === "src_solomon" || elemFilter === "src_calculated" || elemFilter === "src_manual") && filteredElements.some(e => e.status === "propus_ai") && (
+                    <div className="bulk-confirm-bar">
+                      <span className="bc-text">{filteredElements.filter(e => e.status === "propus_ai").length} elemente de confirmat</span>
+                      <button className="bc-btn" onClick={handleBulkConfirm} disabled={bulkConfirming || readOnly}>
+                        {bulkConfirming ? "Se confirmă..." : `✓ Confirmă toate (${filteredElements.filter(e => e.status === "propus_ai").length})`}
+                      </button>
+                    </div>
+                  )}
 
                   <div className="elemente-scroll">
                     {filteredElements.map(el => (
@@ -1322,6 +1580,9 @@ export default function ProjectViewPage() {
                           <span className={`ec-status ${el.status}`}>
                             {el.status === "confirmat" ? "✓ Confirmat" : el.status === "propus_ai" ? "AI Propus" : "Gol"}
                           </span>
+                          {el.source === "calculated" && el.status !== "confirmat" && (
+                            <span style={{ fontSize: 9, fontWeight: 700, color: "var(--accent-purple)", background: "rgba(167,139,250,.12)", padding: "1px 6px", borderRadius: 8 }}>CALC</span>
+                          )}
                         </div>
                         <div className="ec-label">{el.label}</div>
                         <div className={`ec-value ${!el.value ? "missing" : ""}`}>
@@ -1376,6 +1637,20 @@ export default function ProjectViewPage() {
                           <div className="ed-label">Folosit în template-uri</div>
                           <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
                             {el.templates.join(", ")}
+                          </div>
+                        </div>
+                      )}
+                      {el.source === "calculated" && (
+                        <div className="ed-field">
+                          <div className="ed-label">Formula</div>
+                          <div style={{ fontSize: 12, fontFamily: "var(--font-mono)", color: "var(--accent-purple)", background: "rgba(167,139,250,.08)", padding: "6px 10px", borderRadius: "var(--r-sm)", border: "1px solid rgba(167,139,250,.2)" }}>
+                            {el.key === "cofinantare_proprie" && "valoare_totala - ajutor_nerambursabil"}
+                            {el.key === "intensitate_ajutor" && "(ajutor_nerambursabil / valoare_totala) × 100%"}
+                            {el.key === "tva_total" && "valoare_cu_tva - valoare_fara_tva"}
+                            {el.key === "durata_sustenabilitate_end" && "data_finalizare + 3 ani (IMM)"}
+                          </div>
+                          <div style={{ fontSize: 11, color: "var(--accent-yellow)", marginTop: 6, display: "flex", alignItems: "center", gap: 4 }}>
+                            ⚠ Verifică valoarea înainte de confirmare
                           </div>
                         </div>
                       )}
@@ -1612,7 +1887,31 @@ export default function ProjectViewPage() {
               <div className="neemia-layout">
                 {/* Left: Templates list */}
                 <div className="neemia-templates">
-                  <h3>Template-uri Proiect</h3>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                    <h3 style={{ margin: 0 }}>Template-uri Proiect</h3>
+                  </div>
+                  <button
+                    className="neemia-bulk-btn"
+                    onClick={handleNeemiaBulkGenerate}
+                    disabled={neemiaBulkGenerating || readOnly}
+                  >
+                    {neemiaBulkGenerating ? "Se generează..." : "Generează tot dosarul"}
+                  </button>
+
+                  {neemiaGenStatus && (
+                    <div className="neemia-gen-status">
+                      {neemiaGenStatus}
+                    </div>
+                  )}
+
+                  {neemiaValidation && neemiaValidation.warnings.length > 0 && (
+                    <div className="neemia-warnings">
+                      {neemiaValidation.warnings.map((w, i) => (
+                        <div key={i} className="nw-item">⚠ {w}</div>
+                      ))}
+                    </div>
+                  )}
+
                   {neemiaTemplates.map((tmpl, i) => {
                     const p = neemiaProgressPct(tmpl);
                     return (
@@ -1634,6 +1933,22 @@ export default function ProjectViewPage() {
                             {tmpl.filledFields}/{tmpl.totalFields} câmpuri completate
                           </div>
                         )}
+                        <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                          {tmpl.status === "generated" && tmpl.downloadUrl && (
+                            <button className="tc-action-btn tc-download" onClick={(e) => { e.stopPropagation(); window.open(tmpl.downloadUrl!, "_blank"); }}>
+                              &#8595; Descarcă
+                            </button>
+                          )}
+                          {tmpl.templateDocumentId && (
+                            <button
+                              className="tc-action-btn tc-generate"
+                              onClick={(e) => { e.stopPropagation(); handleNeemiaGenerate(tmpl.templateDocumentId); }}
+                              disabled={neemiaGenerating || readOnly}
+                            >
+                              {tmpl.status === "generated" ? "Regenerează" : "Generează"}
+                            </button>
+                          )}
+                        </div>
                       </div>
                     );
                   })}

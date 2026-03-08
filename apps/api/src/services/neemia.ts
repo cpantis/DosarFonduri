@@ -1,7 +1,7 @@
 import { db } from "../db";
 import {
   projects, projectElements, projectDocuments,
-  templateElements, documents, orgConfig,
+  templateElements, documents, orgConfig, companies,
 } from "../db/schema";
 import { eq, and } from "drizzle-orm";
 import { getFileBuffer, uploadFile } from "./storage";
@@ -282,14 +282,30 @@ export async function generateDocument(params: GenerateDocParams): Promise<Reada
           userId,
         );
 
-        // Save in project_documents
+        // Determine version (increment if regenerating)
+        const existingDocs = await db.query.projectDocuments.findMany({
+          where: and(
+            eq(projectDocuments.projectId, projectId),
+            eq(projectDocuments.templateDocumentId, templateDocumentId),
+          ),
+          orderBy: (d, { desc }) => [desc(d.version)],
+          limit: 1,
+        });
+        const nextVersion = existingDocs.length > 0 ? (existingDocs[0].version + 1) : 1;
+
+        // Save in project_documents (new version, keeps old versions as history)
         const [projectDoc] = await db.insert(projectDocuments).values({
           projectId,
           templateDocumentId,
           generatedFileId: fileId,
           status: "generated",
+          version: nextVersion,
           pagesCompleted: templateDoc.pageCount || 0,
           totalPages: templateDoc.pageCount || 0,
+          filledCount,
+          missingCount,
+          missingKeys,
+          generatedBy: userId,
         }).returning();
 
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({
@@ -317,7 +333,7 @@ export async function generateDocument(params: GenerateDocParams): Promise<Reada
 export async function validateBeforeGenerate(
   projectId: string,
   templateDocumentId: string,
-): Promise<{ canGenerate: boolean; warnings: string[]; errors: string[] }> {
+): Promise<{ canGenerate: boolean; warnings: string[]; errors: string[]; stats: { total: number; filled: number; confirmed: number; unvalidatedTemplate: number } }> {
   const templateEls = await db.query.templateElements.findMany({
     where: eq(templateElements.documentId, templateDocumentId),
   });
@@ -332,29 +348,415 @@ export async function validateBeforeGenerate(
   // Check unvalidated template elements
   const unvalidatedTemplate = templateEls.filter(e => !e.validated);
   if (unvalidatedTemplate.length > 0) {
-    warnings.push(`${unvalidatedTemplate.length} elemente din template nu sunt validate`);
+    warnings.push(`${unvalidatedTemplate.length} elemente din template nu sunt validate de consultant`);
   }
 
-  // Check missing values
-  let missingRequired = 0;
+  // Check missing values — distinguish between critical and optional
+  const missingLabels: string[] = [];
+  let filledCount = 0;
+  let confirmedCount = 0;
+
   for (const tmplEl of templateEls) {
     const projEl = projectEls.find(pe => pe.templateElementId === tmplEl.id);
     if (!projEl?.value || projEl.value.trim() === "") {
-      missingRequired++;
+      missingLabels.push(tmplEl.label);
+    } else {
+      filledCount++;
+      if (projEl.confirmed) confirmedCount++;
     }
   }
 
-  if (missingRequired > 0) {
-    warnings.push(`${missingRequired} câmpuri nu sunt completate — vor rămâne goale în document`);
+  if (missingLabels.length > 0) {
+    warnings.push(`${missingLabels.length} câmpuri goale: ${missingLabels.slice(0, 5).join(", ")}${missingLabels.length > 5 ? ` (+${missingLabels.length - 5} altele)` : ""}`);
   }
 
-  // Check unconfirmed elements
-  const unconfirmed = projectEls.filter(pe =>
-    pe.value && pe.value.trim() !== "" && !pe.confirmed
+  // Check unconfirmed elements with source
+  const unconfirmedSolomon = projectEls.filter(pe =>
+    pe.value && pe.value.trim() !== "" && !pe.confirmed && pe.source === "solomon"
   );
-  if (unconfirmed.length > 0) {
-    warnings.push(`${unconfirmed.length} câmpuri completate dar neconfirmate`);
+  if (unconfirmedSolomon.length > 0) {
+    warnings.push(`${unconfirmedSolomon.length} câmpuri completate de Solomon dar neconfirmate de consultant`);
   }
 
-  return { canGenerate: errors.length === 0, warnings, errors };
+  const unconfirmedCalculated = projectEls.filter(pe =>
+    pe.value && pe.value.trim() !== "" && !pe.confirmed && pe.source === "calculated"
+  );
+  if (unconfirmedCalculated.length > 0) {
+    warnings.push(`${unconfirmedCalculated.length} câmpuri calculate automat neconfirmate de consultant (cofinanțare, intensitate, TVA, etc.)`);
+  }
+
+  const unconfirmedOther = projectEls.filter(pe =>
+    pe.value && pe.value.trim() !== "" && !pe.confirmed && pe.source !== "solomon" && pe.source !== "calculated"
+  );
+  if (unconfirmedOther.length > 0) {
+    warnings.push(`${unconfirmedOther.length} câmpuri completate dar neconfirmate`);
+  }
+
+  // Cross-doc consistency check
+  const consistency = await checkCrossDocumentConsistency(projectId);
+  if (!consistency.consistent) {
+    for (const c of consistency.conflicts.slice(0, 3)) {
+      const vals = c.values.map(v => `${v.templateName}: "${v.value}"`).join(" vs ");
+      warnings.push(`Inconsistență "${c.label}": ${vals}`);
+    }
+    if (consistency.conflicts.length > 3) {
+      warnings.push(`...și alte ${consistency.conflicts.length - 3} inconsistențe`);
+    }
+  }
+
+  // Completare percentage check
+  const totalEls = templateEls.length;
+  if (totalEls > 0) {
+    const pct = Math.round((filledCount / totalEls) * 100);
+    if (pct < 50) {
+      warnings.push(`Doar ${pct}% din câmpuri sunt completate (${filledCount}/${totalEls})`);
+    }
+  }
+
+  return {
+    canGenerate: errors.length === 0,
+    warnings,
+    errors,
+    stats: {
+      total: templateEls.length,
+      filled: filledCount,
+      confirmed: confirmedCount,
+      unvalidatedTemplate: unvalidatedTemplate.length,
+    },
+  };
+}
+
+// ═══ CROSS-DOCUMENT CONSISTENCY CHECK ═══
+// Verifică că aceleași câmpuri (key) au aceleași valori în toate template-urile proiectului
+export async function checkCrossDocumentConsistency(
+  projectId: string,
+): Promise<{ consistent: boolean; conflicts: Array<{ key: string; label: string; values: Array<{ templateName: string; value: string }> }> }> {
+  const projectEls = await db.query.projectElements.findMany({
+    where: eq(projectElements.projectId, projectId),
+  });
+
+  // Group by templateElement key
+  const keyToValues = new Map<string, Array<{ templateName: string; value: string; label: string }>>();
+
+  for (const pel of projectEls) {
+    if (!pel.value || pel.value.trim() === "") continue;
+
+    const tmplEl = await db.query.templateElements.findFirst({
+      where: eq(templateElements.id, pel.templateElementId),
+    });
+    if (!tmplEl) continue;
+
+    const doc = await db.query.documents.findFirst({
+      where: eq(documents.id, tmplEl.documentId),
+    });
+
+    const entry = { templateName: doc?.name || "Necunoscut", value: pel.value, label: tmplEl.label };
+    const existing = keyToValues.get(tmplEl.key) || [];
+    existing.push(entry);
+    keyToValues.set(tmplEl.key, existing);
+  }
+
+  // Find conflicts: same key, different values across templates
+  const conflicts: Array<{ key: string; label: string; values: Array<{ templateName: string; value: string }> }> = [];
+
+  for (const [key, entries] of keyToValues) {
+    if (entries.length < 2) continue;
+    const uniqueValues = new Set(entries.map(e => e.value.trim().toLowerCase()));
+    if (uniqueValues.size > 1) {
+      conflicts.push({
+        key,
+        label: entries[0].label,
+        values: entries.map(e => ({ templateName: e.templateName, value: e.value })),
+      });
+    }
+  }
+
+  return { consistent: conflicts.length === 0, conflicts };
+}
+
+// ═══ CALCULATED FIELDS ═══
+// Calculează automat câmpuri derivate (totaluri, procente, diferențe) bazat pe valorile existente
+export async function computeCalculatedFields(
+  projectId: string,
+  organizationId: string,
+): Promise<Array<{ key: string; label: string; calculatedValue: string; formula: string }>> {
+  const projectEls = await db.query.projectElements.findMany({
+    where: eq(projectElements.projectId, projectId),
+  });
+
+  const tmplEls = await db.query.templateElements.findMany({
+    where: eq(templateElements.organizationId, organizationId),
+  });
+  const tmplMap = new Map(tmplEls.map(t => [t.id, t]));
+
+  // Build key→value lookup
+  const values = new Map<string, string>();
+  for (const pe of projectEls) {
+    const te = tmplMap.get(pe.templateElementId);
+    if (te && pe.value) values.set(te.key, pe.value);
+  }
+
+  const getNum = (key: string): number | null => {
+    const v = values.get(key);
+    if (!v) return null;
+    const n = parseFloat(v.replace(/[^\d.,\-]/g, "").replace(",", "."));
+    return isNaN(n) ? null : n;
+  };
+
+  const results: Array<{ key: string; label: string; calculatedValue: string; formula: string }> = [];
+
+  // Standard calculations for EU funding projects
+  const calculations: Array<{
+    targetKey: string;
+    label: string;
+    formula: string;
+    compute: () => string | null;
+  }> = [
+    {
+      targetKey: "cofinantare_proprie",
+      label: "Contribuție proprie (calculată)",
+      formula: "valoare_totala_proiect - ajutor_nerambursabil",
+      compute: () => {
+        const total = getNum("valoare_totala_proiect") ?? getNum("valoare_totala");
+        const ajutor = getNum("ajutor_nerambursabil") ?? getNum("finantare_nerambursabila");
+        if (total !== null && ajutor !== null) return (total - ajutor).toFixed(2);
+        return null;
+      },
+    },
+    {
+      targetKey: "intensitate_ajutor",
+      label: "Intensitate ajutor (%)",
+      formula: "(ajutor_nerambursabil / valoare_totala_proiect) * 100",
+      compute: () => {
+        const total = getNum("valoare_totala_proiect") ?? getNum("valoare_totala");
+        const ajutor = getNum("ajutor_nerambursabil") ?? getNum("finantare_nerambursabila");
+        if (total !== null && ajutor !== null && total > 0) return ((ajutor / total) * 100).toFixed(2);
+        return null;
+      },
+    },
+    {
+      targetKey: "tva_total",
+      label: "TVA total proiect",
+      formula: "valoare_totala_cu_tva - valoare_totala_fara_tva",
+      compute: () => {
+        const cuTva = getNum("valoare_totala_cu_tva") ?? getNum("total_cu_tva");
+        const faraTva = getNum("valoare_totala_fara_tva") ?? getNum("total_fara_tva") ?? getNum("valoare_totala_proiect");
+        if (cuTva !== null && faraTva !== null) return (cuTva - faraTva).toFixed(2);
+        return null;
+      },
+    },
+    {
+      targetKey: "durata_sustenabilitate_end",
+      label: "Data sfârșit sustenabilitate",
+      formula: "data_finalizare + 3 ani (sau 5 ani)",
+      compute: () => {
+        const dataStr = values.get("data_finalizare_implementare") ?? values.get("data_finalizare");
+        if (!dataStr) return null;
+        try {
+          const d = new Date(dataStr);
+          if (isNaN(d.getTime())) return null;
+          d.setFullYear(d.getFullYear() + 3); // 3 ani sustenabilitate IMM
+          return d.toISOString().slice(0, 10);
+        } catch { return null; }
+      },
+    },
+  ];
+
+  for (const calc of calculations) {
+    const result = calc.compute();
+    if (result !== null) {
+      results.push({
+        key: calc.targetKey,
+        label: calc.label,
+        calculatedValue: result,
+        formula: calc.formula,
+      });
+
+      // Auto-update in project if key exists and field is empty or source is "calculated"
+      // IMPORTANT: calculated fields are saved as unconfirmed — consultant must review & confirm
+      const tmplEl = tmplEls.find(t => t.key === calc.targetKey);
+      if (tmplEl) {
+        const projEl = projectEls.find(pe => pe.templateElementId === tmplEl.id);
+        if (projEl && (!projEl.value || projEl.source === "calculated")) {
+          await db.update(projectElements).set({
+            value: result,
+            source: "calculated",
+            confirmed: false,
+            confirmedBy: null,
+            updatedAt: new Date(),
+          }).where(eq(projectElements.id, projEl.id));
+        }
+      }
+    }
+  }
+
+  return results;
+}
+
+// ═══ GENERATE ALL DOCUMENTS (bulk) ═══
+export async function generateAllDocuments(params: {
+  projectId: string;
+  organizationId: string;
+  userId: string;
+}): Promise<ReadableStream> {
+  const { projectId, organizationId, userId } = params;
+  const encoder = new TextEncoder();
+
+  return new ReadableStream({
+    async start(controller) {
+      try {
+        // Find all template documents for this project's session
+        const project = await db.query.projects.findFirst({
+          where: eq(projects.id, projectId),
+        });
+        if (!project) throw new Error("Project not found");
+
+        // Compute calculated fields first
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+          type: "status", message: "Se calculează câmpurile derivate...",
+        })}\n\n`));
+
+        const calculated = await computeCalculatedFields(projectId, organizationId);
+        if (calculated.length > 0) {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+            type: "calculated_fields",
+            fields: calculated,
+          })}\n\n`));
+        }
+
+        // Check cross-document consistency
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+          type: "status", message: "Se verifică consistența între documente...",
+        })}\n\n`));
+
+        const consistency = await checkCrossDocumentConsistency(projectId);
+        if (!consistency.consistent) {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+            type: "consistency_warning",
+            conflicts: consistency.conflicts,
+            message: `${consistency.conflicts.length} câmpuri au valori diferite în template-uri diferite!`,
+          })}\n\n`));
+        }
+
+        // Find all templates that have elements for this project
+        const projectEls = await db.query.projectElements.findMany({
+          where: eq(projectElements.projectId, projectId),
+        });
+
+        const templateDocIds = new Set<string>();
+        for (const pe of projectEls) {
+          const te = await db.query.templateElements.findFirst({
+            where: eq(templateElements.id, pe.templateElementId),
+          });
+          if (te) templateDocIds.add(te.documentId);
+        }
+
+        const templateDocs = await Promise.all(
+          [...templateDocIds].map(id => db.query.documents.findFirst({ where: eq(documents.id, id) }))
+        );
+        const validDocs = templateDocs.filter(Boolean) as typeof templateDocs extends (infer T)[] ? NonNullable<T>[] : never;
+
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+          type: "status",
+          message: `Se generează ${validDocs.length} documente...`,
+          total: validDocs.length,
+        })}\n\n`));
+
+        // Generate each document sequentially
+        const results: Array<{ templateName: string; status: string; documentId?: string; filledCount?: number; missingCount?: number; error?: string }> = [];
+
+        for (let i = 0; i < validDocs.length; i++) {
+          const doc = validDocs[i];
+
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+            type: "doc_progress",
+            current: i + 1,
+            total: validDocs.length,
+            templateName: doc.name,
+          })}\n\n`));
+
+          try {
+            // Build elements map for this specific template
+            const docTemplateEls = await db.query.templateElements.findMany({
+              where: eq(templateElements.documentId, doc.id),
+            });
+
+            const elementsMap: Record<string, string> = {};
+            let filledCount = 0;
+            let missingCount = 0;
+
+            for (const tmplEl of docTemplateEls) {
+              const projEl = projectEls.find(pe => pe.templateElementId === tmplEl.id);
+              if (projEl?.value && projEl.value.trim() !== "") {
+                elementsMap[tmplEl.key] = projEl.value;
+                filledCount++;
+              } else {
+                missingCount++;
+              }
+            }
+
+            // Download and fill
+            const { buffer: templateBuffer, name: templateName } = await getFileBuffer(doc.fileId);
+            let filledBuffer: Buffer;
+
+            if (doc.fileType === "xlsx") {
+              filledBuffer = await fillXlsxTemplate(templateBuffer, templateName, elementsMap);
+            } else {
+              filledBuffer = await fillDocxTemplate(templateBuffer, templateName, elementsMap);
+            }
+
+            // Upload and save
+            const generatedFileName = `${doc.name}_completat_${new Date().toISOString().slice(0, 10)}.${doc.fileType}`;
+            const fileId = await uploadFile(
+              filledBuffer,
+              generatedFileName,
+              doc.fileType === "xlsx"
+                ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                : "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              organizationId,
+              userId,
+            );
+
+            const [projectDoc] = await db.insert(projectDocuments).values({
+              projectId,
+              templateDocumentId: doc.id,
+              generatedFileId: fileId,
+              status: "generated",
+              pagesCompleted: doc.pageCount || 0,
+              totalPages: doc.pageCount || 0,
+            }).returning();
+
+            results.push({
+              templateName: doc.name,
+              status: "success",
+              documentId: projectDoc.id,
+              filledCount,
+              missingCount,
+            });
+          } catch (err) {
+            results.push({
+              templateName: doc.name,
+              status: "error",
+              error: (err as Error).message,
+            });
+          }
+        }
+
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+          type: "bulk_complete",
+          results,
+          totalGenerated: results.filter(r => r.status === "success").length,
+          totalFailed: results.filter(r => r.status === "error").length,
+        })}\n\n`));
+
+        controller.close();
+      } catch (error) {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+          type: "error",
+          message: (error as Error).message,
+        })}\n\n`));
+        controller.close();
+      }
+    },
+  });
 }

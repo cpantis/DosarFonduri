@@ -512,17 +512,29 @@ projectRoutes.get("/:id/checklist", async (c) => {
     orderBy: (c, { asc }) => [asc(c.category), asc(c.sortOrder)],
   });
 
+  // Enrich with template names
+  const enriched = await Promise.all(items.map(async (item) => {
+    let templateName: string | null = null;
+    if (item.templateId) {
+      const tmplDoc = await db.query.documents.findFirst({
+        where: eq(documents.id, item.templateId),
+      });
+      templateName = tmplDoc?.name || null;
+    }
+    return { ...item, templateName };
+  }));
+
   const totalDone = items.filter(i => i.done).length;
 
   // Group by category
-  const grouped: Record<string, typeof items> = {};
-  for (const item of items) {
+  const grouped: Record<string, typeof enriched> = {};
+  for (const item of enriched) {
     if (!grouped[item.category]) grouped[item.category] = [];
     grouped[item.category].push(item);
   }
 
   return c.json({
-    items,
+    items: enriched,
     grouped,
     summary: { total: items.length, done: totalDone, pct: items.length > 0 ? Math.round(totalDone / items.length * 100) : 0 },
   });

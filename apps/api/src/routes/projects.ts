@@ -9,6 +9,7 @@ import {
 import { eq, and, count, asc, desc, sql } from "drizzle-orm";
 import { AuthContext } from "../middleware/auth";
 import { checkEligibility } from "../services/eligibility";
+import { deleteFile } from "../services/storage";
 
 export const projectRoutes = new Hono();
 
@@ -712,6 +713,17 @@ projectRoutes.delete("/:id", async (c) => {
     return c.json({ error: "Proiectele depuse sau aprobate nu pot fi șterse" }, 400);
   }
 
+  // Delete R2 files for generated documents (Neemia output)
+  const generatedDocs = await db.query.projectDocuments.findMany({
+    where: eq(projectDocuments.projectId, id),
+  });
+  for (const doc of generatedDocs) {
+    if (doc.generatedFileId) {
+      await deleteFile(doc.generatedFileId).catch(() => {});
+    }
+  }
+
+  // Cascade deletes handle elements, eligibility, checklist, conversations, messages, projectDocuments
   await db.delete(projects).where(eq(projects.id, id));
   return c.json({ ok: true });
 });

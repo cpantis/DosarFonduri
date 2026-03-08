@@ -7,7 +7,7 @@ import {
 } from "../db/schema";
 import { eq, and } from "drizzle-orm";
 import { lookupCUI, FORMA_MAP } from "../services/onrc";
-import { uploadFile, getFileBuffer } from "../services/storage";
+import { uploadFile, getFileBuffer, deleteFile } from "../services/storage";
 import { parseBilantPDF } from "../services/bilantParser";
 import { extractTextFromPDF } from "../services/ocr";
 import { extractCompanyFromDocument } from "../services/companyExtractor";
@@ -424,9 +424,28 @@ companyRoutes.delete("/:id", async (c) => {
 
   if (auth.role !== "admin") return c.json({ error: "Doar administratorul poate șterge firme" }, 403);
 
-  await db.delete(companies).where(
-    and(eq(companies.id, id), eq(companies.organizationId, auth.organizationId!))
-  );
+  const company = await db.query.companies.findFirst({
+    where: and(eq(companies.id, id), eq(companies.organizationId, auth.organizationId!)),
+  });
+  if (!company) return c.json({ error: "Not found" }, 404);
+
+  // Delete R2 files: certificat constatator
+  if (company.certificatFileId) {
+    await deleteFile(company.certificatFileId).catch(() => {});
+  }
+
+  // Delete R2 files: bilant PDFs
+  const financials = await db.query.companyFinancials.findMany({
+    where: eq(companyFinancials.companyId, id),
+  });
+  for (const fin of financials) {
+    if (fin.fileId) {
+      await deleteFile(fin.fileId).catch(() => {});
+    }
+  }
+
+  // Cascade deletes handle associates, admins, financials, IF members
+  await db.delete(companies).where(eq(companies.id, id));
 
   return c.json({ ok: true });
 });

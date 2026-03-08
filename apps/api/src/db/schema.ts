@@ -161,7 +161,7 @@ export const companyIfMembers = pgTable("company_if_members", {
 export const documentFolders = pgTable("document_folders", {
   id: uuid("id").defaultRandom().primaryKey(),
   organizationId: uuid("organization_id").references(() => organizations.id).notNull(),
-  parentId: uuid("parent_id"),
+  parentId: uuid("parent_id").references((): any => documentFolders.id, { onDelete: "cascade" }),
   name: varchar("name", { length: 255 }).notNull(),
   type: folderTypeEnum("type").notNull(),
   position: integer("position").notNull().default(0),
@@ -236,8 +236,8 @@ export const templateElements = pgTable("template_elements", {
 export const projects = pgTable("projects", {
   id: uuid("id").defaultRandom().primaryKey(),
   organizationId: uuid("organization_id").references(() => organizations.id).notNull(),
-  companyId: uuid("company_id").references(() => companies.id).notNull(),
-  folderId: uuid("folder_id").references(() => documentFolders.id).notNull(),
+  companyId: uuid("company_id").references(() => companies.id, { onDelete: "cascade" }).notNull(),
+  folderId: uuid("folder_id").references(() => documentFolders.id, { onDelete: "cascade" }).notNull(),
   name: varchar("name", { length: 500 }).notNull(),
   status: projectStatusEnum("status").notNull().default("draft"),
   valoare: decimal("valoare", { precision: 15, scale: 2 }),
@@ -352,8 +352,8 @@ export const solomonMessages = pgTable("solomon_messages", {
 export const aiUsageLog = pgTable("ai_usage_log", {
   id: uuid("id").defaultRandom().primaryKey(),
   organizationId: uuid("organization_id").references(() => organizations.id).notNull(),
-  projectId: uuid("project_id").references(() => projects.id),
-  userId: uuid("user_id").references(() => users.id),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
   agent: aiAgentEnum("agent").notNull(),
   model: varchar("model", { length: 100 }).notNull(),
   tokensInput: integer("tokens_input").notNull(),

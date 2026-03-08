@@ -239,6 +239,24 @@ export default function ProjectViewPage() {
   const [neemiaActivePage, setNeemiaActivePage] = useState(0);
   const [neemiaAnimKey, setNeemiaAnimKey] = useState(0);
   const [neemiaGenerating, setNeemiaGenerating] = useState(false);
+  const [neemiaSplitWidth, setNeemiaSplitWidth] = useState(380);
+  const neemiaSplitDragging = useRef(false);
+  const neemiaSplitRef = useRef<HTMLDivElement>(null);
+
+  // Drag handler for Neemia split pane
+  useEffect(() => {
+    const onMouseMove = (e: MouseEvent) => {
+      if (!neemiaSplitDragging.current || !neemiaSplitRef.current) return;
+      const rect = neemiaSplitRef.current.getBoundingClientRect();
+      const newWidth = Math.min(Math.max(e.clientX - rect.left, 260), 600);
+      setNeemiaSplitWidth(newWidth);
+    };
+    const onMouseUp = () => { neemiaSplitDragging.current = false; document.body.style.cursor = ""; document.body.style.userSelect = ""; };
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+    return () => { document.removeEventListener("mousemove", onMouseMove); document.removeEventListener("mouseup", onMouseUp); };
+  }, []);
+
   const [neemiaGenStatus, setNeemiaGenStatus] = useState<string | null>(null);
   const [neemiaValidation, setNeemiaValidation] = useState<{ warnings: string[]; stats?: any } | null>(null);
   const [neemiaBulkGenerating, setNeemiaBulkGenerating] = useState(false);
@@ -1325,8 +1343,13 @@ export default function ProjectViewPage() {
         .ndp-footer{position:absolute;bottom:16px;left:40px;right:40px;display:flex;justify-content:space-between;font-size:11px;color:#8892a8;font-family:'JetBrains Mono',monospace}
         .ndp-footer-stats{color:#5a6478}
 
-        /* Right fields panel */
-        .neemia-fields-panel{width:320px;min-width:300px;border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;background:var(--bg-surface)}
+        /* Left fields panel */
+        .neemia-fields-panel{width:380px;min-width:260px;max-width:600px;border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;background:var(--bg-surface);flex-shrink:0}
+        /* Split drag handle */
+        .neemia-split-handle{width:6px;cursor:col-resize;background:var(--bg-surface);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .15s;position:relative;z-index:2}
+        .neemia-split-handle:hover,.neemia-split-handle:active{background:var(--border-active)}
+        .nsh-dots{width:2px;height:32px;background:var(--text-muted);border-radius:1px;opacity:.4;transition:opacity .15s}
+        .neemia-split-handle:hover .nsh-dots{opacity:.8}
         .nfp-header{padding:14px 16px;border-bottom:1px solid var(--border)}
         .nfp-header h3{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text-muted);margin:0 0 8px}
         .nfp-stats{display:flex;gap:10px}
@@ -2291,8 +2314,54 @@ export default function ProjectViewPage() {
                         </button>
                       </div>
 
-                      <div className="neemia-preview-area">
-                        {/* Document page preview — pixel-perfect document look */}
+                      <div className="neemia-preview-area" ref={neemiaSplitRef}>
+                        {/* Left panel: Fields for current page */}
+                        <div className="neemia-fields-panel" style={{ width: neemiaSplitWidth }}>
+                          <div className="nfp-header">
+                            <h3>Câmpuri — Pag. {neemiaPage?.num}</h3>
+                            {neemiaPage && (
+                              <div className="nfp-stats">
+                                <span className="nfp-stat confirmed">{neemiaPage.fields.filter(f => f.confirmed).length} confirmate</span>
+                                <span className="nfp-stat filled">{neemiaPage.fields.filter(f => f.value && !f.confirmed).length} propuse</span>
+                                <span className="nfp-stat empty">{neemiaPage.fields.filter(f => !f.value).length} goale</span>
+                              </div>
+                            )}
+                          </div>
+                          <div className="nfp-scroll">
+                            {neemiaPage?.fields.map((f, fi) => (
+                              <div className={`nfp-card ${f.value ? (f.confirmed ? "is-confirmed" : "is-proposed") : "is-empty"}`} key={fi}>
+                                <div className="nfp-card-top">
+                                  <span className="nfp-card-label">{f.name}</span>
+                                  <span className={`nfp-card-status ${f.confirmed ? "confirmed" : f.value ? "proposed" : "empty"}`}>
+                                    {f.confirmed ? "✓ Confirmat" : f.value ? "○ Propus" : "— Gol"}
+                                  </span>
+                                </div>
+                                <div className={`nfp-card-value ${!f.value ? "missing" : ""}`}>
+                                  {f.value || `{{${f.key}}}`}
+                                </div>
+                                {f.source && (
+                                  <div className="nfp-card-source">
+                                    <span className={`source-dot ${f.source.toLowerCase()}`} />
+                                    {f.source}
+                                  </div>
+                                )}
+                                {f.fieldType !== "text" && (
+                                  <div className="nfp-card-type">{f.fieldType}</div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Drag handle */}
+                        <div
+                          className="neemia-split-handle"
+                          onMouseDown={() => { neemiaSplitDragging.current = true; document.body.style.cursor = "col-resize"; document.body.style.userSelect = "none"; }}
+                        >
+                          <div className="nsh-dots" />
+                        </div>
+
+                        {/* Right: Document page preview — pixel-perfect document look */}
                         <div className="neemia-doc-preview">
                           {neemiaPage && (
                             <div className="ndp-page" key={neemiaAnimKey}>
@@ -2351,44 +2420,6 @@ export default function ProjectViewPage() {
                               </div>
                             </div>
                           )}
-                        </div>
-
-                        {/* Right panel: Fields for current page */}
-                        <div className="neemia-fields-panel">
-                          <div className="nfp-header">
-                            <h3>Câmpuri — Pag. {neemiaPage?.num}</h3>
-                            {neemiaPage && (
-                              <div className="nfp-stats">
-                                <span className="nfp-stat confirmed">{neemiaPage.fields.filter(f => f.confirmed).length} confirmate</span>
-                                <span className="nfp-stat filled">{neemiaPage.fields.filter(f => f.value && !f.confirmed).length} propuse</span>
-                                <span className="nfp-stat empty">{neemiaPage.fields.filter(f => !f.value).length} goale</span>
-                              </div>
-                            )}
-                          </div>
-                          <div className="nfp-scroll">
-                            {neemiaPage?.fields.map((f, fi) => (
-                              <div className={`nfp-card ${f.value ? (f.confirmed ? "is-confirmed" : "is-proposed") : "is-empty"}`} key={fi}>
-                                <div className="nfp-card-top">
-                                  <span className="nfp-card-label">{f.name}</span>
-                                  <span className={`nfp-card-status ${f.confirmed ? "confirmed" : f.value ? "proposed" : "empty"}`}>
-                                    {f.confirmed ? "✓ Confirmat" : f.value ? "○ Propus" : "— Gol"}
-                                  </span>
-                                </div>
-                                <div className={`nfp-card-value ${!f.value ? "missing" : ""}`}>
-                                  {f.value || `{{${f.key}}}`}
-                                </div>
-                                {f.source && (
-                                  <div className="nfp-card-source">
-                                    <span className={`source-dot ${f.source.toLowerCase()}`} />
-                                    {f.source}
-                                  </div>
-                                )}
-                                {f.fieldType !== "text" && (
-                                  <div className="nfp-card-type">{f.fieldType}</div>
-                                )}
-                              </div>
-                            ))}
-                          </div>
                         </div>
                       </div>
                     </>

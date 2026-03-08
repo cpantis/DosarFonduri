@@ -719,6 +719,14 @@ projectRoutes.put("/:id", async (c) => {
   if (body.name !== undefined) updateData.name = body.name;
   if (body.status !== undefined) updateData.status = body.status;
   if (body.valoare !== undefined) updateData.valoare = body.valoare;
+  // Program metadata fields (set by Solomon or manually by consultant)
+  if (body.programFinantare !== undefined) updateData.programFinantare = body.programFinantare;
+  if (body.codMasura !== undefined) updateData.codMasura = body.codMasura;
+  if (body.codSesiune !== undefined) updateData.codSesiune = body.codSesiune;
+  if (body.codNomenclator !== undefined) updateData.codNomenclator = body.codNomenclator;
+  if (body.prefixDocumente !== undefined) updateData.prefixDocumente = body.prefixDocumente;
+  if (body.codMysmis !== undefined) updateData.codMysmis = body.codMysmis;
+  if (body.structuraDosar !== undefined) updateData.structuraDosar = body.structuraDosar;
 
   const [updated] = await db.update(projects).set(updateData).where(
     and(eq(projects.id, id), eq(projects.organizationId, auth.organizationId!))

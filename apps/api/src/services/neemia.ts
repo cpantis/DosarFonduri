@@ -206,6 +206,14 @@ export async function generateDocument(params: GenerateDocParams): Promise<Reada
         });
         if (!templateDoc) throw new Error("Template not found");
 
+        // Load project for metadata (program, prefix, nomenclator etc.)
+        const project = await db.query.projects.findFirst({
+          where: eq(projects.id, projectId),
+        });
+        const company = project ? await db.query.companies.findFirst({
+          where: eq(companies.id, project.companyId),
+        }) : null;
+
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "status", message: "Se verifică elementele..." })}\n\n`));
 
         const templateEls = await db.query.templateElements.findMany({
@@ -232,6 +240,16 @@ export async function generateDocument(params: GenerateDocParams): Promise<Reada
             missingKeys.push(tmplEl.label);
           }
         }
+
+        // Inject project metadata as additional element values (Solomon-collected data)
+        if (project?.programFinantare) elementsMap["program_finantare"] = project.programFinantare;
+        if (project?.codMasura) elementsMap["cod_masura"] = project.codMasura;
+        if (project?.codSesiune) elementsMap["cod_sesiune"] = project.codSesiune;
+        if (project?.codNomenclator) elementsMap["cod_nomenclator"] = project.codNomenclator;
+        if (project?.prefixDocumente) elementsMap["prefix_documente"] = project.prefixDocumente;
+        if (project?.codMysmis) elementsMap["cod_mysmis"] = project.codMysmis;
+        if (company?.denumire) elementsMap["denumire_firma"] = company.denumire;
+        if (company?.cui) elementsMap["cui_firma"] = company.cui;
 
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({
           type: "progress",
@@ -271,7 +289,8 @@ export async function generateDocument(params: GenerateDocParams): Promise<Reada
         // Upload generated doc
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "status", message: "Se salvează documentul..." })}\n\n`));
 
-        const generatedFileName = `${templateDoc.name}_completat_${new Date().toISOString().slice(0, 10)}.${templateDoc.fileType}`;
+        const prefix = project?.prefixDocumente ? `${project.prefixDocumente}` : "";
+        const generatedFileName = `${prefix}${templateDoc.name}_completat_${new Date().toISOString().slice(0, 10)}.${templateDoc.fileType}`;
         const fileId = await uploadFile(
           filledBuffer,
           generatedFileName,

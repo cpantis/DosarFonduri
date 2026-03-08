@@ -100,6 +100,14 @@ type ProjectData = {
   eligibility: any[];
   generatedDocs: any[];
   checklist: any[];
+  // Program metadata (collected by Solomon)
+  programFinantare: string | null;
+  codMasura: string | null;
+  codSesiune: string | null;
+  codNomenclator: string | null;
+  prefixDocumente: string | null;
+  codMysmis: string | null;
+  structuraDosar: string | null;
 };
 
 const STATUS_MAP: Record<string, { label: string; color: string; bg: string }> = {
@@ -514,6 +522,18 @@ export default function ProjectViewPage() {
               apiGet<any>(`/api/projects/${projectId}`).then(proj => {
                 setElements(mapElements(proj.elements || []));
               }).catch(() => {});
+            } else if (evt.type === "metadata_updated" && evt.metadata) {
+              // Solomon confirmed program metadata — update project state
+              setProject(prev => prev ? {
+                ...prev,
+                programFinantare: evt.metadata.programFinantare || prev.programFinantare,
+                codMasura: evt.metadata.codMasura || prev.codMasura,
+                codSesiune: evt.metadata.codSesiune || prev.codSesiune,
+                codNomenclator: evt.metadata.codNomenclator || prev.codNomenclator,
+                prefixDocumente: evt.metadata.prefixDocumente || prev.prefixDocumente,
+                codMysmis: evt.metadata.codMysmis || prev.codMysmis,
+                structuraDosar: evt.metadata.structuraDosar || prev.structuraDosar,
+              } : prev);
             }
           } catch {}
         }
@@ -1658,6 +1678,33 @@ export default function ProjectViewPage() {
                     <div className="si-row"><span className="si-label">Capital social</span><span className="si-value">{capitalSocial}</span></div>
                     <div className="si-row"><span className="si-label">Cifra afaceri</span><span className="si-value">{cifraAfaceri}</span></div>
                     <div className="si-row"><span className="si-label">Valoare proiect</span><span className="si-value">{projectValoare}</span></div>
+                  </div>
+                </div>
+
+                {/* Program metadata (collected by Solomon) */}
+                <div className="sumar-info">
+                  <div className="si-card" style={{ gridColumn: "1 / -1" }}>
+                    <h3>Program de finanțare</h3>
+                    {project?.programFinantare ? (
+                      <>
+                        <div className="si-row"><span className="si-label">Program</span><span className="si-value">{project.programFinantare}</span></div>
+                        {project.codMasura && <div className="si-row"><span className="si-label">Masura</span><span className="si-value">{project.codMasura}</span></div>}
+                        {project.codSesiune && <div className="si-row"><span className="si-label">Sesiune</span><span className="si-value">{project.codSesiune}</span></div>}
+                        {project.codNomenclator && <div className="si-row"><span className="si-label">Cod nomenclator</span><span className="si-value">{project.codNomenclator}</span></div>}
+                        {project.prefixDocumente && <div className="si-row"><span className="si-label">Prefix documente</span><span className="si-value" style={{ fontFamily: "var(--font-mono)", color: "var(--accent-blue)" }}>{project.prefixDocumente}</span></div>}
+                        {project.codMysmis && <div className="si-row"><span className="si-label">Cod MySMIS</span><span className="si-value">{project.codMysmis}</span></div>}
+                        {project.structuraDosar && (
+                          <div className="si-row" style={{ flexDirection: "column", alignItems: "flex-start", gap: 4 }}>
+                            <span className="si-label">Structura dosar</span>
+                            <span className="si-value" style={{ fontSize: 12, whiteSpace: "pre-wrap", lineHeight: 1.6 }}>{project.structuraDosar}</span>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div style={{ fontSize: 12, color: "var(--text-muted)", padding: "8px 0" }}>
+                        Nu a fost identificat inca. Deschide Solomon pentru a confirma programul de finantare.
+                      </div>
+                    )}
                   </div>
                 </div>
 

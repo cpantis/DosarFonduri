@@ -895,7 +895,15 @@ Verifică și semnalează AUTOMAT dacă:
    - confidence = 0.0-1.0 (cât de sigur ești de extragere)
    - Dacă ai extras dintr-un document uploadat, confidence ≥ 0.9
    - Dacă ai dedus/calculat, confidence 0.7-0.9
-   - Dacă ai propus o formulare, confidence 0.5-0.7 (necesită confirmare consultant)`;
+   - Dacă ai propus o formulare, confidence 0.5-0.7 (necesită confirmare consultant)
+
+### Format metadate proiect (CRITIC pentru Neemia)
+7. Când consultantul CONFIRMĂ sau furnizează informații despre program, nomenclator, prefix, structura dosarului, cod MySMIS sau sesiune, returnează-le în format JSON ascuns:
+   <!--METADATA_JSON{"programFinantare":"PNDR/AFIR","codMasura":"6.4","codSesiune":"Sesiunea 1/2024","codNomenclator":"sM6.4","prefixDocumente":"C6.4_","codMysmis":"12345","structuraDosar":"1. Cerere finanțare\\n2. Plan de afaceri\\n3. Anexe tehnice"}METADATA_JSON-->
+   - Includ DOAR câmpurile pe care le-ai obținut (confirmate de consultant sau deduse cu certitudine)
+   - Nu inventa valori — include doar ce a confirmat/furnizat consultantul sau ce ai detectat automat și consultantul a confirmat
+   - Actualizează câmpurile la fiecare confirmare/corecție din conversație
+   - Aceste metadate sunt ESENȚIALE — Neemia le folosește pentru denumirea și structurarea documentelor generate`;
 }
 
 // ═══ INLINE REFINE ═══
@@ -1039,6 +1047,15 @@ export async function generateSolomonGreeting(params: {
     greeting += `**Status completare:** ${filledCount}/${totalCount} câmpuri completate`;
     if (emptyCount > 0) greeting += ` (${emptyCount} de completat)`;
     greeting += `.\n`;
+  }
+
+  // Save detected program context to project (preliminary, before consultant confirmation)
+  if (ctx.programDetected && ctx.confidence !== "low") {
+    const metaUpdate: any = { updatedAt: new Date() };
+    if (ctx.programDetected) metaUpdate.programFinantare = ctx.programDetected;
+    if (ctx.masura) metaUpdate.codMasura = ctx.masura;
+    if (ctx.sesiune) metaUpdate.codSesiune = ctx.sesiune;
+    await db.update(projects).set(metaUpdate).where(eq(projects.id, projectId));
   }
 
   // Save greeting as assistant message
@@ -1206,8 +1223,37 @@ export async function processSolomonMessage(params: {
           })}\n\n`));
         }
 
-        // Save assistant message (clean hidden JSON)
-        const cleanResponse = fullResponse.replace(/<!--ELEMENTS_JSON\[[\s\S]*?\]ELEMENTS_JSON-->/g, "").trim();
+        // Extract project metadata (program, nomenclator, prefix, structure)
+        const metadataMatch = fullResponse.match(/<!--METADATA_JSON(\{[\s\S]*?\})METADATA_JSON-->/);
+        if (metadataMatch) {
+          try {
+            const metadata = JSON.parse(metadataMatch[1]);
+            const metaUpdate: any = { updatedAt: new Date() };
+            if (metadata.programFinantare) metaUpdate.programFinantare = metadata.programFinantare;
+            if (metadata.codMasura) metaUpdate.codMasura = metadata.codMasura;
+            if (metadata.codSesiune) metaUpdate.codSesiune = metadata.codSesiune;
+            if (metadata.codNomenclator) metaUpdate.codNomenclator = metadata.codNomenclator;
+            if (metadata.prefixDocumente) metaUpdate.prefixDocumente = metadata.prefixDocumente;
+            if (metadata.codMysmis) metaUpdate.codMysmis = metadata.codMysmis;
+            if (metadata.structuraDosar) metaUpdate.structuraDosar = metadata.structuraDosar;
+
+            if (Object.keys(metaUpdate).length > 1) {
+              await db.update(projects).set(metaUpdate).where(eq(projects.id, projectId));
+
+              // Notify frontend about metadata update
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+                type: "metadata_updated",
+                metadata,
+              })}\n\n`));
+            }
+          } catch {}
+        }
+
+        // Save assistant message (clean hidden JSON tags)
+        const cleanResponse = fullResponse
+          .replace(/<!--ELEMENTS_JSON\[[\s\S]*?\]ELEMENTS_JSON-->/g, "")
+          .replace(/<!--METADATA_JSON\{[\s\S]*?\}METADATA_JSON-->/g, "")
+          .trim();
 
         await db.insert(solomonMessages).values({
           conversationId,

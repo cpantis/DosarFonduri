@@ -1,3 +1,4 @@
+import type { AppEnv } from "../types/hono";
 import { Hono } from "hono";
 import { z } from "zod";
 import { db } from "../db";
@@ -11,7 +12,7 @@ import { AuthContext } from "../middleware/auth";
 import { checkEligibility } from "../services/eligibility";
 import { deleteFile } from "../services/storage";
 
-export const projectRoutes = new Hono();
+export const projectRoutes = new Hono<AppEnv>();
 
 // Lock timeout: 30 minutes of inactivity
 const LOCK_TIMEOUT_MS = 30 * 60 * 1000;

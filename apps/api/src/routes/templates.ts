@@ -1,10 +1,11 @@
+import type { AppEnv } from "../types/hono";
 import { Hono } from "hono";
 import { z } from "zod";
 import { db } from "../db";
 import { templateElements } from "../db/schema";
 import { eq, and } from "drizzle-orm";
 
-export const templateRoutes = new Hono();
+export const templateRoutes = new Hono<AppEnv>();
 
 // List elements per template document
 templateRoutes.get("/documents/:docId/elements", async (c) => {

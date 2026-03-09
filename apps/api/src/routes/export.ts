@@ -1,10 +1,11 @@
+import type { AppEnv } from "../types/hono";
 import { Hono } from "hono";
 import { db } from "../db";
 import { projects, projectElements, templateElements, orgConfig, auditLog } from "../db/schema";
 import { eq } from "drizzle-orm";
 import type { AuthContext } from "../middleware/auth";
 
-export const exportRoutes = new Hono();
+export const exportRoutes = new Hono<AppEnv>();
 
 // Export all projects (JSON) — admin only
 exportRoutes.get("/projects", async (c) => {

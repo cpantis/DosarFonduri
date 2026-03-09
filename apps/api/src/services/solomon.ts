@@ -699,7 +699,7 @@ Cunoști în detaliu:
 - Nr. Reg. Com.: ${(company as any).registrationNumber || "necunoscut"}
 - Adresă: ${company.adresa}, Județ: ${company.judet}
 - An înființare: ${company.anInfiintare || "necunoscut"}${vechimeAni !== null ? ` (vechime: ${vechimeAni} ani)` : ""}
-- Status: ${company.status || "necunoscut"}
+- Status: ${company.stare || "necunoscut"}
 
 ### Situație financiară
 - Angajați (ultimul an): ${nrAngajati || "necunoscut"}

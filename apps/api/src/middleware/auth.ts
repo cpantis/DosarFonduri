@@ -17,7 +17,7 @@ export const authMiddleware = async (c: Context, next: Next) => {
   if (!token) return c.json({ error: "Unauthorized" }, 401);
 
   try {
-    const payload = await verify(token, process.env.JWT_SECRET!);
+    const payload = await verify(token, process.env.JWT_SECRET!, "HS256");
     const user = await db.query.users.findFirst({
       where: eq(users.id, payload.sub as string),
     });

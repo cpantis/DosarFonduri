@@ -1,3 +1,4 @@
+import type { AppEnv } from "../types/hono";
 import { Hono } from "hono";
 import { z } from "zod";
 import { db } from "../db";
@@ -6,7 +7,7 @@ import { eq, and } from "drizzle-orm";
 import { encrypt, decrypt } from "../lib/crypto";
 import type { AuthContext } from "../middleware/auth";
 
-export const configRoutes = new Hono();
+export const configRoutes = new Hono<AppEnv>();
 
 // ─── GET / (org config) ───
 configRoutes.get("/", async (c) => {

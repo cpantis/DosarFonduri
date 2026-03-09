@@ -1,3 +1,4 @@
+import type { AppEnv } from "../types/hono";
 import { Hono } from "hono";
 import { z } from "zod";
 import { db } from "../db";
@@ -13,7 +14,7 @@ import { extractTextFromPDF } from "../services/ocr";
 import { extractCompanyFromDocument } from "../services/companyExtractor";
 import { AuthContext } from "../middleware/auth";
 
-export const companyRoutes = new Hono();
+export const companyRoutes = new Hono<AppEnv>();
 
 // --- LIST COMPANIES ---
 companyRoutes.get("/", async (c) => {

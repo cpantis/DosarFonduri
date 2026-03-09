@@ -1,3 +1,4 @@
+import type { AppEnv } from "../types/hono";
 import { Hono } from "hono";
 import { z } from "zod";
 import { db } from "../db";
@@ -7,7 +8,7 @@ import { uploadFile, getFileUrl, deleteFile } from "../services/storage";
 import { AuthContext } from "../middleware/auth";
 import { processGuideQueue, processTemplateQueue } from "../lib/queue";
 
-export const documentRoutes = new Hono();
+export const documentRoutes = new Hono<AppEnv>();
 
 // --- FOLDER TREE ---
 documentRoutes.get("/folders", async (c) => {

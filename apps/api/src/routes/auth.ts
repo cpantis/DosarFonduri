@@ -5,8 +5,9 @@ import { db } from "../db";
 import { users, organizations, cabinetCodes } from "../db/schema";
 import { eq, and } from "drizzle-orm";
 import bcrypt from "bcryptjs";
+import type { AppEnv } from "../types/hono";
 
-export const authRoutes = new Hono();
+export const authRoutes = new Hono<AppEnv>();
 
 // --- SIGNUP ---
 const signupSchema = z.object({
@@ -40,7 +41,7 @@ authRoutes.post("/signup", async (c) => {
       status: "active",
     }).where(eq(users.id, preRegistered.id));
 
-    const token = await sign({ sub: preRegistered.id, exp: Math.floor(Date.now() / 1000) + 7 * 86400 }, process.env.JWT_SECRET!);
+    const token = await sign({ sub: preRegistered.id, exp: Math.floor(Date.now() / 1000) + 7 * 86400 }, process.env.JWT_SECRET!, "HS256");
     return c.json({ token, user: { ...preRegistered, name: body.name, status: "active" }, hasOrganization: true });
   }
 
@@ -78,7 +79,7 @@ authRoutes.post("/signup", async (c) => {
       activatedAt: new Date(),
     }).where(eq(cabinetCodes.id, code.id));
 
-    const token = await sign({ sub: user.id, exp: Math.floor(Date.now() / 1000) + 7 * 86400 }, process.env.JWT_SECRET!);
+    const token = await sign({ sub: user.id, exp: Math.floor(Date.now() / 1000) + 7 * 86400 }, process.env.JWT_SECRET!, "HS256");
     return c.json({ token, user, organization: org, hasOrganization: true });
   }
 
@@ -90,7 +91,7 @@ authRoutes.post("/signup", async (c) => {
     status: "pending_cabinet",
   }).returning();
 
-  const token = await sign({ sub: user.id, exp: Math.floor(Date.now() / 1000) + 7 * 86400 }, process.env.JWT_SECRET!);
+  const token = await sign({ sub: user.id, exp: Math.floor(Date.now() / 1000) + 7 * 86400 }, process.env.JWT_SECRET!, "HS256");
   return c.json({ token, user, hasOrganization: false });
 });
 
@@ -108,7 +109,7 @@ authRoutes.post("/login", async (c) => {
 
   await db.update(users).set({ lastActiveAt: new Date() }).where(eq(users.id, user.id));
 
-  const token = await sign({ sub: user.id, exp: Math.floor(Date.now() / 1000) + 7 * 86400 }, process.env.JWT_SECRET!);
+  const token = await sign({ sub: user.id, exp: Math.floor(Date.now() / 1000) + 7 * 86400 }, process.env.JWT_SECRET!, "HS256");
   return c.json({
     token,
     user: { id: user.id, email: user.email, name: user.name, role: user.role, theme: user.theme },
@@ -122,7 +123,7 @@ authRoutes.get("/me", async (c) => {
   if (!token) return c.json({ error: "Unauthorized" }, 401);
 
   try {
-    const payload = await verify(token, process.env.JWT_SECRET!);
+    const payload = await verify(token, process.env.JWT_SECRET!, "HS256");
     const user = await db.query.users.findFirst({
       where: eq(users.id, payload.sub as string),
     });
@@ -170,7 +171,7 @@ authRoutes.patch("/preferences", async (c) => {
   if (!token) return c.json({ error: "Unauthorized" }, 401);
 
   try {
-    const payload = await verify(token, process.env.JWT_SECRET!);
+    const payload = await verify(token, process.env.JWT_SECRET!, "HS256");
     const { theme } = await c.req.json();
 
     if (theme && (theme === "dark" || theme === "light")) {

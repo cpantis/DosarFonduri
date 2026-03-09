@@ -1,3 +1,4 @@
+import type { AppEnv } from "../types/hono";
 import { Hono } from "hono";
 import { db } from "../db";
 import { solomonConversations, solomonMessages } from "../db/schema";
@@ -8,7 +9,7 @@ import { uploadFile } from "../services/storage";
 import { extractTextFromPDF, extractTextFromDOCX, extractTextFromXLSX } from "../services/ocr";
 import { orgConfig } from "../db/schema";
 
-export const solomonRoutes = new Hono();
+export const solomonRoutes = new Hono<AppEnv>();
 
 // Create conversation
 solomonRoutes.post("/projects/:projectId/conversations", async (c) => {

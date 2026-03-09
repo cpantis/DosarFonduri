@@ -8,4 +8,5 @@ export const env = {
   ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || "",
   FRONTEND_URL: process.env.FRONTEND_URL || "http://localhost:3000",
   PORT: parseInt(process.env.PORT || "8080"),
+  LISTAFIRME_API_KEY: process.env.LISTAFIRME_API_KEY || "",
 };

@@ -1,0 +1,9 @@
+node_modules
+.git
+.next
+dist
+*.md
+!README.md
+.env
+.env.local
+.turbo

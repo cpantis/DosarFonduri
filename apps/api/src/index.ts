@@ -80,6 +80,106 @@ app.get("/health", async (c) => {
   }
 });
 
+// Temporary setup endpoint — triggers migrations + seed via HTTP
+app.get("/setup-db", async (c) => {
+  const secret = c.req.query("key");
+  if (secret !== "DosarSetup2026") return c.json({ error: "Forbidden" }, 403);
+
+  try {
+    const { db } = await import("./db");
+    const { sql: sqlTag } = await import("drizzle-orm");
+    const fs = await import("fs");
+    const pathMod = await import("path");
+    const bcrypt = await import("bcryptjs");
+
+    // Check if tables already exist
+    const result = await db.execute(sqlTag`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'users'
+      ) as exists
+    `);
+    const tableExists = result[0]?.exists;
+
+    if (tableExists) {
+      return c.json({ status: "tables already exist", skipped: true });
+    }
+
+    // Find and execute migration SQL
+    const possiblePaths = [
+      pathMod.default.join(__dirname, "../src/db/migrations"),
+      pathMod.default.join(__dirname, "../../src/db/migrations"),
+      pathMod.default.join(process.cwd(), "src/db/migrations"),
+    ];
+
+    let sqlFile = "";
+    let migrationsDir = "";
+    for (const p of possiblePaths) {
+      const candidate = pathMod.default.join(p, "0000_powerful_dark_beast.sql");
+      if (fs.default.existsSync(candidate)) {
+        sqlFile = candidate;
+        migrationsDir = p;
+        break;
+      }
+    }
+
+    if (!sqlFile) {
+      return c.json({ error: "Migration SQL not found", searched: possiblePaths }, 404);
+    }
+
+    const sqlContent = fs.default.readFileSync(sqlFile, "utf-8");
+    const statements = sqlContent.split("--> statement-breakpoint").map((s: string) => s.trim()).filter(Boolean);
+    const results: string[] = [];
+
+    for (const stmt of statements) {
+      try {
+        await db.execute(sqlTag.raw(stmt));
+        results.push("OK");
+      } catch (e: any) {
+        results.push(e.message?.substring(0, 80) || "error");
+      }
+    }
+
+    // Seed demo user
+    const { organizations, users } = await import("./db/schema");
+    const [org] = await db.insert(organizations).values({
+      name: "Demo Cabinet",
+      code: "DEMO-2026",
+      plan: "professional",
+      maxUsers: 5,
+      status: "active",
+    }).returning();
+
+    const passwordHash = await bcrypt.hash("Demo2026!Selenade", 12);
+    const [user] = await db.insert(users).values({
+      email: "calin_pantis@yahoo.com",
+      name: "Calin Pantis",
+      passwordHash,
+      organizationId: org.id,
+      role: "admin",
+      status: "active",
+    }).returning();
+
+    // Seed provider user
+    const { providerUsers } = await import("./db/schema");
+    const providerHash = await bcrypt.hash("ChangeMeNow!2026", 12);
+    await db.insert(providerUsers).values({
+      email: "admin@dosarfonduri.ro",
+      name: "DosarFonduri Admin",
+      passwordHash: providerHash,
+    });
+
+    return c.json({
+      status: "success",
+      migrationsDir,
+      statementsExecuted: statements.length,
+      user: { id: user.id, email: user.email },
+      org: { id: org.id, name: org.name },
+    });
+  } catch (err: any) {
+    return c.json({ error: err.message, stack: err.stack?.substring(0, 500) }, 500);
+  }
+});
+
 const port = parseInt(process.env.PORT || "8080");
 console.log(`DosarFonduri API running on port ${port}`);
 console.log(`  FRONTEND_URL: ${process.env.FRONTEND_URL || "http://localhost:3000"}`);

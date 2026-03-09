@@ -14,7 +14,7 @@
 [deploy]
   startCommand = "node dist/index.js"
   healthcheckPath = "/health"
-  healthcheckTimeout = 10
+  healthcheckTimeout = 60
   restartPolicyType = "ON_FAILURE"
 
 # ─── Railway Project Setup (3 services + 2 plugins) ───

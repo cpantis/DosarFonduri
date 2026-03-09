@@ -47,7 +47,7 @@ RUN npm ci --omit=dev
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
 COPY --from=builder /app/packages/shared ./packages/shared
 
-# 4. Copiază drizzle migrations (pentru railway run db:migrate)
+# 4. Copiază drizzle migrations + meta (pentru auto-migrate la startup)
 COPY apps/api/src/db/migrations ./apps/api/src/db/migrations
 COPY apps/api/drizzle.config.ts ./apps/api/drizzle.config.ts
 
@@ -55,4 +55,6 @@ ENV NODE_ENV=production
 EXPOSE 8080
 
 WORKDIR /app/apps/api
-CMD ["node", "dist/index.js"]
+
+# Rulează migrațiile, apoi pornește serverul
+CMD ["sh", "-c", "node dist/db/migrate.js && node dist/index.js"]

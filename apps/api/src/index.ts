@@ -20,6 +20,19 @@ import { authMiddleware } from "./middleware/auth";
 import { auditMiddleware } from "./middleware/audit";
 import { errorHandler } from "./middleware/errorHandler";
 
+// ─── Startup checks ─────────────────────────────────────
+const requiredEnv = ["DATABASE_URL", "JWT_SECRET", "PROVIDER_JWT_SECRET"];
+for (const key of requiredEnv) {
+  if (!process.env[key]) {
+    console.error(`❌ Missing required env var: ${key}`);
+    process.exit(1);
+  }
+}
+
+if (!process.env.REDIS_URL) {
+  console.warn("⚠️  REDIS_URL not set — using redis://localhost:6379");
+}
+
 const app = new Hono();
 
 // Global middleware
@@ -56,4 +69,7 @@ app.get("/health", (c) => c.json({ status: "ok", timestamp: new Date().toISOStri
 
 const port = parseInt(process.env.PORT || "8080");
 console.log(`DosarFonduri API running on port ${port}`);
+console.log(`  FRONTEND_URL: ${process.env.FRONTEND_URL || "http://localhost:3000"}`);
+console.log(`  DATABASE_URL: ${process.env.DATABASE_URL ? "✅ set" : "❌ missing"}`);
+console.log(`  REDIS_URL: ${process.env.REDIS_URL ? "✅ set" : "⚠️ default"}`);
 serve({ fetch: app.fetch, port });

@@ -64,7 +64,8 @@ app.route("/api/export", exportRoutes);
 // Global error handler
 app.onError(errorHandler);
 
-// Health check
+// Health check (both / and /health for Railway healthcheck flexibility)
+app.get("/", (c) => c.json({ status: "ok", service: "dosarfonduri-api" }));
 app.get("/health", (c) => c.json({ status: "ok", timestamp: new Date().toISOString() }));
 
 const port = parseInt(process.env.PORT || "8080");

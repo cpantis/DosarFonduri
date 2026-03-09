@@ -38,7 +38,10 @@ const app = new Hono();
 // Global middleware
 app.use("*", logger());
 app.use("*", cors({
-  origin: process.env.FRONTEND_URL || "http://localhost:3000",
+  origin: (() => {
+    const url = process.env.FRONTEND_URL || "http://localhost:3000";
+    return url.startsWith("http") ? url : `https://${url}`;
+  })(),
   credentials: true,
 }));
 

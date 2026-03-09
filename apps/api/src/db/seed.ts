@@ -12,8 +12,8 @@ import postgres from "postgres";
 import { hash } from "bcryptjs";
 import * as schema from "./schema";
 
-const PROVIDER_EMAIL = process.env.SEED_PROVIDER_EMAIL || "admin@dosarfonduri.ro";
-const PROVIDER_PASSWORD = process.env.SEED_PROVIDER_PASSWORD || "ChangeMeNow!2026";
+const PROVIDER_EMAIL = process.env.SEED_PROVIDER_EMAIL || "calinpantis88@gmail.com";
+const PROVIDER_PASSWORD = process.env.SEED_PROVIDER_PASSWORD || "Test1!";
 const PROVIDER_NAME = process.env.SEED_PROVIDER_NAME || "DosarFonduri Admin";
 
 async function seed() {

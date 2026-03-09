@@ -108,7 +108,7 @@ export function Sidebar() {
                     padding: collapsed ? "8px 0" : "8px 12px",
                     justifyContent: collapsed ? "center" : "flex-start",
                   }}
-                  title={collapsed ? item.label : undefined}
+                  title={item.label}
                 >
                   <span className="w-5 text-center text-base flex-shrink-0">{item.icon}</span>
                   {!collapsed && <span>{item.label}</span>}
@@ -131,6 +131,8 @@ export function Sidebar() {
             background: "var(--bg-elevated)",
           }}
           title={collapsed ? "Extinde sidebar" : "Restrânge sidebar"}
+          aria-label={collapsed ? "Extinde sidebar" : "Restrânge sidebar"}
+          aria-expanded={!collapsed}
         >
           {collapsed ? "\u25B6" : "\u25C0"}
         </button>

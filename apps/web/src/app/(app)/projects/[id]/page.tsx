@@ -249,6 +249,7 @@ export default function ProjectViewPage() {
   const [refineInput, setRefineInput] = useState("");
   const chatRef = useRef<HTMLDivElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
+  const solomonFileRef = useRef<HTMLInputElement>(null);
 
   const [recheckLoading, setRecheckLoading] = useState(false);
 
@@ -328,12 +329,19 @@ export default function ProjectViewPage() {
 
     // Release lock on unmount / navigation
     const releaseLock = () => {
-      // Fire-and-forget (navigator.sendBeacon not suitable for auth headers)
+      const token = typeof window !== "undefined" ? localStorage.getItem("df-token") || "" : "";
+      // Use sendBeacon with a Blob for beforeunload reliability (no auth header but server can identify via cookie)
+      // Fall back to fetch with keepalive for normal unmount
+      if (typeof navigator !== "undefined" && navigator.sendBeacon) {
+        const blob = new Blob([JSON.stringify({ token })], { type: "application/json" });
+        navigator.sendBeacon(`${API_URL}/api/projects/${projectId}/lock/release`, blob);
+      }
+      // Also try fetch with keepalive as backup (works in normal unmount, may not in beforeunload)
       fetch(`${API_URL}/api/projects/${projectId}/lock`, {
         method: "DELETE",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${typeof window !== "undefined" ? localStorage.getItem("df-token") || "" : ""}`,
+          Authorization: `Bearer ${token}`,
         },
         keepalive: true,
       }).catch(() => {});
@@ -551,6 +559,105 @@ export default function ProjectViewPage() {
     }
   };
 
+  const handleSolomonUpload = async (file: File) => {
+    if (readOnly || !solomonConvId || solomonStreaming) return;
+    setSolomonMessages(prev => [...prev, { role: "user", text: `📎 ${file.name}`, extractions: null }]);
+    setSolomonStreaming(true);
+
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("df-token") : null;
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch(`${API_URL}/api/solomon/conversations/${solomonConvId}/upload`, {
+        method: "POST",
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ error: "Upload failed" }));
+        throw new Error(body.error || `HTTP ${res.status}`);
+      }
+
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error("No reader");
+
+      const decoder = new TextDecoder();
+      let assistantText = "";
+      let assistantExtractions: Array<{ key: string; label: string; value: string; confidence: number }> | null = null;
+      let buffer = "";
+
+      setSolomonMessages(prev => [...prev, { role: "assistant", text: "", extractions: null }]);
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const jsonStr = line.slice(6).trim();
+          if (!jsonStr || jsonStr === "[DONE]") continue;
+          try {
+            const evt = JSON.parse(jsonStr);
+            if (evt.type === "text") {
+              assistantText += evt.text;
+              setSolomonMessages(prev => {
+                const updated = [...prev];
+                updated[updated.length - 1] = { role: "assistant", text: assistantText, extractions: assistantExtractions };
+                return updated;
+              });
+            } else if (evt.type === "elements_extracted") {
+              assistantExtractions = evt.elements || [];
+              setSolomonMessages(prev => {
+                const updated = [...prev];
+                updated[updated.length - 1] = { role: "assistant", text: assistantText, extractions: assistantExtractions };
+                return updated;
+              });
+              for (const ext of (evt.elements || [])) {
+                setSolomonElements(prev => {
+                  const exists = prev.some(e => e.key === ext.key);
+                  if (exists) return prev.map(e => e.key === ext.key ? { ...e, value: ext.value, status: "propus" as const } : e);
+                  return [{ key: ext.key, label: ext.label, value: ext.value, source: "Solomon", status: "propus" as const }, ...prev];
+                });
+              }
+              apiGet<any>(`/api/projects/${projectId}`).then(proj => {
+                setElements(mapElements(proj.elements || []));
+              }).catch(() => {});
+            } else if (evt.type === "metadata_updated" && evt.metadata) {
+              setProject(prev => prev ? {
+                ...prev,
+                programFinantare: evt.metadata.programFinantare || prev.programFinantare,
+                codMasura: evt.metadata.codMasura || prev.codMasura,
+                codSesiune: evt.metadata.codSesiune || prev.codSesiune,
+                codNomenclator: evt.metadata.codNomenclator || prev.codNomenclator,
+                prefixDocumente: evt.metadata.prefixDocumente || prev.prefixDocumente,
+                codMysmis: evt.metadata.codMysmis || prev.codMysmis,
+                structuraDosar: evt.metadata.structuraDosar || prev.structuraDosar,
+              } : prev);
+            }
+          } catch {}
+        }
+      }
+    } catch (err) {
+      console.error("Solomon upload error:", err);
+      setSolomonMessages(prev => {
+        if (prev.length > 0 && prev[prev.length - 1].role === "assistant" && prev[prev.length - 1].text === "") {
+          return prev.slice(0, -1);
+        }
+        return prev;
+      });
+    } finally {
+      setSolomonStreaming(false);
+    }
+  };
+
   const handleConfirmExtraction = async (msgIdx: number, extIdx: number) => {
     const k = `${msgIdx}-${extIdx}`;
     setExtractionStates(prev => ({ ...prev, [k]: "confirmed" }));
@@ -688,8 +795,18 @@ export default function ProjectViewPage() {
     }
   };
 
+  const escapeHtml = (str: string): string => {
+    return str
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  };
+
   const renderMsgText = (text: string) => {
-    return text.split(/(\*\*.*?\*\*)/).map((part, i) => {
+    const escaped = escapeHtml(text);
+    return escaped.split(/(\*\*.*?\*\*)/).map((part, i) => {
       if (part.startsWith("**") && part.endsWith("**")) {
         return <span key={i} className="msg-bold">{part.slice(2, -2)}</span>;
       }
@@ -906,26 +1023,6 @@ export default function ProjectViewPage() {
   };
 
   const [bulkConfirming, setBulkConfirming] = useState(false);
-  const handleBulkConfirm = async () => {
-    if (readOnly || bulkConfirming) return;
-    const toConfirm = filteredElements.filter(e => e.status === "propus_ai");
-    if (toConfirm.length === 0) return;
-    setBulkConfirming(true);
-    try {
-      await apiPut(`/api/projects/${projectId}/elements-bulk/confirm`, {
-        elementIds: toConfirm.map(e => e.id),
-      });
-      setElements(prev => prev.map(e =>
-        toConfirm.some(tc => tc.id === e.id)
-          ? { ...e, status: "confirmat" as const, confidence: 100 }
-          : e
-      ));
-    } catch (err) {
-      console.error("Bulk confirm failed:", err);
-    } finally {
-      setBulkConfirming(false);
-    }
-  };
 
   const handleNeemiaTemplateClick = async (idx: number) => {
     setNeemiaActiveTemplate(idx);
@@ -1000,6 +1097,27 @@ export default function ProjectViewPage() {
     }
     return true;
   });
+
+  const handleBulkConfirm = async () => {
+    if (readOnly || bulkConfirming) return;
+    const toConfirm = filteredElements.filter(e => e.status === "propus_ai");
+    if (toConfirm.length === 0) return;
+    setBulkConfirming(true);
+    try {
+      await apiPut(`/api/projects/${projectId}/elements-bulk/confirm`, {
+        elementIds: toConfirm.map(e => e.id),
+      });
+      setElements(prev => prev.map(e =>
+        toConfirm.some(tc => tc.id === e.id)
+          ? { ...e, status: "confirmat" as const, confidence: 100 }
+          : e
+      ));
+    } catch (err) {
+      console.error("Bulk confirm failed:", err);
+    } finally {
+      setBulkConfirming(false);
+    }
+  };
 
   const checkCategories = [...new Set(checklistItems.map(i => i.category))];
   const checkMappedTemplateIds = new Set(checklistItems.filter(i => i.templateId).map(i => i.templateId));
@@ -2362,7 +2480,18 @@ export default function ProjectViewPage() {
                   {/* Input area */}
                   <div className="chat-input-area">
                     <div className="chat-input-row">
-                      <button className="chat-btn upload-btn" title="Upload document">
+                      <input
+                        ref={solomonFileRef}
+                        type="file"
+                        accept=".pdf,.docx,.xlsx,.doc"
+                        style={{ display: "none" }}
+                        onChange={e => {
+                          const file = e.target.files?.[0];
+                          if (file) handleSolomonUpload(file);
+                          e.target.value = "";
+                        }}
+                      />
+                      <button className="chat-btn upload-btn" title="Upload document" onClick={() => solomonFileRef.current?.click()} disabled={solomonStreaming || readOnly}>
                         &#128206;
                       </button>
                       <button className="chat-btn upload-btn" title="Paste snippet" style={{ fontSize: 12, fontWeight: 600, width: "auto", padding: "0 12px" }}>

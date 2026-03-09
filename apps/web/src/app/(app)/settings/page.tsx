@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
 import { apiGet, apiPut, apiPost, apiDelete } from "@/lib/api";
+import { getToken } from "@/lib/auth";
 
 // ─── Types ───
 interface OrgConfig {
@@ -54,16 +55,19 @@ export default function SettingsPage() {
   const [config, setConfig] = useState<OrgConfig | null>(null);
   const [apis, setApis] = useState<ApiIntegration[]>([]);
   const [saved, setSaved] = useState(false);
+  const [configError, setConfigError] = useState<string | null>(null);
   const [testingApi, setTestingApi] = useState<string | null>(null);
   const [showAddApi, setShowAddApi] = useState(false);
   const [newApi, setNewApi] = useState({ name: "", type: "ONRC", url: "", apiKey: "" });
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   const loadConfig = useCallback(async () => {
     try {
+      setConfigError(null);
       const data = await apiGet("/api/config");
       setConfig(data);
-    } catch {
-      // silent
+    } catch (err: any) {
+      setConfigError(err.message || "Eroare la incarcarea configurarilor");
     }
   }, []);
 
@@ -71,8 +75,8 @@ export default function SettingsPage() {
     try {
       const data = await apiGet("/api/config/api-integrations");
       setApis(data);
-    } catch {
-      // silent
+    } catch (err: any) {
+      console.error("Failed to load API integrations:", err.message);
     }
   }, []);
 
@@ -83,13 +87,13 @@ export default function SettingsPage() {
 
   const updateConfig = async (updates: Partial<OrgConfig>) => {
     if (!config) return;
+    const previous = config;
     const newConfig = { ...config, ...updates };
     setConfig(newConfig);
     try {
       await apiPut("/api/config", updates);
     } catch {
-      // revert on error
-      loadConfig();
+      setConfig(previous);
     }
   };
 
@@ -115,8 +119,14 @@ export default function SettingsPage() {
             : a
         )
       );
-    } catch {
-      // silent
+    } catch (err: any) {
+      setApis((prev) =>
+        prev.map((a) =>
+          a.id === id
+            ? { ...a, status: "error", lastTestResult: err.message || "Test esuat", lastTestedAt: new Date().toISOString() }
+            : a
+        )
+      );
     } finally {
       setTestingApi(null);
     }
@@ -136,9 +146,9 @@ export default function SettingsPage() {
 
   const handleExport = async (path: string, filename: string) => {
     try {
-      const token = localStorage.getItem("df-token");
+      const token = getToken();
       const res = await fetch(`${path}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (!res.ok) throw new Error("Export failed");
       const blob = await res.blob();
@@ -157,19 +167,21 @@ export default function SettingsPage() {
     try {
       await apiDelete(`/api/config/api-integrations/${id}`);
       setApis((prev) => prev.filter((a) => a.id !== id));
+      setDeleteConfirmId(null);
     } catch (err: any) {
       alert(err.message);
     }
   };
 
   const handleToggleApi = async (id: string) => {
-    const api = apis.find((a) => a.id === id);
-    if (!api) return;
+    const apiItem = apis.find((a) => a.id === id);
+    if (!apiItem) return;
+    const previousEnabled = apiItem.enabled;
+    setApis((prev) => prev.map((a) => (a.id === id ? { ...a, enabled: !a.enabled } : a)));
     try {
-      const updated = await apiPut(`/api/config/api-integrations/${id}`, { enabled: !api.enabled });
-      setApis((prev) => prev.map((a) => (a.id === id ? { ...a, enabled: !a.enabled } : a)));
+      await apiPut(`/api/config/api-integrations/${id}`, { enabled: !previousEnabled });
     } catch {
-      // silent
+      setApis((prev) => prev.map((a) => (a.id === id ? { ...a, enabled: previousEnabled } : a)));
     }
   };
 
@@ -180,7 +192,20 @@ export default function SettingsPage() {
           <div className="text-xl font-extrabold flex-1">Configurari</div>
         </div>
         <div className="flex-1 flex items-center justify-center">
-          <div className="text-sm" style={{ color: "var(--text-muted)" }}>Se incarca...</div>
+          {configError ? (
+            <div className="text-center">
+              <div className="text-sm mb-3" style={{ color: "var(--accent-red)" }}>{configError}</div>
+              <button
+                className="px-4 py-2 text-sm font-semibold cursor-pointer"
+                style={{ borderRadius: "var(--r-sm)", border: "1px solid var(--border)", background: "transparent", color: "var(--text-secondary)", fontFamily: "var(--font-sans)" }}
+                onClick={loadConfig}
+              >
+                Reincearca
+              </button>
+            </div>
+          ) : (
+            <div className="text-sm" style={{ color: "var(--text-muted)" }}>Se incarca...</div>
+          )}
         </div>
       </>
     );
@@ -424,7 +449,12 @@ export default function SettingsPage() {
                     min={50}
                     max={99}
                     value={Math.round(Number(config.reviewThreshold) * 100)}
-                    onChange={(e) => updateConfig({ reviewThreshold: (parseInt(e.target.value) / 100).toFixed(2) })}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value);
+                      if (!isNaN(val) && val >= 50 && val <= 99) {
+                        updateConfig({ reviewThreshold: (val / 100).toFixed(2) });
+                      }
+                    }}
                     className="w-[70px] text-center px-3 py-2 text-[13px] outline-none"
                     style={{
                       borderRadius: "var(--r-sm)",
@@ -517,19 +547,39 @@ export default function SettingsPage() {
                       >
                         ✏️ Editeaza
                       </button>
-                      <button
-                        className="px-3.5 py-1.5 text-xs font-semibold flex items-center gap-1 cursor-pointer transition-all"
-                        style={{
-                          borderRadius: "var(--r-sm)",
-                          border: "1px solid rgba(248,113,113,.25)",
-                          background: "transparent",
-                          color: "var(--accent-red)",
-                          fontFamily: "var(--font-sans)",
-                        }}
-                        onClick={() => handleDeleteApi(api.id)}
-                      >
-                        🗑 Sterge
-                      </button>
+                      {deleteConfirmId === api.id ? (
+                        <>
+                          <span className="text-xs font-semibold" style={{ color: "var(--accent-red)" }}>Sigur stergi?</span>
+                          <button
+                            className="px-3 py-1.5 text-xs font-bold cursor-pointer"
+                            style={{ borderRadius: "var(--r-sm)", border: "1px solid var(--accent-red)", background: "rgba(248,113,113,.1)", color: "var(--accent-red)", fontFamily: "var(--font-sans)" }}
+                            onClick={() => handleDeleteApi(api.id)}
+                          >
+                            Da, sterge
+                          </button>
+                          <button
+                            className="px-3 py-1.5 text-xs font-semibold cursor-pointer"
+                            style={{ borderRadius: "var(--r-sm)", border: "1px solid var(--border)", background: "transparent", color: "var(--text-secondary)", fontFamily: "var(--font-sans)" }}
+                            onClick={() => setDeleteConfirmId(null)}
+                          >
+                            Anuleaza
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          className="px-3.5 py-1.5 text-xs font-semibold flex items-center gap-1 cursor-pointer transition-all"
+                          style={{
+                            borderRadius: "var(--r-sm)",
+                            border: "1px solid rgba(248,113,113,.25)",
+                            background: "transparent",
+                            color: "var(--accent-red)",
+                            fontFamily: "var(--font-sans)",
+                          }}
+                          onClick={() => setDeleteConfirmId(api.id)}
+                        >
+                          🗑 Sterge
+                        </button>
+                      )}
                     </div>
                   </div>
                 );

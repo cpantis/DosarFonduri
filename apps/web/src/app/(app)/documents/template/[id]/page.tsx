@@ -70,15 +70,18 @@ export default function TemplateViewerPage() {
       setLoading(true);
       const data = await apiGet<TemplateData>(`/api/documents/documents/${docId}/elements`);
       setTemplate(data);
-      if (data.pages.length > 0 && currentPageNum > data.pages.length) {
-        setCurrentPageNum(data.pages[0].num);
-      }
+      setCurrentPageNum(prev => {
+        if (data.pages.length > 0 && prev > data.pages.length) {
+          return data.pages[0].num;
+        }
+        return prev;
+      });
     } catch (err: any) {
       setError(err.message || "Eroare la încărcare");
     } finally {
       setLoading(false);
     }
-  }, [docId, currentPageNum]);
+  }, [docId]);
 
   useEffect(() => { loadTemplate(); }, [loadTemplate]);
 
@@ -152,6 +155,8 @@ export default function TemplateViewerPage() {
 
   const handleAddElement = async () => {
     if (!newEl.key || !newEl.label) return;
+    // Validate key format: alphanumeric, underscores, hyphens only
+    if (!/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(newEl.key)) return;
     try {
       await apiPost(`/api/documents/documents/${docId}/elements`, {
         key: newEl.key,

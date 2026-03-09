@@ -6,15 +6,16 @@ import { providerUsers, cabinetCodes, organizations } from "../db/schema";
 import { eq, isNull } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { lookupCUI_ListaFirme, searchCompany_ListaFirme } from "../services/listafirme";
+import type { AppEnv } from "../types/hono";
 
-export const providerRoutes = new Hono();
+export const providerRoutes = new Hono<AppEnv>();
 
 // Provider auth middleware
 const providerAuth = async (c: any, next: any) => {
   const token = c.req.header("Authorization")?.replace("Bearer ", "");
   if (!token) return c.json({ error: "Unauthorized" }, 401);
   try {
-    const payload = await verify(token, process.env.PROVIDER_JWT_SECRET!);
+    const payload = await verify(token, process.env.PROVIDER_JWT_SECRET!, "HS256");
     c.set("providerId", payload.sub);
     await next();
   } catch {
@@ -29,7 +30,7 @@ providerRoutes.post("/auth/login", async (c) => {
   if (!user) return c.json({ error: "Invalid credentials" }, 401);
   const valid = await bcrypt.compare(password, user.passwordHash);
   if (!valid) return c.json({ error: "Invalid credentials" }, 401);
-  const token = await sign({ sub: user.id }, process.env.PROVIDER_JWT_SECRET!);
+  const token = await sign({ sub: user.id }, process.env.PROVIDER_JWT_SECRET!, "HS256");
   return c.json({ token, user: { id: user.id, email: user.email, name: user.name } });
 });
 

@@ -1,3 +1,4 @@
+import type { AppEnv } from "../types/hono";
 import { Hono } from "hono";
 import { db } from "../db";
 import {
@@ -7,7 +8,7 @@ import {
 import { eq, count, desc, and, ne } from "drizzle-orm";
 import type { AuthContext } from "../middleware/auth";
 
-export const dashboardRoutes = new Hono();
+export const dashboardRoutes = new Hono<AppEnv>();
 
 dashboardRoutes.get("/", async (c) => {
   const auth = c.get("auth") as AuthContext;

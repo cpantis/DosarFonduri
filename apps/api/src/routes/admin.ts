@@ -1,3 +1,4 @@
+import type { AppEnv } from "../types/hono";
 import { Hono } from "hono";
 import { z } from "zod";
 import { db } from "../db";
@@ -5,7 +6,7 @@ import { users, organizations, projects, aiUsageLog, auditLog } from "../db/sche
 import { eq, and, sql, desc, count, sum, gte, lte, ilike } from "drizzle-orm";
 import type { AuthContext } from "../middleware/auth";
 
-export const adminRoutes = new Hono();
+export const adminRoutes = new Hono<AppEnv>();
 
 // Helper: require admin role
 const requireAdmin = async (c: any, next: any) => {

@@ -1,3 +1,4 @@
+import type { AppEnv } from "../types/hono";
 import { Hono } from "hono";
 import { db } from "../db";
 import { projectDocuments, documents, templateElements, projectElements } from "../db/schema";
@@ -10,7 +11,7 @@ import {
 } from "../services/neemia";
 import { getFileUrl } from "../services/storage";
 
-export const neemiaRoutes = new Hono();
+export const neemiaRoutes = new Hono<AppEnv>();
 
 // Validate before generation
 neemiaRoutes.post("/projects/:projectId/validate", async (c) => {

@@ -1,9 +1,10 @@
+import type { AppEnv } from "../types/hono";
 import { Hono } from "hono";
 import { db } from "../db";
 import { rules, orgConfig } from "../db/schema";
 import { eq, and } from "drizzle-orm";
 
-export const ruleRoutes = new Hono();
+export const ruleRoutes = new Hono<AppEnv>();
 
 // List rules per document
 ruleRoutes.get("/documents/:docId/rules", async (c) => {

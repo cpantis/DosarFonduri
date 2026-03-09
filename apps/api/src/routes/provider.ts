@@ -5,6 +5,7 @@ import { db } from "../db";
 import { providerUsers, cabinetCodes, organizations } from "../db/schema";
 import { eq, isNull } from "drizzle-orm";
 import bcrypt from "bcryptjs";
+import { lookupCUI_ListaFirme, searchCompany_ListaFirme } from "../services/listafirme";
 
 export const providerRoutes = new Hono();
 
@@ -78,6 +79,35 @@ providerRoutes.delete("/codes/:id", providerAuth, async (c) => {
   const id = c.req.param("id");
   await db.delete(cabinetCodes).where(eq(cabinetCodes.id, id));
   return c.json({ ok: true });
+});
+
+// ─── LISTAFIRME.RO — Lookup CUI ─────────────────────────
+// Provider poate interoga orice CUI fără a fi legat de un cabinet
+providerRoutes.get("/lookup-cui/:cui", providerAuth, async (c) => {
+  const cui = c.req.param("cui");
+  try {
+    const result = await lookupCUI_ListaFirme(cui);
+    if (!result) {
+      return c.json({ error: "CUI negăsit", cui }, 404);
+    }
+    return c.json(result);
+  } catch (err: any) {
+    return c.json({ error: err.message }, 500);
+  }
+});
+
+// ─── LISTAFIRME.RO — Căutare firmă după nume ────────────
+providerRoutes.get("/search-company", providerAuth, async (c) => {
+  const query = c.req.query("q");
+  if (!query || query.length < 2) {
+    return c.json({ error: "Parametrul q trebuie să aibă minim 2 caractere" }, 400);
+  }
+  try {
+    const results = await searchCompany_ListaFirme(query);
+    return c.json({ results });
+  } catch (err: any) {
+    return c.json({ error: err.message }, 500);
+  }
 });
 
 // Revenue stats

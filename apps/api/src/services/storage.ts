@@ -6,15 +6,16 @@ import { v4 as uuid } from "uuid";
 import { eq } from "drizzle-orm";
 
 const s3 = new S3Client({
-  region: "auto",
-  endpoint: process.env.R2_ENDPOINT!,
+  region: process.env.S3_REGION || "auto",
+  endpoint: process.env.S3_ENDPOINT,
   credentials: {
-    accessKeyId: process.env.R2_ACCESS_KEY!,
-    secretAccessKey: process.env.R2_SECRET_KEY!,
+    accessKeyId: process.env.S3_ACCESS_KEY || "",
+    secretAccessKey: process.env.S3_SECRET_KEY || "",
   },
+  forcePathStyle: true,
 });
 
-const BUCKET = process.env.R2_BUCKET || "dosarfonduri";
+const BUCKET = process.env.S3_BUCKET || "dosarfonduri";
 
 export async function uploadFile(
   buffer: Buffer,

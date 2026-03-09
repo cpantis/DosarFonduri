@@ -1,4 +1,5 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
+// Always use relative URLs — Next.js rewrite proxies /api/* to backend
+const API_URL = "";
 
 interface FetchOptions extends RequestInit {
   token?: string;

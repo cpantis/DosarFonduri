@@ -24,33 +24,45 @@ export function SplitPane({
   const [dragging, setDragging] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const onDown = useCallback((e: React.MouseEvent) => {
+  const onDown = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     e.preventDefault();
     setDragging(true);
   }, []);
 
+  const handleMove = useCallback((clientX: number) => {
+    if (!containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const nw = side === "right" ? rect.right - clientX : clientX - rect.left;
+    const cl = Math.max(minRight, Math.min(maxRight, nw));
+    if (rect.width - cl >= minLeft) setPanelW(cl);
+  }, [side, minLeft, minRight, maxRight]);
+
   useEffect(() => {
     if (!dragging) return;
-    const onMove = (e: MouseEvent) => {
-      if (!containerRef.current) return;
-      const rect = containerRef.current.getBoundingClientRect();
-      const nw = side === "right" ? rect.right - e.clientX : e.clientX - rect.left;
-      const cl = Math.max(minRight, Math.min(maxRight, nw));
-      if (rect.width - cl >= minLeft) setPanelW(cl);
-    };
+    const onMouseMove = (e: MouseEvent) => handleMove(e.clientX);
+    const onTouchMove = (e: TouchEvent) => { if (e.touches[0]) handleMove(e.touches[0].clientX); };
     const onUp = () => setDragging(false);
-    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onUp);
+    document.addEventListener("touchmove", onTouchMove);
+    document.addEventListener("touchend", onUp);
     return () => {
-      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("mouseup", onUp);
+      document.removeEventListener("touchmove", onTouchMove);
+      document.removeEventListener("touchend", onUp);
     };
-  }, [dragging, minLeft, minRight, maxRight, side]);
+  }, [dragging, handleMove]);
 
   const handle = (
     <div
       className="w-2 cursor-col-resize flex items-center justify-center relative z-10 flex-shrink-0 group transition-colors"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize panels"
+      tabIndex={0}
       onMouseDown={onDown}
+      onTouchStart={onDown}
     >
       <div
         className="absolute top-0 bottom-0 w-px transition-all"

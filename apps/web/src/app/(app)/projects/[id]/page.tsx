@@ -328,12 +328,19 @@ export default function ProjectViewPage() {
 
     // Release lock on unmount / navigation
     const releaseLock = () => {
-      // Fire-and-forget (navigator.sendBeacon not suitable for auth headers)
+      const token = typeof window !== "undefined" ? localStorage.getItem("df-token") || "" : "";
+      // Use sendBeacon with a Blob for beforeunload reliability (no auth header but server can identify via cookie)
+      // Fall back to fetch with keepalive for normal unmount
+      if (typeof navigator !== "undefined" && navigator.sendBeacon) {
+        const blob = new Blob([JSON.stringify({ token })], { type: "application/json" });
+        navigator.sendBeacon(`${API_URL}/api/projects/${projectId}/lock/release`, blob);
+      }
+      // Also try fetch with keepalive as backup (works in normal unmount, may not in beforeunload)
       fetch(`${API_URL}/api/projects/${projectId}/lock`, {
         method: "DELETE",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${typeof window !== "undefined" ? localStorage.getItem("df-token") || "" : ""}`,
+          Authorization: `Bearer ${token}`,
         },
         keepalive: true,
       }).catch(() => {});
@@ -688,8 +695,18 @@ export default function ProjectViewPage() {
     }
   };
 
+  const escapeHtml = (str: string): string => {
+    return str
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  };
+
   const renderMsgText = (text: string) => {
-    return text.split(/(\*\*.*?\*\*)/).map((part, i) => {
+    const escaped = escapeHtml(text);
+    return escaped.split(/(\*\*.*?\*\*)/).map((part, i) => {
       if (part.startsWith("**") && part.endsWith("**")) {
         return <span key={i} className="msg-bold">{part.slice(2, -2)}</span>;
       }
@@ -906,26 +923,6 @@ export default function ProjectViewPage() {
   };
 
   const [bulkConfirming, setBulkConfirming] = useState(false);
-  const handleBulkConfirm = async () => {
-    if (readOnly || bulkConfirming) return;
-    const toConfirm = filteredElements.filter(e => e.status === "propus_ai");
-    if (toConfirm.length === 0) return;
-    setBulkConfirming(true);
-    try {
-      await apiPut(`/api/projects/${projectId}/elements-bulk/confirm`, {
-        elementIds: toConfirm.map(e => e.id),
-      });
-      setElements(prev => prev.map(e =>
-        toConfirm.some(tc => tc.id === e.id)
-          ? { ...e, status: "confirmat" as const, confidence: 100 }
-          : e
-      ));
-    } catch (err) {
-      console.error("Bulk confirm failed:", err);
-    } finally {
-      setBulkConfirming(false);
-    }
-  };
 
   const handleNeemiaTemplateClick = async (idx: number) => {
     setNeemiaActiveTemplate(idx);
@@ -1000,6 +997,27 @@ export default function ProjectViewPage() {
     }
     return true;
   });
+
+  const handleBulkConfirm = async () => {
+    if (readOnly || bulkConfirming) return;
+    const toConfirm = filteredElements.filter(e => e.status === "propus_ai");
+    if (toConfirm.length === 0) return;
+    setBulkConfirming(true);
+    try {
+      await apiPut(`/api/projects/${projectId}/elements-bulk/confirm`, {
+        elementIds: toConfirm.map(e => e.id),
+      });
+      setElements(prev => prev.map(e =>
+        toConfirm.some(tc => tc.id === e.id)
+          ? { ...e, status: "confirmat" as const, confidence: 100 }
+          : e
+      ));
+    } catch (err) {
+      console.error("Bulk confirm failed:", err);
+    } finally {
+      setBulkConfirming(false);
+    }
+  };
 
   const checkCategories = [...new Set(checklistItems.map(i => i.category))];
   const checkMappedTemplateIds = new Set(checklistItems.filter(i => i.templateId).map(i => i.templateId));

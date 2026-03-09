@@ -1,5 +1,5 @@
 "use client";
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 
@@ -11,16 +11,26 @@ const ThemeContext = createContext<{ theme: Theme; toggle: () => void }>({
 
 export function ThemeProvider({ children, initialTheme }: { children: React.ReactNode; initialTheme?: Theme }) {
   const [theme, setTheme] = useState<Theme>(initialTheme || "dark");
+  const isInitialMount = useRef(true);
 
+  // Hydrate from localStorage on mount (only once)
   useEffect(() => {
     const stored = localStorage.getItem("df-theme") as Theme | null;
-    if (stored) setTheme(stored);
-  }, []);
+    if (stored && (stored === "dark" || stored === "light")) {
+      setTheme(stored);
+    }
+    // Set data-theme immediately to avoid flash
+    document.documentElement.setAttribute("data-theme", stored || initialTheme || "dark");
+  }, [initialTheme]);
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
     localStorage.setItem("df-theme", theme);
-    // Sync to API
+    // Only sync to API after initial mount (avoid syncing on page load)
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
     if (getToken()) {
       api("/api/auth/preferences", {
         method: "PATCH",

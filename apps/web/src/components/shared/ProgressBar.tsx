@@ -22,6 +22,11 @@ export function ProgressBar({ value, max, color }: ProgressBarProps) {
     <div>
       <div
         className="w-full overflow-hidden"
+        role="progressbar"
+        aria-valuenow={pct}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label={`${value} din ${max}`}
         style={{
           height: "4px",
           borderRadius: "2px",

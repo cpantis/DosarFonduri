@@ -22,11 +22,11 @@ import { errorHandler } from "./middleware/errorHandler";
 
 // ─── Startup checks ─────────────────────────────────────
 const requiredEnv = ["DATABASE_URL", "JWT_SECRET", "PROVIDER_JWT_SECRET"];
-for (const key of requiredEnv) {
-  if (!process.env[key]) {
-    console.error(`❌ Missing required env var: ${key}`);
-    process.exit(1);
-  }
+const missingEnv = requiredEnv.filter((key) => !process.env[key]);
+if (missingEnv.length > 0) {
+  console.error(`❌ Missing required env vars: ${missingEnv.join(", ")}`);
+  console.error("Set these in Railway Dashboard → Service → Variables");
+  process.exit(1);
 }
 
 if (!process.env.REDIS_URL) {

@@ -2,7 +2,9 @@ import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { hash } from "bcryptjs";
+import { sql } from "drizzle-orm";
 import path from "path";
+import fs from "fs";
 import * as schema from "./schema";
 
 const DATABASE_URL = process.env.DATABASE_URL;
@@ -16,17 +18,60 @@ const db = drizzle(migrationClient, { schema });
 
 async function runMigrations() {
   console.log("Running database migrations...");
+
+  // Determine migrations path
+  const migrationsPath = __dirname.includes("dist")
+    ? path.join(__dirname, "../../src/db/migrations")
+    : path.join(__dirname, "migrations");
+
+  console.log("Migrations path:", migrationsPath);
+  console.log("Path exists:", fs.existsSync(migrationsPath));
+  if (fs.existsSync(migrationsPath)) {
+    console.log("Migration files:", fs.readdirSync(migrationsPath));
+  }
+
   try {
-    // In production: dist/db/migrate.js → ../../src/db/migrations
-    // In dev: src/db/migrate.ts → ./migrations
-    const migrationsPath = __dirname.includes("dist")
-      ? path.join(__dirname, "../../src/db/migrations")
-      : path.join(__dirname, "migrations");
     await migrate(db, { migrationsFolder: migrationsPath });
     console.log("Migrations completed successfully");
   } catch (error) {
     console.error("Migration failed:", error);
     process.exit(1);
+  }
+
+  // Verify tables actually exist — if not, run SQL directly
+  try {
+    const result = await db.execute(sql`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'users'
+      ) as exists
+    `);
+    const tableExists = result[0]?.exists;
+    console.log("Users table exists:", tableExists);
+
+    if (!tableExists) {
+      console.log("Tables missing after migrate — running SQL directly...");
+      const sqlFile = path.join(migrationsPath, "0000_powerful_dark_beast.sql");
+      if (fs.existsSync(sqlFile)) {
+        const sqlContent = fs.readFileSync(sqlFile, "utf-8");
+        // Split by statement-breakpoint and execute each statement
+        const statements = sqlContent.split("--> statement-breakpoint").map(s => s.trim()).filter(Boolean);
+        for (const stmt of statements) {
+          try {
+            await db.execute(sql.raw(stmt));
+          } catch (e: any) {
+            // Ignore "already exists" errors
+            if (!e.message?.includes("already exists")) {
+              console.warn("Statement warning:", e.message?.substring(0, 100));
+            }
+          }
+        }
+        console.log("Direct SQL execution completed");
+      } else {
+        console.error("SQL file not found:", sqlFile);
+      }
+    }
+  } catch (error) {
+    console.error("Table verification failed:", error);
   }
 
   // Seed: create initial provider user if none exists

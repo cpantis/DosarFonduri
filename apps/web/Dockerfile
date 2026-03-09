@@ -22,6 +22,8 @@ COPY apps/web ./apps/web
 
 # 4. Build Next.js (output: standalone)
 ENV NEXT_TELEMETRY_DISABLED=1
+ARG NEXT_PUBLIC_API_URL=https://api-production-8bd3.up.railway.app
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 RUN cd apps/web && npm run build
 
 # ── Stage 2: Production ────────────────────────────────

@@ -137,7 +137,7 @@ export default function SettingsPage() {
   const handleExport = async (path: string, filename: string) => {
     try {
       const token = localStorage.getItem("df-token");
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || ""}${path}`, {
+      const res = await fetch(`${path}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error("Export failed");

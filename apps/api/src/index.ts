@@ -69,7 +69,16 @@ app.onError(errorHandler);
 
 // Health check (both / and /health for Railway healthcheck flexibility)
 app.get("/", (c) => c.json({ status: "ok", service: "dosarfonduri-api" }));
-app.get("/health", (c) => c.json({ status: "ok", timestamp: new Date().toISOString() }));
+app.get("/health", async (c) => {
+  try {
+    const { db } = await import("./db");
+    const { sql } = await import("drizzle-orm");
+    await db.execute(sql`SELECT 1`);
+    return c.json({ status: "ok", db: "connected", timestamp: new Date().toISOString() });
+  } catch (err: any) {
+    return c.json({ status: "degraded", db: err?.message, timestamp: new Date().toISOString() }, 503);
+  }
+});
 
 const port = parseInt(process.env.PORT || "8080");
 console.log(`DosarFonduri API running on port ${port}`);

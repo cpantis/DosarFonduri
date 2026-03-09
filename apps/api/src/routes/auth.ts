@@ -97,24 +97,29 @@ authRoutes.post("/signup", async (c) => {
 
 // --- LOGIN ---
 authRoutes.post("/login", async (c) => {
-  const { email, password } = await c.req.json();
+  try {
+    const { email, password } = await c.req.json();
 
-  const user = await db.query.users.findFirst({ where: eq(users.email, email) });
-  if (!user) return c.json({ error: "Email sau parola incorecta" }, 401);
+    const user = await db.query.users.findFirst({ where: eq(users.email, email) });
+    if (!user) return c.json({ error: "Email sau parola incorecta" }, 401);
 
-  const valid = await bcrypt.compare(password, user.passwordHash);
-  if (!valid) return c.json({ error: "Email sau parola incorecta" }, 401);
+    const valid = await bcrypt.compare(password, user.passwordHash);
+    if (!valid) return c.json({ error: "Email sau parola incorecta" }, 401);
 
-  if (user.status === "disabled") return c.json({ error: "Cont dezactivat" }, 403);
+    if (user.status === "disabled") return c.json({ error: "Cont dezactivat" }, 403);
 
-  await db.update(users).set({ lastActiveAt: new Date() }).where(eq(users.id, user.id));
+    await db.update(users).set({ lastActiveAt: new Date() }).where(eq(users.id, user.id));
 
-  const token = await sign({ sub: user.id, exp: Math.floor(Date.now() / 1000) + 7 * 86400 }, process.env.JWT_SECRET!, "HS256");
-  return c.json({
-    token,
-    user: { id: user.id, email: user.email, name: user.name, role: user.role, theme: user.theme },
-    hasOrganization: !!user.organizationId,
-  });
+    const token = await sign({ sub: user.id, exp: Math.floor(Date.now() / 1000) + 7 * 86400 }, process.env.JWT_SECRET!, "HS256");
+    return c.json({
+      token,
+      user: { id: user.id, email: user.email, name: user.name, role: user.role, theme: user.theme },
+      hasOrganization: !!user.organizationId,
+    });
+  } catch (err: any) {
+    console.error("Login error:", err?.message, err?.stack);
+    return c.json({ error: "Eroare la autentificare", detail: err?.message }, 500);
+  }
 });
 
 // --- ME ---

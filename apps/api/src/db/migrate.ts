@@ -44,8 +44,42 @@ async function runMigrations() {
       console.log("Seed: provider user already exists, skipping");
     }
   } catch (error) {
-    console.error("Seed warning:", error);
-    // Don't exit — seed failure is not fatal
+    console.error("Seed provider warning:", error);
+  }
+
+  // Seed: create demo organization + user if none exists
+  try {
+    const existingUser = await db.query.users.findFirst();
+    if (!existingUser) {
+      // Create demo organization
+      const [org] = await db.insert(schema.organizations).values({
+        name: "Demo Cabinet",
+        code: "DEMO-2026",
+        plan: "professional",
+        maxUsers: 5,
+        status: "active",
+      }).returning();
+
+      // Create demo admin user
+      const demoEmail = "calin_pantis@yahoo.com";
+      const demoPassword = "Demo2026!Selenade";
+      const passwordHash = await hash(demoPassword, 12);
+
+      await db.insert(schema.users).values({
+        email: demoEmail,
+        name: "Calin Pantis",
+        passwordHash,
+        organizationId: org.id,
+        role: "admin",
+        status: "active",
+      });
+
+      console.log(`Seed: demo user created (${demoEmail}) in org "${org.name}"`);
+    } else {
+      console.log("Seed: users already exist, skipping demo user");
+    }
+  } catch (error) {
+    console.error("Seed demo warning:", error);
   }
 
   await migrationClient.end();

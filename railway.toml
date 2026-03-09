@@ -1,4 +1,12 @@
-# ─── API Service (default) ───
+# ─── API Service (default Railway config) ───
+#
+# Railway detectează acest fișier automat.
+# Build context = root repo (monorepo cu workspaces).
+#
+# IMPORTANT: Fiecare serviciu Railway trebuie configurat separat.
+# Acest fișier se aplică doar serviciului PRINCIPAL (api).
+# Web + Worker se configurează din Railway Dashboard.
+
 [build]
   builder = "DOCKERFILE"
   dockerfilePath = "apps/api/Dockerfile"
@@ -9,28 +17,24 @@
   healthcheckTimeout = 10
   restartPolicyType = "ON_FAILURE"
 
-# ─── Railway Project Setup ───
-# Create 3 services in Railway:
+# ─── Railway Project Setup (3 services + 2 plugins) ───
 #
 # 1. API Service (uses this config)
 #    - Dockerfile: apps/api/Dockerfile
 #    - Start: node dist/index.js
 #    - Port: 8080
-#    - Env: DATABASE_URL, REDIS_URL, JWT_SECRET, ENCRYPTION_KEY,
-#           ANTHROPIC_API_KEY, RESEND_API_KEY, S3_*, FRONTEND_URL
+#    - Health: /health
 #
-# 2. Web Service (separate Railway service)
+# 2. Web Service (configure in Railway Dashboard)
 #    - Dockerfile: apps/web/Dockerfile
 #    - Start: node apps/web/server.js
 #    - Port: 3000
-#    - Env: NEXT_PUBLIC_API_URL (points to API service URL)
 #
-# 3. Worker Service (separate Railway service)
-#    - Dockerfile: apps/api/Dockerfile
-#    - Override start: node dist/jobs/worker.js
-#    - No port needed
-#    - Same env as API
+# 3. Worker Service (configure in Railway Dashboard)
+#    - Dockerfile: apps/api/Dockerfile (same as API)
+#    - Start override: node dist/jobs/worker.js
+#    - No port, no health check
 #
-# Shared services (Railway plugins):
-#    - PostgreSQL
-#    - Redis
+# Plugins:
+#    - PostgreSQL → DATABASE_URL
+#    - Redis → REDIS_URL

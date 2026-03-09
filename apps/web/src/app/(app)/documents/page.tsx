@@ -174,6 +174,7 @@ export default function DocumentsPage() {
   const [docsLoading, setDocsLoading] = useState(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Fetch folder tree on mount
@@ -332,6 +333,7 @@ export default function DocumentsPage() {
   const handleUpload = useCallback(async () => {
     if (!uploadFile || !selectedFolder) return;
     setUploading(true);
+    setUploadError(null);
     try {
       const formData = new FormData();
       formData.append("file", uploadFile);
@@ -343,8 +345,7 @@ export default function DocumentsPage() {
         headers["Authorization"] = `Bearer ${storedToken}`;
       }
 
-      const API_URL = "";
-      const res = await fetch(`${API_URL}/api/documents/folders/${selectedFolder}/documents`, {
+      const res = await fetch(`/api/documents/folders/${selectedFolder}/documents`, {
         method: "POST",
         headers,
         credentials: "include",
@@ -358,9 +359,10 @@ export default function DocumentsPage() {
 
       setShowUpload(false);
       setUploadFile(null);
+      setUploadError(null);
       fetchDocs(selectedFolder);
-    } catch (err) {
-      console.error("Failed to upload document:", err);
+    } catch (err: any) {
+      setUploadError(err.message || "Eroare la upload");
     } finally {
       setUploading(false);
     }
@@ -836,11 +838,11 @@ export default function DocumentsPage() {
 
       {/* ─── UPLOAD MODAL ─── */}
       {showUpload && (
-        <div className="doc-overlay" onClick={e => { if (e.target === e.currentTarget) setShowUpload(false); }}>
+        <div className="doc-overlay" onClick={e => { if (e.target === e.currentTarget) { setShowUpload(false); setUploadError(null); } }}>
           <div className="doc-modal">
             <div className="doc-modal-title">
               Upload document
-              <button className="doc-modal-close" onClick={() => { setShowUpload(false); setUploadFile(null); }}>{"\u2715"}</button>
+              <button className="doc-modal-close" onClick={() => { setShowUpload(false); setUploadFile(null); setUploadError(null); }}>{"\u2715"}</button>
             </div>
             <div className="doc-modal-sub">
               Destinatie: <strong style={{ color: "var(--text-primary)" }}>{breadcrumb.join(" \u203A ")}</strong>
@@ -885,8 +887,14 @@ export default function DocumentsPage() {
               )}
             </div>
 
+            {uploadError && (
+              <div style={{ padding: "10px 14px", marginBottom: 12, borderRadius: "var(--r-sm)", background: "rgba(248,113,113,.1)", border: "1px solid rgba(248,113,113,.3)", color: "var(--accent-red)", fontSize: 13 }}>
+                {uploadError}
+              </div>
+            )}
+
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-              <button className="doc-btn-secondary" onClick={() => { setShowUpload(false); setUploadFile(null); }}>Anuleaza</button>
+              <button className="doc-btn-secondary" onClick={() => { setShowUpload(false); setUploadFile(null); setUploadError(null); }}>Anuleaza</button>
               <button
                 className="doc-btn-primary"
                 disabled={!uploadFile || !selectedFolder || uploading}

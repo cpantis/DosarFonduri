@@ -249,6 +249,7 @@ export default function ProjectViewPage() {
   const [refineInput, setRefineInput] = useState("");
   const chatRef = useRef<HTMLDivElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
+  const solomonFileRef = useRef<HTMLInputElement>(null);
 
   const [recheckLoading, setRecheckLoading] = useState(false);
 
@@ -547,6 +548,105 @@ export default function ProjectViewPage() {
       }
     } catch (err) {
       console.error("Solomon SSE error:", err);
+      setSolomonMessages(prev => {
+        if (prev.length > 0 && prev[prev.length - 1].role === "assistant" && prev[prev.length - 1].text === "") {
+          return prev.slice(0, -1);
+        }
+        return prev;
+      });
+    } finally {
+      setSolomonStreaming(false);
+    }
+  };
+
+  const handleSolomonUpload = async (file: File) => {
+    if (readOnly || !solomonConvId || solomonStreaming) return;
+    setSolomonMessages(prev => [...prev, { role: "user", text: `📎 ${file.name}`, extractions: null }]);
+    setSolomonStreaming(true);
+
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("df-token") : null;
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch(`${API_URL}/api/solomon/conversations/${solomonConvId}/upload`, {
+        method: "POST",
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ error: "Upload failed" }));
+        throw new Error(body.error || `HTTP ${res.status}`);
+      }
+
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error("No reader");
+
+      const decoder = new TextDecoder();
+      let assistantText = "";
+      let assistantExtractions: Array<{ key: string; label: string; value: string; confidence: number }> | null = null;
+      let buffer = "";
+
+      setSolomonMessages(prev => [...prev, { role: "assistant", text: "", extractions: null }]);
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const jsonStr = line.slice(6).trim();
+          if (!jsonStr || jsonStr === "[DONE]") continue;
+          try {
+            const evt = JSON.parse(jsonStr);
+            if (evt.type === "text") {
+              assistantText += evt.text;
+              setSolomonMessages(prev => {
+                const updated = [...prev];
+                updated[updated.length - 1] = { role: "assistant", text: assistantText, extractions: assistantExtractions };
+                return updated;
+              });
+            } else if (evt.type === "elements_extracted") {
+              assistantExtractions = evt.elements || [];
+              setSolomonMessages(prev => {
+                const updated = [...prev];
+                updated[updated.length - 1] = { role: "assistant", text: assistantText, extractions: assistantExtractions };
+                return updated;
+              });
+              for (const ext of (evt.elements || [])) {
+                setSolomonElements(prev => {
+                  const exists = prev.some(e => e.key === ext.key);
+                  if (exists) return prev.map(e => e.key === ext.key ? { ...e, value: ext.value, status: "propus" as const } : e);
+                  return [{ key: ext.key, label: ext.label, value: ext.value, source: "Solomon", status: "propus" as const }, ...prev];
+                });
+              }
+              apiGet<any>(`/api/projects/${projectId}`).then(proj => {
+                setElements(mapElements(proj.elements || []));
+              }).catch(() => {});
+            } else if (evt.type === "metadata_updated" && evt.metadata) {
+              setProject(prev => prev ? {
+                ...prev,
+                programFinantare: evt.metadata.programFinantare || prev.programFinantare,
+                codMasura: evt.metadata.codMasura || prev.codMasura,
+                codSesiune: evt.metadata.codSesiune || prev.codSesiune,
+                codNomenclator: evt.metadata.codNomenclator || prev.codNomenclator,
+                prefixDocumente: evt.metadata.prefixDocumente || prev.prefixDocumente,
+                codMysmis: evt.metadata.codMysmis || prev.codMysmis,
+                structuraDosar: evt.metadata.structuraDosar || prev.structuraDosar,
+              } : prev);
+            }
+          } catch {}
+        }
+      }
+    } catch (err) {
+      console.error("Solomon upload error:", err);
       setSolomonMessages(prev => {
         if (prev.length > 0 && prev[prev.length - 1].role === "assistant" && prev[prev.length - 1].text === "") {
           return prev.slice(0, -1);
@@ -2380,7 +2480,18 @@ export default function ProjectViewPage() {
                   {/* Input area */}
                   <div className="chat-input-area">
                     <div className="chat-input-row">
-                      <button className="chat-btn upload-btn" title="Upload document">
+                      <input
+                        ref={solomonFileRef}
+                        type="file"
+                        accept=".pdf,.docx,.xlsx,.doc"
+                        style={{ display: "none" }}
+                        onChange={e => {
+                          const file = e.target.files?.[0];
+                          if (file) handleSolomonUpload(file);
+                          e.target.value = "";
+                        }}
+                      />
+                      <button className="chat-btn upload-btn" title="Upload document" onClick={() => solomonFileRef.current?.click()} disabled={solomonStreaming || readOnly}>
                         &#128206;
                       </button>
                       <button className="chat-btn upload-btn" title="Paste snippet" style={{ fontSize: 12, fontWeight: 600, width: "auto", padding: "0 12px" }}>

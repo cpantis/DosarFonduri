@@ -11,10 +11,19 @@ interface FetchOptions extends RequestInit {
 export async function api<T = any>(path: string, options: FetchOptions = {}): Promise<T> {
   const { token, headers: customHeaders, timeout = DEFAULT_TIMEOUT_MS, ...rest } = options;
 
+  // For FormData, the browser must set Content-Type automatically (with multipart boundary)
+  // so we must NOT set Content-Type ourselves
+  const isFormData = typeof FormData !== "undefined" && rest.body instanceof FormData;
+
   const headers: Record<string, string> = {
-    "Content-Type": "application/json",
+    ...(isFormData ? {} : { "Content-Type": "application/json" }),
     ...customHeaders as Record<string, string>,
   };
+
+  // Remove empty Content-Type values (callers may pass "" to try to clear it)
+  if (!headers["Content-Type"]) {
+    delete headers["Content-Type"];
+  }
 
   const storedToken = token || (typeof window !== "undefined" ? localStorage.getItem("df-token") : null);
   if (storedToken) {

@@ -238,7 +238,6 @@ export default function CompaniesPage() {
       const result = await api<any>("/api/companies", {
         method: "POST",
         body: formData,
-        headers: { "Content-Type": "" } as any,
       });
       await fetchCompanies();
       setShowAdd(false);

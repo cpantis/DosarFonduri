@@ -154,6 +154,42 @@ function getBreadcrumb(nodes: TreeNode[], targetId: string, path: string[] = [])
   return null;
 }
 
+function findNodeById(nodes: TreeNode[], id: string): TreeNode | null {
+  for (const n of nodes) {
+    if (n.id === id) return n;
+    if (n.children) {
+      const found = findNodeById(n.children, id);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+/* Leaf folder types — only these accept document uploads */
+const LEAF_TYPES = new Set<string>(["ghiduri", "templateuri", "clienti_prospecti", "clienti_finali"]);
+
+/* What child type can be created under each parent type */
+const CHILD_TYPE_MAP: Record<string, { type: TreeNode["type"]; label: string; defaultName: string }> = {
+  program: { type: "masura", label: "Adauga masura", defaultName: "Masura noua" },
+  masura: { type: "sesiune", label: "Adauga sesiune", defaultName: "Sesiune noua" },
+};
+
+/* The 4 leaf folders auto-created inside each sesiune */
+const SESIUNE_LEAVES: Array<{ type: TreeNode["type"]; name: string }> = [
+  { type: "ghiduri", name: "Ghiduri" },
+  { type: "templateuri", name: "Template-uri" },
+  { type: "clienti_prospecti", name: "Clienti Prospecti" },
+  { type: "clienti_finali", name: "Clienti Finali" },
+];
+
+/* Map folder type to processing type for uploads */
+const FOLDER_TO_PROCESSING: Record<string, string> = {
+  ghiduri: "ghid",
+  templateuri: "template",
+  clienti_prospecti: "client_doc",
+  clienti_finali: "client_doc",
+};
+
 /* ══════════════════════════════════════════
    SKELETON COMPONENTS
    ══════════════════════════════════════════ */
@@ -200,7 +236,6 @@ export default function DocumentsPage() {
   const [selectedDoc, setSelectedDoc] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [showUpload, setShowUpload] = useState(false);
-  const [uploadType, setUploadType] = useState<string>("ghid");
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; nodeId: string } | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameVal, setRenameVal] = useState("");
@@ -251,11 +286,16 @@ export default function DocumentsPage() {
 
   useEffect(() => {
     if (selectedFolder) {
-      fetchDocs(selectedFolder);
+      const node = findNodeById(tree, selectedFolder);
+      if (node && LEAF_TYPES.has(node.type)) {
+        fetchDocs(selectedFolder);
+      } else {
+        setDocs([]);
+      }
     } else {
       setDocs([]);
     }
-  }, [selectedFolder, fetchDocs]);
+  }, [selectedFolder, fetchDocs, tree]);
 
   // Close context menu on click outside
   useEffect(() => {
@@ -281,23 +321,48 @@ export default function DocumentsPage() {
     setExpandedNodes(prev => ({ ...prev, [id]: !prev[id] }));
   }, []);
 
-  const handleNewFolder = useCallback(async (parentId: string) => {
+  const handleCreateChild = useCallback(async (parentId: string) => {
+    const parentNode = findNodeById(tree, parentId);
+    if (!parentNode) return;
+
+    const childInfo = CHILD_TYPE_MAP[parentNode.type];
+    if (!childInfo) return;
+
     try {
       const result = await apiPost<ApiFolderNode>("/api/documents/folders", {
-        name: "Folder nou",
-        type: "folder",
+        name: childInfo.defaultName,
+        type: childInfo.type,
         parentId,
       });
-      const newNode = mapApiFolderToTreeNode(result);
+      let newNode = mapApiFolderToTreeNode(result);
+
+      // If we just created a sesiune, auto-create the 4 leaf folders inside it
+      if (childInfo.type === "sesiune") {
+        const leafChildren: TreeNode[] = [];
+        for (const leaf of SESIUNE_LEAVES) {
+          try {
+            const leafResult = await apiPost<ApiFolderNode>("/api/documents/folders", {
+              name: leaf.name,
+              type: leaf.type,
+              parentId: result.id,
+            });
+            leafChildren.push(mapApiFolderToTreeNode(leafResult));
+          } catch (err) {
+            console.error(`Failed to create leaf folder ${leaf.name}:`, err);
+          }
+        }
+        newNode = { ...newNode, children: leafChildren };
+      }
+
       setTree(prev => addChildToNode(prev, parentId, newNode));
-      setExpandedNodes(prev => ({ ...prev, [parentId]: true }));
+      setExpandedNodes(prev => ({ ...prev, [parentId]: true, [newNode.id]: true }));
       setRenaming(newNode.id);
-      setRenameVal("Folder nou");
+      setRenameVal(childInfo.defaultName);
     } catch (err) {
       console.error("Failed to create folder:", err);
     }
     setCtxMenu(null);
-  }, []);
+  }, [tree]);
 
   const handleRename = useCallback((nodeId: string) => {
     const findLabel = (nodes: TreeNode[]): string | null => {
@@ -435,6 +500,8 @@ export default function DocumentsPage() {
 
   const selDoc = filteredDocs.find(d => d.id === selectedDoc) || null;
   const breadcrumb = selectedFolder ? getBreadcrumb(tree, selectedFolder) || [] : [];
+  const selectedNode = selectedFolder ? findNodeById(tree, selectedFolder) : null;
+  const isLeafSelected = selectedNode ? LEAF_TYPES.has(selectedNode.type) : false;
 
   // Stats
   const totalDocs = docs.length;
@@ -601,7 +668,7 @@ export default function DocumentsPage() {
             />
             <kbd className="doc-search-kbd">Ctrl+K</kbd>
           </div>
-          <button className="doc-upload-btn" onClick={() => setShowUpload(true)} disabled={!selectedFolder}>
+          <button className="doc-upload-btn" onClick={() => setShowUpload(true)} disabled={!isLeafSelected} title={!isLeafSelected ? "Selecteaza un folder de tip Ghiduri, Template-uri, Clienti Prospecti sau Clienti Finali" : "Upload document"}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
             </svg>
@@ -620,22 +687,53 @@ export default function DocumentsPage() {
             </div>
             <div className="doc-welcome-title">Bine ai venit in Documente</div>
             <div className="doc-welcome-desc">
-              Selecteaza un folder din arborele din stanga pentru a vedea documentele.
+              Creeaza structura: Program {"\u2192"} Masura {"\u2192"} Sesiune.<br />
+              Documentele se adauga in folderele finale din sesiune.
             </div>
             <div className="doc-welcome-tips">
               <div className="doc-welcome-tip">
                 <span className="doc-welcome-tip-icon">{"\u{1F4C2}"}</span>
-                <span>Click pe un folder pentru a vedea documentele</span>
+                <span>Click dreapta pe un nod pentru a adauga sub-nivele</span>
               </div>
               <div className="doc-welcome-tip">
-                <span className="doc-welcome-tip-icon">{"\u{1F5B1}"}</span>
-                <span>Click dreapta pe un folder pentru optiuni</span>
+                <span className="doc-welcome-tip-icon">{"\u{1F4D6}"}</span>
+                <span>La crearea unei sesiuni se creeaza automat Ghiduri, Template-uri, Clienti</span>
               </div>
               <div className="doc-welcome-tip">
                 <span className="doc-welcome-tip-icon">{"\u{1F4E4}"}</span>
-                <span>Selecteaza un folder, apoi apasa Upload</span>
+                <span>Upload disponibil doar in folderele finale (Ghiduri, Template-uri, etc.)</span>
               </div>
             </div>
+          </div>
+        ) : !isLeafSelected ? (
+          /* Non-leaf folder selected — show hierarchy info */
+          <div className="doc-welcome">
+            <div className="doc-welcome-icon">
+              {selectedNode?.type === "program" ? (
+                <span style={{ fontSize: 44, opacity: 0.5 }}>{"\u{1F3E2}"}</span>
+              ) : selectedNode?.type === "masura" ? (
+                <span style={{ fontSize: 44, opacity: 0.5 }}>{"\u{1F4CA}"}</span>
+              ) : (
+                <span style={{ fontSize: 44, opacity: 0.5 }}>{"\u{1F4C5}"}</span>
+              )}
+            </div>
+            <div className="doc-welcome-title">{selectedNode?.label}</div>
+            <div className="doc-welcome-desc">
+              {selectedNode?.type === "program"
+                ? "Click dreapta pentru a adauga o masura in acest program."
+                : selectedNode?.type === "masura"
+                ? "Click dreapta pentru a adauga o sesiune in aceasta masura."
+                : selectedNode?.type === "sesiune"
+                ? "Selecteaza unul din folderele de mai jos pentru a vedea si adauga documente."
+                : "Expandeaza arborele si selecteaza un folder final."}
+            </div>
+            {CHILD_TYPE_MAP[selectedNode?.type || ""] && (
+              <button className="doc-empty-cta" onClick={() => {
+                if (selectedFolder) handleCreateChild(selectedFolder);
+              }}>
+                + {CHILD_TYPE_MAP[selectedNode?.type || ""]?.label}
+              </button>
+            )}
           </div>
         ) : docsLoading ? (
           <DocListSkeleton />
@@ -657,17 +755,21 @@ export default function DocumentsPage() {
               </>
             ) : (
               <>
-                <div className="doc-empty-title">Folder gol</div>
+                <div className="doc-empty-title">{isLeafSelected ? "Folder gol" : "Navigheaza mai adanc"}</div>
                 <div className="doc-empty-desc">
-                  Acest folder nu contine inca documente.<br />
-                  Adauga primul document cu butonul de upload.
+                  {isLeafSelected
+                    ? <>Acest folder nu contine inca documente.<br />Adauga primul document cu butonul de upload.</>
+                    : <>Documentele se adauga doar in folderele de tip<br /><strong>Ghiduri</strong>, <strong>Template-uri</strong>, <strong>Clienti Prospecti</strong> sau <strong>Clienti Finali</strong>.<br />Expandeaza arborele si selecteaza un folder final.</>
+                  }
                 </div>
-                <button className="doc-empty-cta" onClick={() => setShowUpload(true)}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
-                  </svg>
-                  Upload document
-                </button>
+                {isLeafSelected && (
+                  <button className="doc-empty-cta" onClick={() => setShowUpload(true)}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+                    </svg>
+                    Upload document
+                  </button>
+                )}
               </>
             )}
           </div>
@@ -819,13 +921,6 @@ export default function DocumentsPage() {
       </div>
     </div>
   );
-
-  const uploadTypes = [
-    { key: "ghid", icon: "\u{1F4D6}", label: "Ghid finantare", desc: "Ghid solicitant, anexe" },
-    { key: "template", icon: "\u{1F4DD}", label: "Template", desc: "Cereri, formulare, modele" },
-    { key: "model", icon: "\u{1F4C4}", label: "Document model", desc: "Documente de referinta" },
-    { key: "alt", icon: "\u{1F4CE}", label: "Alt document", desc: "Orice alt tip de document" },
-  ];
 
   return (
     <>
@@ -1007,6 +1102,13 @@ export default function DocumentsPage() {
         .doc-upload-type-label { font-size: 12px; font-weight: 600; color: var(--text-secondary); }
         .doc-upload-type-desc { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
 
+        /* Upload type auto-detected info */
+        .doc-upload-type-info { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border-radius: var(--r-md); border: 1px solid rgba(77,139,255,.2); background: rgba(77,139,255,.04); margin-bottom: 16px; }
+        .doc-upload-type-info-icon { font-size: 24px; flex-shrink: 0; margin-top: 2px; }
+        .doc-upload-type-info-label { font-size: 13px; color: var(--text-primary); margin-bottom: 2px; }
+        .doc-upload-type-info-label strong { color: var(--accent-blue); }
+        .doc-upload-type-info-desc { font-size: 11px; color: var(--text-muted); line-height: 1.4; }
+
         /* Upload progress */
         .doc-upload-progress { height: 4px; border-radius: 2px; background: var(--bg-elevated); overflow: hidden; margin-bottom: 16px; }
         .doc-upload-progress-bar { height: 100%; border-radius: 2px; background: linear-gradient(90deg, var(--accent-blue), #7aa8ff); transition: width .3s ease; position: relative; }
@@ -1092,29 +1194,56 @@ export default function DocumentsPage() {
       </div>
 
       {/* ─── CONTEXT MENU ─── */}
-      {ctxMenu && (
-        <div
-          className="doc-ctx-menu"
-          style={{ left: ctxMenu.x, top: ctxMenu.y }}
-          onClick={e => e.stopPropagation()}
-        >
-          <button className="doc-ctx-item" onClick={() => handleNewFolder(ctxMenu.nodeId)}>
-            {"\u{1F4C1}"} Folder nou
-          </button>
-          <button className="doc-ctx-item" onClick={() => handleRename(ctxMenu.nodeId)}>
-            {"\u270F\uFE0F"} Redenumeste
-          </button>
-          <div className="doc-ctx-sep" />
-          <button
-            className="doc-ctx-item danger"
-            onClick={() => {
-              if (confirm("Sigur vrei sa stergi acest folder?")) handleDelete(ctxMenu.nodeId);
-            }}
+      {ctxMenu && (() => {
+        const ctxNode = findNodeById(tree, ctxMenu.nodeId);
+        const ctxType = ctxNode?.type;
+        const childInfo = ctxType ? CHILD_TYPE_MAP[ctxType] : null;
+        const isLeaf = ctxType ? LEAF_TYPES.has(ctxType) : false;
+
+        return (
+          <div
+            className="doc-ctx-menu"
+            style={{ left: ctxMenu.x, top: ctxMenu.y }}
+            onClick={e => e.stopPropagation()}
           >
-            {"\u{1F5D1}"} Sterge
-          </button>
-        </div>
-      )}
+            {/* Show "add child" only for program/masura (sesiune auto-creates leaves) */}
+            {childInfo && (
+              <button className="doc-ctx-item" onClick={() => handleCreateChild(ctxMenu.nodeId)}>
+                {ctxType === "program" ? "\u{1F4CA}" : "\u{1F4C5}"} {childInfo.label}
+              </button>
+            )}
+            {/* Show "upload here" for leaf folders */}
+            {isLeaf && (
+              <button className="doc-ctx-item" onClick={() => {
+                setSelectedFolder(ctxMenu.nodeId);
+                setShowUpload(true);
+                setCtxMenu(null);
+              }}>
+                {"\u{1F4E4}"} Upload document aici
+              </button>
+            )}
+            {childInfo && <div className="doc-ctx-sep" />}
+            {isLeaf && <div className="doc-ctx-sep" />}
+            <button className="doc-ctx-item" onClick={() => handleRename(ctxMenu.nodeId)}>
+              {"\u270F\uFE0F"} Redenumeste
+            </button>
+            {/* Don't allow deleting leaf folders individually — they come with sesiune */}
+            {!isLeaf && (
+              <>
+                <div className="doc-ctx-sep" />
+                <button
+                  className="doc-ctx-item danger"
+                  onClick={() => {
+                    if (confirm("Sigur vrei sa stergi acest folder si tot continutul?")) handleDelete(ctxMenu.nodeId);
+                  }}
+                >
+                  {"\u{1F5D1}"} Sterge
+                </button>
+              </>
+            )}
+          </div>
+        );
+      })()}
 
       {/* ─── UPLOAD MODAL ─── */}
       {showUpload && (
@@ -1128,19 +1257,26 @@ export default function DocumentsPage() {
               Destinatie: <strong style={{ color: "var(--text-primary)" }}>{breadcrumb.length > 0 ? breadcrumb.join(" \u203A ") : "Selecteaza un folder"}</strong>
             </div>
 
-            <div className="doc-upload-type-grid">
-              {uploadTypes.map(ut => (
-                <button
-                  key={ut.key}
-                  className={`doc-upload-type ${uploadType === ut.key ? "on" : ""}`}
-                  onClick={() => setUploadType(ut.key)}
-                >
-                  <div className="doc-upload-type-icon">{ut.icon}</div>
-                  <div className="doc-upload-type-label">{ut.label}</div>
-                  <div className="doc-upload-type-desc">{ut.desc}</div>
-                </button>
-              ))}
-            </div>
+            {/* Auto-detected type from folder — shown as info pill, not a selector */}
+            {selectedNode && LEAF_TYPES.has(selectedNode.type) && (
+              <div className="doc-upload-type-info">
+                <span className="doc-upload-type-info-icon">
+                  {selectedNode.type === "ghiduri" ? "\u{1F4D6}" : selectedNode.type === "templateuri" ? "\u{1F4DD}" : selectedNode.type === "clienti_prospecti" ? "\u{1F50D}" : "\u2705"}
+                </span>
+                <div>
+                  <div className="doc-upload-type-info-label">
+                    Tip document: <strong>{selectedNode.type === "ghiduri" ? "Ghid finantare" : selectedNode.type === "templateuri" ? "Template" : selectedNode.type === "clienti_prospecti" ? "Document client prospect" : "Document client final"}</strong>
+                  </div>
+                  <div className="doc-upload-type-info-desc">
+                    {selectedNode.type === "ghiduri"
+                      ? "Ghidul va fi procesat automat cu AI pentru extragerea regulilor."
+                      : selectedNode.type === "templateuri"
+                      ? "Template-ul va fi procesat automat pentru detectarea campurilor."
+                      : "Documentul va fi adaugat in dosarul clientului."}
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div
               className={`doc-upload-zone ${dragOver ? "drag-active" : ""} ${uploadFile ? "has-file" : ""}`}

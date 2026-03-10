@@ -111,10 +111,10 @@ type ProjectData = {
 };
 
 const STATUS_MAP: Record<string, { label: string; color: string; bg: string }> = {
-  draft: { label: "Ciornă", color: "#5a6478", bg: "rgba(90,100,120,0.12)" },
-  in_progress: { label: "În lucru", color: "#4d8bff", bg: "rgba(77,139,255,0.12)" },
-  review: { label: "Verificare", color: "#fbbf24", bg: "rgba(251,191,36,0.12)" },
-  submitted: { label: "Depus", color: "#34d399", bg: "rgba(52,211,153,0.12)" },
+  draft: { label: "Ciornă", color: "var(--badge-draft-color)", bg: "var(--badge-draft-bg)" },
+  in_progress: { label: "În lucru", color: "var(--badge-progress-color)", bg: "var(--badge-progress-bg)" },
+  review: { label: "Verificare", color: "var(--badge-review-color)", bg: "var(--badge-review-bg)" },
+  submitted: { label: "Depus", color: "var(--badge-submitted-color)", bg: "var(--badge-submitted-bg)" },
 };
 
 const pct = (a: number, b: number) => b > 0 ? Math.round((a / b) * 100) : 0;
@@ -1776,10 +1776,10 @@ export default function ProjectViewPage() {
 
                 <div className="sumar-progress">
                   {[
-                    { label: "Eligibilitate", val: `${eligPassed}/${eligTotal}`, p: pct(eligPassed, eligTotal), color: eligPassed === eligTotal && eligTotal > 0 ? "#34d399" : "#fbbf24", leaf: "eligibilitate" as LeafType },
-                    { label: "Elemente", val: `${elemFilled}/${elemTotal}`, p: pct(elemFilled, elemTotal), color: elemFilled === elemTotal && elemTotal > 0 ? "#34d399" : "#4d8bff", leaf: "elemente" as LeafType },
-                    { label: "Checklist doc", val: `${checkDone}/${checkTotal}`, p: pct(checkDone, checkTotal), color: checkDone === checkTotal && checkTotal > 0 ? "#34d399" : "#fb923c", leaf: "checklist" as LeafType },
-                    { label: "Neemia", val: `${neemiaTemplates.filter(t => t.status === "generated" || t.status === "validated").length}/${neemiaTemplates.length}`, p: neemiaTemplates.length > 0 ? pct(neemiaTemplates.filter(t => t.status === "generated" || t.status === "validated").length, neemiaTemplates.length) : 0, color: "#a78bfa", leaf: "neemia" as LeafType },
+                    { label: "Eligibilitate", val: `${eligPassed}/${eligTotal}`, p: pct(eligPassed, eligTotal), color: eligPassed === eligTotal && eligTotal > 0 ? "var(--accent-green)" : "var(--accent-yellow)", leaf: "eligibilitate" as LeafType },
+                    { label: "Elemente", val: `${elemFilled}/${elemTotal}`, p: pct(elemFilled, elemTotal), color: elemFilled === elemTotal && elemTotal > 0 ? "var(--accent-green)" : "var(--accent-blue)", leaf: "elemente" as LeafType },
+                    { label: "Checklist doc", val: `${checkDone}/${checkTotal}`, p: pct(checkDone, checkTotal), color: checkDone === checkTotal && checkTotal > 0 ? "var(--accent-green)" : "var(--accent-orange)", leaf: "checklist" as LeafType },
+                    { label: "Neemia", val: `${neemiaTemplates.filter(t => t.status === "generated" || t.status === "validated").length}/${neemiaTemplates.length}`, p: neemiaTemplates.length > 0 ? pct(neemiaTemplates.filter(t => t.status === "generated" || t.status === "validated").length, neemiaTemplates.length) : 0, color: "var(--accent-purple)", leaf: "neemia" as LeafType },
                   ].map(item => (
                     <div className="sp-card" key={item.label} onClick={() => setActiveLeaf(item.leaf)}>
                       <div className="sp-val" style={{ color: item.color }}>{item.val}</div>
@@ -1896,9 +1896,9 @@ export default function ProjectViewPage() {
                 eligibilitate_complexa: "Elig. complexă", documentare: "Documentare", ajutor_stat: "Ajutor stat",
               };
               const categoryColors: Record<string, string> = {
-                eligibilitate: "#4d8bff", financiar: "#34d399", tehnic: "#a78bfa", administrativ: "#8892a8",
-                achizitii: "#fb923c", documente: "#fbbf24", selectie: "#f87171", intensitate: "#34d399",
-                eligibilitate_complexa: "#4d8bff", documentare: "#fbbf24", ajutor_stat: "#a78bfa",
+                eligibilitate: "var(--accent-blue)", financiar: "var(--accent-green)", tehnic: "var(--accent-purple)", administrativ: "var(--text-secondary)",
+                achizitii: "var(--accent-orange)", documente: "var(--accent-yellow)", selectie: "var(--accent-red)", intensitate: "var(--accent-green)",
+                eligibilitate_complexa: "var(--accent-blue)", documentare: "var(--accent-yellow)", ajutor_stat: "var(--accent-purple)",
               };
               const categories = [...new Set(guideRules.map(r => r.category))].filter(Boolean);
               const filteredRules = ghidCategoryFilter === "all" ? guideRules : guideRules.filter(r => r.category === ghidCategoryFilter);
@@ -1961,7 +1961,7 @@ export default function ProjectViewPage() {
                             <div className="rd-header">
                               <div className="rd-badges">
                                 <div className={`rule-type-badge ${sel.type}`}>{sel.type === "fixed" ? "REGULĂ FIXĂ" : "REGULĂ INTERPRETATĂ"}</div>
-                                <span className="rd-cat-pill" style={{ background: `${categoryColors[sel.category] || "#8892a8"}20`, color: categoryColors[sel.category] || "var(--text-muted)", border: `1px solid ${categoryColors[sel.category] || "#8892a8"}40` }}>
+                                <span className="rd-cat-pill" style={{ background: `${categoryColors[sel.category] || "var(--text-secondary)"}20`, color: categoryColors[sel.category] || "var(--text-muted)", border: `1px solid ${categoryColors[sel.category] || "var(--text-secondary)"}40` }}>
                                   {categoryLabels[sel.category] || sel.category}
                                 </span>
                                 {sel.validated && <span className="rd-validated">✓ Validată</span>}

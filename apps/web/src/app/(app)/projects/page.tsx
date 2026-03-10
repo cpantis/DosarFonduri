@@ -6,12 +6,12 @@ import { apiGet, apiPost, apiDelete } from "@/lib/api";
 /* ═══ HELPERS ═══ */
 
 const STATUS_MAP: Record<string, { label: string; color: string; bg: string }> = {
-  draft: { label: "Ciornă", color: "#5a6478", bg: "rgba(90,100,120,0.12)" },
-  in_progress: { label: "În lucru", color: "#4d8bff", bg: "rgba(77,139,255,0.12)" },
-  review: { label: "Verificare", color: "#fbbf24", bg: "rgba(251,191,36,0.12)" },
-  submitted: { label: "Depus", color: "#34d399", bg: "rgba(52,211,153,0.12)" },
-  rejected: { label: "Respins", color: "#f87171", bg: "rgba(248,113,113,0.12)" },
-  approved: { label: "Aprobat", color: "#34d399", bg: "rgba(52,211,153,0.2)" },
+  draft: { label: "Ciornă", color: "var(--badge-draft-color)", bg: "var(--badge-draft-bg)" },
+  in_progress: { label: "În lucru", color: "var(--badge-progress-color)", bg: "var(--badge-progress-bg)" },
+  review: { label: "Verificare", color: "var(--badge-review-color)", bg: "var(--badge-review-bg)" },
+  submitted: { label: "Depus", color: "var(--badge-submitted-color)", bg: "var(--badge-submitted-bg)" },
+  rejected: { label: "Respins", color: "var(--badge-rejected-color)", bg: "var(--badge-rejected-bg)" },
+  approved: { label: "Aprobat", color: "var(--badge-approved-color)", bg: "var(--badge-approved-bg)" },
 };
 
 const pct = (a: number, b: number) => b > 0 ? Math.round((a / b) * 100) : 0;
@@ -197,7 +197,7 @@ export default function ProjectsPage() {
         .pc-name{font-size:16px;font-weight:700;margin-bottom:3px}
         .pc-firma{font-size:12px;color:var(--text-secondary);margin-bottom:6px}
         .pc-path{font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:4px}
-        .pc-path .pp-dot{width:8px;height:8px;border-radius:50%;background:#003399;flex-shrink:0}
+        .pc-path .pp-dot{width:8px;height:8px;border-radius:50%;background:var(--accent-blue);flex-shrink:0}
         .status-badge{display:inline-flex;align-items:center;gap:4px;padding:4px 12px;border-radius:12px;font-size:11px;font-weight:700}
         .pc-valoare{font-size:11px;font-family:var(--font-mono);color:var(--text-muted);margin-top:6px}
         .pc-progress{display:flex;flex-direction:column;gap:8px}
@@ -209,7 +209,7 @@ export default function ProjectsPage() {
         .pc-footer{display:flex;align-items:center;gap:10px;padding-top:10px;border-top:1px solid var(--border)}
         .pc-consultant{font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:4px;flex:1}
         .pc-updated{font-size:11px;color:var(--text-muted);font-family:var(--font-mono)}
-        .lock-indicator{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600;background:rgba(251,191,36,.12);color:#fbbf24}
+        .lock-indicator{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600;background:var(--badge-review-bg);color:var(--accent-yellow)}
 
         .proj-table{width:100%;border:1px solid var(--border);border-radius:var(--r-md);overflow:hidden;background:var(--bg-surface)}
         .pt-row{display:grid;grid-template-columns:1fr 140px 90px 100px 100px 100px 90px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--border);transition:background .12s;cursor:pointer}
@@ -229,7 +229,7 @@ export default function ProjectsPage() {
         .empty-state .es-icon{font-size:40px;opacity:.5;margin-bottom:8px}
         .empty-state .es-text{font-size:14px}
 
-        .overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:100;animation:fadeIn .2s}
+        .overlay{position:fixed;inset:0;background:var(--overlay-bg);display:flex;align-items:center;justify-content:center;z-index:100;animation:fadeIn .2s}
         @keyframes fadeIn{from{opacity:0}to{opacity:1}}
         .modal{background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--r-lg);width:540px;max-height:85vh;overflow-y:auto;padding:28px;animation:slideUp .3s ease}
         @keyframes slideUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
@@ -255,14 +255,14 @@ export default function ProjectsPage() {
 
         .prog-section{margin-bottom:12px}
         .prog-header{font-size:13px;font-weight:700;color:var(--text-primary);margin-bottom:6px;display:flex;align-items:center;gap:6px}
-        .prog-header .ph-dot{width:10px;height:10px;border-radius:50%;background:#003399}
+        .prog-header .ph-dot{width:10px;height:10px;border-radius:50%;background:var(--accent-blue)}
         .masura-row{padding:8px 12px 8px 28px;font-size:13px;color:var(--text-secondary);display:flex;align-items:center;gap:6px;cursor:pointer;border-radius:var(--r-sm);transition:all .12s}
         .masura-row:hover{background:var(--bg-hover);color:var(--text-primary)}
-        .masura-row .mr-dot{width:6px;height:6px;border-radius:50%;background:#C9A84C}
+        .masura-row .mr-dot{width:6px;height:6px;border-radius:50%;background:var(--accent-orange)}
         .sesiune-row{padding:6px 12px 6px 52px;font-size:12px;color:var(--text-muted);display:flex;align-items:center;gap:6px;cursor:pointer;border-radius:var(--r-sm);transition:all .12s}
         .sesiune-row:hover{background:var(--bg-hover);color:var(--text-secondary)}
         .sesiune-row.on{background:rgba(77,139,255,.06);color:var(--accent-blue);font-weight:600}
-        .sesiune-row .sr-dot{width:4px;height:4px;border-radius:50%;background:#888}
+        .sesiune-row .sr-dot{width:4px;height:4px;border-radius:50%;background:var(--text-muted)}
 
         .btn-row{display:flex;gap:10px;justify-content:flex-end;margin-top:20px}
         .btn-p{padding:10px 20px;border-radius:var(--r-md);border:none;background:var(--accent-blue);color:#fff;font-size:14px;font-weight:700;font-family:var(--font-sans);cursor:pointer}.btn-p:hover{background:#5d9bff}.btn-p:disabled{opacity:.4;cursor:not-allowed}
@@ -286,19 +286,19 @@ export default function ProjectsPage() {
           <span className="sp-count">{stats.total}</span> Total
         </div>
         <div className={`stat-pill ${statusFilter === "draft" ? "active" : ""}`} onClick={() => setStatusFilter("draft")}>
-          <span className="sp-dot" style={{ background: "#5a6478" }} />
+          <span className="sp-dot" style={{ background: "var(--badge-draft-color)" }} />
           <span className="sp-count">{stats.draft}</span> Ciornă
         </div>
         <div className={`stat-pill ${statusFilter === "in_progress" ? "active" : ""}`} onClick={() => setStatusFilter("in_progress")}>
-          <span className="sp-dot" style={{ background: "#4d8bff" }} />
+          <span className="sp-dot" style={{ background: "var(--badge-progress-color)" }} />
           <span className="sp-count">{stats.inProgress}</span> În lucru
         </div>
         <div className={`stat-pill ${statusFilter === "review" ? "active" : ""}`} onClick={() => setStatusFilter("review")}>
-          <span className="sp-dot" style={{ background: "#fbbf24" }} />
+          <span className="sp-dot" style={{ background: "var(--badge-review-color)" }} />
           <span className="sp-count">{stats.review}</span> Verificare
         </div>
         <div className={`stat-pill ${statusFilter === "submitted" ? "active" : ""}`} onClick={() => setStatusFilter("submitted")}>
-          <span className="sp-dot" style={{ background: "#34d399" }} />
+          <span className="sp-dot" style={{ background: "var(--badge-submitted-color)" }} />
           <span className="sp-count">{stats.submitted}</span> Depus
         </div>
       </div>
@@ -354,10 +354,10 @@ export default function ProjectsPage() {
 
                   <div className="pc-progress">
                     {[
-                      { label: "Eligibilitate", a: eligibility.passed, b: eligibility.total, fullColor: "#34d399", partColor: "#fbbf24" },
-                      { label: "Elemente", a: elements.filled, b: elements.total, fullColor: "#34d399", partColor: "#4d8bff" },
-                      { label: "Documente", a: docs.done, b: docs.total, fullColor: "#34d399", partColor: "#fb923c" },
-                      { label: "Template-uri", a: templates.done, b: templates.total, fullColor: "#34d399", partColor: "#a78bfa" },
+                      { label: "Eligibilitate", a: eligibility.passed, b: eligibility.total, fullColor: "var(--accent-green)", partColor: "var(--accent-yellow)" },
+                      { label: "Elemente", a: elements.filled, b: elements.total, fullColor: "var(--accent-green)", partColor: "var(--accent-blue)" },
+                      { label: "Documente", a: docs.done, b: docs.total, fullColor: "var(--accent-green)", partColor: "var(--accent-orange)" },
+                      { label: "Template-uri", a: templates.done, b: templates.total, fullColor: "var(--accent-green)", partColor: "var(--accent-purple)" },
                     ].map(bar => (
                       <div className="pc-bar-row" key={bar.label}>
                         <span className="pc-bar-label">{bar.label}</span>
@@ -400,15 +400,15 @@ export default function ProjectsPage() {
                   <div className="pt-program">{programPath.masura || "—"}</div>
                   <div><span className="status-badge" style={{ background: st.bg, color: st.color }}>{st.label}</span></div>
                   <div>
-                    <div className="mini-bar"><div className="mini-fill" style={{ width: `${pct(eligibility.passed, eligibility.total)}%`, background: pct(eligibility.passed, eligibility.total) === 100 ? "#34d399" : "#fbbf24" }} /></div>
+                    <div className="mini-bar"><div className="mini-fill" style={{ width: `${pct(eligibility.passed, eligibility.total)}%`, background: pct(eligibility.passed, eligibility.total) === 100 ? "var(--accent-green)" : "var(--accent-yellow)" }} /></div>
                     <div className="mini-pct">{eligibility.passed}/{eligibility.total}</div>
                   </div>
                   <div>
-                    <div className="mini-bar"><div className="mini-fill" style={{ width: `${pct(elements.filled, elements.total)}%`, background: "#4d8bff" }} /></div>
+                    <div className="mini-bar"><div className="mini-fill" style={{ width: `${pct(elements.filled, elements.total)}%`, background: "var(--accent-blue)" }} /></div>
                     <div className="mini-pct">{elements.filled}/{elements.total}</div>
                   </div>
                   <div>
-                    <div className="mini-bar"><div className="mini-fill" style={{ width: `${pct(docs.done, docs.total)}%`, background: "#fb923c" }} /></div>
+                    <div className="mini-bar"><div className="mini-fill" style={{ width: `${pct(docs.done, docs.total)}%`, background: "var(--accent-orange)" }} /></div>
                     <div className="mini-pct">{docs.done}/{docs.total}</div>
                   </div>
                   <div className="pt-time">{p.updatedAt ? formatRelativeTime(p.updatedAt) : "—"}</div>

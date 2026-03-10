@@ -57,13 +57,13 @@ interface Revenue {
 }
 
 const STATUS_MAP: Record<string, { label: string; color: string; bg: string }> = {
-  active: { label: "Activ", color: "#34d399", bg: "rgba(52,211,153,.12)" },
-  trial: { label: "Trial", color: "#fbbf24", bg: "rgba(251,191,36,.12)" },
-  inactive: { label: "Inactiv", color: "#5a6478", bg: "rgba(90,100,120,.12)" },
-  expired: { label: "Expirat", color: "#f87171", bg: "rgba(248,113,113,.12)" },
+  active: { label: "Activ", color: "var(--accent-green)", bg: "var(--badge-submitted-bg)" },
+  trial: { label: "Trial", color: "var(--accent-yellow)", bg: "var(--badge-review-bg)" },
+  inactive: { label: "Inactiv", color: "var(--badge-draft-color)", bg: "var(--badge-draft-bg)" },
+  expired: { label: "Expirat", color: "var(--accent-red)", bg: "var(--badge-rejected-bg)" },
 };
 
-const PLAN_COLORS: Record<string, string> = { starter: "#fb923c", professional: "#4d8bff", enterprise: "#a78bfa" };
+const PLAN_COLORS: Record<string, string> = { starter: "var(--accent-orange)", professional: "var(--accent-blue)", enterprise: "var(--accent-purple)" };
 const PLAN_PRICES: Record<string, number> = { starter: 49, professional: 149, enterprise: 399 };
 
 export default function ProviderDashboardPage() {
@@ -173,7 +173,7 @@ export default function ProviderDashboardPage() {
         .pill{padding:4px 10px;border-radius:6px;font-size:11px;font-weight:600;border:none;cursor:pointer;background:transparent;color:var(--text-muted);font-family:var(--font-sans);transition:all .15s}
         .pill:hover{color:var(--text-secondary)}.pill.on{background:var(--accent-purple);color:#fff}
         .code-card{display:flex;align-items:center;gap:16px;padding:14px 18px;border-radius:var(--r-md);border:1px solid var(--border);background:var(--bg-surface);margin-bottom:8px}
-        .overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:100;animation:fadeIn .2s}
+        .overlay{position:fixed;inset:0;background:var(--overlay-bg);display:flex;align-items:center;justify-content:center;z-index:100;animation:fadeIn .2s}
         @keyframes fadeIn{from{opacity:0}to{opacity:1}}
         .modal{background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--r-lg);width:480px;padding:28px;animation:slideUp .3s ease}
         @keyframes slideUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
@@ -308,7 +308,7 @@ export default function ProviderDashboardPage() {
                       <div className={`cab-card ${isActive ? "active" : ""}`} onClick={() => setSelectedCabinet(isActive ? null : c.id)}>
                         <div
                           className="w-10 h-10 flex items-center justify-center text-base font-extrabold text-white flex-shrink-0"
-                          style={{ borderRadius: "var(--r-sm)", background: PLAN_COLORS[c.plan] || "#5a6478", fontFamily: "var(--font-mono)" }}
+                          style={{ borderRadius: "var(--r-sm)", background: PLAN_COLORS[c.plan] || "var(--text-muted)", fontFamily: "var(--font-mono)" }}
                         >
                           {c.plan?.[0]?.toUpperCase() || "?"}
                         </div>
@@ -317,7 +317,7 @@ export default function ProviderDashboardPage() {
                             {c.name}
                             <span className="text-[10px] font-bold px-2 py-0.5" style={{ borderRadius: 10, background: st.bg, color: st.color }}>{st.label}</span>
                             {c.status === "trial" && trialDays > 0 && (
-                              <span className="text-[10px] font-bold px-2 py-0.5" style={{ borderRadius: 10, background: "rgba(251,191,36,.12)", color: "#fbbf24" }}>
+                              <span className="text-[10px] font-bold px-2 py-0.5" style={{ borderRadius: 10, background: "var(--badge-review-bg)", color: "var(--accent-yellow)" }}>
                                 {trialDays}z ramase
                               </span>
                             )}
@@ -454,7 +454,7 @@ export default function ProviderDashboardPage() {
                     const mrr = PLAN_PRICES[c.plan] || 0;
                     const st = STATUS_MAP[c.status] || STATUS_MAP.inactive;
                     return (
-                      <div key={c.id} className="grid items-center transition-colors hover:bg-[var(--bg-hover)]" style={{ gridTemplateColumns: "1fr 100px 80px 100px", borderBottom: "1px solid rgba(42,48,64,.5)" }}>
+                      <div key={c.id} className="grid items-center transition-colors hover:bg-[var(--bg-hover)]" style={{ gridTemplateColumns: "1fr 100px 80px 100px", borderBottom: "1px solid var(--separator)" }}>
                         <div className="px-4 py-2.5">
                           <div className="text-[13px] font-semibold">{c.name}</div>
                           <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>{c.code}</div>

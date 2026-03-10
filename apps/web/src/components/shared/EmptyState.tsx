@@ -10,17 +10,17 @@ interface EmptyStateProps {
 export function EmptyState({ icon = "📭", title, description, action }: EmptyStateProps) {
   return (
     <div className="flex flex-col items-center justify-center py-16 px-8 text-center">
-      <div className="text-4xl mb-4">{icon}</div>
+      <div className="text-[40px] mb-3" style={{ opacity: 0.5 }}>{icon}</div>
       <h3
-        className="text-lg font-bold mb-2"
-        style={{ color: "var(--text-primary)" }}
+        className="text-sm font-semibold mb-1"
+        style={{ color: "var(--text-muted)" }}
       >
         {title}
       </h3>
       {description && (
         <p
-          className="text-sm max-w-md mb-6"
-          style={{ color: "var(--text-secondary)" }}
+          className="text-[13px] max-w-md mb-6 leading-relaxed"
+          style={{ color: "var(--text-muted)" }}
         >
           {description}
         </p>

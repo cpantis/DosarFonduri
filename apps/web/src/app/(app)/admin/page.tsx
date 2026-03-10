@@ -210,7 +210,7 @@ export default function AdminPage() {
         .cost-table-wrap{border:1px solid var(--border);border-radius:var(--r-md);overflow:hidden;background:var(--bg-surface)}
         .cost-table{width:100%;border-collapse:collapse;font-size:12px}
         .cost-table th{padding:10px 14px;font-weight:700;color:var(--text-muted);border-bottom:1px solid var(--border);font-size:10px;text-transform:uppercase;letter-spacing:.5px;text-align:center}
-        .cost-table td{padding:10px 14px;border-bottom:1px solid rgba(42,48,64,.5);font-family:var(--font-mono);color:var(--text-secondary);text-align:center}
+        .cost-table td{padding:10px 14px;border-bottom:1px solid var(--separator);font-family:var(--font-mono);color:var(--text-secondary);text-align:center}
         .cost-table tbody tr{transition:background .12s}.cost-table tbody tr:hover{background:var(--bg-hover)}
         .cost-table tfoot td{border-top:2px solid var(--accent-blue);border-bottom:none;color:var(--text-primary)}
         .pill-group{display:flex;background:var(--bg-deep);border-radius:var(--r-md);padding:2px;gap:1px}
@@ -218,7 +218,7 @@ export default function AdminPage() {
         .pill:hover{color:var(--text-secondary)}.pill.on{background:var(--accent-blue);color:#fff}
         .audit-item{display:flex;align-items:flex-start;gap:12px;padding:12px 16px;border-radius:var(--r-sm);transition:background .12s}
         .audit-item:hover{background:var(--bg-surface)}
-        .overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:100;animation:fadeIn .2s}
+        .overlay{position:fixed;inset:0;background:var(--overlay-bg);display:flex;align-items:center;justify-content:center;z-index:100;animation:fadeIn .2s}
         @keyframes fadeIn{from{opacity:0}to{opacity:1}}
         .modal{background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--r-lg);width:460px;padding:28px;animation:slideUp .3s ease}
         @keyframes slideUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
@@ -435,18 +435,18 @@ export default function AdminPage() {
                 <div className="text-[11px] font-bold uppercase mb-2" style={{ letterSpacing: ".8px", color: "var(--text-muted)" }}>Distributie cost per agent</div>
                 <div className="flex overflow-hidden" style={{ height: 12, borderRadius: 6, background: "var(--bg-deep)" }}>
                   {costs.byAgent?.map((a: any) => {
-                    const colors: Record<string, string> = { solomon: "#4d8bff", neemia: "#a78bfa", ocr: "#fb923c", ghid_rules: "#fbbf24" };
+                    const colors: Record<string, string> = { solomon: "var(--accent-blue)", neemia: "var(--accent-purple)", ocr: "var(--accent-orange)", ghid_rules: "var(--accent-yellow)" };
                     const pct = (Number(a.totalCost) / costs.totalMonth) * 100;
-                    return <div key={a.agent} style={{ width: `${pct}%`, background: colors[a.agent] || "#5a6478", transition: "width .4s" }} />;
+                    return <div key={a.agent} style={{ width: `${pct}%`, background: colors[a.agent] || "var(--text-muted)", transition: "width .4s" }} />;
                   })}
                 </div>
                 <div className="flex gap-4 mt-1.5 text-[11px]" style={{ color: "var(--text-muted)" }}>
                   {costs.byAgent?.map((a: any) => {
-                    const colors: Record<string, string> = { solomon: "#4d8bff", neemia: "#a78bfa", ocr: "#fb923c", ghid_rules: "#fbbf24" };
+                    const colors: Record<string, string> = { solomon: "var(--accent-blue)", neemia: "var(--accent-purple)", ocr: "var(--accent-orange)", ghid_rules: "var(--accent-yellow)" };
                     const labels: Record<string, string> = { solomon: "Solomon", neemia: "Neemia", ocr: "OCR", ghid_rules: "Ghid Reguli" };
                     return (
                       <span key={a.agent} className="flex items-center gap-1">
-                        <span className="inline-block w-2 h-2 rounded-full" style={{ background: colors[a.agent] || "#5a6478" }} />
+                        <span className="inline-block w-2 h-2 rounded-full" style={{ background: colors[a.agent] || "var(--text-muted)" }} />
                         {labels[a.agent] || a.agent}
                       </span>
                     );

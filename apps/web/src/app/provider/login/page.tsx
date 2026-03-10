@@ -132,7 +132,7 @@ export default function ProviderLoginPage() {
             opacity: busy || !email || !pw ? 0.5 : 1,
           }}
         >
-          {busy ? <Spinner /> : "Autentificare Provider"}
+          {busy ? <Spinner light /> : "Autentificare Provider"}
         </button>
       </div>
     </div>

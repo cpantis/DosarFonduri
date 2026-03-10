@@ -31,6 +31,7 @@ export function Sidebar() {
   const { theme, toggle } = useTheme();
   const { user } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
+  const [hoveredItem, setHoveredItem] = useState<string | null>(null);
 
   // Auto-collapse on tablet (<=1024px)
   useEffect(() => {
@@ -73,7 +74,7 @@ export function Sidebar() {
         {!collapsed && (
           <span
             className="text-[17px] font-extrabold tracking-tight"
-            style={{ color: "var(--text-primary)" }}
+            style={{ color: "var(--text-primary)", letterSpacing: "-0.3px" }}
           >
             DosarFonduri
           </span>
@@ -95,22 +96,35 @@ export function Sidebar() {
             {collapsed && <div className="pt-2" />}
             {section.items.map((item) => {
               const isActive = pathname.startsWith(item.href);
+              const isHovered = hoveredItem === item.href;
               return (
                 <Link
                   key={item.href}
                   href={item.href}
-                  className="flex items-center gap-2.5 py-2 text-sm font-medium transition-colors mb-0.5"
+                  className="flex items-center gap-2.5 py-2 text-sm mb-0.5"
                   style={{
                     borderRadius: "var(--r-sm)",
-                    background: isActive ? "rgba(77,139,255,.1)" : undefined,
-                    color: isActive ? "var(--accent-blue)" : "var(--text-secondary)",
+                    background: isActive
+                      ? "rgba(77,139,255,.1)"
+                      : isHovered
+                      ? "var(--bg-hover)"
+                      : undefined,
+                    color: isActive
+                      ? "var(--accent-blue)"
+                      : isHovered
+                      ? "var(--text-primary)"
+                      : "var(--text-secondary)",
                     fontWeight: isActive ? 600 : 500,
-                    padding: collapsed ? "8px 0" : "8px 12px",
+                    padding: collapsed ? "9px 0" : "9px 12px",
                     justifyContent: collapsed ? "center" : "flex-start",
+                    transition: "all .15s",
+                    fontSize: "14px",
                   }}
                   title={item.label}
+                  onMouseEnter={() => setHoveredItem(item.href)}
+                  onMouseLeave={() => setHoveredItem(null)}
                 >
-                  <span className="w-5 text-center text-base flex-shrink-0">{item.icon}</span>
+                  <span className="w-5 text-center flex-shrink-0" style={{ fontSize: "16px" }}>{item.icon}</span>
                   {!collapsed && <span>{item.label}</span>}
                 </Link>
               );
@@ -123,12 +137,14 @@ export function Sidebar() {
       <div className="px-3 py-1">
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="w-full flex items-center justify-center py-1.5 text-xs transition-colors"
+          className="w-full flex items-center justify-center py-1.5 text-xs cursor-pointer"
           style={{
             borderRadius: "var(--r-sm)",
             color: "var(--text-muted)",
             border: "1px solid var(--border)",
             background: "var(--bg-elevated)",
+            transition: "all .15s",
+            fontFamily: "var(--font-sans)",
           }}
           title={collapsed ? "Extinde sidebar" : "Restrânge sidebar"}
           aria-label={collapsed ? "Extinde sidebar" : "Restrânge sidebar"}
@@ -171,10 +187,11 @@ export function Sidebar() {
             </div>
             <button
               onClick={toggle}
-              className="w-8 h-8 rounded-full flex items-center justify-center text-base transition-all flex-shrink-0"
+              className="w-8 h-8 rounded-full flex items-center justify-center text-base flex-shrink-0 cursor-pointer"
               style={{
                 border: "1px solid var(--border)",
                 background: "var(--bg-elevated)",
+                transition: "all .15s",
               }}
               title={theme === "dark" ? "Comuta la Light Mode" : "Comuta la Dark Mode"}
             >

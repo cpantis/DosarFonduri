@@ -20,9 +20,15 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* ═══ Animations ═══ */
 @keyframes fadeUp {
   from { opacity: 0; transform: translateY(20px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 @keyframes spin {
@@ -32,4 +38,35 @@ body {
 @keyframes slideUp {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideDown {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(8px); }
+}
+
+/* ═══ Selection ═══ */
+::selection {
+  background: rgba(77,139,255,.2);
+  color: var(--text-primary);
+}
+
+/* ═══ Focus visible ═══ */
+:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 2px;
+}
+
+/* ═══ Input/select/textarea light mode fix ═══ */
+input, select, textarea {
+  color: var(--text-primary);
+}
+
+input::placeholder, textarea::placeholder {
+  color: var(--text-muted);
+}
+
+select option {
+  background: var(--bg-surface);
+  color: var(--text-primary);
 }

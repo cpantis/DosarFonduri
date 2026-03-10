@@ -984,7 +984,7 @@ export default function DocumentsPage() {
         .doc-skel-icon { width: 32px; height: 32px; border-radius: var(--r-sm); background: var(--border); flex-shrink: 0; }
 
         /* ─── Upload modal ─── */
-        .doc-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; z-index: 100; animation: docFadeIn .2s; }
+        .doc-overlay { position: fixed; inset: 0; background: var(--overlay-bg); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; z-index: 100; animation: docFadeIn .2s; }
         .doc-modal { background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--r-lg); width: 520px; max-width: calc(100vw - 40px); padding: 28px; animation: docSlideUp .3s ease; }
         .doc-modal-title { font-size: 20px; font-weight: 800; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; }
         .doc-modal-close { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 18px; width: 32px; height: 32px; border-radius: var(--r-sm); display: flex; align-items: center; justify-content: center; transition: all .15s; }

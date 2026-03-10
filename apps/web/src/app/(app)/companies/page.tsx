@@ -322,13 +322,13 @@ export default function CompaniesPage() {
         .ok-box{padding:10px 14px;border-radius:var(--r-sm);border:1px solid var(--accent-green);background:rgba(52,211,153,.04);margin-bottom:8px;font-size:13px;color:var(--accent-green);display:flex;align-items:center;gap:8px}
         .fin-table{width:100%;border-collapse:collapse;font-size:12px}
         .fin-table th{text-align:left;padding:6px 10px;font-weight:600;color:var(--text-muted);border-bottom:1px solid var(--border);font-size:11px;text-transform:uppercase;letter-spacing:.5px}
-        .fin-table td{padding:6px 10px;border-bottom:1px solid rgba(42,48,64,.5);font-family:var(--font-mono);color:var(--text-secondary)}
+        .fin-table td{padding:6px 10px;border-bottom:1px solid var(--separator);font-family:var(--font-mono);color:var(--text-secondary)}
         .fin-table td.green{color:var(--accent-green)}.fin-table td.red{color:var(--accent-red)}
 
         .empty-panel{flex:1;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;color:var(--text-muted)}
         .empty-panel .ep-icon{font-size:40px;opacity:.5}.empty-panel .ep-text{font-size:13px}
 
-        .overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:100;animation:fadeIn .2s}
+        .overlay{position:fixed;inset:0;background:var(--overlay-bg);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:100;animation:fadeIn .2s}
         @keyframes fadeIn{from{opacity:0}to{opacity:1}}
         .modal{background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--r-lg);width:540px;max-height:85vh;overflow-y:auto;padding:28px;animation:slideUp .3s ease}
         @keyframes slideUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}

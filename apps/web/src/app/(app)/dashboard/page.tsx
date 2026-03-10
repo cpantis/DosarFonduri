@@ -25,12 +25,12 @@ interface DashboardData {
 }
 
 const STATUS_MAP: Record<string, { label: string; color: string; bg: string }> = {
-  draft: { label: "Ciornă", color: "var(--text-muted)", bg: "rgba(90,100,120,0.12)" },
-  in_progress: { label: "În lucru", color: "var(--accent-blue)", bg: "rgba(77,139,255,0.12)" },
-  review: { label: "Verificare", color: "var(--accent-yellow)", bg: "rgba(251,191,36,0.12)" },
-  submitted: { label: "Depus", color: "var(--accent-green)", bg: "rgba(52,211,153,0.12)" },
-  approved: { label: "Aprobat", color: "var(--accent-green)", bg: "rgba(52,211,153,0.12)" },
-  rejected: { label: "Respins", color: "var(--accent-red)", bg: "rgba(248,113,113,0.12)" },
+  draft: { label: "Ciornă", color: "var(--badge-draft-color)", bg: "var(--badge-draft-bg)" },
+  in_progress: { label: "În lucru", color: "var(--badge-progress-color)", bg: "var(--badge-progress-bg)" },
+  review: { label: "Verificare", color: "var(--badge-review-color)", bg: "var(--badge-review-bg)" },
+  submitted: { label: "Depus", color: "var(--badge-submitted-color)", bg: "var(--badge-submitted-bg)" },
+  approved: { label: "Aprobat", color: "var(--badge-approved-color)", bg: "var(--badge-approved-bg)" },
+  rejected: { label: "Respins", color: "var(--badge-rejected-color)", bg: "var(--badge-rejected-bg)" },
 };
 
 const ACTION_TYPE_MAP: Record<string, { icon: string; color: string }> = {
@@ -101,7 +101,7 @@ export default function DashboardPage() {
         .feed-card{border:1px solid var(--border);border-radius:var(--r-md);background:var(--bg-surface);overflow:hidden}
         .feed-header{padding:14px 16px;border-bottom:1px solid var(--border);font-size:14px;font-weight:700;display:flex;align-items:center;gap:8px}
         .feed-scroll{max-height:340px;overflow-y:auto}
-        .feed-item{padding:10px 16px;border-bottom:1px solid rgba(42,48,64,.5);transition:background .12s}
+        .feed-item{padding:10px 16px;border-bottom:1px solid var(--separator);transition:background .12s}
         .feed-item:hover{background:var(--bg-hover)}
         .feed-item:last-child{border-bottom:none}
         .feed-time{font-size:11px;font-family:var(--font-mono);color:var(--text-muted);margin-bottom:2px;display:flex;align-items:center;gap:6px}
@@ -109,7 +109,7 @@ export default function DashboardPage() {
         .feed-text{font-size:13px;color:var(--text-secondary);line-height:1.4}
         .feed-proj{font-size:11px;color:var(--text-muted);margin-top:2px}
 
-        .deadline-item{display:flex;gap:12px;padding:10px 16px;border-bottom:1px solid rgba(42,48,64,.5)}
+        .deadline-item{display:flex;gap:12px;padding:10px 16px;border-bottom:1px solid var(--separator)}
         .deadline-item:last-child{border-bottom:none}
         .dl-date{min-width:56px;font-size:13px;font-weight:700;font-family:var(--font-mono);color:var(--text-secondary)}
         .dl-date.urgent{color:var(--accent-red)}
@@ -156,7 +156,7 @@ export default function DashboardPage() {
             {/* Stats */}
             <div className="grid grid-cols-4 stats-responsive gap-4 mb-7">
               {STATS.map((s, i) => (
-                <div key={i} className="p-5 transition-all hover:-translate-y-px" style={{ borderRadius: "var(--r-md)", border: "1px solid var(--border)", background: "var(--bg-surface)" }}>
+                <div key={i} className="p-5 hover:-translate-y-px" style={{ borderRadius: "var(--r-md)", border: "1px solid var(--border)", background: "var(--bg-surface)", transition: "all .2s" }}>
                   <div className="flex items-center justify-between mb-2.5">
                     <div className="w-9 h-9 flex items-center justify-center text-[17px]" style={{ borderRadius: "var(--r-sm)", background: "var(--bg-elevated)", border: "1px solid var(--border)" }}>
                       {s.icon}

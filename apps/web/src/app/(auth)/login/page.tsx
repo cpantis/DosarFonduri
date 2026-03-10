@@ -180,7 +180,7 @@ function LoginForm({ onGo }: { onGo: () => void }) {
         <span className="f-link">Am uitat parola</span>
       </div>
       <button className="btn-p" disabled={busy || !email || !pw} onClick={go}>
-        {busy ? <Spinner /> : "Autentificare"}
+        {busy ? <Spinner light /> : "Autentificare"}
       </button>
       <div className="sw-row">
         Nu ai cont?{" "}
@@ -580,7 +580,7 @@ function SignupWizard({ onGo }: { onGo: () => void }) {
               disabled={busy || !codeRes || codeRes === "error"}
               onClick={finalize}
             >
-              {busy ? <Spinner /> : "Activeaza contul"}
+              {busy ? <Spinner light /> : "Activeaza contul"}
             </button>
           </div>
           <div className="sw-row">

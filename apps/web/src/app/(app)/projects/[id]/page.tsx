@@ -18,6 +18,22 @@ type SolomonElement = {
 type TemplateField = { key: string; name: string; value: string | null; source: string | null; confirmed: boolean; fieldType: string; group: string | null };
 type TemplatePage = { num: number; title: string; status: "complete" | "partial" | "empty"; fields: TemplateField[]; totalFields: number; filledFields: number; confirmedFields: number };
 
+type ComposeSection = {
+  marker: string;
+  type: "narrative" | "table" | "calculation";
+  label: string;
+  content?: string;
+  tableData?: {
+    headers: Array<{ key: string; label: string }>;
+    rows: Array<Record<string, any>>;
+    highlightRows?: number[];
+    footerRow?: Record<string, any>;
+    caption?: string;
+    headerColor?: string;
+  };
+  approved: boolean;
+};
+
 type NeemiaTemplate = {
   id: string;
   name: string;
@@ -28,6 +44,8 @@ type NeemiaTemplate = {
   templateDocumentId: string;
   status: string;
   downloadUrl: string | null;
+  generationMode?: "fill" | "compose";
+  composeSections?: ComposeSection[];
 };
 
 type EligibilityRule = {
@@ -270,6 +288,13 @@ export default function ProjectViewPage() {
   const neemiaSplitDragging = useRef(false);
   const neemiaSplitRef = useRef<HTMLDivElement>(null);
 
+  // COMPOSE mode state
+  const [composePreviewSections, setComposePreviewSections] = useState<ComposeSection[]>([]);
+  const [composePreviewing, setComposePreviewing] = useState(false);
+  const [composeEditing, setComposeEditing] = useState<number | null>(null); // index of section being edited
+  const [composeEditText, setComposeEditText] = useState("");
+  const [composeModel, setComposeModel] = useState("");
+
   // Drag handler for Neemia split pane
   useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {
@@ -417,6 +442,8 @@ export default function ProjectViewPage() {
           templateDocumentId: doc.templateDocumentId,
           status: doc.status,
           downloadUrl: doc.downloadUrl || null,
+          generationMode: doc.generationMode || "fill",
+          composeSections: doc.composeContent?.sections || undefined,
         }));
         setNeemiaTemplates(neemiaMapped);
       } catch (err) {
@@ -973,6 +1000,116 @@ export default function ProjectViewPage() {
     } finally {
       setNeemiaBulkGenerating(false);
     }
+  };
+
+  // ─── NEEMIA COMPOSE: Preview AI content ───
+  const handleComposePreview = async (templateDocumentId: string) => {
+    if (readOnly || composePreviewing) return;
+    setComposePreviewing(true);
+    setComposePreviewSections([]);
+    setNeemiaGenStatus("Se generează previzualizare COMPOSE...");
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("df-token") : null;
+      const res = await fetch(`${API_URL}/api/neemia/projects/${projectId}/compose/preview`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ templateDocumentId }),
+      });
+      const reader = res.body?.getReader();
+      const decoder = new TextDecoder();
+      if (!reader) throw new Error("No stream");
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value);
+        for (const line of chunk.split("\n")) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const evt = JSON.parse(line.slice(6));
+            if (evt.type === "status") setNeemiaGenStatus(evt.message);
+            else if (evt.type === "context_ready") setNeemiaGenStatus(`Context: ${evt.elements} elemente, ${evt.referenceTables} tabele referință`);
+            else if (evt.type === "preview_ready" || evt.type === "ai_complete") {
+              setComposePreviewSections(evt.sections || []);
+              setComposeModel(evt.model || "");
+              setNeemiaGenStatus(`✓ Previzualizare COMPOSE gata — ${(evt.sections || []).length} secțiuni generate`);
+            }
+            else if (evt.type === "error") setNeemiaGenStatus(`Eroare: ${evt.message}`);
+          } catch {}
+        }
+      }
+    } catch (err) {
+      setNeemiaGenStatus(`Eroare: ${(err as Error).message}`);
+    } finally {
+      setComposePreviewing(false);
+    }
+  };
+
+  // ─── NEEMIA COMPOSE: Generate final DOCX with (optionally edited) sections ───
+  const handleComposeGenerate = async (templateDocumentId: string) => {
+    if (readOnly || neemiaGenerating) return;
+    setNeemiaGenerating(true);
+    setNeemiaGenStatus("Se generează documentul COMPOSE...");
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("df-token") : null;
+      const res = await fetch(`${API_URL}/api/neemia/projects/${projectId}/compose/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({
+          templateDocumentId,
+          editedSections: composePreviewSections.length > 0 ? composePreviewSections : undefined,
+        }),
+      });
+      const reader = res.body?.getReader();
+      const decoder = new TextDecoder();
+      if (!reader) throw new Error("No stream");
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value);
+        for (const line of chunk.split("\n")) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const evt = JSON.parse(line.slice(6));
+            if (evt.type === "status") setNeemiaGenStatus(evt.message);
+            else if (evt.type === "complete") {
+              setNeemiaGenStatus(`✓ Document COMPOSE generat — ${evt.filledCount} secțiuni`);
+              setComposePreviewSections([]);
+              const docs = await apiGet<any[]>(`/api/neemia/projects/${projectId}/documents`).catch(() => []);
+              setNeemiaTemplates((docs || []).map((doc: any) => ({
+                id: doc.id, name: doc.templateName || "Document",
+                type: (doc.templateFileType || "DOCX").toUpperCase(),
+                pages: [], totalFields: doc.filledCount || 0, filledFields: doc.filledCount || 0,
+                templateDocumentId: doc.templateDocumentId, status: doc.status, downloadUrl: doc.downloadUrl || null,
+                generationMode: doc.generationMode || "fill",
+                composeSections: doc.composeContent?.sections || undefined,
+              })));
+            }
+            else if (evt.type === "error") setNeemiaGenStatus(`Eroare: ${evt.message}`);
+          } catch {}
+        }
+      }
+    } catch (err) {
+      setNeemiaGenStatus(`Eroare: ${(err as Error).message}`);
+    } finally {
+      setNeemiaGenerating(false);
+    }
+  };
+
+  // ─── COMPOSE: Edit section text ───
+  const handleComposeEditSave = (sectionIdx: number) => {
+    setComposePreviewSections(prev => prev.map((s, i) =>
+      i === sectionIdx ? { ...s, content: composeEditText, approved: true } : s
+    ));
+    setComposeEditing(null);
+    setComposeEditText("");
+  };
+
+  const handleComposeApproveSection = (sectionIdx: number) => {
+    setComposePreviewSections(prev => prev.map((s, i) =>
+      i === sectionIdx ? { ...s, approved: !s.approved } : s
+    ));
   };
 
   const handleRecheckEligibility = async () => {
@@ -1752,6 +1889,54 @@ export default function ProjectViewPage() {
         .tc-download{color:var(--accent-blue);border-color:var(--accent-blue)}
         .tc-generate{color:var(--accent-green);border-color:var(--accent-green)}
         .tc-generate:hover:not(:disabled){background:rgba(52,211,153,.08);border-color:var(--accent-green)}
+        .tc-mode-badge{font-size:9px;font-weight:700;padding:1px 6px;border-radius:3px;text-transform:uppercase;letter-spacing:.5px;margin-left:4px}
+        .tc-mode-badge.fill{background:rgba(77,139,255,.12);color:var(--accent-blue)}
+        .tc-mode-badge.compose{background:rgba(167,139,250,.15);color:var(--accent-purple)}
+        .tc-preview{color:var(--accent-purple);border-color:var(--accent-purple)}
+        .tc-preview:hover:not(:disabled){background:rgba(167,139,250,.08);border-color:var(--accent-purple)}
+
+        /* COMPOSE Preview Panel */
+        .compose-preview-panel{display:flex;flex-direction:column;height:100%;overflow:hidden}
+        .compose-preview-header{display:flex;align-items:center;gap:10px;padding:12px 20px;border-bottom:1px solid var(--border);background:var(--bg-surface)}
+        .compose-preview-header h3{margin:0;font-size:13px;font-weight:700;color:var(--text-primary)}
+        .compose-model-badge{font-size:10px;font-family:var(--font-mono);padding:2px 8px;border-radius:4px;background:rgba(167,139,250,.1);color:var(--accent-purple);font-weight:600}
+        .compose-stats{font-size:12px;color:var(--text-secondary);font-weight:600}
+        .compose-generate-btn{padding:6px 16px;border-radius:var(--r-sm);border:1px solid var(--accent-green);background:rgba(52,211,153,.08);color:var(--accent-green);font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font-sans);transition:all .15s}
+        .compose-generate-btn:hover:not(:disabled){background:rgba(52,211,153,.18)}
+        .compose-generate-btn:disabled{opacity:.5;cursor:not-allowed}
+        .compose-sections-list{flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:16px}
+        .compose-section{border:1px solid var(--border);border-radius:var(--r-md);overflow:hidden;transition:border-color .15s}
+        .compose-section.approved{border-color:rgba(52,211,153,.4)}
+        .cs-header{display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--bg-elevated);border-bottom:1px solid var(--border)}
+        .cs-type-badge{font-size:10px;font-weight:700;padding:2px 8px;border-radius:3px;text-transform:uppercase;letter-spacing:.5px}
+        .cs-type-badge.narrative{background:rgba(77,139,255,.1);color:var(--accent-blue)}
+        .cs-type-badge.table{background:rgba(167,139,250,.1);color:var(--accent-purple)}
+        .cs-type-badge.calculation{background:rgba(251,191,36,.1);color:var(--accent-yellow)}
+        .cs-label{font-size:13px;font-weight:600;color:var(--text-primary)}
+        .cs-approve-btn{padding:3px 10px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--text-secondary);font-family:var(--font-sans);transition:all .15s}
+        .cs-approve-btn.active{border-color:var(--accent-green);color:var(--accent-green);background:rgba(52,211,153,.06)}
+        .cs-edit-btn{padding:3px 10px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--accent-blue);font-family:var(--font-sans);transition:all .15s}
+        .cs-edit-btn:hover{border-color:var(--accent-blue);background:rgba(77,139,255,.06)}
+        .cs-narrative{padding:14px;font-size:13px;line-height:1.7;color:var(--text-primary)}
+        .cs-narrative p{margin:0 0 10px}
+        .cs-narrative p:last-child{margin-bottom:0}
+        .cs-edit-area{padding:14px}
+        .cs-textarea{width:100%;border:1px solid var(--border);border-radius:var(--r-sm);background:var(--bg-deep);color:var(--text-primary);font-family:var(--font-sans);font-size:13px;line-height:1.6;padding:10px;resize:vertical;min-height:120px}
+        .cs-textarea:focus{outline:none;border-color:var(--accent-blue)}
+        .cs-edit-actions{display:flex;gap:8px;margin-top:8px;justify-content:flex-end}
+        .cs-save-btn{padding:4px 14px;border-radius:4px;border:1px solid var(--accent-green);background:rgba(52,211,153,.08);color:var(--accent-green);font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font-sans)}
+        .cs-cancel-btn{padding:4px 14px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--text-secondary);font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font-sans)}
+        .cs-table-wrapper{padding:14px;overflow-x:auto}
+        .cs-table-caption{font-size:12px;font-weight:700;color:var(--accent-blue);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px}
+        .cs-table{width:100%;border-collapse:collapse;font-size:12px;font-family:var(--font-sans)}
+        .cs-table th{padding:8px 10px;text-align:left;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.3px;border-bottom:2px solid var(--border)}
+        .cs-table td{padding:6px 10px;border-bottom:1px solid var(--border);color:var(--text-primary)}
+        .cs-table .highlight-row{background:rgba(251,191,36,.1)}
+        .cs-table .highlight-row td{font-weight:600;color:#856D0E}
+        .cs-table .alt-row{background:var(--bg-elevated)}
+        .cs-table .footer-row{background:#2C3E50}
+        .cs-table .footer-row td{color:#fff;font-weight:700;border-bottom:none}
+
         .neemia-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--text-muted);gap:12px}
         .neemia-empty .ne-icon{font-size:40px;opacity:.5}
         .neemia-empty .ne-label{font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:1px}
@@ -2893,23 +3078,52 @@ export default function ProjectViewPage() {
                         <div className="tc-name">
                           {tmpl.name}
                           <span className="tc-badge">{tmpl.type}</span>
+                          <span className={`tc-mode-badge ${tmpl.generationMode === "compose" ? "compose" : "fill"}`}>
+                            {tmpl.generationMode === "compose" ? "COMPOSE" : "FILL"}
+                          </span>
                         </div>
-                        <div className="tc-info">{tmpl.pages.length || "?"} pagini &middot; {tmpl.totalFields} câmpuri</div>
+                        <div className="tc-info">
+                          {tmpl.generationMode === "compose"
+                            ? `${tmpl.composeSections?.length || "?"} secțiuni AI`
+                            : `${tmpl.pages.length || "?"} pagini · ${tmpl.totalFields} câmpuri`}
+                        </div>
                         <div className="tc-progress">
                           <div className="tc-progress-fill" style={{ width: `${p}%`, background: neemiaProgressColor(p) }} />
                         </div>
                         {tmpl.filledFields > 0 && (
                           <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 4 }}>
-                            {tmpl.filledFields}/{tmpl.totalFields} câmpuri completate
+                            {tmpl.generationMode === "compose"
+                              ? `${tmpl.composeSections?.filter(s => s.approved).length || 0}/${tmpl.composeSections?.length || 0} secțiuni aprobate`
+                              : `${tmpl.filledFields}/${tmpl.totalFields} câmpuri completate`}
                           </div>
                         )}
-                        <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                        <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
                           {tmpl.status === "generated" && tmpl.downloadUrl && (
                             <button className="tc-action-btn tc-download" onClick={(e) => { e.stopPropagation(); window.open(tmpl.downloadUrl!, "_blank"); }}>
                               &#8595; Descarcă
                             </button>
                           )}
-                          {tmpl.templateDocumentId && (
+                          {tmpl.templateDocumentId && tmpl.generationMode === "compose" && (
+                            <>
+                              <button
+                                className="tc-action-btn tc-preview"
+                                onClick={(e) => { e.stopPropagation(); handleComposePreview(tmpl.templateDocumentId); }}
+                                disabled={composePreviewing || readOnly}
+                              >
+                                {composePreviewing ? "Se generează..." : "Previzualizare AI"}
+                              </button>
+                              {composePreviewSections.length > 0 && (
+                                <button
+                                  className="tc-action-btn tc-generate"
+                                  onClick={(e) => { e.stopPropagation(); handleComposeGenerate(tmpl.templateDocumentId); }}
+                                  disabled={neemiaGenerating || readOnly}
+                                >
+                                  Generează DOCX
+                                </button>
+                              )}
+                            </>
+                          )}
+                          {tmpl.templateDocumentId && tmpl.generationMode !== "compose" && (
                             <button
                               className="tc-action-btn tc-generate"
                               onClick={(e) => { e.stopPropagation(); handleNeemiaGenerate(tmpl.templateDocumentId); }}
@@ -2924,9 +3138,119 @@ export default function ProjectViewPage() {
                   })}
                 </div>
 
-                {/* Center + Right: Doc preview + Fields */}
+                {/* Center + Right: Doc preview + Fields / COMPOSE preview */}
                 <div className="neemia-doc-view">
-                  {neemiaTemplate && neemiaTemplate.pages.length > 0 ? (
+                  {/* COMPOSE PREVIEW PANEL */}
+                  {neemiaTemplate?.generationMode === "compose" && composePreviewSections.length > 0 ? (
+                    <div className="compose-preview-panel">
+                      <div className="compose-preview-header">
+                        <h3>Previzualizare COMPOSE — {neemiaTemplate.name}</h3>
+                        {composeModel && <span className="compose-model-badge">{composeModel}</span>}
+                        <div style={{ flex: 1 }} />
+                        <span className="compose-stats">
+                          {composePreviewSections.filter(s => s.approved).length}/{composePreviewSections.length} aprobate
+                        </span>
+                        <button
+                          className="compose-generate-btn"
+                          onClick={() => handleComposeGenerate(neemiaTemplate.templateDocumentId)}
+                          disabled={neemiaGenerating || readOnly}
+                        >
+                          {neemiaGenerating ? "Se generează..." : "Generează DOCX final"}
+                        </button>
+                      </div>
+                      <div className="compose-sections-list">
+                        {composePreviewSections.map((section, si) => (
+                          <div key={si} className={`compose-section ${section.approved ? "approved" : ""}`}>
+                            <div className="cs-header">
+                              <span className={`cs-type-badge ${section.type}`}>
+                                {section.type === "narrative" ? "Text" : section.type === "table" ? "Tabel" : "Calcul"}
+                              </span>
+                              <span className="cs-label">{section.label}</span>
+                              <div style={{ flex: 1 }} />
+                              <button
+                                className={`cs-approve-btn ${section.approved ? "active" : ""}`}
+                                onClick={() => handleComposeApproveSection(si)}
+                              >
+                                {section.approved ? "✓ Aprobat" : "Aprobă"}
+                              </button>
+                              {section.type === "narrative" && (
+                                <button
+                                  className="cs-edit-btn"
+                                  onClick={() => {
+                                    setComposeEditing(si);
+                                    setComposeEditText(section.content || "");
+                                  }}
+                                >
+                                  Editează
+                                </button>
+                              )}
+                            </div>
+
+                            {/* Narrative content */}
+                            {section.type === "narrative" && composeEditing === si ? (
+                              <div className="cs-edit-area">
+                                <textarea
+                                  className="cs-textarea"
+                                  value={composeEditText}
+                                  onChange={e => setComposeEditText(e.target.value)}
+                                  rows={8}
+                                />
+                                <div className="cs-edit-actions">
+                                  <button className="cs-save-btn" onClick={() => handleComposeEditSave(si)}>Salvează</button>
+                                  <button className="cs-cancel-btn" onClick={() => { setComposeEditing(null); setComposeEditText(""); }}>Anulează</button>
+                                </div>
+                              </div>
+                            ) : section.type === "narrative" && section.content ? (
+                              <div className="cs-narrative">
+                                {section.content.split("\n\n").map((p, pi) => (
+                                  <p key={pi}>{p}</p>
+                                ))}
+                              </div>
+                            ) : null}
+
+                            {/* Table preview */}
+                            {(section.type === "table" || section.type === "calculation") && section.tableData ? (
+                              <div className="cs-table-wrapper">
+                                {section.tableData.caption && (
+                                  <div className="cs-table-caption">{section.tableData.caption}</div>
+                                )}
+                                <table className="cs-table">
+                                  <thead>
+                                    <tr>
+                                      {section.tableData.headers.map((h, hi) => (
+                                        <th key={hi} style={{ background: `#${section.tableData?.headerColor || "1a3a5c"}`, color: "#fff" }}>
+                                          {h.label}
+                                        </th>
+                                      ))}
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {section.tableData.rows.map((row, ri) => {
+                                      const isHighlight = section.tableData?.highlightRows?.includes(ri);
+                                      return (
+                                        <tr key={ri} className={isHighlight ? "highlight-row" : ri % 2 === 1 ? "alt-row" : ""}>
+                                          {section.tableData!.headers.map((h, hi) => (
+                                            <td key={hi}>{String(row[h.key] ?? "")}</td>
+                                          ))}
+                                        </tr>
+                                      );
+                                    })}
+                                    {section.tableData.footerRow && (
+                                      <tr className="footer-row">
+                                        {section.tableData.headers.map((h, hi) => (
+                                          <td key={hi}>{String(section.tableData!.footerRow![h.key] ?? "")}</td>
+                                        ))}
+                                      </tr>
+                                    )}
+                                  </tbody>
+                                </table>
+                              </div>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : neemiaTemplate && neemiaTemplate.pages.length > 0 ? (
                     <>
                       {/* Page navigation bar */}
                       <div className="neemia-page-nav">

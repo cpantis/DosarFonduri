@@ -193,9 +193,19 @@ interface GenerateDocParams {
 }
 
 // ═══ GENERATE DOCUMENT (main flow, SSE streaming) ═══
+// Automatically detects FILL vs COMPOSE mode from template generationMode
 export async function generateDocument(params: GenerateDocParams): Promise<ReadableStream> {
   const { projectId, templateDocumentId, organizationId, userId } = params;
   const encoder = new TextEncoder();
+
+  // Check if template is COMPOSE mode — if so, delegate to composeDocument
+  const templateCheck = await db.query.documents.findFirst({
+    where: eq(documents.id, templateDocumentId),
+  });
+  if (templateCheck && (templateCheck as any).generationMode === "compose") {
+    const { composeDocument } = await import("./neemiaCompose");
+    return composeDocument({ projectId, templateDocumentId, organizationId, userId });
+  }
 
   return new ReadableStream({
     async start(controller) {

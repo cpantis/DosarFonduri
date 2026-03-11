@@ -9,6 +9,9 @@ import {
   checkCrossDocumentConsistency, computeCalculatedFields,
   generateAllDocuments,
 } from "../services/neemia";
+import {
+  composeDocument, validateComposeReadiness, buildComposeContext,
+} from "../services/neemiaCompose";
 import { getFileUrl } from "../services/storage";
 
 export const neemiaRoutes = new Hono<AppEnv>();
@@ -261,4 +264,73 @@ neemiaRoutes.post("/projects/:projectId/generate-all", async (c) => {
       "Connection": "keep-alive",
     },
   });
+});
+
+// ═══ COMPOSE MODE ROUTES ═══
+
+// Validate COMPOSE readiness
+neemiaRoutes.post("/projects/:projectId/compose/validate", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const projectId = c.req.param("projectId");
+  const { templateDocumentId } = await c.req.json();
+
+  const result = await validateComposeReadiness(projectId, templateDocumentId, auth.organizationId!);
+  return c.json(result);
+});
+
+// Preview COMPOSE content (AI generates, no DOCX yet)
+neemiaRoutes.post("/projects/:projectId/compose/preview", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const projectId = c.req.param("projectId");
+  const { templateDocumentId } = await c.req.json();
+
+  const stream = await composeDocument({
+    projectId,
+    templateDocumentId,
+    organizationId: auth.organizationId!,
+    userId: auth.userId,
+    previewOnly: true,
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      "Connection": "keep-alive",
+    },
+  });
+});
+
+// Generate COMPOSE document (full DOCX with AI content + tables)
+neemiaRoutes.post("/projects/:projectId/compose/generate", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const projectId = c.req.param("projectId");
+  const { templateDocumentId, editedSections } = await c.req.json();
+
+  const stream = await composeDocument({
+    projectId,
+    templateDocumentId,
+    organizationId: auth.organizationId!,
+    userId: auth.userId,
+    previewOnly: false,
+    editedSections,
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      "Connection": "keep-alive",
+    },
+  });
+});
+
+// Get COMPOSE context data (elements + reference tables + rules)
+neemiaRoutes.get("/projects/:projectId/compose/context/:templateDocId", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const projectId = c.req.param("projectId");
+  const templateDocId = c.req.param("templateDocId");
+
+  const context = await buildComposeContext(projectId, auth.organizationId!, templateDocId);
+  return c.json(context);
 });

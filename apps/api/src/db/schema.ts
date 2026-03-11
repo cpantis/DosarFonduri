@@ -11,9 +11,13 @@ export const companyStatusEnum = pgEnum("company_status", ["functiune", "radiata
 export const folderTypeEnum = pgEnum("folder_type", ["program", "masura", "sesiune", "ghiduri", "templateuri", "clienti_prospecti", "clienti_finali"]);
 export const docFileTypeEnum = pgEnum("doc_file_type", ["pdf", "docx", "xlsx", "doc"]);
 export const docStatusEnum = pgEnum("doc_status", ["uploaded", "processing", "processed", "error"]);
-export const docProcessingTypeEnum = pgEnum("doc_processing_type", ["ghid", "template", "reference", "client_doc"]);
+export const docProcessingTypeEnum = pgEnum("doc_processing_type", ["ghid", "template", "reference", "client_doc", "reference_data"]);
 export const ruleTypeEnum = pgEnum("rule_type", ["fixed", "interpreted"]);
 export const fieldTypeEnum = pgEnum("field_type", ["text", "number", "textarea", "date", "table", "signature", "select"]);
+export const refTableTypeEnum = pgEnum("ref_table_type", ["lookup", "classification", "list", "matrix"]);
+export const refExtractedByEnum = pgEnum("ref_extracted_by", ["ai", "manual"]);
+export const refUsageEnum = pgEnum("ref_usage", ["validates", "scores", "classifies"]);
+export const elementRoleLinkEnum = pgEnum("element_role_link", ["input", "output", "constraint"]);
 export const projectStatusEnum = pgEnum("project_status", ["draft", "in_progress", "review", "submitted", "approved", "rejected"]);
 export const eligibilityStatusEnum = pgEnum("eligibility_status", ["passed", "failed", "pending", "not_applicable"]);
 export const elementSourceEnum = pgEnum("element_source", ["onrc", "solomon", "manual", "calculated", "ghid"]);
@@ -210,6 +214,53 @@ export const rules = pgTable("rules", {
   validatedAt: timestamp("validated_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+// === GUIDE REFERENCE TABLES (structured data from annexes) ===
+export const guideReferenceTables = pgTable("guide_reference_tables", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  documentId: uuid("document_id").references(() => documents.id, { onDelete: "cascade" }).notNull(),
+  organizationId: uuid("organization_id").references(() => organizations.id).notNull(),
+  name: varchar("name", { length: 500 }).notNull(),
+  description: text("description"),
+  tableType: refTableTypeEnum("table_type").notNull(),
+  schema: jsonb("schema").$type<Array<{ key: string; label: string; type: string }>>(),
+  data: jsonb("data").$type<Array<Record<string, any>>>(),
+  lookupKey: varchar("lookup_key", { length: 100 }),
+  sourcePage: integer("source_page"),
+  sourceText: text("source_text"),
+  extractedBy: refExtractedByEnum("extracted_by").notNull().default("ai"),
+  validated: boolean("validated").notNull().default(false),
+  validatedBy: uuid("validated_by").references(() => users.id),
+  validatedAt: timestamp("validated_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  docIdx: index("ref_table_doc_idx").on(table.documentId),
+  orgIdx: index("ref_table_org_idx").on(table.organizationId),
+}));
+
+// === RULE ↔ REFERENCE TABLE LINKS ===
+export const ruleReferenceLinks = pgTable("rule_reference_links", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  ruleId: uuid("rule_id").references(() => rules.id, { onDelete: "cascade" }).notNull(),
+  referenceTableId: uuid("reference_table_id").references(() => guideReferenceTables.id, { onDelete: "cascade" }).notNull(),
+  usage: refUsageEnum("usage").notNull(),
+  description: text("description"),
+}, (table) => ({
+  ruleIdx: index("rule_ref_rule_idx").on(table.ruleId),
+  tableIdx: index("rule_ref_table_idx").on(table.referenceTableId),
+}));
+
+// === ELEMENT ↔ RULE LINKS ===
+export const elementRuleLinks = pgTable("element_rule_links", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  templateElementId: uuid("template_element_id").references(() => templateElements.id, { onDelete: "cascade" }).notNull(),
+  ruleId: uuid("rule_id").references(() => rules.id, { onDelete: "cascade" }).notNull(),
+  role: elementRoleLinkEnum("role").notNull(),
+  description: text("description"),
+}, (table) => ({
+  elementIdx: index("elem_rule_elem_idx").on(table.templateElementId),
+  ruleIdx: index("elem_rule_rule_idx").on(table.ruleId),
+}));
 
 // === TEMPLATE ELEMENTS ===
 export const templateElements = pgTable("template_elements", {

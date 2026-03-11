@@ -16,6 +16,7 @@ import { neemiaRoutes } from "./routes/neemia";
 import { adminRoutes } from "./routes/admin";
 import { configRoutes } from "./routes/config";
 import { exportRoutes } from "./routes/export";
+import { referenceTableRoutes } from "./routes/reference-tables";
 import { authMiddleware } from "./middleware/auth";
 import { auditMiddleware } from "./middleware/audit";
 import { errorHandler } from "./middleware/errorHandler";
@@ -63,6 +64,7 @@ app.route("/api/neemia", neemiaRoutes);
 app.route("/api/admin", adminRoutes);
 app.route("/api/config", configRoutes);
 app.route("/api/export", exportRoutes);
+app.route("/api/reference", referenceTableRoutes);
 
 // Global error handler
 app.onError(errorHandler);

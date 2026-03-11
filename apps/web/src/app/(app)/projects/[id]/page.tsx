@@ -32,6 +32,7 @@ type NeemiaTemplate = {
 
 type EligibilityRule = {
   id: string;
+  ruleId?: string;
   name: string;
   status: "pass" | "fail" | "pending";
   detail: string;
@@ -39,6 +40,8 @@ type EligibilityRule = {
   confidence?: number;
   page?: number;
   section?: string;
+  hasReferenceData?: boolean;
+  referenceTableNames?: string[];
 };
 
 type GuideRule = {
@@ -133,6 +136,7 @@ function parseAdresa(adresa: string | undefined): { localitate: string; judet: s
 function mapEligibilityRules(flat: any[]): EligibilityRule[] {
   return flat.map(item => ({
     id: item.id,
+    ruleId: item.ruleId || item.rule?.id,
     name: item.rule?.description || "Regulă necunoscută",
     status: item.status === "passed" ? "pass" : item.status === "failed" ? "fail" : "pending",
     detail: item.detail || "",
@@ -226,9 +230,13 @@ export default function ProjectViewPage() {
   const [branches, setBranches] = useState<Record<string, boolean>>({ scriere: true, implementare: false, monitorizare: false });
   const [selectedRule, setSelectedRule] = useState<string | null>(null);
   const [selectedElement, setSelectedElement] = useState<string | null>(null);
+  const [elementConstraints, setElementConstraints] = useState<any[]>([]);
   const [elemFilter, setElemFilter] = useState("all");
   const [elemSearch, setElemSearch] = useState("");
-  const [ghidTab, setGhidTab] = useState<"reguli" | "ghid">("reguli");
+  const [ghidTab, setGhidTab] = useState<"reguli" | "ghid" | "anexe">("reguli");
+  const [referenceTables, setReferenceTables] = useState<any[]>([]);
+  const [selectedRefTable, setSelectedRefTable] = useState<string | null>(null);
+  const [refTablesLoading, setRefTablesLoading] = useState(false);
   const [ghidCategoryFilter, setGhidCategoryFilter] = useState<string>("all");
   const [collapsedCats, setCollapsedCats] = useState<Record<string, boolean>>({});
   const [checkAddOpen, setCheckAddOpen] = useState(false);
@@ -245,6 +253,7 @@ export default function ProjectViewPage() {
   const [solomonConvId, setSolomonConvId] = useState<string | null>(null);
   const [solomonStreaming, setSolomonStreaming] = useState(false);
   const [extractionStates, setExtractionStates] = useState<Record<string, "confirmed" | "rejected">>({});
+  const [extractionValidations, setExtractionValidations] = useState<Record<string, any>>({});
   const [refinePopup, setRefinePopup] = useState<{ text: string; x: number; y: number } | null>(null);
   const [refineInput, setRefineInput] = useState("");
   const chatRef = useRef<HTMLDivElement>(null);
@@ -376,6 +385,27 @@ export default function ProjectViewPage() {
         setGuideRules(mapGuideRules(eligData.grouped || []));
         setElements(mapElements(proj.elements || []));
         setChecklistItems(mapChecklist(checkData.items || proj.checklist || []));
+
+        // Load reference tables for the organization
+        apiGet<any[]>("/api/reference/tables").then(tables => setReferenceTables(tables || [])).catch(() => {});
+
+        // Enrich eligibility rules with reference data sources
+        const eligRules = mapEligibilityRules(eligData.flat || []);
+        Promise.all(
+          eligRules.filter(r => r.ruleId).map(r =>
+            apiGet<any[]>(`/api/reference/rules/${r.ruleId}/reference-links`).catch(() => [])
+          )
+        ).then(results => {
+          const enriched = eligRules.map((r, i) => {
+            const links = results[i] || [];
+            return {
+              ...r,
+              hasReferenceData: links.length > 0,
+              referenceTableNames: links.map((l: any) => l.referenceTable?.name).filter(Boolean),
+            };
+          });
+          setEligibilityRules(enriched);
+        }).catch(() => {});
 
         const neemiaMapped: NeemiaTemplate[] = (neemiaDocs || []).map((doc: any) => ({
           id: doc.id,
@@ -682,6 +712,17 @@ export default function ProjectViewPage() {
             ? { ...e, value: ext.value, source: "solomon", sourceLabel: "Solomon", status: "confirmat" as const, confidence: 100 }
             : e
           ));
+
+          // Cross-validate against reference tables
+          apiPost("/api/reference/validate-element", {
+            elementId: matchingEl.id,
+            value: ext.value,
+            projectId,
+          }).then(validation => {
+            if (validation && validation.totalChecks > 0) {
+              setExtractionValidations(prev => ({ ...prev, [k]: validation }));
+            }
+          }).catch(() => {}); // Silently fail validation
         } catch (err) {
           console.error("Failed to persist Solomon extraction:", err);
         }
@@ -1024,6 +1065,14 @@ export default function ProjectViewPage() {
 
   const [bulkConfirming, setBulkConfirming] = useState(false);
 
+  // Fetch element constraints when an element is selected
+  useEffect(() => {
+    if (!selectedElement) { setElementConstraints([]); return; }
+    apiGet<any[]>(`/api/reference/elements/${selectedElement}/rule-links`)
+      .then(links => setElementConstraints(links || []))
+      .catch(() => setElementConstraints([]));
+  }, [selectedElement]);
+
   const handleNeemiaTemplateClick = async (idx: number) => {
     setNeemiaActiveTemplate(idx);
     setNeemiaActivePage(0);
@@ -1316,6 +1365,66 @@ export default function ProjectViewPage() {
         .rd-empty-icon{font-size:48px;opacity:.4}
         .rd-empty-title{font-size:16px;font-weight:700;color:var(--text-secondary)}
         .rd-empty-desc{font-size:13px;text-align:center;max-width:280px;line-height:1.6}
+
+        /* Anexe & Date panel */
+        .anexe-panel{display:grid;grid-template-columns:320px 1fr;height:100%;overflow:hidden}
+        .anexe-list{overflow-y:auto;border-right:1px solid var(--border);padding:16px}
+        .anexe-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;text-align:center;color:var(--text-secondary)}
+        .anexe-card{padding:12px;border:1px solid var(--border);border-radius:var(--r-md);cursor:pointer;transition:all .15s;margin-bottom:8px;background:var(--bg-surface)}
+        .anexe-card:hover{border-color:var(--border-active);background:var(--bg-hover)}
+        .anexe-card.active{border-color:var(--accent-blue);background:rgba(77,139,255,.04);box-shadow:0 0 0 1px rgba(77,139,255,.15)}
+        .anexe-card-top{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+        .anexe-type-badge{font-size:9px;font-weight:700;padding:2px 8px;border-radius:8px;text-transform:uppercase;letter-spacing:.5px}
+        .anexe-type-badge.lookup{color:var(--accent-blue);background:rgba(77,139,255,.12)}
+        .anexe-type-badge.classification{color:var(--accent-purple);background:rgba(167,139,250,.12)}
+        .anexe-type-badge.list{color:var(--accent-green);background:rgba(52,211,153,.12)}
+        .anexe-type-badge.matrix{color:var(--accent-orange);background:rgba(251,146,60,.12)}
+        .anexe-validated{color:var(--accent-green);font-size:14px;font-weight:700}
+        .anexe-card-name{font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:4px}
+        .anexe-card-desc{font-size:11px;color:var(--text-muted);line-height:1.4;margin-bottom:6px}
+        .anexe-card-meta{display:flex;gap:12px;font-size:10px;color:var(--text-muted)}
+        .anexe-detail{overflow-y:auto;padding:20px}
+        .anexe-detail-content{display:flex;flex-direction:column;gap:16px}
+        .anexe-detail-header{display:flex;justify-content:space-between;align-items:flex-start}
+        .anexe-detail-title{font-size:18px;font-weight:700;color:var(--text-primary)}
+        .anexe-detail-badges{display:flex;align-items:center;gap:8px}
+        .anexe-detail-desc{font-size:13px;color:var(--text-secondary);line-height:1.5}
+        .anexe-detail-lookup{font-size:12px;color:var(--text-muted)}
+        .anexe-detail-lookup code{font-family:var(--font-mono);color:var(--accent-blue);background:rgba(77,139,255,.08);padding:1px 6px;border-radius:4px}
+        .anexe-table-wrapper{overflow-x:auto;border:1px solid var(--border);border-radius:var(--r-md)}
+        .anexe-table{width:100%;border-collapse:collapse;font-size:12px}
+        .anexe-table th{text-align:left;padding:8px 12px;background:var(--bg-elevated);color:var(--text-secondary);font-weight:600;border-bottom:1px solid var(--border);white-space:nowrap}
+        .anexe-table td{padding:6px 12px;border-bottom:1px solid var(--border);color:var(--text-primary)}
+        .anexe-table tr:hover td{background:var(--bg-hover)}
+        .anexe-source-text{border-top:1px solid var(--border);padding-top:16px}
+        .anexe-source-label{font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px}
+        .anexe-source-quote{font-size:12px;color:var(--text-secondary);line-height:1.5;padding:12px;background:var(--bg-elevated);border-radius:var(--r-sm);border-left:3px solid var(--accent-blue);font-style:italic}
+
+        /* Element constraints section */
+        .ed-constraints{margin-top:16px;padding-top:12px;border-top:1px solid var(--border)}
+        .ed-constraints-title{font-size:12px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;display:flex;align-items:center;gap:6px}
+        .ed-constraint-card{padding:10px;border:1px solid var(--border);border-radius:var(--r-sm);margin-bottom:8px;background:var(--bg-elevated)}
+        .ed-constraint-top{display:flex;align-items:center;gap:6px;margin-bottom:4px}
+        .ed-constraint-role{font-size:9px;font-weight:700;padding:2px 6px;border-radius:6px;text-transform:uppercase}
+        .ed-constraint-role.input{color:var(--accent-blue);background:rgba(77,139,255,.12)}
+        .ed-constraint-role.output{color:var(--accent-green);background:rgba(52,211,153,.12)}
+        .ed-constraint-role.constraint{color:var(--accent-red);background:rgba(248,113,113,.12)}
+        .ed-constraint-rule{font-size:12px;color:var(--text-primary);line-height:1.4}
+        .ed-constraint-refs{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+        .ed-constraint-ref{font-size:10px;color:var(--accent-purple);background:rgba(167,139,250,.08);padding:2px 8px;border-radius:6px;border:1px solid rgba(167,139,250,.2)}
+
+        /* Solomon validation card */
+        .solomon-validation-card{margin-top:8px;padding:10px 12px;border-radius:var(--r-md);border:1px solid var(--border);background:var(--bg-elevated)}
+        .svc-header{display:flex;align-items:center;gap:6px;margin-bottom:8px;font-size:12px;font-weight:600;color:var(--text-secondary)}
+        .svc-results{display:flex;flex-direction:column;gap:4px}
+        .svc-result{display:flex;align-items:flex-start;gap:8px;font-size:11px;padding:4px 0}
+        .svc-status{flex-shrink:0;width:16px;height:16px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff}
+        .svc-status.passed{background:var(--accent-green)}
+        .svc-status.failed{background:var(--accent-red)}
+        .svc-status.warning{background:var(--accent-yellow)}
+        .svc-status.info{background:var(--accent-blue)}
+        .svc-text{color:var(--text-primary);line-height:1.4}
+        .svc-ref{font-size:10px;color:var(--accent-purple);margin-top:2px}
 
         .pdf-viewer{flex:1;background:var(--bg-deep);display:flex;align-items:center;justify-content:center;position:relative}
         .pdf-page-mock{width:480px;background:#fff;border-radius:4px;box-shadow:0 4px 24px rgba(0,0,0,.4);padding:48px 40px;min-height:620px;color:#1a1a2e;position:relative}
@@ -1877,6 +1986,13 @@ export default function ProjectViewPage() {
                       )}
                     </div>
                     <div className="elig-detail">{rule.detail}</div>
+                    {rule.hasReferenceData && rule.referenceTableNames && rule.referenceTableNames.length > 0 && (
+                      <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }}>
+                        {rule.referenceTableNames.map((name: string, ri: number) => (
+                          <span key={ri} className="ed-constraint-ref" style={{ fontSize: 9 }}>&#128202; {name}</span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
 
@@ -1908,10 +2024,120 @@ export default function ProjectViewPage() {
               <div className="ghid-layout">
                 <div className="ghid-sub-tabs">
                   <button className={`ghid-sub-tab ${ghidTab === "reguli" ? "active" : ""}`} onClick={() => setGhidTab("reguli")}>Reguli ({guideRules.length})</button>
+                  <button className={`ghid-sub-tab ${ghidTab === "anexe" ? "active" : ""}`} onClick={() => setGhidTab("anexe")}>Anexe & Date ({referenceTables.length})</button>
                   <button className={`ghid-sub-tab ${ghidTab === "ghid" ? "active" : ""}`} onClick={() => setGhidTab("ghid")}>Ghid complet</button>
                 </div>
                 <div className="ghid-split">
-                  {ghidTab === "reguli" ? (
+                  {ghidTab === "anexe" ? (
+                    <div className="anexe-panel">
+                      <div className="anexe-list">
+                        {referenceTables.length === 0 ? (
+                          <div className="anexe-empty">
+                            <div style={{ fontSize: 32, marginBottom: 8 }}>&#128202;</div>
+                            <div style={{ fontWeight: 600, marginBottom: 4 }}>Nicio tabelă de referință</div>
+                            <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Uploadează anexe cu date structurate în folderul Ghiduri (tipul "Anexă cu date") pentru a extrage automat tabelele de referință.</div>
+                          </div>
+                        ) : referenceTables.map(rt => (
+                          <div
+                            key={rt.id}
+                            className={`anexe-card ${selectedRefTable === rt.id ? "active" : ""}`}
+                            onClick={() => setSelectedRefTable(rt.id)}
+                          >
+                            <div className="anexe-card-top">
+                              <span className={`anexe-type-badge ${rt.tableType}`}>
+                                {rt.tableType === "lookup" ? "LOOKUP" : rt.tableType === "classification" ? "CLASIFICARE" : rt.tableType === "list" ? "LISTĂ" : "MATRICE"}
+                              </span>
+                              {rt.validated && <span className="anexe-validated">&#10003;</span>}
+                            </div>
+                            <div className="anexe-card-name">{rt.name}</div>
+                            {rt.description && <div className="anexe-card-desc">{rt.description}</div>}
+                            <div className="anexe-card-meta">
+                              <span>{(rt.data || []).length} rânduri</span>
+                              {rt.sourcePage && <span>Pag. {rt.sourcePage}</span>}
+                              <span>{rt.extractedBy === "ai" ? "AI" : "Manual"}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="anexe-detail">
+                        {selectedRefTable && (() => {
+                          const rt = referenceTables.find((t: any) => t.id === selectedRefTable);
+                          if (!rt) return null;
+                          const cols = rt.schema || [];
+                          const rows = rt.data || [];
+                          return (
+                            <div className="anexe-detail-content">
+                              <div className="anexe-detail-header">
+                                <div className="anexe-detail-title">{rt.name}</div>
+                                <div className="anexe-detail-badges">
+                                  <span className={`anexe-type-badge ${rt.tableType}`}>
+                                    {rt.tableType === "lookup" ? "LOOKUP" : rt.tableType === "classification" ? "CLASIFICARE" : rt.tableType === "list" ? "LISTĂ" : "MATRICE"}
+                                  </span>
+                                  {rt.validated ? (
+                                    <span style={{ fontSize: 11, color: "var(--accent-green)" }}>&#10003; Validat</span>
+                                  ) : (
+                                    <button className="sa-btn primary" style={{ fontSize: 11, padding: "3px 10px" }}
+                                      onClick={async () => {
+                                        await apiPut(`/api/reference/tables/${rt.id}`, { validated: true });
+                                        setReferenceTables(prev => prev.map(t => t.id === rt.id ? { ...t, validated: true } : t));
+                                      }}>
+                                      &#10003; Validează
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                              {rt.description && <div className="anexe-detail-desc">{rt.description}</div>}
+                              {rt.lookupKey && <div className="anexe-detail-lookup">Cheie lookup: <code>{rt.lookupKey}</code></div>}
+
+                              {cols.length > 0 && rows.length > 0 && (
+                                <div className="anexe-table-wrapper">
+                                  <table className="anexe-table">
+                                    <thead>
+                                      <tr>
+                                        {cols.map((col: any) => (
+                                          <th key={col.key}>{col.label}</th>
+                                        ))}
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {rows.slice(0, 50).map((row: any, ri: number) => (
+                                        <tr key={ri}>
+                                          {cols.map((col: any) => (
+                                            <td key={col.key}>{String(row[col.key] ?? "")}</td>
+                                          ))}
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                  {rows.length > 50 && (
+                                    <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "8px 12px" }}>
+                                      ... și încă {rows.length - 50} rânduri
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
+                              {rt.sourceText && (
+                                <div className="anexe-source-text">
+                                  <div className="anexe-source-label">Text sursă (pag. {rt.sourcePage || "?"})</div>
+                                  <div className="anexe-source-quote">{rt.sourceText}</div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
+
+                        {!selectedRefTable && (
+                          <div className="rd-empty">
+                            <div className="rd-empty-icon">&#128202;</div>
+                            <div className="rd-empty-title">Selectează o tabelă</div>
+                            <div className="rd-empty-desc">Alege o tabelă de referință din lista din stânga pentru a vedea datele structurate, coloanele și rândurile extrase.</div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : ghidTab === "reguli" ? (
                     <>
                       <div className="rules-panel">
                         {/* Category filter chips */}
@@ -2228,6 +2454,32 @@ export default function ProjectViewPage() {
                           </div>
                         </div>
                       )}
+                      {/* Constraints from rules & reference tables */}
+                      {elementConstraints.length > 0 && (
+                        <div className="ed-constraints">
+                          <div className="ed-constraints-title">&#128279; Constrângeri ({elementConstraints.length})</div>
+                          {elementConstraints.map((c: any, ci: number) => (
+                            <div className="ed-constraint-card" key={ci}>
+                              <div className="ed-constraint-top">
+                                <span className={`ed-constraint-role ${c.role}`}>
+                                  {c.role === "input" ? "INPUT" : c.role === "output" ? "OUTPUT" : "CONSTRÂNGERE"}
+                                </span>
+                              </div>
+                              {c.rule && <div className="ed-constraint-rule">{c.rule.ruleText || c.rule.description}</div>}
+                              {c.description && <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>{c.description}</div>}
+                              {c.referenceTables && c.referenceTables.length > 0 && (
+                                <div className="ed-constraint-refs">
+                                  {c.referenceTables.map((rt: any, rti: number) => (
+                                    <span key={rti} className="ed-constraint-ref">
+                                      &#128202; {rt.table?.name || "Tabelă referință"}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                       {el.source === "calculated" && (
                         <div className="ed-field">
                           <div className="ed-label">Formula</div>
@@ -2457,7 +2709,29 @@ export default function ProjectViewPage() {
                                         </button>
                                       </div>
                                     ) : state === "confirmed" ? (
-                                      <div className="exc-confirmed-label">&#10003; Salvat în Elemente</div>
+                                      <>
+                                        <div className="exc-confirmed-label">&#10003; Salvat în Elemente</div>
+                                        {extractionValidations[k] && extractionValidations[k].totalChecks > 0 && (
+                                          <div className="solomon-validation-card">
+                                            <div className="svc-header">
+                                              &#128269; Validare referință ({extractionValidations[k].passed}/{extractionValidations[k].totalChecks} trecute)
+                                            </div>
+                                            <div className="svc-results">
+                                              {extractionValidations[k].validationResults.map((vr: any, vri: number) => (
+                                                <div className="svc-result" key={vri}>
+                                                  <span className={`svc-status ${vr.status}`}>
+                                                    {vr.status === "passed" ? "&#10003;" : vr.status === "failed" ? "&#10005;" : vr.status === "warning" ? "!" : "i"}
+                                                  </span>
+                                                  <div>
+                                                    <div className="svc-text">{vr.message}</div>
+                                                    {vr.referenceTable && <div className="svc-ref">&#128202; {vr.referenceTable.name}</div>}
+                                                  </div>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        )}
+                                      </>
                                     ) : (
                                       <div style={{ fontSize: 11, color: "var(--accent-red)" }}>Respins</div>
                                     )}

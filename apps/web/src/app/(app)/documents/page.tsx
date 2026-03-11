@@ -30,7 +30,7 @@ interface ApiDocument {
   fileType: "pdf" | "docx" | "xlsx" | "doc";
   fileSize: number;
   status: "uploaded" | "processing" | "processed" | "failed";
-  processingType: "ghid" | "template" | "reference";
+  processingType: "ghid" | "template" | "reference" | "reference_data";
   tags: string[];
   uploadedAt: string;
   uploadedBy: string;
@@ -81,7 +81,7 @@ const NODE_DOTS: Record<string, { size: number; color: string }> = {
 
 function mapApiStatusToLocal(status: ApiDocument["status"], processingType: ApiDocument["processingType"]): DocItem["status"] {
   if (processingType === "template") return "template";
-  if (processingType === "reference") return "referință";
+  if (processingType === "reference" || processingType === "reference_data") return "referință";
   if (status === "processed") return "procesat";
   return "neprocesat";
 }
@@ -244,6 +244,7 @@ export default function DocumentsPage() {
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [ghidSubType, setGhidSubType] = useState<"ghid" | "reference_data">("ghid");
   const [dragOver, setDragOver] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -457,6 +458,12 @@ export default function DocumentsPage() {
       formData.append("file", uploadFile);
       formData.append("tags", JSON.stringify([]));
 
+      // Send explicit processingType for ghiduri sub-classification
+      const uploadNode = selectedFolder ? findNodeById(tree, selectedFolder) : null;
+      if (uploadNode?.type === "ghiduri" && ghidSubType === "reference_data") {
+        formData.append("processingType", "reference_data");
+      }
+
       const storedToken = typeof window !== "undefined" ? localStorage.getItem("df-token") : null;
       const headers: Record<string, string> = {};
       if (storedToken) {
@@ -489,7 +496,7 @@ export default function DocumentsPage() {
       clearInterval(progressInterval);
       setUploading(false);
     }
-  }, [uploadFile, selectedFolder, fetchDocs]);
+  }, [uploadFile, selectedFolder, tree, ghidSubType, fetchDocs]);
 
   // Filtered documents
   const filteredDocs = docs.filter(d => {
@@ -1109,6 +1116,17 @@ export default function DocumentsPage() {
         .doc-upload-type-info-label strong { color: var(--accent-blue); }
         .doc-upload-type-info-desc { font-size: 11px; color: var(--text-muted); line-height: 1.4; }
 
+        .doc-upload-ghid-subtype { margin-bottom: 16px; }
+        .doc-upload-ghid-subtype-label { font-size: 13px; color: var(--text-secondary); margin-bottom: 10px; font-weight: 500; }
+        .doc-upload-ghid-subtype-options { display: flex; flex-direction: column; gap: 8px; }
+        .doc-upload-ghid-option { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--bg-elevated); cursor: pointer; text-align: left; transition: all .15s; }
+        .doc-upload-ghid-option:hover { border-color: var(--border-active); background: var(--bg-hover); }
+        .doc-upload-ghid-option.active { border-color: var(--accent-blue); background: rgba(77,139,255,.06); box-shadow: 0 0 0 1px rgba(77,139,255,.2); }
+        .doc-upload-ghid-option-icon { font-size: 22px; flex-shrink: 0; margin-top: 2px; }
+        .doc-upload-ghid-option-title { font-size: 13px; font-weight: 600; color: var(--text-primary); margin-bottom: 2px; }
+        .doc-upload-ghid-option.active .doc-upload-ghid-option-title { color: var(--accent-blue); }
+        .doc-upload-ghid-option-desc { font-size: 11px; color: var(--text-muted); line-height: 1.4; }
+
         /* Upload progress */
         .doc-upload-progress { height: 4px; border-radius: 2px; background: var(--bg-elevated); overflow: hidden; margin-bottom: 16px; }
         .doc-upload-progress-bar { height: 100%; border-radius: 2px; background: linear-gradient(90deg, var(--accent-blue), #7aa8ff); transition: width .3s ease; position: relative; }
@@ -1258,22 +1276,49 @@ export default function DocumentsPage() {
             </div>
 
             {/* Auto-detected type from folder — shown as info pill, not a selector */}
-            {selectedNode && LEAF_TYPES.has(selectedNode.type) && (
+            {selectedNode && LEAF_TYPES.has(selectedNode.type) && selectedNode.type !== "ghiduri" && (
               <div className="doc-upload-type-info">
                 <span className="doc-upload-type-info-icon">
-                  {selectedNode.type === "ghiduri" ? "\u{1F4D6}" : selectedNode.type === "templateuri" ? "\u{1F4DD}" : selectedNode.type === "clienti_prospecti" ? "\u{1F50D}" : "\u2705"}
+                  {selectedNode.type === "templateuri" ? "\u{1F4DD}" : selectedNode.type === "clienti_prospecti" ? "\u{1F50D}" : "\u2705"}
                 </span>
                 <div>
                   <div className="doc-upload-type-info-label">
-                    Tip document: <strong>{selectedNode.type === "ghiduri" ? "Ghid finantare" : selectedNode.type === "templateuri" ? "Template" : selectedNode.type === "clienti_prospecti" ? "Document client prospect" : "Document client final"}</strong>
+                    Tip document: <strong>{selectedNode.type === "templateuri" ? "Template" : selectedNode.type === "clienti_prospecti" ? "Document client prospect" : "Document client final"}</strong>
                   </div>
                   <div className="doc-upload-type-info-desc">
-                    {selectedNode.type === "ghiduri"
-                      ? "Ghidul va fi procesat automat cu AI pentru extragerea regulilor."
-                      : selectedNode.type === "templateuri"
+                    {selectedNode.type === "templateuri"
                       ? "Template-ul va fi procesat automat pentru detectarea campurilor."
                       : "Documentul va fi adaugat in dosarul clientului."}
                   </div>
+                </div>
+              </div>
+            )}
+
+            {/* Ghiduri sub-classification: Ghid solicitant vs Anexa cu date */}
+            {selectedNode?.type === "ghiduri" && (
+              <div className="doc-upload-ghid-subtype">
+                <div className="doc-upload-ghid-subtype-label">Tip continut in folderul Ghiduri:</div>
+                <div className="doc-upload-ghid-subtype-options">
+                  <button
+                    className={`doc-upload-ghid-option ${ghidSubType === "ghid" ? "active" : ""}`}
+                    onClick={() => setGhidSubType("ghid")}
+                  >
+                    <span className="doc-upload-ghid-option-icon">{"\u{1F4D6}"}</span>
+                    <div>
+                      <div className="doc-upload-ghid-option-title">Ghid solicitant</div>
+                      <div className="doc-upload-ghid-option-desc">Ghidul va fi procesat cu AI pentru extragerea regulilor de eligibilitate.</div>
+                    </div>
+                  </button>
+                  <button
+                    className={`doc-upload-ghid-option ${ghidSubType === "reference_data" ? "active" : ""}`}
+                    onClick={() => setGhidSubType("reference_data")}
+                  >
+                    <span className="doc-upload-ghid-option-icon">{"\u{1F4CA}"}</span>
+                    <div>
+                      <div className="doc-upload-ghid-option-title">Anexa cu date (tabele referinta)</div>
+                      <div className="doc-upload-ghid-option-desc">Anexele cu tabele de clasificare, liste UAT, corelatii putere/suprafata etc. vor fi extrase ca date structurate.</div>
+                    </div>
+                  </button>
                 </div>
               </div>
             )}

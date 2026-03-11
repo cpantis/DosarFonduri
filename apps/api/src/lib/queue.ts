@@ -6,4 +6,5 @@ const conn = redis as any;
 
 export const processGuideQueue = new Queue("process-guide", { connection: conn });
 export const processTemplateQueue = new Queue("process-template", { connection: conn });
+export const processReferenceDataQueue = new Queue("process-reference-data", { connection: conn });
 export const syncOnrcQueue = new Queue("sync-onrc", { connection: conn });

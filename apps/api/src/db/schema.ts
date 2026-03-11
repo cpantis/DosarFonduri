@@ -10,7 +10,7 @@ export const formaJuridicaEnum = pgEnum("forma_juridica", ["SRL", "SA", "SNC", "
 export const companyStatusEnum = pgEnum("company_status", ["functiune", "radiata", "dizolvata", "lichidare"]);
 export const folderTypeEnum = pgEnum("folder_type", ["program", "masura", "sesiune", "ghiduri", "templateuri", "clienti_prospecti", "clienti_finali"]);
 export const docFileTypeEnum = pgEnum("doc_file_type", ["pdf", "docx", "xlsx", "doc"]);
-export const docStatusEnum = pgEnum("doc_status", ["uploaded", "processing", "processed", "error"]);
+export const docStatusEnum = pgEnum("doc_status", ["uploaded", "processing", "processed", "error", "failed"]);
 export const docProcessingTypeEnum = pgEnum("doc_processing_type", ["ghid", "template", "reference", "client_doc", "reference_data"]);
 export const ruleTypeEnum = pgEnum("rule_type", ["fixed", "interpreted"]);
 export const fieldTypeEnum = pgEnum("field_type", ["text", "number", "textarea", "date", "table", "signature", "select"]);
@@ -26,6 +26,7 @@ export const aiAgentEnum = pgEnum("ai_agent", ["solomon", "neemia", "ghid_rules"
 export const associateTypeEnum = pgEnum("associate_type", ["pf", "pj"]);
 export const financialSourceEnum = pgEnum("financial_source", ["onrc", "anaf_upload"]);
 export const generatedDocStatusEnum = pgEnum("generated_doc_status", ["generating", "generated", "validated", "error"]);
+export const generationModeEnum = pgEnum("generation_mode", ["fill", "compose"]);
 
 // === ORGANIZATIONS ===
 export const organizations = pgTable("organizations", {
@@ -184,10 +185,25 @@ export const documents = pgTable("documents", {
   name: varchar("name", { length: 500 }).notNull(),
   fileType: docFileTypeEnum("file_type").notNull(),
   fileId: uuid("file_id").references(() => files.id).notNull(),
+  mimeType: varchar("mime_type", { length: 100 }).notNull(),
   fileSize: integer("file_size").notNull(),
+  fileHash: varchar("file_hash", { length: 64 }),
   pageCount: integer("page_count").default(0),
   status: docStatusEnum("status").notNull().default("uploaded"),
   processingType: docProcessingTypeEnum("processing_type"),
+  generationMode: generationModeEnum("generation_mode").default("fill"),
+  composeConfig: jsonb("compose_config").$type<{
+    sections: Array<{
+      marker: string;          // e.g. "COMPOSE:descriere_proiect" or "TABLE:plan_investitii"
+      type: "narrative" | "table" | "calculation";
+      label: string;           // human-readable section name
+      referenceTableIds?: string[];  // guide_reference_tables to feed this section
+      elementKeys?: string[];  // project_element keys relevant to this section
+      instructions?: string;   // AI prompt instructions specific to this section
+    }>;
+    aiModel?: string;          // override org default for this template
+    language?: string;         // "ro" default
+  }>(),
   tags: text("tags").array(),
   uploadedBy: uuid("uploaded_by").references(() => users.id).notNull(),
   uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
@@ -352,6 +368,26 @@ export const projectDocuments = pgTable("project_documents", {
   filledCount: integer("filled_count"),
   missingCount: integer("missing_count"),
   missingKeys: jsonb("missing_keys").$type<string[]>(),
+  generationMode: generationModeEnum("generation_mode").default("fill"),
+  composeContent: jsonb("compose_content").$type<{
+    sections: Array<{
+      marker: string;
+      type: "narrative" | "table" | "calculation";
+      label: string;
+      content?: string;       // AI-generated narrative text
+      tableData?: {           // AI-generated table
+        headers: Array<{ key: string; label: string }>;
+        rows: Array<Record<string, any>>;
+        highlightRows?: number[];
+        footerRow?: Record<string, any>;
+        caption?: string;
+      };
+      approved: boolean;      // consultant approved this section
+    }>;
+    tokensUsed?: number;
+    aiModel?: string;
+    generatedAt?: string;
+  }>(),
   generatedBy: uuid("generated_by").references(() => users.id),
   validatedBy: uuid("validated_by").references(() => users.id),
   validatedAt: timestamp("validated_at"),

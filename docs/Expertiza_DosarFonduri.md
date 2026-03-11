@@ -187,26 +187,88 @@ Client:  "270,70 ha"
    în prezent?"
 ```
 
-### Pasul 4: Neemia generează cu argumentație
+### Pasul 4: Neemia generează — în modul potrivit
 
-Când Neemia completează Memoriul Justificativ la secțiunea "Corelare putere":
+Neemia operează în **două moduri distincte**, determinate de tipul documentului:
+
+#### Modul FILL (formulare AFIR — format fix)
+
+Pentru documente cu structură impusă de AFIR (Cererea de Finanțare, Anexa B, Anexa C, Declarații):
+- **Nu modifică structura** — tabelele și câmpurile sunt deja acolo
+- Înlocuiește `{{placeholder}}` cu valori din `project_elements`
+- Completează câmpuri XFA în PDF-uri inteligente
+- **Zero AI** — pur deterministic, fiecare câmp primește valoarea exactă
 
 ```
-Neemia inserează automat:
-
-"Conform Anexei 3 la Ghidul Solicitantului, pentru o suprafață
-de 270,70 ha (cultură mare), intervalul corespunzător este
-201-500 ha, iar puterea maximă admisă per tractor este de
-400 CP, cu un coeficient de 2.
-
-Puterea cumulată maximă = 270,70 × 2 = 541,40 CP
-
-Tractorul propus de 340 CP se încadrează în limita de 400 CP,
-iar puterea cumulată (340 CP) este sub limita de 541,40 CP.
-
-CONCLUZIE: Cerința de dimensionare a parcului de utilaje este
-ÎNDEPLINITĂ."
+Template AFIR (format fix):                  Rezultat:
+┌────────────────────────────┐    ┌────────────────────────────┐
+│ Denumire: {{denumire}}     │ →  │ Denumire: COMEXIM R SRL    │
+│ CUI: {{cui}}               │    │ CUI: RO12345678            │
+│ Valoare totală: {{total}}  │    │ Valoare totală: 250.000 EUR│
+└────────────────────────────┘    └────────────────────────────┘
 ```
+
+#### Modul COMPOSE (documente consultant — format liber)
+
+Pentru documente redactate de consultant (Memoriu Justificativ, Descriere succintă, justificări tehnice):
+- **AI generează conținut narativ** + **tabele dinamice formatate**
+- Sursele de date: `project_elements` + `guide_reference_tables` + `rules`
+- Consultantul **previzualizează, editează și aprobă** fiecare secțiune înainte de generarea DOCX
+
+```
+Template consultant (format liber):
+┌────────────────────────────────────────────────────────┐
+│ 3. DIMENSIONARE PARC UTILAJE                           │
+│                                                        │
+│ {{COMPOSE:justificare_dimensionare}}                   │
+│                                                        │
+│ {{TABLE:corelatie_putere_suprafata}}                   │
+│                                                        │
+│ {{CALC:putere_cumulata}}                               │
+└────────────────────────────────────────────────────────┘
+
+              ↓ Claude AI + guide_reference_tables ↓
+
+┌────────────────────────────────────────────────────────┐
+│ 3. DIMENSIONARE PARC UTILAJE                           │
+│                                                        │
+│ Conform Anexei 3 la Ghidul Solicitantului, pentru o    │
+│ suprafață de 270,70 ha (cultură mare), intervalul      │
+│ corespunzător este 201-500 ha, iar puterea maximă      │
+│ admisă per tractor este de 400 CP.                     │
+│                                                        │
+│ ┌──────────────┬──────────┬──────┬────────────────┐   │
+│ │ Interval (ha)│ Max (CP) │Coef. │Cumulat max (CP)│   │
+│ ├──────────────┼──────────┼──────┼────────────────┤   │
+│ │ 2 — 50       │ 200      │ 3    │ 150            │   │
+│ │ 51 — 100     │ 260      │ 2.5  │ 250            │   │
+│ │ 101 — 200    │ 340      │ 2.2  │ 440            │   │
+│ │▶201 — 500    │ 400      │ 2    │ 1000           │◀  │
+│ │ 501 — 1000   │ 550      │ 1.8  │ 1800           │   │
+│ ├──────────────┴──────────┴──────┴────────────────┤   │
+│ │ Putere cumulată max: 270,70 × 2 = 541,40 CP    │   │
+│ │ Tractor propus: 340 CP ≤ 400 CP ✓              │   │
+│ └─────────────────────────────────────────────────┘   │
+│                                                        │
+│ CONCLUZIE: Cerința de dimensionare a parcului de       │
+│ utilaje este ÎNDEPLINITĂ.                              │
+└────────────────────────────────────────────────────────┘
+```
+
+**Fluxul COMPOSE în 3 pași:**
+
+```
+1. PREVIEW  →  AI generează secțiuni (text narativ + tabele)
+                Consultantul vede totul în panoul de previzualizare
+
+2. EDIT     →  Consultantul editează textul narativ inline
+                Aprobă sau respinge fiecare secțiune individual
+
+3. GENERATE →  Python-docx construiește DOCX-ul final
+                Placeholder-uri simple + tabele formatate profesional
+```
+
+**De ce două moduri?** Ghidul AFIR spune explicit: *"Modificarea modelului standard poate conduce la respingerea Dosarului pe motiv de neconformitate administrativă."* Formularele AFIR nu se modifică — Neemia doar completează câmpurile. Dar documentele consultantului (Memoriu, Descriere, justificări) sunt format liber, iar un tabel bine structurat și argumentat ajută expertul evaluator să verifice mai repede.
 
 ---
 

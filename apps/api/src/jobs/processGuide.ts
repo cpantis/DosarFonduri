@@ -6,8 +6,20 @@ import { eq } from "drizzle-orm";
 import { getFileBuffer } from "../services/storage";
 import { extractTextFromPDF, extractTextFromDOCX, extractTextFromXLSX } from "../services/ocr";
 import { logAIUsage } from "../services/aiUsage";
+import { publishEvent } from "../lib/sse";
+import { redis, isRedisReady } from "../lib/redis";
 
 const anthropic = new Anthropic();
+
+/** Cache guide text in Redis for reuse by Solomon/Neemia (TTL 30 days) */
+async function cacheGuideText(documentId: string, text: string): Promise<void> {
+  if (!isRedisReady()) return;
+  try {
+    await redis.set(`guide_text:${documentId}`, text, "EX", 30 * 86400); // 30 days TTL
+  } catch (err) {
+    console.warn("Failed to cache guide text:", err);
+  }
+}
 
 interface ProcessGuidePayload {
   documentId: string;
@@ -275,6 +287,9 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         throw new Error(`Format nesuportat pentru ghid: ${doc.fileType}`);
       }
 
+      // Cache guide text in Redis for reuse by Solomon/Neemia
+      cacheGuideText(documentId, text).catch(() => {});
+
       const config = await db.query.orgConfig.findFirst({
         where: eq(orgConfig.organizationId, organizationId),
       });
@@ -297,9 +312,25 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
       }).where(eq(documents.id, documentId));
 
       await job.updateProgress(100);
+
+      // SSE notification
+      publishEvent(`org:${organizationId}:uploads`, "document_processed", {
+        documentId,
+        documentName: doc.name,
+        status: "processed",
+        processingType: "ghid",
+        pageCount,
+        message: `Ghid procesat "${doc.name}". ${pageCount} pagini, reguli extrase.`,
+      }).catch(() => {});
     } catch (error) {
       console.error("Process guide error:", error);
       await db.update(documents).set({ status: "error" }).where(eq(documents.id, documentId));
+
+      publishEvent(`org:${organizationId}:uploads`, "document_failed", {
+        documentId,
+        status: "error",
+        message: `Eroare la procesarea ghidului: ${error instanceof Error ? error.message : "Eroare necunoscută"}`,
+      }).catch(() => {});
       throw error;
     }
   },

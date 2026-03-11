@@ -33,15 +33,22 @@ export async function uploadFile(
   mimeType: string,
   organizationId: string,
   uploadedBy: string,
+  uploadContext?: string,
 ): Promise<string> {
   const ext = extractExtension(originalName);
-  const key = `${organizationId}/${uuid()}.${ext}`;
+  const ctx = uploadContext || "uploads";
+  const key = `${organizationId}/${ctx}/${uuid()}.${ext}`;
 
   await s3.send(new PutObjectCommand({
     Bucket: BUCKET,
     Key: key,
     Body: buffer,
     ContentType: mimeType,
+    Metadata: {
+      "original-filename": encodeURIComponent(originalName),
+      "upload-context": ctx,
+      "uploaded-by": uploadedBy,
+    },
   }));
 
   const [file] = await db.insert(files).values({

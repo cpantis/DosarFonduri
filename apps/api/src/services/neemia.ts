@@ -297,6 +297,16 @@ export async function generateDocument(params: GenerateDocParams): Promise<Reada
           filledBuffer = await fillDocxTemplate(templateBuffer, templateName, elementsMap);
         }
 
+        // Post-generation verification: check for remaining {{...}} placeholders
+        const remainingPlaceholders = await verifyNoRemainingPlaceholders(filledBuffer, templateDoc.fileType);
+        if (remainingPlaceholders.length > 0) {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+            type: "warning",
+            message: `${remainingPlaceholders.length} placeholder-uri rămase necompletate: ${remainingPlaceholders.slice(0, 5).join(", ")}${remainingPlaceholders.length > 5 ? "..." : ""}`,
+            remainingPlaceholders,
+          })}\n\n`));
+        }
+
         // Upload generated doc
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "status", message: "Se salvează documentul..." })}\n\n`));
 
@@ -803,4 +813,76 @@ export async function generateAllDocuments(params: {
       }
     },
   });
+}
+
+// ═══ POST-GENERATION VERIFICATION ═══
+// Checks the generated document for any remaining {{...}} placeholders
+export async function verifyNoRemainingPlaceholders(
+  buffer: Buffer,
+  fileType: string,
+): Promise<string[]> {
+  const { execFileSync } = await import("child_process");
+  const fs = await import("fs");
+
+  const inputPath = safeTmpPath("verify", fileType === "xlsx" ? "xlsx" : "docx");
+  fs.writeFileSync(inputPath, buffer);
+
+  const script = fileType === "xlsx" ? `
+import sys, json, re
+import openpyxl
+
+wb = openpyxl.load_workbook(sys.argv[1], data_only=True)
+remaining = []
+for sheet in wb.sheetnames:
+    ws = wb[sheet]
+    for row in ws.iter_rows(values_only=False):
+        for cell in row:
+            if cell.value and isinstance(cell.value, str):
+                matches = re.findall(r'\\{\\{([^}]+)\\}\\}', cell.value)
+                remaining.extend(matches)
+print(json.dumps(list(set(remaining))))
+` : `
+import sys, json, re
+from docx import Document
+
+doc = Document(sys.argv[1])
+remaining = []
+for para in doc.paragraphs:
+    matches = re.findall(r'\\{\\{([^}]+)\\}\\}', para.text)
+    remaining.extend(matches)
+for table in doc.tables:
+    for row in table.rows:
+        for cell in row.cells:
+            for para in cell.paragraphs:
+                matches = re.findall(r'\\{\\{([^}]+)\\}\\}', para.text)
+                remaining.extend(matches)
+for section in doc.sections:
+    for header in [section.header, section.first_page_header]:
+        if header:
+            for para in header.paragraphs:
+                matches = re.findall(r'\\{\\{([^}]+)\\}\\}', para.text)
+                remaining.extend(matches)
+    for footer in [section.footer, section.first_page_footer]:
+        if footer:
+            for para in footer.paragraphs:
+                matches = re.findall(r'\\{\\{([^}]+)\\}\\}', para.text)
+                remaining.extend(matches)
+print(json.dumps(list(set(remaining))))
+`;
+
+  const scriptPath = safeTmpPath("verify", "py");
+  fs.writeFileSync(scriptPath, script);
+
+  try {
+    const result = execFileSync("python3", [scriptPath, inputPath], {
+      encoding: "utf-8",
+      timeout: 30000,
+    });
+    return JSON.parse(result.trim());
+  } catch {
+    return []; // If verification fails, don't block the flow
+  } finally {
+    try { fs.unlinkSync(inputPath); } catch {}
+    try { fs.unlinkSync(scriptPath); } catch {}
+  }
 }

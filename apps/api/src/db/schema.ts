@@ -28,6 +28,16 @@ export const associateTypeEnum = pgEnum("associate_type", ["pf", "pj"]);
 export const financialSourceEnum = pgEnum("financial_source", ["onrc", "anaf_upload"]);
 export const generatedDocStatusEnum = pgEnum("generated_doc_status", ["generating", "generated", "validated", "error"]);
 export const generationModeEnum = pgEnum("generation_mode", ["fill", "compose"]);
+export const generationContextEnum = pgEnum("generation_context", ["work", "submission"]);
+export const documentTypeEnum = pgEnum("document_type_class", [
+  "guide", "guide_annex_table", "guide_annex_form",
+  "certificat_constatator", "bilant_anaf", "contract_arenda",
+  "oferta_pret", "registru_imobilizari", "declaratie_expert_contabil",
+  "document_mediu", "extras_cont", "certificat_fiscal",
+  "memoriu_template", "cerere_finantare_template",
+  "anexa_b_template", "anexa_c_template",
+  "other",
+]);
 
 // === ORGANIZATIONS ===
 export const organizations = pgTable("organizations", {
@@ -39,6 +49,17 @@ export const organizations = pgTable("organizations", {
   trialEndsAt: timestamp("trial_ends_at"),
   status: orgStatusEnum("status").notNull().default("trial"),
   providerNotes: text("provider_notes"),
+  cabinetDocumentStyle: jsonb("cabinet_document_style").$type<{
+    primaryColor?: string;      // header-e tabele, titluri (default: #1a3a5c)
+    accentColor?: string;       // highlight rând activ, badge CONFORM
+    fontFamily?: string;        // font document (default: DM Sans)
+    logoUrl?: string;           // URL logo cabinet (presigned or stored)
+    footerText?: string;        // text footer cabinet
+    highlightColor?: string;    // rândul activ din lookup tables
+    warningColor?: string;      // badge-uri atenție
+    logoOnWorkDocs?: boolean;   // logo pe documente de lucru (default: true)
+    logoOnFinalDocs?: boolean;  // logo pe documente finale (default: false)
+  }>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull().$onUpdate(() => new Date()),
 });
@@ -205,6 +226,8 @@ export const documents = pgTable("documents", {
     aiModel?: string;          // override org default for this template
     language?: string;         // "ro" default
   }>(),
+  documentTypeClass: documentTypeEnum("document_type_class"),
+  classificationConfidence: decimal("classification_confidence", { precision: 3, scale: 2 }),
   tags: text("tags").array(),
   uploadedBy: uuid("uploaded_by").references(() => users.id).notNull(),
   uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
@@ -377,6 +400,7 @@ export const projectDocuments = pgTable("project_documents", {
   missingCount: integer("missing_count"),
   missingKeys: jsonb("missing_keys").$type<string[]>(),
   generationMode: generationModeEnum("generation_mode").default("fill"),
+  generationContext: generationContextEnum("generation_context").default("work"),
   composeContent: jsonb("compose_content").$type<{
     sections: Array<{
       marker: string;

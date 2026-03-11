@@ -1,7 +1,7 @@
 import type { AppEnv } from "../types/hono";
 import { Hono } from "hono";
 import { db } from "../db";
-import { projectDocuments, documents, templateElements, projectElements } from "../db/schema";
+import { projectDocuments, documents, templateElements, projectElements, guideReferenceTables } from "../db/schema";
 import { eq, and } from "drizzle-orm";
 import { AuthContext } from "../middleware/auth";
 import {
@@ -333,4 +333,177 @@ neemiaRoutes.get("/projects/:projectId/compose/context/:templateDocId", async (c
 
   const context = await buildComposeContext(projectId, auth.organizationId!, templateDocId);
   return c.json(context);
+});
+
+// ═══ COMPOSE CONFIG ADMIN ROUTES ═══
+
+// Get document generation mode + composeConfig
+neemiaRoutes.get("/templates/:docId/compose-config", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const docId = c.req.param("docId");
+
+  const doc = await db.query.documents.findFirst({
+    where: and(eq(documents.id, docId), eq(documents.organizationId, auth.organizationId!)),
+  });
+  if (!doc) return c.json({ error: "Document not found" }, 404);
+
+  return c.json({
+    id: doc.id,
+    name: doc.name,
+    fileType: doc.fileType,
+    generationMode: (doc as any).generationMode || "fill",
+    composeConfig: (doc as any).composeConfig || null,
+  });
+});
+
+// Set document generation mode (fill → compose or vice-versa)
+neemiaRoutes.put("/templates/:docId/generation-mode", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const docId = c.req.param("docId");
+  const { mode } = await c.req.json() as { mode: "fill" | "compose" };
+
+  if (!["fill", "compose"].includes(mode)) {
+    return c.json({ error: "Mode must be 'fill' or 'compose'" }, 400);
+  }
+
+  const doc = await db.query.documents.findFirst({
+    where: and(eq(documents.id, docId), eq(documents.organizationId, auth.organizationId!)),
+  });
+  if (!doc) return c.json({ error: "Document not found" }, 404);
+
+  const [updated] = await db.update(documents).set({
+    generationMode: mode,
+  } as any).where(eq(documents.id, docId)).returning();
+
+  return c.json({
+    id: updated.id,
+    name: updated.name,
+    generationMode: (updated as any).generationMode,
+  });
+});
+
+// Update composeConfig sections for a COMPOSE template
+neemiaRoutes.put("/templates/:docId/compose-config", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const docId = c.req.param("docId");
+  const body = await c.req.json() as {
+    sections: Array<{
+      marker: string;
+      type: "narrative" | "table" | "calculation";
+      label: string;
+      referenceTableIds?: string[];
+      elementKeys?: string[];
+      instructions?: string;
+    }>;
+    aiModel?: string;
+    language?: string;
+  };
+
+  // Validate sections
+  if (!body.sections || !Array.isArray(body.sections)) {
+    return c.json({ error: "sections array is required" }, 400);
+  }
+
+  for (const s of body.sections) {
+    if (!s.marker || !s.type || !s.label) {
+      return c.json({ error: "Each section needs marker, type, and label" }, 400);
+    }
+    if (!["narrative", "table", "calculation"].includes(s.type)) {
+      return c.json({ error: `Invalid section type: ${s.type}` }, 400);
+    }
+  }
+
+  const doc = await db.query.documents.findFirst({
+    where: and(eq(documents.id, docId), eq(documents.organizationId, auth.organizationId!)),
+  });
+  if (!doc) return c.json({ error: "Document not found" }, 404);
+
+  // Auto-set mode to compose when config is set
+  const [updated] = await db.update(documents).set({
+    generationMode: "compose",
+    composeConfig: {
+      sections: body.sections,
+      aiModel: body.aiModel,
+      language: body.language || "ro",
+    },
+  } as any).where(eq(documents.id, docId)).returning();
+
+  return c.json({
+    id: updated.id,
+    name: updated.name,
+    generationMode: (updated as any).generationMode,
+    composeConfig: (updated as any).composeConfig,
+  });
+});
+
+// Auto-detect COMPOSE markers in a DOCX template
+// Scans for {{COMPOSE:...}}, {{TABLE:...}}, {{CALC:...}} and returns suggested sections
+neemiaRoutes.post("/templates/:docId/detect-compose-markers", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const docId = c.req.param("docId");
+
+  const doc = await db.query.documents.findFirst({
+    where: and(eq(documents.id, docId), eq(documents.organizationId, auth.organizationId!)),
+  });
+  if (!doc) return c.json({ error: "Document not found" }, 404);
+
+  // Load template elements for this document
+  const tmplEls = await db.query.templateElements.findMany({
+    where: eq(templateElements.documentId, docId),
+  });
+
+  // Check for COMPOSE/TABLE/CALC markers among template element keys
+  const composeMarkers: Array<{
+    marker: string;
+    type: "narrative" | "table" | "calculation";
+    label: string;
+  }> = [];
+
+  const simpleKeys: string[] = [];
+
+  for (const el of tmplEls) {
+    if (el.key.startsWith("COMPOSE:")) {
+      composeMarkers.push({
+        marker: el.key,
+        type: "narrative",
+        label: el.label || el.key.replace("COMPOSE:", "").replace(/_/g, " "),
+      });
+    } else if (el.key.startsWith("TABLE:")) {
+      composeMarkers.push({
+        marker: el.key,
+        type: "table",
+        label: el.label || el.key.replace("TABLE:", "").replace(/_/g, " "),
+      });
+    } else if (el.key.startsWith("CALC:")) {
+      composeMarkers.push({
+        marker: el.key,
+        type: "calculation",
+        label: el.label || el.key.replace("CALC:", "").replace(/_/g, " "),
+      });
+    } else {
+      simpleKeys.push(el.key);
+    }
+  }
+
+  // Load available reference tables
+  const refTables = await db.query.guideReferenceTables.findMany({
+    where: eq(guideReferenceTables.organizationId, auth.organizationId!),
+  });
+
+  return c.json({
+    documentId: docId,
+    documentName: doc.name,
+    composeMarkers,
+    simpleKeys,
+    availableReferenceTables: refTables.map(t => ({
+      id: t.id,
+      name: t.name,
+      tableType: t.tableType,
+      columnCount: (t.schema as any[])?.length || 0,
+      rowCount: (t.data as any[])?.length || 0,
+    })),
+    suggestion: composeMarkers.length > 0
+      ? "compose"
+      : "fill",
+  });
 });

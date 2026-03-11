@@ -56,6 +56,18 @@ export default function TemplateViewerPage() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [newEl, setNewEl] = useState({ key: "", label: "", type: "text" });
 
+  // COMPOSE config
+  const [showComposeConfig, setShowComposeConfig] = useState(false);
+  const [genMode, setGenMode] = useState<"fill" | "compose">("fill");
+  const [composeSections, setComposeSections] = useState<Array<{
+    marker: string; type: "narrative" | "table" | "calculation"; label: string;
+    referenceTableIds?: string[]; elementKeys?: string[]; instructions?: string;
+  }>>([]);
+  const [composeAiModel, setComposeAiModel] = useState("");
+  const [availableRefTables, setAvailableRefTables] = useState<Array<{ id: string; name: string; tableType: string; columnCount: number; rowCount: number }>>([]);
+  const [composeSaving, setComposeSaving] = useState(false);
+  const [composeDetecting, setComposeDetecting] = useState(false);
+
   // Split pane
   const [splitWidth, setSplitWidth] = useState(400);
   const splitDragging = useRef(false);
@@ -76,6 +88,17 @@ export default function TemplateViewerPage() {
         }
         return prev;
       });
+      // Load compose config
+      try {
+        const cfg = await apiGet<any>(`/api/neemia/templates/${docId}/compose-config`);
+        setGenMode(cfg.generationMode || "fill");
+        if (cfg.composeConfig?.sections) {
+          setComposeSections(cfg.composeConfig.sections);
+        }
+        if (cfg.composeConfig?.aiModel) {
+          setComposeAiModel(cfg.composeConfig.aiModel);
+        }
+      } catch {}
     } catch (err: any) {
       setError(err.message || "Eroare la încărcare");
     } finally {
@@ -185,6 +208,54 @@ export default function TemplateViewerPage() {
     }
   };
 
+  // ─── COMPOSE CONFIG HANDLERS ───
+  const handleDetectMarkers = async () => {
+    setComposeDetecting(true);
+    try {
+      const result = await apiPost<any>(`/api/neemia/templates/${docId}/detect-compose-markers`, {});
+      if (result.composeMarkers?.length > 0) {
+        setComposeSections(result.composeMarkers);
+      }
+      setAvailableRefTables(result.availableReferenceTables || []);
+      if (result.suggestion === "compose") {
+        setGenMode("compose");
+      }
+    } catch {}
+    setComposeDetecting(false);
+  };
+
+  const handleSaveComposeConfig = async () => {
+    setComposeSaving(true);
+    try {
+      if (genMode === "compose" && composeSections.length > 0) {
+        await apiPut(`/api/neemia/templates/${docId}/compose-config`, {
+          sections: composeSections,
+          aiModel: composeAiModel || undefined,
+          language: "ro",
+        });
+      } else {
+        await apiPut(`/api/neemia/templates/${docId}/generation-mode`, { mode: genMode });
+      }
+    } catch {}
+    setComposeSaving(false);
+  };
+
+  const handleAddComposeSection = () => {
+    setComposeSections(prev => [...prev, {
+      marker: "COMPOSE:noua_sectiune",
+      type: "narrative",
+      label: "Secțiune nouă",
+    }]);
+  };
+
+  const handleRemoveComposeSection = (idx: number) => {
+    setComposeSections(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const handleUpdateComposeSection = (idx: number, field: string, value: any) => {
+    setComposeSections(prev => prev.map((s, i) => i === idx ? { ...s, [field]: value } : s));
+  };
+
   // ─── PROGRESS COLORS ───
   const progressColor = pct >= 80 ? "var(--accent-green)" : pct >= 40 ? "var(--accent-yellow)" : "var(--accent-red)";
 
@@ -214,6 +285,9 @@ export default function TemplateViewerPage() {
         .tv-back:hover{border-color:var(--border-active);color:var(--text-primary)}
         .tv-title{font-size:16px;font-weight:800;flex:1}
         .tv-file-badge{font-size:10px;font-weight:700;text-transform:uppercase;padding:3px 8px;border-radius:4px;background:rgba(77,139,255,.1);color:var(--accent-blue);letter-spacing:.5px}
+        .tv-mode-badge{font-size:9px;font-weight:700;padding:2px 8px;border-radius:3px;text-transform:uppercase;letter-spacing:.5px}
+        .tv-mode-badge.fill{background:rgba(77,139,255,.12);color:var(--accent-blue)}
+        .tv-mode-badge.compose{background:rgba(167,139,250,.15);color:var(--accent-purple)}
         .tv-progress{display:flex;align-items:center;gap:10px}
         .tv-pbar{width:100px;height:6px;background:var(--bg-deep);border-radius:3px;overflow:hidden}
         .tv-pfill{height:100%;border-radius:3px;transition:width .3s}
@@ -340,12 +414,125 @@ export default function TemplateViewerPage() {
           <button className="tv-back" onClick={() => router.back()}>&larr; Inapoi</button>
           <div className="tv-title">{template.documentName}</div>
           <span className="tv-file-badge">{template.fileType}</span>
+          <span className={`tv-mode-badge ${genMode}`}>{genMode === "compose" ? "COMPOSE" : "FILL"}</span>
+          <button
+            className="tv-compose-toggle"
+            onClick={() => setShowComposeConfig(v => !v)}
+            style={{ padding: "4px 10px", borderRadius: 4, border: "1px solid var(--border)", background: "transparent", color: "var(--accent-purple)", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-sans)" }}
+          >
+            {showComposeConfig ? "Ascunde config" : "Config generare"}
+          </button>
           <div className="tv-progress">
             <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{validatedEls}/{totalEls} validate</span>
             <div className="tv-pbar"><div className="tv-pfill" style={{ width: `${pct}%`, background: progressColor }} /></div>
             <span className="tv-ppct" style={{ color: progressColor }}>{pct}%</span>
           </div>
         </div>
+
+        {/* COMPOSE CONFIG PANEL */}
+        {showComposeConfig && (
+          <div style={{ padding: "16px 24px", borderBottom: "1px solid var(--border)", background: "var(--bg-elevated)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)" }}>Mod generare:</span>
+              <div style={{ display: "flex", background: "var(--bg-deep)", borderRadius: 8, padding: 2, gap: 1 }}>
+                <button
+                  onClick={() => setGenMode("fill")}
+                  style={{ padding: "4px 14px", borderRadius: 6, fontSize: 12, fontWeight: 600, border: "none", cursor: "pointer", fontFamily: "var(--font-sans)", background: genMode === "fill" ? "var(--accent-blue)" : "transparent", color: genMode === "fill" ? "#fff" : "var(--text-muted)" }}
+                >
+                  FILL
+                </button>
+                <button
+                  onClick={() => setGenMode("compose")}
+                  style={{ padding: "4px 14px", borderRadius: 6, fontSize: 12, fontWeight: 600, border: "none", cursor: "pointer", fontFamily: "var(--font-sans)", background: genMode === "compose" ? "var(--accent-purple)" : "transparent", color: genMode === "compose" ? "#fff" : "var(--text-muted)" }}
+                >
+                  COMPOSE
+                </button>
+              </div>
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                {genMode === "fill" ? "Înlocuiește {{placeholder}} cu valori — fără AI" : "AI generează conținut narativ + tabele dinamice"}
+              </span>
+              <div style={{ flex: 1 }} />
+              <button
+                onClick={handleSaveComposeConfig}
+                disabled={composeSaving}
+                style={{ padding: "5px 16px", borderRadius: 4, border: "1px solid var(--accent-green)", background: "rgba(52,211,153,.08)", color: "var(--accent-green)", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-sans)", opacity: composeSaving ? 0.5 : 1 }}
+              >
+                {composeSaving ? "Se salvează..." : "Salvează config"}
+              </button>
+            </div>
+
+            {genMode === "compose" && (
+              <>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-secondary)" }}>Model AI:</span>
+                  <input
+                    value={composeAiModel}
+                    onChange={e => setComposeAiModel(e.target.value)}
+                    placeholder="claude-sonnet-4-20250514 (default din org)"
+                    style={{ flex: 1, maxWidth: 320, padding: "4px 10px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg-deep)", color: "var(--text-primary)", fontSize: 12, fontFamily: "var(--font-mono)" }}
+                  />
+                  <button
+                    onClick={handleDetectMarkers}
+                    disabled={composeDetecting}
+                    style={{ padding: "4px 12px", borderRadius: 4, border: "1px solid var(--accent-blue)", background: "rgba(77,139,255,.06)", color: "var(--accent-blue)", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "var(--font-sans)" }}
+                  >
+                    {composeDetecting ? "Se detectează..." : "Auto-detectează markeri"}
+                  </button>
+                  <button
+                    onClick={handleAddComposeSection}
+                    style={{ padding: "4px 12px", borderRadius: 4, border: "1px solid var(--accent-purple)", background: "rgba(167,139,250,.06)", color: "var(--accent-purple)", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "var(--font-sans)" }}
+                  >
+                    + Secțiune
+                  </button>
+                </div>
+
+                {composeSections.length === 0 && (
+                  <div style={{ fontSize: 12, color: "var(--text-muted)", padding: "10px 0" }}>
+                    Nicio secțiune COMPOSE definită. Adăugați markeri {{"{"}COMPOSE:...{"}"}} sau {{"{"}TABLE:...{"}"}} în template, apoi folosiți "Auto-detectează".
+                  </div>
+                )}
+
+                {composeSections.map((sec, si) => (
+                  <div key={si} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg-surface)" }}>
+                    <select
+                      value={sec.type}
+                      onChange={e => handleUpdateComposeSection(si, "type", e.target.value)}
+                      style={{ padding: "3px 6px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg-deep)", color: "var(--text-primary)", fontSize: 11, fontFamily: "var(--font-sans)" }}
+                    >
+                      <option value="narrative">Narativ</option>
+                      <option value="table">Tabel</option>
+                      <option value="calculation">Calcul</option>
+                    </select>
+                    <input
+                      value={sec.marker}
+                      onChange={e => handleUpdateComposeSection(si, "marker", e.target.value)}
+                      placeholder="COMPOSE:secțiune"
+                      style={{ width: 180, padding: "3px 8px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg-deep)", color: "var(--text-primary)", fontSize: 11, fontFamily: "var(--font-mono)" }}
+                    />
+                    <input
+                      value={sec.label}
+                      onChange={e => handleUpdateComposeSection(si, "label", e.target.value)}
+                      placeholder="Etichetă secțiune"
+                      style={{ flex: 1, padding: "3px 8px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg-deep)", color: "var(--text-primary)", fontSize: 11, fontFamily: "var(--font-sans)" }}
+                    />
+                    <input
+                      value={sec.instructions || ""}
+                      onChange={e => handleUpdateComposeSection(si, "instructions", e.target.value)}
+                      placeholder="Instrucțiuni AI (opțional)"
+                      style={{ flex: 1, padding: "3px 8px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg-deep)", color: "var(--text-primary)", fontSize: 11, fontFamily: "var(--font-sans)" }}
+                    />
+                    <button
+                      onClick={() => handleRemoveComposeSection(si)}
+                      style={{ padding: "2px 8px", borderRadius: 4, border: "1px solid var(--accent-red)", background: "transparent", color: "var(--accent-red)", fontSize: 11, cursor: "pointer", fontFamily: "var(--font-sans)" }}
+                    >
+                      &times;
+                    </button>
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+        )}
 
         <div className="tv-body" ref={splitRef}>
           {/* LEFT: ELEMENTS CHECKLIST */}

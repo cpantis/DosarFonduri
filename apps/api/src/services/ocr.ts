@@ -9,20 +9,39 @@ function safeTmpPath(prefix: string, ext: string): string {
   return path.join(os.tmpdir(), `${prefix}_${crypto.randomUUID()}.${ext}`);
 }
 
+export interface PageResult {
+  page: number;
+  text: string;
+  is_scanned: boolean;
+  confidence: number;
+}
+
 export async function extractTextFromPDF(buffer: Buffer): Promise<string> {
+  const pages = await extractPDFPages(buffer);
+  return pages.map(p => `--- Pagina ${p.page} ---\n${p.text}`).join("\n\n");
+}
+
+/** Extract pages with hybrid OCR: PyMuPDF native + Claude Vision for scanned pages */
+export async function extractPDFPages(buffer: Buffer): Promise<PageResult[]> {
   const { execFileSync } = await import("child_process");
   const fs = await import("fs");
 
   const inputPath = safeTmpPath("pdf", "pdf");
   fs.writeFileSync(inputPath, buffer);
 
+  // Script extracts text AND renders scanned pages as base64 PNG
   const script = `
-import fitz, sys, json
+import fitz, sys, json, base64
 doc = fitz.open(sys.argv[1])
 pages = []
 for page in doc:
     text = page.get_text()
-    pages.append({"page": page.number + 1, "text": text, "has_text": len(text.strip()) > 50})
+    has_text = len(text.strip()) > 50
+    page_data = {"page": page.number + 1, "text": text, "has_text": has_text, "image": None}
+    if not has_text:
+        pix = page.get_pixmap(dpi=200)
+        page_data["image"] = base64.b64encode(pix.tobytes("png")).decode()
+    pages.append(page_data)
 doc.close()
 print(json.dumps(pages))
 `;
@@ -32,17 +51,36 @@ print(json.dumps(pages))
   try {
     const result = execFileSync("python3", [scriptPath, inputPath], {
       encoding: "utf-8",
-      timeout: 30000,
+      timeout: 60000,
+      maxBuffer: 100 * 1024 * 1024, // 100MB for base64 images
     });
 
-    const pages: Array<{ page: number; text: string; has_text: boolean }> = JSON.parse(result);
+    const rawPages: Array<{ page: number; text: string; has_text: boolean; image: string | null }> = JSON.parse(result);
 
-    const scannedPages = pages.filter(p => !p.has_text);
-    if (scannedPages.length > 0) {
-      console.warn(`${scannedPages.length} scanned pages detected - Vision OCR needed`);
+    const results: PageResult[] = [];
+    for (const p of rawPages) {
+      if (p.has_text) {
+        results.push({ page: p.page, text: p.text, is_scanned: false, confidence: 1.0 });
+      } else if (p.image) {
+        // OCR scanned page with Claude Vision
+        try {
+          const ocrText = await ocrPageWithVision(p.image);
+          results.push({ page: p.page, text: ocrText, is_scanned: true, confidence: 0.85 });
+        } catch (err) {
+          console.error(`Vision OCR failed for page ${p.page}:`, err);
+          results.push({ page: p.page, text: p.text || "[Pagina scanata - OCR eșuat]", is_scanned: true, confidence: 0 });
+        }
+      } else {
+        results.push({ page: p.page, text: p.text, is_scanned: false, confidence: 1.0 });
+      }
     }
 
-    return pages.map(p => `--- Pagina ${p.page} ---\n${p.text}`).join("\n\n");
+    const scannedCount = results.filter(r => r.is_scanned).length;
+    if (scannedCount > 0) {
+      console.log(`OCR hibrid: ${rawPages.length} pagini total, ${scannedCount} procesate cu Vision`);
+    }
+
+    return results;
   } finally {
     try { fs.unlinkSync(inputPath); } catch {}
     try { fs.unlinkSync(scriptPath); } catch {}
@@ -69,6 +107,64 @@ export async function ocrPageWithVision(pageImageBase64: string): Promise<string
   });
 
   return response.content[0].type === "text" ? response.content[0].text : "";
+}
+
+/** Document type classification using Haiku */
+export const DOCUMENT_TYPES = [
+  "guide", "guide_annex_table", "guide_annex_form",
+  "certificat_constatator", "bilant_anaf", "contract_arenda",
+  "oferta_pret", "registru_imobilizari", "declaratie_expert_contabil",
+  "document_mediu", "extras_cont", "certificat_fiscal",
+  "memoriu_template", "cerere_finantare_template",
+  "anexa_b_template", "anexa_c_template",
+  "other",
+] as const;
+
+export type DocumentType = typeof DOCUMENT_TYPES[number];
+
+export async function classifyDocument(textPreview: string): Promise<{
+  documentType: DocumentType;
+  confidence: number;
+  language: string;
+  hasTables: boolean;
+  hasForms: boolean;
+}> {
+  const response = await anthropic.messages.create({
+    model: "claude-haiku-4-5-20251001",
+    max_tokens: 500,
+    system: `Clasifici documente din dosare de finantare europeana. Analizeaza textul si returneaza DOAR JSON valid.`,
+    messages: [{
+      role: "user",
+      content: `Clasifică acest document pe baza primelor pagini:
+
+${textPreview.slice(0, 3000)}
+
+Returnează un singur obiect JSON:
+{
+  "document_type": "unul din: ${DOCUMENT_TYPES.join(", ")}",
+  "confidence": 0.0-1.0,
+  "language": "ro" | "en" | "other",
+  "has_tables": true/false,
+  "has_forms": true/false
+}`,
+    }],
+  });
+
+  const text = response.content[0].type === "text" ? response.content[0].text : "{}";
+  const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+
+  try {
+    const parsed = JSON.parse(cleaned);
+    return {
+      documentType: DOCUMENT_TYPES.includes(parsed.document_type) ? parsed.document_type : "other",
+      confidence: Math.min(1, Math.max(0, parsed.confidence || 0.5)),
+      language: parsed.language || "ro",
+      hasTables: !!parsed.has_tables,
+      hasForms: !!parsed.has_forms,
+    };
+  } catch {
+    return { documentType: "other", confidence: 0, language: "ro", hasTables: false, hasForms: false };
+  }
 }
 
 export async function extractTextFromDOCX(buffer: Buffer, _fileName: string): Promise<string> {

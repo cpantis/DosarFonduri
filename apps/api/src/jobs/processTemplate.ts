@@ -5,6 +5,7 @@ import { documents, templateElements } from "../db/schema";
 import { eq } from "drizzle-orm";
 import { getFileBuffer } from "../services/storage";
 import { logAIUsage } from "../services/aiUsage";
+import { publishEvent } from "../lib/sse";
 
 const anthropic = new Anthropic();
 
@@ -262,9 +263,25 @@ export const processTemplateWorker = new Worker<ProcessTemplatePayload>(
         action: "classify_template_elements",
       });
 
+      // SSE notification
+      publishEvent(`org:${organizationId}:uploads`, "document_processed", {
+        documentId,
+        documentName: doc.name,
+        status: "processed",
+        processingType: "template",
+        elementsCount: uniqueElements.length,
+        message: `Template procesat "${doc.name}". ${uniqueElements.length} câmpuri detectate.`,
+      }).catch(() => {});
+
     } catch (error) {
       console.error("Process template error:", error);
       await db.update(documents).set({ status: "error" }).where(eq(documents.id, documentId));
+
+      publishEvent(`org:${organizationId}:uploads`, "document_failed", {
+        documentId,
+        status: "error",
+        message: `Eroare la procesarea template-ului: ${error instanceof Error ? error.message : "Eroare necunoscută"}`,
+      }).catch(() => {});
       throw error;
     }
   },

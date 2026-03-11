@@ -488,7 +488,7 @@ export default function TemplateViewerPage() {
 
                 {composeSections.length === 0 && (
                   <div style={{ fontSize: 12, color: "var(--text-muted)", padding: "10px 0" }}>
-                    Nicio secțiune COMPOSE definită. Adăugați markeri {{"{"}COMPOSE:...{"}"}} sau {{"{"}TABLE:...{"}"}} în template, apoi folosiți "Auto-detectează".
+                    Nicio secțiune COMPOSE definită. Adăugați markeri {"{{COMPOSE:...}}"} sau {"{{TABLE:...}}"} în template, apoi folosiți &quot;Auto-detectează&quot;.
                   </div>
                 )}
 

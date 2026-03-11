@@ -10,6 +10,23 @@ import {
 import { eq, and } from "drizzle-orm";
 import { logAIUsage } from "./aiUsage";
 
+// Sanitize user-controlled data embedded in system prompts to prevent prompt injection.
+// Wraps content in delimiters and escapes sequences that could break out.
+function sanitizeForPrompt(value: string | null | undefined): string {
+  if (!value) return "nespecificat";
+  return value
+    .replace(/[<>]/g, "") // strip angle brackets that could mimic XML tags
+    .replace(/═{3,}/g, "---") // prevent mimicking section delimiters
+    .slice(0, 2000); // cap length
+}
+
+// Allowed metadata fields that Solomon can update on projects
+const ALLOWED_METADATA_KEYS = new Set([
+  "programFinantare", "codMasura", "codSesiune",
+  "codNomenclator", "prefixDocumente", "codMysmis", "structuraDosar",
+]);
+const MAX_METADATA_VALUE_LENGTH = 500;
+
 const anthropic = new Anthropic();
 
 const MODEL_COSTS: Record<string, { input: number; output: number }> = {
@@ -692,14 +709,14 @@ Cunoști în detaliu:
 ## DATE FIRMĂ (din ONRC + bilanțuri)
 ═══════════════════════════════════════════
 
-- Denumire: ${company.denumire}
-- CUI: ${company.cui}
-- Forma juridică: ${company.formaJuridica}
-- CAEN principal: ${company.caen || "nespecificat"}
-- Nr. Reg. Com.: ${(company as any).registrationNumber || "necunoscut"}
-- Adresă: ${company.adresa}, Județ: ${company.judet}
+- Denumire: ${sanitizeForPrompt(company.denumire)}
+- CUI: ${sanitizeForPrompt(company.cui)}
+- Forma juridică: ${sanitizeForPrompt(company.formaJuridica)}
+- CAEN principal: ${sanitizeForPrompt(company.caen)}
+- Nr. Reg. Com.: ${sanitizeForPrompt((company as any).registrationNumber)}
+- Adresă: ${sanitizeForPrompt(company.adresa)}, Județ: ${sanitizeForPrompt(company.judet)}
 - An înființare: ${company.anInfiintare || "necunoscut"}${vechimeAni !== null ? ` (vechime: ${vechimeAni} ani)` : ""}
-- Status: ${company.stare || "necunoscut"}
+- Status: ${sanitizeForPrompt(company.stare)}
 
 ### Situație financiară
 - Angajați (ultimul an): ${nrAngajati || "necunoscut"}
@@ -1103,11 +1120,13 @@ export async function processSolomonMessage(params: {
     limit: 50,
   });
 
-  // Build messages array
-  const messages: Anthropic.MessageParam[] = history.map(m => ({
-    role: m.role as "user" | "assistant",
-    content: m.content,
-  }));
+  // Build messages array — only allow valid roles (user/assistant), skip system messages
+  const messages: Anthropic.MessageParam[] = history
+    .filter(m => m.role === "user" || m.role === "assistant")
+    .map(m => ({
+      role: m.role as "user" | "assistant",
+      content: m.content,
+    }));
 
   // Build current message content
   let userContent: Anthropic.ContentBlockParam[] = [];
@@ -1188,20 +1207,29 @@ export async function processSolomonMessage(params: {
         let extractedElements: any[] = [];
         if (elementsMatch) {
           try {
-            extractedElements = JSON.parse(elementsMatch[1]);
+            const parsed = JSON.parse(elementsMatch[1]);
+            // Validate: must be an array, cap at 200 elements, each must have key+value strings
+            if (Array.isArray(parsed)) {
+              extractedElements = parsed
+                .slice(0, 200)
+                .filter((el: any) =>
+                  el && typeof el.key === "string" && el.key.length <= 255
+                  && typeof el.value === "string" && el.value.length <= 10000
+                );
+            }
           } catch {}
         }
 
-        // Save extracted elements to project
+        // Save extracted elements to project — only if key exists in org's template elements
         if (extractedElements.length > 0) {
-          for (const el of extractedElements) {
-            const tmplEl = await db.query.templateElements.findFirst({
-              where: and(
-                eq(templateElements.key, el.key),
-                eq(templateElements.organizationId, organizationId),
-              ),
-            });
+          // Load valid keys for this organization once
+          const orgTmplEls = await db.query.templateElements.findMany({
+            where: eq(templateElements.organizationId, organizationId),
+          });
+          const keyToTmplEl = new Map(orgTmplEls.map(t => [t.key, t]));
 
+          for (const el of extractedElements) {
+            const tmplEl = keyToTmplEl.get(el.key);
             if (tmplEl) {
               await db.update(projectElements).set({
                 value: el.value,
@@ -1224,27 +1252,31 @@ export async function processSolomonMessage(params: {
         }
 
         // Extract project metadata (program, nomenclator, prefix, structure)
+        // Only allow known keys with bounded values to prevent injection
         const metadataMatch = fullResponse.match(/<!--METADATA_JSON(\{[\s\S]*?\})METADATA_JSON-->/);
         if (metadataMatch) {
           try {
-            const metadata = JSON.parse(metadataMatch[1]);
-            const metaUpdate: any = { updatedAt: new Date() };
-            if (metadata.programFinantare) metaUpdate.programFinantare = metadata.programFinantare;
-            if (metadata.codMasura) metaUpdate.codMasura = metadata.codMasura;
-            if (metadata.codSesiune) metaUpdate.codSesiune = metadata.codSesiune;
-            if (metadata.codNomenclator) metaUpdate.codNomenclator = metadata.codNomenclator;
-            if (metadata.prefixDocumente) metaUpdate.prefixDocumente = metadata.prefixDocumente;
-            if (metadata.codMysmis) metaUpdate.codMysmis = metadata.codMysmis;
-            if (metadata.structuraDosar) metaUpdate.structuraDosar = metadata.structuraDosar;
+            const rawMetadata = JSON.parse(metadataMatch[1]);
+            if (rawMetadata && typeof rawMetadata === "object" && !Array.isArray(rawMetadata)) {
+              const metaUpdate: any = { updatedAt: new Date() };
+              const validatedMetadata: Record<string, string> = {};
 
-            if (Object.keys(metaUpdate).length > 1) {
-              await db.update(projects).set(metaUpdate).where(eq(projects.id, projectId));
+              for (const [key, value] of Object.entries(rawMetadata)) {
+                if (ALLOWED_METADATA_KEYS.has(key) && typeof value === "string" && value.length <= MAX_METADATA_VALUE_LENGTH) {
+                  metaUpdate[key] = value;
+                  validatedMetadata[key] = value;
+                }
+              }
 
-              // Notify frontend about metadata update
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify({
-                type: "metadata_updated",
-                metadata,
-              })}\n\n`));
+              if (Object.keys(metaUpdate).length > 1) {
+                await db.update(projects).set(metaUpdate).where(eq(projects.id, projectId));
+
+                // Notify frontend about metadata update
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+                  type: "metadata_updated",
+                  metadata: validatedMetadata,
+                })}\n\n`));
+              }
             }
           } catch {}
         }

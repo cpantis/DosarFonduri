@@ -85,9 +85,6 @@ export async function checkEligibility(projectId: string, organizationId: string
       .map(r => [r.ruleId, { overrideResult: r.overrideResult, overrideBy: r.overrideBy, notes: r.notes }])
   );
 
-  // Delete old eligibility results
-  await db.delete(projectEligibility).where(eq(projectEligibility.projectId, projectId));
-
   // === STEP 1: FIXED RULES (automatic, no AI) ===
   const results: Array<{
     ruleId: string;
@@ -113,18 +110,18 @@ export async function checkEligibility(projectId: string, organizationId: string
     }
 
     let passed = false;
-    const numericCompare = parseFloat(condition.value);
-    const compareValue = !isNaN(numericCompare) ? numericCompare : condition.value;
-    const numericField = typeof fieldValue === "number" ? fieldValue : parseFloat(fieldValue);
-    const effectiveFieldValue = typeof compareValue === "number" && !isNaN(numericField) ? numericField : fieldValue;
+    // Normalize both sides to numbers when possible to avoid string comparison bugs
+    const condNum = parseFloat(condition.value);
+    const fieldNum = typeof fieldValue === "number" ? fieldValue : parseFloat(String(fieldValue));
+    const bothNumeric = !isNaN(condNum) && !isNaN(fieldNum);
 
     switch (condition.operator) {
-      case "eq": passed = String(effectiveFieldValue) === String(compareValue); break;
-      case "neq": passed = String(effectiveFieldValue) !== String(compareValue); break;
-      case "gt": passed = fieldValue > compareValue; break;
-      case "gte": passed = fieldValue >= compareValue; break;
-      case "lt": passed = fieldValue < compareValue; break;
-      case "lte": passed = fieldValue <= compareValue; break;
+      case "eq": passed = String(fieldValue).toLowerCase() === String(condition.value).toLowerCase(); break;
+      case "neq": passed = String(fieldValue).toLowerCase() !== String(condition.value).toLowerCase(); break;
+      case "gt": passed = bothNumeric ? fieldNum > condNum : String(fieldValue) > String(condition.value); break;
+      case "gte": passed = bothNumeric ? fieldNum >= condNum : String(fieldValue) >= String(condition.value); break;
+      case "lt": passed = bothNumeric ? fieldNum < condNum : String(fieldValue) < String(condition.value); break;
+      case "lte": passed = bothNumeric ? fieldNum <= condNum : String(fieldValue) <= String(condition.value); break;
       case "in": {
         const inValues = Array.isArray(condition.value) ? condition.value : condition.value.split(",").map((v: string) => v.trim());
         passed = inValues.includes(String(fieldValue));
@@ -138,7 +135,8 @@ export async function checkEligibility(projectId: string, organizationId: string
       case "between": {
         const low = parseFloat(condition.value);
         const high = parseFloat(condition.value2);
-        passed = fieldValue >= low && fieldValue <= high;
+        const numField = typeof fieldValue === "number" ? fieldValue : parseFloat(String(fieldValue));
+        passed = !isNaN(numField) && !isNaN(low) && !isNaN(high) && numField >= low && numField <= high;
         break;
       }
       default:
@@ -166,31 +164,34 @@ export async function checkEligibility(projectId: string, organizationId: string
     results.push(...interpretedResults);
   }
 
-  // Insert results, restoring any manual overrides
+  // Atomic delete+insert inside a transaction to prevent race conditions
   if (results.length > 0) {
-    await db.insert(projectEligibility).values(
-      results.map(r => {
-        const override = overrides.get(r.ruleId);
-        if (override) {
-          return {
-            projectId,
-            ruleId: r.ruleId,
-            status: override.overrideResult === true ? "passed" as const : override.overrideResult === false ? "failed" as const : r.status,
-            autoResult: r.autoResult,
-            overrideResult: override.overrideResult,
-            overrideBy: override.overrideBy,
-            notes: override.notes || r.notes,
-          };
-        }
+    const insertValues = results.map(r => {
+      const override = overrides.get(r.ruleId);
+      if (override) {
         return {
           projectId,
           ruleId: r.ruleId,
-          status: r.status,
+          status: override.overrideResult === true ? "passed" as const : override.overrideResult === false ? "failed" as const : r.status,
           autoResult: r.autoResult,
-          notes: r.notes,
+          overrideResult: override.overrideResult,
+          overrideBy: override.overrideBy,
+          notes: override.notes || r.notes,
         };
-      })
-    );
+      }
+      return {
+        projectId,
+        ruleId: r.ruleId,
+        status: r.status,
+        autoResult: r.autoResult,
+        notes: r.notes,
+      };
+    });
+
+    await db.transaction(async (tx) => {
+      await tx.delete(projectEligibility).where(eq(projectEligibility.projectId, projectId));
+      await tx.insert(projectEligibility).values(insertValues);
+    });
   }
 }
 
@@ -291,7 +292,28 @@ Pentru fiecare regulă returnează:
     const content = textBlock ? (textBlock as any).text : "[]";
     const cleaned = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
 
-    const evaluations = JSON.parse(cleaned);
+    let evaluations: any[];
+    try {
+      evaluations = JSON.parse(cleaned);
+    } catch {
+      console.error("Failed to parse AI eligibility response:", cleaned.slice(0, 500));
+      // Return all as pending rather than losing data (overrides are preserved by the caller)
+      return interpretedRules.map(rule => ({
+        ruleId: rule.id,
+        status: "pending" as const,
+        autoResult: null,
+        notes: "Evaluare AI returnare JSON invalid — verificare manuală necesară",
+      }));
+    }
+
+    if (!Array.isArray(evaluations)) {
+      return interpretedRules.map(rule => ({
+        ruleId: rule.id,
+        status: "pending" as const,
+        autoResult: null,
+        notes: "Evaluare AI returnare format invalid — verificare manuală necesară",
+      }));
+    }
 
     await logAIUsage({
       organizationId,

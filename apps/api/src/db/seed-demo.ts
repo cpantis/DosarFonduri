@@ -1,10 +1,11 @@
 /**
- * Seed DEMO — creează cabinetul Selenade Digital + admin + companie fictivă.
+ * Seed DEMO — creează cabinetul demo + admin + companie fictivă.
  *
  * Usage:
  *   npx tsx src/db/seed-demo.ts
  *
  * Requires DATABASE_URL in .env or environment.
+ * Set DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD, DEMO_ADMIN_NAME via env vars.
  */
 import "dotenv/config";
 import { drizzle } from "drizzle-orm/postgres-js";
@@ -12,13 +13,24 @@ import postgres from "postgres";
 import { hash } from "bcryptjs";
 import * as schema from "./schema";
 
-// ─── CONFIG ──────────────────────────────────────────────
-const ADMIN_EMAIL = "calin_pantis@yahoo.com";
-const ADMIN_PASSWORD = "Demo2026!Selenade";
-const ADMIN_NAME = "Călin Pantiș";
+// ─── CONFIG (from env vars) ──────────────────────────────
+function requireDemoEnv(name: string): string {
+  const val = process.env[name];
+  if (!val) {
+    throw new Error(
+      `${name} environment variable is required for demo seed. ` +
+      "Set DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD, and DEMO_ADMIN_NAME.",
+    );
+  }
+  return val;
+}
 
-const ORG_NAME = "Selenade Digital";
-const ORG_CODE = "SELENADE";
+const ADMIN_EMAIL = requireDemoEnv("DEMO_ADMIN_EMAIL");
+const ADMIN_PASSWORD = requireDemoEnv("DEMO_ADMIN_PASSWORD");
+const ADMIN_NAME = process.env.DEMO_ADMIN_NAME || "Demo Admin";
+
+const ORG_NAME = process.env.DEMO_ORG_NAME || "Demo Cabinet";
+const ORG_CODE = process.env.DEMO_ORG_CODE || "DEMO";
 
 async function seedDemo() {
   const client = postgres(process.env.DATABASE_URL!);
@@ -40,7 +52,7 @@ async function seedDemo() {
       plan: "professional",
       maxUsers: 5,
       status: "active",
-      providerNotes: "Cabinet demo — Selenade Digital S.R.L.",
+      providerNotes: "Cabinet demo.",
     }).returning();
     org = created;
     console.log(`✅ Organizație creată: ${org.name} (id: ${org.id})`);
@@ -65,7 +77,6 @@ async function seedDemo() {
     }).returning();
     user = created;
     console.log(`✅ Admin creat: ${user.email} (id: ${user.id})`);
-    console.log(`   🔑 Parolă: ${ADMIN_PASSWORD}`);
   }
 
   // ─── 3. ORG CONFIG (defaults) ──────────────────────────
@@ -116,7 +127,6 @@ async function seedDemo() {
       partiSociale: 500,
       valoareParte: "100.00",
       onrcRawData: {
-        // ─── Date simulate API termene.ro (structura completă) ───
         firma: {
           cui: 12345678,
           nume_mfinante: "INNOVATION TECH SOLUTIONS SRL",
@@ -124,7 +134,6 @@ async function seedDemo() {
           reg_com: "J40/1234/2018",
           este_cod_tva_intracomunitar: true,
         },
-
         caen: {
           principal_recom: {
             cod: "6201",
@@ -136,7 +145,6 @@ async function seedDemo() {
             label: "Activități de realizare a soft-ului la comandă",
           },
         },
-
         statut_tva: {
           curent: {
             cod: "I",
@@ -157,12 +165,10 @@ async function seedDemo() {
             },
           ],
         },
-
         date_contact: {
           telefon: "0212345678",
           email: "office@innovationtech.ro",
         },
-
         adresa: {
           anaf: {
             tara: "România",
@@ -208,7 +214,6 @@ async function seedDemo() {
             formatat: "Str. Victoriei Nr. 45, Et. 3, Ap. 12, Sector 1, București, 010061",
           },
         },
-
         forma_juridica: {
           curenta: {
             organizare: "SRL",
@@ -327,9 +332,8 @@ async function seedDemo() {
   console.log("\n📋 REZUMAT:");
   console.log(`   Cabinet:  ${ORG_NAME} (plan: professional, max 5 users)`);
   console.log(`   Admin:    ${ADMIN_EMAIL}`);
-  console.log(`   Parolă:   ${ADMIN_PASSWORD}`);
   console.log(`   Companie: INNOVATION TECH SOLUTIONS SRL (CUI: ${DEMO_CUI})`);
-  console.log(`\n   Logare: POST /api/auth/login { email: "${ADMIN_EMAIL}", password: "${ADMIN_PASSWORD}" }`);
+  console.log(`\n   Logare: POST /api/auth/login { email: "${ADMIN_EMAIL}", password: "****" }`);
 }
 
 seedDemo().catch((err) => {

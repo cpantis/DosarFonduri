@@ -1,19 +1,22 @@
 import Anthropic from "@anthropic-ai/sdk";
+import crypto from "crypto";
 
 const anthropic = new Anthropic();
 
-export async function extractTextFromPDF(buffer: Buffer): Promise<string> {
-  const { execSync } = await import("child_process");
-  const fs = await import("fs");
-  const os = await import("os");
-  const path = await import("path");
+function safeTmpPath(prefix: string, ext: string): string {
+  const os = require("os");
+  const path = require("path");
+  return path.join(os.tmpdir(), `${prefix}_${crypto.randomUUID()}.${ext}`);
+}
 
-  const tmpDir = os.tmpdir();
-  const inputPath = path.join(tmpDir, `pdf_${Date.now()}.pdf`);
+export async function extractTextFromPDF(buffer: Buffer): Promise<string> {
+  const { execFileSync } = await import("child_process");
+  const fs = await import("fs");
+
+  const inputPath = safeTmpPath("pdf", "pdf");
   fs.writeFileSync(inputPath, buffer);
 
-  try {
-    const script = `
+  const script = `
 import fitz, sys, json
 doc = fitz.open(sys.argv[1])
 pages = []
@@ -23,10 +26,11 @@ for page in doc:
 doc.close()
 print(json.dumps(pages))
 `;
-    const scriptPath = path.join(tmpDir, `extract_${Date.now()}.py`);
-    fs.writeFileSync(scriptPath, script);
+  const scriptPath = safeTmpPath("extract", "py");
+  fs.writeFileSync(scriptPath, script);
 
-    const result = execSync(`python3 ${scriptPath} ${inputPath}`, {
+  try {
+    const result = execFileSync("python3", [scriptPath, inputPath], {
       encoding: "utf-8",
       timeout: 30000,
     });
@@ -38,10 +42,10 @@ print(json.dumps(pages))
       console.warn(`${scannedPages.length} scanned pages detected - Vision OCR needed`);
     }
 
-    fs.unlinkSync(scriptPath);
     return pages.map(p => `--- Pagina ${p.page} ---\n${p.text}`).join("\n\n");
   } finally {
-    fs.unlinkSync(inputPath);
+    try { fs.unlinkSync(inputPath); } catch {}
+    try { fs.unlinkSync(scriptPath); } catch {}
   }
 }
 
@@ -67,14 +71,11 @@ export async function ocrPageWithVision(pageImageBase64: string): Promise<string
   return response.content[0].type === "text" ? response.content[0].text : "";
 }
 
-export async function extractTextFromDOCX(buffer: Buffer, fileName: string): Promise<string> {
-  const { execSync } = await import("child_process");
+export async function extractTextFromDOCX(buffer: Buffer, _fileName: string): Promise<string> {
+  const { execFileSync } = await import("child_process");
   const fs = await import("fs");
-  const os = await import("os");
-  const path = await import("path");
 
-  const tmpDir = os.tmpdir();
-  const inputPath = path.join(tmpDir, `docx_${Date.now()}_${fileName}`);
+  const inputPath = safeTmpPath("docx", "docx");
   fs.writeFileSync(inputPath, buffer);
 
   const script = `
@@ -108,28 +109,25 @@ for table in doc.tables:
 print("\\n\\n".join(pages))
 `;
 
-  const scriptPath = path.join(tmpDir, `extract_docx_${Date.now()}.py`);
+  const scriptPath = safeTmpPath("extract_docx", "py");
   fs.writeFileSync(scriptPath, script);
 
   try {
-    return execSync(`python3 ${scriptPath} ${inputPath}`, {
+    return execFileSync("python3", [scriptPath, inputPath], {
       encoding: "utf-8",
       timeout: 30000,
     });
   } finally {
-    fs.unlinkSync(inputPath);
-    fs.unlinkSync(scriptPath);
+    try { fs.unlinkSync(inputPath); } catch {}
+    try { fs.unlinkSync(scriptPath); } catch {}
   }
 }
 
-export async function extractTextFromXLSX(buffer: Buffer, fileName: string): Promise<string> {
-  const { execSync } = await import("child_process");
+export async function extractTextFromXLSX(buffer: Buffer, _fileName: string): Promise<string> {
+  const { execFileSync } = await import("child_process");
   const fs = await import("fs");
-  const os = await import("os");
-  const path = await import("path");
 
-  const tmpDir = os.tmpdir();
-  const inputPath = path.join(tmpDir, `xlsx_${Date.now()}_${fileName}`);
+  const inputPath = safeTmpPath("xlsx", "xlsx");
   fs.writeFileSync(inputPath, buffer);
 
   const script = `
@@ -150,16 +148,16 @@ for sheet_name in wb.sheetnames:
 print("\\n".join(output))
 `;
 
-  const scriptPath = path.join(tmpDir, `extract_xlsx_${Date.now()}.py`);
+  const scriptPath = safeTmpPath("extract_xlsx", "py");
   fs.writeFileSync(scriptPath, script);
 
   try {
-    return execSync(`python3 ${scriptPath} ${inputPath}`, {
+    return execFileSync("python3", [scriptPath, inputPath], {
       encoding: "utf-8",
       timeout: 30000,
     });
   } finally {
-    fs.unlinkSync(inputPath);
-    fs.unlinkSync(scriptPath);
+    try { fs.unlinkSync(inputPath); } catch {}
+    try { fs.unlinkSync(scriptPath); } catch {}
   }
 }

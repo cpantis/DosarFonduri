@@ -3,7 +3,11 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { db } from "../db";
 import { files } from "../db/schema";
 import { v4 as uuid } from "uuid";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
+
+if (!process.env.S3_ACCESS_KEY || !process.env.S3_SECRET_KEY) {
+  console.warn("S3_ACCESS_KEY or S3_SECRET_KEY not set — file storage will not work.");
+}
 
 const s3 = new S3Client({
   region: process.env.S3_REGION || "auto",
@@ -17,6 +21,12 @@ const s3 = new S3Client({
 
 const BUCKET = process.env.S3_BUCKET || "dosarfonduri";
 
+function extractExtension(originalName: string): string {
+  const dotIndex = originalName.lastIndexOf(".");
+  if (dotIndex < 1) return "bin"; // no extension or dotfile like ".gitignore"
+  return originalName.slice(dotIndex + 1) || "bin";
+}
+
 export async function uploadFile(
   buffer: Buffer,
   originalName: string,
@@ -24,7 +34,7 @@ export async function uploadFile(
   organizationId: string,
   uploadedBy: string,
 ): Promise<string> {
-  const ext = originalName.split(".").pop() || "bin";
+  const ext = extractExtension(originalName);
   const key = `${organizationId}/${uuid()}.${ext}`;
 
   await s3.send(new PutObjectCommand({
@@ -46,9 +56,14 @@ export async function uploadFile(
   return file.id;
 }
 
-export async function getFileUrl(fileId: string): Promise<string> {
+export async function getFileUrl(fileId: string, organizationId?: string): Promise<string> {
+  const conditions = [eq(files.id, fileId)];
+  if (organizationId) {
+    conditions.push(eq(files.organizationId, organizationId));
+  }
+
   const file = await db.query.files.findFirst({
-    where: eq(files.id, fileId),
+    where: conditions.length === 1 ? conditions[0] : and(...conditions),
   });
   if (!file) throw new Error("File not found");
 
@@ -60,9 +75,14 @@ export async function getFileUrl(fileId: string): Promise<string> {
   return url;
 }
 
-export async function getFileBuffer(fileId: string): Promise<{ buffer: Buffer; name: string; mimeType: string }> {
+export async function getFileBuffer(fileId: string, organizationId?: string): Promise<{ buffer: Buffer; name: string; mimeType: string }> {
+  const conditions = [eq(files.id, fileId)];
+  if (organizationId) {
+    conditions.push(eq(files.organizationId, organizationId));
+  }
+
   const file = await db.query.files.findFirst({
-    where: eq(files.id, fileId),
+    where: conditions.length === 1 ? conditions[0] : and(...conditions),
   });
   if (!file) throw new Error("File not found");
 
@@ -80,9 +100,14 @@ export async function getFileBuffer(fileId: string): Promise<{ buffer: Buffer; n
   };
 }
 
-export async function deleteFile(fileId: string): Promise<void> {
+export async function deleteFile(fileId: string, organizationId?: string): Promise<void> {
+  const conditions = [eq(files.id, fileId)];
+  if (organizationId) {
+    conditions.push(eq(files.organizationId, organizationId));
+  }
+
   const file = await db.query.files.findFirst({
-    where: eq(files.id, fileId),
+    where: conditions.length === 1 ? conditions[0] : and(...conditions),
   });
   if (!file) return;
 

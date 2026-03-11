@@ -1,7 +1,29 @@
 # Expertiza DosarFonduri — Arhitectura Celor Trei Straturi
 
+## Introducere
+
+> **Simplu. Ghidat. Predictibil.**
+> Platforma care automatizează identificarea eligibilității, colectarea datelor oficiale și generarea documentației pentru persoane juridice.
+
+Accesarea fondurilor europene în România este un proces notoriu de complex. Un consultant care pregătește un dosar de finanțare jonglează simultan cu ghiduri de zeci de pagini, anexe cu tabele de corelație, date financiare din bilanțuri, informații juridice de la ONRC și formulare AFIR cu mii de câmpuri. Greșeala apare nu din incompetență, ci din volumul pur al verificărilor încrucișate pe care creierul uman trebuie să le execute în paralel.
+
+DosarFonduri a fost construit pornind de la o observație concretă: **un dosar de finanțare corect este, în esență, un graf de dependențe** — fiecare valoare din dosar poate fi trasată înapoi la o regulă din ghid, validată contra unei surse oficiale și inserată într-un document cu argumentația completă. Dacă graful este complet și consistent, dosarul este corect. Dacă lipsește o legătură, dosarul are o vulnerabilitate.
+
+Cele trei adjective din viziunea platformei nu sunt aspiraționale — sunt principii de arhitectură:
+
+- **Simplu** — Consultantul nu navighează între PDF-uri, tabele Excel și documente Word. Toate datele converg într-o singură interfață: regulile extrase din ghid, tabelele de referință din anexe și valorile colectate de la client coexistă în aceeași pagină de proiect. Complexitatea este ascunsă în stratul de procesare AI; suprafața expusă consultantului rămâne minimală.
+
+- **Ghidat** — Solomon (asistentul conversațional) nu întreabă aleatoriu. Întrebările sale urmează arborele de dependențe al regulilor din ghid. Când colectează suprafața exploatației, știe deja că trebuie să valideze contra Anexei 3 (corelația putere-suprafață) și că va influența calculul intensității din Anexa 4 (clasificarea ANC). Fiecare întrebare are un scop explicit în graful dosarului, iar consultantul vede în timp real de ce i se cere fiecare informație.
+
+- **Predictibil** — Rezultatele nu depind de capacitatea AI-ului de a „ghici" corect. Regulile fixe se evaluează determinist (DA/NU contra unei condiții explicite). Regulile interpretate folosesc arbori de decizie structurați, cu date de referință extrase și validate de consultant. Formularele AFIR se completează fără AI — pur deterministic, câmp cu câmp. Doar documentele cu format liber (Memoriul Justificativ, descrieri tehnice) folosesc generare AI, iar și acolo consultantul previzualizează, editează și aprobă fiecare secțiune înainte de generare. Nimic nu pleacă din platformă fără confirmare umană.
+
+Arhitectura care susține aceste trei principii este cea descrisă în acest document: **cele trei straturi** — Ghidul (reguli), Anexele (date de referință) și Solomon (date client) — interconectate prin tabele de legătură care permit validarea automată, cross-check-ul instant și generarea argumentată a documentației.
+
+---
+
 ## Cuprins
 
+0. [Introducere](#introducere)
 1. [Viziunea generală](#viziunea-generală)
 2. [Cele trei straturi](#cele-trei-straturi)
 3. [Problema și soluția](#problema-și-soluția)

@@ -274,13 +274,21 @@ export const processTemplateWorker = new Worker<ProcessTemplatePayload>(
       }).catch(() => {});
 
     } catch (error) {
-      console.error("Process template error:", error);
-      await db.update(documents).set({ status: "error" }).where(eq(documents.id, documentId));
+      console.error(`Process template error (attempt ${job.attemptsMade + 1}/${job.opts.attempts || 3}):`, error);
+
+      const isLastAttempt = (job.attemptsMade + 1) >= (job.opts.attempts || 3);
+      const docStatus = isLastAttempt ? "failed" : "error";
+      await db.update(documents).set({ status: docStatus as any }).where(eq(documents.id, documentId));
 
       publishEvent(`org:${organizationId}:uploads`, "document_failed", {
         documentId,
-        status: "error",
-        message: `Eroare la procesarea template-ului: ${error instanceof Error ? error.message : "Eroare necunoscută"}`,
+        status: docStatus,
+        attempt: job.attemptsMade + 1,
+        maxAttempts: job.opts.attempts || 3,
+        willRetry: !isLastAttempt,
+        message: isLastAttempt
+          ? `Eroare la procesarea template-ului (toate ${job.opts.attempts || 3} încercări eșuate): ${error instanceof Error ? error.message : "Eroare necunoscută"}`
+          : `Eroare la procesarea template-ului (încercare ${job.attemptsMade + 1}/${job.opts.attempts || 3}, se reîncearcă): ${error instanceof Error ? error.message : "Eroare necunoscută"}`,
       }).catch(() => {});
       throw error;
     }

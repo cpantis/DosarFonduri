@@ -127,6 +127,14 @@ export default function CompaniesPage() {
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadLoading, setUploadLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // CUI search suggestions from ListaFirme.ro
+  const [cuiSearchResults, setCuiSearchResults] = useState<any[]>([]);
+  const [cuiSearching, setCuiSearching] = useState(false);
+  const cuiSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // ONRC upload for existing company
+  const [showOnrcUpload, setShowOnrcUpload] = useState(false);
+  const [onrcUploading, setOnrcUploading] = useState(false);
+  const onrcFileRef = useRef<HTMLInputElement>(null);
 
   const fetchCompanies = useCallback(async () => {
     try {
@@ -262,6 +270,86 @@ export default function CompaniesPage() {
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) setUploadFile(file);
+  };
+
+  // Debounced CUI/name search via ListaFirme.ro
+  const searchCUI = useCallback((query: string) => {
+    if (cuiSearchTimer.current) clearTimeout(cuiSearchTimer.current);
+    if (!query || query.length < 3) {
+      setCuiSearchResults([]);
+      return;
+    }
+    setCuiSearching(true);
+    cuiSearchTimer.current = setTimeout(async () => {
+      try {
+        const results = await apiGet(`/api/companies/search-cui?q=${encodeURIComponent(query)}`);
+        setCuiSearchResults(Array.isArray(results) ? results : []);
+      } catch {
+        setCuiSearchResults([]);
+      } finally {
+        setCuiSearching(false);
+      }
+    }, 400);
+  }, []);
+
+  // Add company from ListaFirme search result
+  const addFromListaFirme = async (fiscalCode: string) => {
+    setCuiLoad(true);
+    setCuiSearchResults([]);
+    try {
+      const result = await apiPost<any>("/api/companies/from-listafirme", { cui: fiscalCode });
+      setCuiRes({
+        denumire: result.denumire || "Firma adaugata",
+        adresa: result.adresa || "\u2014",
+        caen: result.caen || "\u2014",
+        stare: result.stare || "ACTIV",
+      });
+      await fetchCompanies();
+      if (result.id) {
+        setSelected(result.id);
+        setDetailTab("General");
+      }
+    } catch (err: any) {
+      // If ListaFirme fails, fall back to ONRC
+      try {
+        const result = await apiPost<any>("/api/companies", { cui: fiscalCode, mode: "auto" });
+        setCuiRes({
+          denumire: result.denumire || "Firma adaugata",
+          adresa: result.adresa || "\u2014",
+          caen: result.caen || "\u2014",
+          stare: result.stare || "ACTIV",
+        });
+        await fetchCompanies();
+        if (result.id) {
+          setSelected(result.id);
+          setDetailTab("General");
+        }
+      } catch (err2: any) {
+        setCuiRes("error");
+      }
+    } finally {
+      setCuiLoad(false);
+    }
+  };
+
+  // Upload ONRC for existing company
+  const handleOnrcUpload = async () => {
+    if (!onrcFileRef.current?.files?.[0] || !selected) return;
+    setOnrcUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", onrcFileRef.current.files[0]);
+      await api<any>(`/api/companies/${selected}/upload-onrc`, {
+        method: "POST",
+        body: formData,
+      });
+      await fetchDetail(selected);
+      setShowOnrcUpload(false);
+    } catch (err: any) {
+      alert("Eroare la upload ONRC: " + (err.message || "Eroare necunoscuta"));
+    } finally {
+      setOnrcUploading(false);
+    }
   };
 
   return (
@@ -436,7 +524,7 @@ export default function CompaniesPage() {
               </div>
               <div className="fd-act-row">
                 <button className="fd-act" onClick={() => handleSyncOnrc(sel.id)}>Actualizare CUI</button>
-                <button className="fd-act">Reincarca certificat</button>
+                <button className="fd-act" onClick={() => { setShowOnrcUpload(true); }}>Upload ONRC</button>
                 <button className="fd-act danger" onClick={() => handleDelete(sel.id)}>Sterge</button>
               </div>
             </div>
@@ -641,11 +729,57 @@ export default function CompaniesPage() {
             </div>
 
             {addMode === "auto" ? (<>
-              <div className="add-row">
-                <input className={`fi mono ${cuiRes && cuiRes !== "error" ? "ok" : cuiRes === "error" ? "err" : ""}`} placeholder="CUI firma (ex: 55667788)" value={cui} onChange={e => { setCui(e.target.value); setCuiRes(null); }} onKeyDown={e => e.key === "Enter" && checkCui()} />
-                <button className="btn-p" onClick={checkCui} disabled={cuiLoad || cui.replace(/\D/g, "").length < 6}>{cuiLoad ? <span className="spinner" /> : "Verifica"}</button>
+              <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 12 }}>
+                Cauta dupa CUI sau denumire firma. Datele se preiau automat de la ListaFirme.ro / ONRC.
               </div>
-              {cuiLoad && <div className="cui-load"><span className="spinner" /> Se verifica...</div>}
+              <div className="add-row" style={{ position: "relative" }}>
+                <input className={`fi mono ${cuiRes && cuiRes !== "error" ? "ok" : cuiRes === "error" ? "err" : ""}`}
+                  placeholder="CUI sau denumire firma..."
+                  value={cui}
+                  onChange={e => { setCui(e.target.value); setCuiRes(null); searchCUI(e.target.value); }}
+                  onKeyDown={e => e.key === "Enter" && checkCui()}
+                  style={{ flex: 1 }}
+                />
+                <button className="btn-p" onClick={checkCui} disabled={cuiLoad || cui.replace(/\D/g, "").length < 4}>
+                  {cuiLoad ? <span className="spinner" /> : "Adauga"}
+                </button>
+              </div>
+
+              {/* Search suggestions dropdown */}
+              {cuiSearchResults.length > 0 && !cuiRes && (
+                <div style={{
+                  border: "1px solid var(--border)", borderRadius: "var(--r-md)",
+                  background: "var(--bg-surface)", overflow: "hidden", marginTop: 4, marginBottom: 8,
+                }}>
+                  {cuiSearching && (
+                    <div style={{ padding: "8px 14px", fontSize: 11, color: "var(--text-muted)" }}>Se cauta...</div>
+                  )}
+                  {cuiSearchResults.map((r: any, idx: number) => (
+                    <div key={idx}
+                      style={{
+                        padding: "10px 14px", cursor: "pointer", borderBottom: "1px solid var(--border)",
+                        transition: "background .12s", fontSize: 13,
+                      }}
+                      onMouseEnter={e => (e.currentTarget.style.background = "var(--bg-hover)")}
+                      onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+                      onClick={() => {
+                        const code = r.fiscalCode || r.taxCode || "";
+                        setCui(code);
+                        setCuiSearchResults([]);
+                        addFromListaFirme(code);
+                      }}
+                    >
+                      <div style={{ fontWeight: 600 }}>{r.name}</div>
+                      <div style={{ fontSize: 11, color: "var(--text-muted)", display: "flex", gap: 12, marginTop: 2 }}>
+                        <span style={{ fontFamily: "var(--font-mono)" }}>CUI: {r.fiscalCode || r.taxCode || "—"}</span>
+                        {r.county && <span>{r.county}</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {cuiLoad && <div className="cui-load"><span className="spinner" /> Se verifica si se adauga firma...</div>}
               {cuiRes && cuiRes !== "error" && (
                 <div className="cui-ok">
                   <div className="cn">{cuiRes.denumire}</div>
@@ -695,6 +829,30 @@ export default function CompaniesPage() {
                 <button className="btn-p" disabled={!uploadFile || uploadLoading} onClick={handleManualUpload}>{uploadLoading ? <span className="spinner" /> : "Proceseaza si creeaza firma"}</button>
               </div>
             </>)}
+          </div>
+        </div>
+      )}
+
+      {/* ONRC UPLOAD MODAL */}
+      {showOnrcUpload && selected && (
+        <div className="overlay" onClick={e => { if (e.target === e.currentTarget) setShowOnrcUpload(false); }}>
+          <div className="modal" style={{ maxWidth: 440 }}>
+            <div className="modal-title">Upload Certificat Constatator<button className="modal-close" onClick={() => setShowOnrcUpload(false)}>&times;</button></div>
+            <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 16, lineHeight: 1.5 }}>
+              Incarca un certificat constatator ONRC (PDF). Datele firmei se vor actualiza automat cu informatiile extrase.
+            </div>
+            <input type="file" ref={onrcFileRef} accept=".pdf" style={{ display: "none" }} onChange={() => {}} />
+            <div className="upload-zone" onClick={() => onrcFileRef.current?.click()} style={{ marginBottom: 16 }}>
+              <div className="uz-icon">{onrcFileRef.current?.files?.[0] ? "\u2705" : "\u{1F4C4}"}</div>
+              <div className="uz-title">{onrcFileRef.current?.files?.[0]?.name || "Certificat constatator (PDF)"}</div>
+              <div className="uz-sub">Click pentru a selecta fisierul</div>
+            </div>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button className="btn-s" onClick={() => setShowOnrcUpload(false)}>Anuleaza</button>
+              <button className="btn-p" disabled={onrcUploading} onClick={handleOnrcUpload}>
+                {onrcUploading ? <span className="spinner" /> : "Actualizeaza datele"}
+              </button>
+            </div>
           </div>
         </div>
       )}

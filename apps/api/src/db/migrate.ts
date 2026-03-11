@@ -13,7 +13,7 @@ if (!DATABASE_URL) {
   process.exit(1);
 }
 
-const migrationClient = postgres(DATABASE_URL, { max: 1 });
+const migrationClient = postgres(DATABASE_URL, { max: 1, connect_timeout: 15 });
 const db = drizzle(migrationClient, { schema });
 
 async function runMigrations() {

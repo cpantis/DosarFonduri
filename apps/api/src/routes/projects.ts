@@ -14,6 +14,8 @@ import { deleteFile } from "../services/storage";
 import { validateElement, logElementChange } from "../services/elementValidation";
 import { computeProjectScores } from "../services/scoring";
 import { publishElementValidated, publishEligibilityUpdated, publishScoreUpdated } from "../lib/sse";
+import { validateBudget } from "../services/budgetValidation";
+import { getApprovedProjectLearnings } from "../services/projectLearning";
 
 export const projectRoutes = new Hono<AppEnv>();
 
@@ -865,4 +867,45 @@ projectRoutes.put("/:id", async (c) => {
   ).returning();
 
   return c.json(updated);
+});
+
+// ─── BUDGET VALIDATION ───
+projectRoutes.get("/:id/budget-validation", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const id = c.req.param("id");
+
+  const project = await db.query.projects.findFirst({
+    where: and(eq(projects.id, id), eq(projects.organizationId, auth.organizationId!)),
+  });
+  if (!project) return c.json({ error: "Not found" }, 404);
+
+  const result = await validateBudget(id);
+  return c.json(result);
+});
+
+projectRoutes.post("/:id/validate-budget", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const id = c.req.param("id");
+
+  const project = await db.query.projects.findFirst({
+    where: and(eq(projects.id, id), eq(projects.organizationId, auth.organizationId!)),
+  });
+  if (!project) return c.json({ error: "Not found" }, 404);
+
+  const result = await validateBudget(id);
+  return c.json(result);
+});
+
+// ─── LEARNINGS FROM APPROVED PROJECTS ───
+projectRoutes.get("/:id/learnings", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const id = c.req.param("id");
+
+  const project = await db.query.projects.findFirst({
+    where: and(eq(projects.id, id), eq(projects.organizationId, auth.organizationId!)),
+  });
+  if (!project) return c.json({ error: "Not found" }, 404);
+
+  const learnings = await getApprovedProjectLearnings(id, auth.organizationId!);
+  return c.json(learnings);
 });

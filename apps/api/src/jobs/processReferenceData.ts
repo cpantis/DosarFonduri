@@ -137,8 +137,22 @@ export const processReferenceDataWorker = new Worker<ProcessReferenceDataPayload
       }).catch(() => {});
 
     } catch (error) {
-      console.error("Process reference data error:", error);
-      await db.update(documents).set({ status: "error" }).where(eq(documents.id, documentId));
+      console.error(`Process reference data error (attempt ${job.attemptsMade + 1}/${job.opts.attempts || 3}):`, error);
+
+      const isLastAttempt = (job.attemptsMade + 1) >= (job.opts.attempts || 3);
+      const docStatus = isLastAttempt ? "failed" : "error";
+      await db.update(documents).set({ status: docStatus as any }).where(eq(documents.id, documentId));
+
+      publishEvent(`org:${organizationId}:uploads`, "document_failed", {
+        documentId,
+        status: docStatus,
+        attempt: job.attemptsMade + 1,
+        maxAttempts: job.opts.attempts || 3,
+        willRetry: !isLastAttempt,
+        message: isLastAttempt
+          ? `Eroare la extragerea tabelelor de referință (toate ${job.opts.attempts || 3} încercări eșuate)`
+          : `Eroare la extragerea tabelelor (încercare ${job.attemptsMade + 1}/${job.opts.attempts || 3}, se reîncearcă)`,
+      }).catch(() => {});
       throw error;
     }
   },

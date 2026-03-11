@@ -16,6 +16,44 @@ const STATUS_MAP: Record<string, { label: string; color: string; bg: string }> =
 
 const pct = (a: number, b: number) => b > 0 ? Math.round((a / b) * 100) : 0;
 
+// Workflow stage definitions
+const WORKFLOW_STAGES = [
+  { key: "eligibility", label: "Eligibilitate", icon: "\u{1F6E1}", color: "var(--accent-yellow)" },
+  { key: "writing", label: "Scriere", icon: "\u{1F4DD}", color: "var(--accent-blue)" },
+  { key: "documents", label: "Documente", icon: "\u{1F4C4}", color: "var(--accent-orange)" },
+  { key: "review", label: "Verificare", icon: "\u{1F50D}", color: "var(--accent-purple)" },
+  { key: "submission", label: "Depunere", icon: "\u{1F4E4}", color: "var(--accent-green)" },
+];
+
+function getWorkflowStage(p: any): { currentStage: number; stageProgress: number[] } {
+  const prog = p.progress || {};
+  const eligibility = prog.eligibility || { passed: 0, total: 0 };
+  const elements = prog.elements || { filled: 0, total: 0 };
+  const docs = prog.docs || { done: 0, total: 0 };
+  const templates = prog.templates || { done: 0, total: 0 };
+
+  const eligPct = pct(eligibility.passed, eligibility.total);
+  const elemPct = pct(elements.filled, elements.total);
+  const docsPct = pct(docs.done, docs.total);
+  const tplPct = pct(templates.done, templates.total);
+
+  const stageProgress = [
+    eligPct,                                    // Eligibilitate
+    elemPct,                                    // Scriere (elements filled)
+    Math.round((docsPct + tplPct) / 2),        // Documente (docs + templates)
+    p.status === "review" || p.status === "submitted" || p.status === "approved" ? 100 : 0, // Verificare
+    p.status === "submitted" || p.status === "approved" ? 100 : 0,                          // Depunere
+  ];
+
+  // Determine current stage
+  if (p.status === "approved") return { currentStage: 5, stageProgress };
+  if (p.status === "submitted") return { currentStage: 4, stageProgress };
+  if (p.status === "review") return { currentStage: 3, stageProgress };
+  if (stageProgress[2] > 50) return { currentStage: 2, stageProgress };
+  if (stageProgress[1] > 30) return { currentStage: 1, stageProgress };
+  return { currentStage: 0, stageProgress };
+}
+
 function formatRelativeTime(dateStr: string): string {
   const now = new Date();
   const date = new Date(dateStr);
@@ -206,6 +244,22 @@ export default function ProjectsPage() {
         .pc-bar{flex:1;height:6px;background:var(--bg-deep);border-radius:3px;overflow:hidden}
         .pc-bar-fill{height:100%;border-radius:3px;transition:width .4s}
         .pc-bar-pct{font-size:11px;font-family:var(--font-mono);color:var(--text-secondary);width:36px;text-align:right;flex-shrink:0}
+        .pc-workflow{display:flex;align-items:center;gap:0;padding:10px 0;border-top:1px solid var(--border)}
+        .wf-step{display:flex;flex-direction:column;align-items:center;flex:1;position:relative}
+        .wf-icon{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;border:2px solid var(--border);background:var(--bg-deep);transition:all .2s;position:relative;z-index:1}
+        .wf-step.done .wf-icon{border-color:var(--accent-green);background:rgba(52,211,153,.12)}
+        .wf-step.active .wf-icon{border-color:var(--accent-blue);background:rgba(77,139,255,.12);box-shadow:0 0 8px rgba(77,139,255,.3)}
+        .wf-label{font-size:9px;font-weight:600;color:var(--text-muted);margin-top:3px;text-align:center;white-space:nowrap}
+        .wf-step.done .wf-label{color:var(--accent-green)}
+        .wf-step.active .wf-label{color:var(--accent-blue)}
+        .wf-line{position:absolute;top:14px;left:calc(50% + 14px);width:calc(100% - 28px);height:2px;background:var(--border);z-index:0}
+        .wf-step.done .wf-line{background:var(--accent-green)}
+        .wf-step.active .wf-line{background:linear-gradient(90deg, var(--accent-blue) 50%, var(--border) 50%)}
+        .pc-overall{display:flex;align-items:center;gap:8px;padding:6px 0}
+        .pc-overall-label{font-size:11px;font-weight:600;color:var(--text-secondary)}
+        .pc-overall-bar{flex:1;height:8px;background:var(--bg-deep);border-radius:4px;overflow:hidden}
+        .pc-overall-fill{height:100%;border-radius:4px;transition:width .4s}
+        .pc-overall-pct{font-size:13px;font-family:var(--font-mono);font-weight:700;min-width:36px;text-align:right}
         .pc-footer{display:flex;align-items:center;gap:10px;padding-top:10px;border-top:1px solid var(--border)}
         .pc-consultant{font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:4px;flex:1}
         .pc-updated{font-size:11px;color:var(--text-muted);font-family:var(--font-mono)}
@@ -352,20 +406,38 @@ export default function ProjectsPage() {
                     </div>
                   </div>
 
-                  <div className="pc-progress">
-                    {[
-                      { label: "Eligibilitate", a: eligibility.passed, b: eligibility.total, fullColor: "var(--accent-green)", partColor: "var(--accent-yellow)" },
-                      { label: "Elemente", a: elements.filled, b: elements.total, fullColor: "var(--accent-green)", partColor: "var(--accent-blue)" },
-                      { label: "Documente", a: docs.done, b: docs.total, fullColor: "var(--accent-green)", partColor: "var(--accent-orange)" },
-                      { label: "Template-uri", a: templates.done, b: templates.total, fullColor: "var(--accent-green)", partColor: "var(--accent-purple)" },
-                    ].map(bar => (
-                      <div className="pc-bar-row" key={bar.label}>
-                        <span className="pc-bar-label">{bar.label}</span>
-                        <div className="pc-bar"><div className="pc-bar-fill" style={{ width: `${pct(bar.a, bar.b)}%`, background: pct(bar.a, bar.b) === 100 ? bar.fullColor : bar.partColor }} /></div>
-                        <span className="pc-bar-pct">{bar.a}/{bar.b}</span>
+                  {/* Workflow stages */}
+                  {(() => {
+                    const wf = getWorkflowStage(p);
+                    const overallPct = Math.round(wf.stageProgress.reduce((s, v) => s + v, 0) / wf.stageProgress.length);
+                    return <>
+                      <div className="pc-workflow">
+                        {WORKFLOW_STAGES.map((stage, i) => {
+                          const done = wf.stageProgress[i] === 100;
+                          const active = i === wf.currentStage;
+                          return (
+                            <div key={stage.key} className={`wf-step ${done ? "done" : ""} ${active ? "active" : ""}`}>
+                              <div className="wf-icon">{stage.icon}</div>
+                              <span className="wf-label">{stage.label}</span>
+                              {i < WORKFLOW_STAGES.length - 1 && <div className="wf-line" />}
+                            </div>
+                          );
+                        })}
                       </div>
-                    ))}
-                  </div>
+                      <div className="pc-overall">
+                        <span className="pc-overall-label">Progres</span>
+                        <div className="pc-overall-bar">
+                          <div className="pc-overall-fill" style={{
+                            width: `${overallPct}%`,
+                            background: overallPct === 100 ? "var(--accent-green)" : overallPct > 60 ? "var(--accent-blue)" : "var(--accent-yellow)"
+                          }} />
+                        </div>
+                        <span className="pc-overall-pct" style={{
+                          color: overallPct === 100 ? "var(--accent-green)" : overallPct > 60 ? "var(--accent-blue)" : "var(--accent-yellow)"
+                        }}>{overallPct}%</span>
+                      </div>
+                    </>;
+                  })()}
 
                   <div className="pc-footer">
                     <span className="pc-consultant">&#128100; {p.consultantId || "—"}</span>

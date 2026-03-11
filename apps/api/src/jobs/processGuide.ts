@@ -6,7 +6,7 @@ import { eq } from "drizzle-orm";
 import { getFileBuffer } from "../services/storage";
 import { extractTextFromPDF, extractTextFromDOCX, extractTextFromXLSX } from "../services/ocr";
 import { logAIUsage } from "../services/aiUsage";
-import { publishEvent } from "../lib/sse";
+import { publishEvent, publishJobProgress } from "../lib/sse";
 import { redis, isRedisReady } from "../lib/redis";
 
 const anthropic = new Anthropic();
@@ -299,9 +299,27 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
       const useET = config?.reguliInterpET ?? true;
 
       await job.updateProgress(30);
+      publishJobProgress(organizationId, {
+        jobId: job.id || "",
+        jobType: "ghid",
+        documentId,
+        documentName: doc.name,
+        progress: 30,
+        status: "processing",
+        message: `Extragere reguli fixe din "${doc.name}"...`,
+      }).catch(() => {});
       await extractFixedRules(text, fixedModel, documentId, organizationId);
 
       await job.updateProgress(60);
+      publishJobProgress(organizationId, {
+        jobId: job.id || "",
+        jobType: "ghid",
+        documentId,
+        documentName: doc.name,
+        progress: 60,
+        status: "processing",
+        message: `Extragere reguli interpretate din "${doc.name}"...`,
+      }).catch(() => {});
       await extractInterpretedRules(text, interpModel, useET, documentId, organizationId);
 
       const pageCount = (text.match(/--- Pagina/g) || []).length;
@@ -323,13 +341,21 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         message: `Ghid procesat "${doc.name}". ${pageCount} pagini, reguli extrase.`,
       }).catch(() => {});
     } catch (error) {
-      console.error("Process guide error:", error);
-      await db.update(documents).set({ status: "error" }).where(eq(documents.id, documentId));
+      console.error(`Process guide error (attempt ${job.attemptsMade + 1}/${job.opts.attempts || 3}):`, error);
+
+      const isLastAttempt = (job.attemptsMade + 1) >= (job.opts.attempts || 3);
+      const docStatus = isLastAttempt ? "failed" : "error";
+      await db.update(documents).set({ status: docStatus as any }).where(eq(documents.id, documentId));
 
       publishEvent(`org:${organizationId}:uploads`, "document_failed", {
         documentId,
-        status: "error",
-        message: `Eroare la procesarea ghidului: ${error instanceof Error ? error.message : "Eroare necunoscută"}`,
+        status: docStatus,
+        attempt: job.attemptsMade + 1,
+        maxAttempts: job.opts.attempts || 3,
+        willRetry: !isLastAttempt,
+        message: isLastAttempt
+          ? `Eroare la procesarea ghidului (toate ${job.opts.attempts || 3} încercări eșuate): ${error instanceof Error ? error.message : "Eroare necunoscută"}`
+          : `Eroare la procesarea ghidului (încercare ${job.attemptsMade + 1}/${job.opts.attempts || 3}, se reîncearcă): ${error instanceof Error ? error.message : "Eroare necunoscută"}`,
       }).catch(() => {});
       throw error;
     }

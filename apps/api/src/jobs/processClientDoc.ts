@@ -77,8 +77,22 @@ export const processClientDocWorker = new Worker<ProcessClientDocPayload>(
       });
 
     } catch (error) {
-      console.error("Process client doc error:", error);
-      await db.update(documents).set({ status: "error" }).where(eq(documents.id, documentId));
+      console.error(`Process client doc error (attempt ${job.attemptsMade + 1}/${job.opts.attempts || 3}):`, error);
+
+      const isLastAttempt = (job.attemptsMade + 1) >= (job.opts.attempts || 3);
+      const docStatus = isLastAttempt ? "failed" : "error";
+      await db.update(documents).set({ status: docStatus as any }).where(eq(documents.id, documentId));
+
+      publishEvent(`org:${organizationId}:uploads`, "document_failed", {
+        documentId,
+        status: docStatus,
+        attempt: job.attemptsMade + 1,
+        maxAttempts: job.opts.attempts || 3,
+        willRetry: !isLastAttempt,
+        message: isLastAttempt
+          ? `Eroare la procesarea documentului (toate ${job.opts.attempts || 3} încercări eșuate)`
+          : `Eroare la procesarea documentului (încercare ${job.attemptsMade + 1}/${job.opts.attempts || 3}, se reîncearcă)`,
+      }).catch(() => {});
       throw error;
     }
   },

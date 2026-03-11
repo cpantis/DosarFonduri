@@ -19,6 +19,7 @@ import {
   projects, projectElements, projectDocuments,
   templateElements, documents, orgConfig, companies,
   guideReferenceTables, rules, ruleReferenceLinks, elementRuleLinks,
+  organizations,
 } from "../db/schema";
 import { eq, and, inArray } from "drizzle-orm";
 import { getFileBuffer, uploadFile } from "./storage";
@@ -446,6 +447,22 @@ export async function composeDocument(params: ComposeDocParams): Promise<Readabl
 
         const { buffer: templateBuffer, name: templateName } = await getFileBuffer(templateDoc.fileId);
 
+        // Load cabinet document style from organization
+        const org = await db.query.organizations.findFirst({
+          where: eq(organizations.id, organizationId),
+        });
+        const cabinetStyle = org?.cabinetDocumentStyle || {};
+
+        // Apply cabinet primary color to table headers if not already set
+        if (cabinetStyle.primaryColor) {
+          const headerColorHex = cabinetStyle.primaryColor.replace("#", "");
+          for (const section of composeSections) {
+            if (section.tableData && !section.tableData.headerColor) {
+              section.tableData.headerColor = headerColorHex;
+            }
+          }
+        }
+
         emit({ type: "status", message: "Se construiește documentul cu tabele și conținut narativ..." });
 
         // Build elements map for simple {{key}} replacements
@@ -453,12 +470,14 @@ export async function composeDocument(params: ComposeDocParams): Promise<Readabl
         for (const [key, { value }] of Object.entries(context.elements)) {
           simpleElements[key] = value;
         }
+        if (cabinetStyle.footerText) simpleElements["footer_cabinet"] = cabinetStyle.footerText;
 
         const filledBuffer = await composeDocxTemplate(
           templateBuffer,
           templateName,
           simpleElements,
           composeSections,
+          cabinetStyle,
         );
 
         // Step 3: Upload and save
@@ -541,6 +560,7 @@ async function composeDocxTemplate(
   _templateFileName: string,
   elements: Record<string, string>,
   sections: ComposeSection[],
+  cabinetStyle?: Record<string, any>,
 ): Promise<Buffer> {
   const { execFileSync } = await import("child_process");
   const fs = await import("fs");
@@ -550,7 +570,7 @@ async function composeDocxTemplate(
   const dataPath = safeTmpPath("compose_data", "json");
 
   fs.writeFileSync(inputPath, templateBuffer);
-  fs.writeFileSync(dataPath, JSON.stringify({ elements, sections }));
+  fs.writeFileSync(dataPath, JSON.stringify({ elements, sections, cabinetStyle: cabinetStyle || {} }));
 
   const scriptPath = safeTmpPath("compose", "py");
   fs.writeFileSync(scriptPath, COMPOSE_PYTHON_SCRIPT);
@@ -587,6 +607,7 @@ with open(data_path, 'r', encoding='utf-8') as f:
 
 elements = payload.get('elements', {})
 sections = payload.get('sections', [])
+cabinet_style = payload.get('cabinetStyle', {})
 
 doc = Document(template_path)
 
@@ -954,6 +975,33 @@ for table in doc.tables:
         for cell in row.cells:
             for para in cell.paragraphs:
                 replace_in_paragraph(para, elements)
+
+# Apply cabinet document style
+cab_font = cabinet_style.get('fontFamily')
+cab_footer = cabinet_style.get('footerText')
+
+if cab_font:
+    for para in doc.paragraphs:
+        for run in para.runs:
+            if run.font and run.text.strip():
+                run.font.name = cab_font
+    for table in doc.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                for para in cell.paragraphs:
+                    for run in para.runs:
+                        if run.font and run.text.strip():
+                            run.font.name = cab_font
+
+if cab_footer:
+    last_section = doc.sections[-1] if doc.sections else None
+    if last_section and last_section.footer:
+        p = last_section.footer.add_paragraph()
+        run = p.add_run(cab_footer)
+        run.font.size = Pt(8)
+        run.font.color.rgb = RGBColor(0x88, 0x88, 0x88)
+        if cab_font:
+            run.font.name = cab_font
 
 doc.save(output_path)
 

@@ -295,6 +295,10 @@ export default function ProjectViewPage() {
   const [composeEditText, setComposeEditText] = useState("");
   const [composeModel, setComposeModel] = useState("");
 
+  // Versioning state
+  const [neemiaVersions, setNeemiaVersions] = useState<any[]>([]);
+  const [neemiaVersionsOpen, setNeemiaVersionsOpen] = useState<string | null>(null); // templateDocumentId
+
   // Drag handler for Neemia split pane
   useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {
@@ -1106,6 +1110,22 @@ export default function ProjectViewPage() {
     setComposeEditText("");
   };
 
+  // ─── NEEMIA: Load version history for a template ───
+  const handleLoadVersions = async (templateDocumentId: string) => {
+    if (neemiaVersionsOpen === templateDocumentId) {
+      setNeemiaVersionsOpen(null);
+      setNeemiaVersions([]);
+      return;
+    }
+    try {
+      const versions = await apiGet<any[]>(`/api/neemia/projects/${projectId}/documents/${templateDocumentId}/versions`);
+      setNeemiaVersions(versions || []);
+      setNeemiaVersionsOpen(templateDocumentId);
+    } catch (err) {
+      console.error("Failed to load versions:", err);
+    }
+  };
+
   const handleComposeApproveSection = (sectionIdx: number) => {
     setComposePreviewSections(prev => prev.map((s, i) =>
       i === sectionIdx ? { ...s, approved: !s.approved } : s
@@ -1894,6 +1914,16 @@ export default function ProjectViewPage() {
         .tc-mode-badge.compose{background:rgba(167,139,250,.15);color:var(--accent-purple)}
         .tc-preview{color:var(--accent-purple);border-color:var(--accent-purple)}
         .tc-preview:hover:not(:disabled){background:rgba(167,139,250,.08);border-color:var(--accent-purple)}
+        .tc-versions{color:var(--text-secondary);border-color:var(--border)}
+        .tc-versions:hover{background:var(--bg-hover);color:var(--text-primary)}
+        .tc-versions-panel{margin-top:6px;padding:6px 0;border-top:1px solid var(--border)}
+        .tc-version-row{display:flex;align-items:center;gap:8px;padding:4px 0;font-size:11px}
+        .tv-badge{background:var(--bg-hover);color:var(--accent-blue);font-weight:700;padding:1px 6px;border-radius:4px;font-family:var(--font-mono);font-size:10px}
+        .tv-date{color:var(--text-secondary);font-size:11px}
+        .tv-stats{color:var(--text-muted);font-size:10px;margin-left:auto}
+        .tv-mode{font-size:9px;font-weight:700;color:var(--accent-purple);text-transform:uppercase;letter-spacing:.5px}
+        .tv-download{background:none;border:none;cursor:pointer;color:var(--accent-blue);font-size:14px;padding:0 4px}
+        .tv-download:hover{color:var(--accent-green)}
 
         /* COMPOSE Preview Panel */
         .compose-preview-panel{display:flex;flex-direction:column;height:100%;overflow:hidden}
@@ -1946,6 +1976,33 @@ export default function ProjectViewPage() {
         .coming-soon .cs-icon{font-size:48px;opacity:.5}
         .coming-soon .cs-label{font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:1px}
         .coming-soon .cs-desc{font-size:13px;color:var(--text-secondary)}
+
+        /* ═══ RESPONSIVE ═══ */
+        @media(max-width:1024px){
+          .pv-container{flex-direction:column}
+          .tree-sidebar{width:100%!important;min-width:100%!important;max-height:200px;border-right:none;border-bottom:1px solid var(--border);flex-direction:row;overflow-x:auto}
+          .tree-header{min-width:220px;padding:12px 16px}
+          .tree-nav{display:flex;flex-direction:row;gap:4px;padding:8px;overflow-x:auto;flex-wrap:nowrap;min-width:0}
+          .tree-branch{min-width:max-content}
+          .tree-branch-header{white-space:nowrap}
+          .tree-leaf{white-space:nowrap;min-width:max-content}
+          .tree-back{display:none}
+          .neemia-layout{flex-direction:column}
+          .neemia-templates{width:100%!important;min-width:100%!important;max-height:220px;border-right:none;border-bottom:1px solid var(--border);overflow-x:auto;display:flex;flex-wrap:nowrap;gap:8px;align-items:flex-start}
+          .neemia-templates h3{white-space:nowrap}
+          .template-card{min-width:220px;flex-shrink:0}
+          .neemia-preview-area{flex-direction:column}
+          .neemia-fields-panel{width:100%!important;max-height:300px}
+          .neemia-split-handle{display:none}
+        }
+        @media(max-width:768px){
+          .tree-sidebar{max-height:160px}
+          .content-header{padding:12px 16px}
+          .content-body{padding:16px}
+          .el-grid{grid-template-columns:1fr}
+          .sg-stats{flex-direction:column;gap:8px}
+          .neemia-templates{max-height:180px}
+        }
       `}</style>
 
       {lockError && (
@@ -3132,7 +3189,38 @@ export default function ProjectViewPage() {
                               {tmpl.status === "generated" ? "Regenerează" : "Generează"}
                             </button>
                           )}
+                          {tmpl.templateDocumentId && (
+                            <button
+                              className="tc-action-btn tc-versions"
+                              onClick={(e) => { e.stopPropagation(); handleLoadVersions(tmpl.templateDocumentId); }}
+                            >
+                              {neemiaVersionsOpen === tmpl.templateDocumentId ? "Ascunde istoric" : "Istoric versiuni"}
+                            </button>
+                          )}
                         </div>
+                        {/* Version history panel */}
+                        {neemiaVersionsOpen === tmpl.templateDocumentId && neemiaVersions.length > 0 && (
+                          <div className="tc-versions-panel">
+                            {neemiaVersions.map((v, vi) => (
+                              <div key={vi} className="tc-version-row">
+                                <span className="tv-badge">v{v.version}</span>
+                                <span className="tv-date">{new Date(v.createdAt || v.generatedAt).toLocaleDateString("ro-RO", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                                <span className="tv-stats">{v.filledCount || 0} completate</span>
+                                {v.generationMode === "compose" && <span className="tv-mode">COMPOSE</span>}
+                                {v.downloadUrl && (
+                                  <button className="tv-download" onClick={(e) => { e.stopPropagation(); window.open(v.downloadUrl, "_blank"); }}>
+                                    &#8595;
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {neemiaVersionsOpen === tmpl.templateDocumentId && neemiaVersions.length === 0 && (
+                          <div className="tc-versions-panel">
+                            <div style={{ padding: "8px 0", fontSize: 12, color: "var(--text-muted)" }}>Nicio versiune generată.</div>
+                          </div>
+                        )}
                       </div>
                     );
                   })}

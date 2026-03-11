@@ -2,6 +2,7 @@ import { db } from "../db";
 import {
   projects, projectElements, projectDocuments,
   templateElements, documents, orgConfig, companies,
+  organizations,
 } from "../db/schema";
 import { eq, and, inArray } from "drizzle-orm";
 import { getFileBuffer, uploadFile } from "./storage";
@@ -18,6 +19,7 @@ async function fillDocxTemplate(
   templateBuffer: Buffer,
   _templateFileName: string,
   elements: Record<string, string>,
+  cabinetStyle?: Record<string, any>,
 ): Promise<Buffer> {
   const { execFileSync } = await import("child_process");
   const fs = await import("fs");
@@ -27,18 +29,22 @@ async function fillDocxTemplate(
   const dataPath = safeTmpPath("data", "json");
 
   fs.writeFileSync(inputPath, templateBuffer);
-  fs.writeFileSync(dataPath, JSON.stringify(elements));
+  fs.writeFileSync(dataPath, JSON.stringify({ elements, cabinetStyle: cabinetStyle || {} }));
 
   const script = `
 import sys, json
 from docx import Document
+from docx.shared import Pt, RGBColor
 
 template_path = sys.argv[1]
 output_path = sys.argv[2]
 data_path = sys.argv[3]
 
 with open(data_path, 'r', encoding='utf-8') as f:
-    data = json.load(f)
+    payload = json.load(f)
+
+data = payload.get('elements', payload) if isinstance(payload, dict) and 'elements' in payload else payload
+cabinet_style = payload.get('cabinetStyle', {}) if isinstance(payload, dict) else {}
 
 doc = Document(template_path)
 current_page = 1
@@ -95,6 +101,36 @@ for section in doc.sections:
         if footer:
             for para in footer.paragraphs:
                 replace_in_paragraph(para, data)
+
+# Apply cabinet document style
+font_family = cabinet_style.get('fontFamily')
+footer_text = cabinet_style.get('footerText')
+primary_color = cabinet_style.get('primaryColor', '').lstrip('#')
+
+# Apply font family to all runs if specified
+if font_family:
+    for para in doc.paragraphs:
+        for run in para.runs:
+            if run.font and run.text.strip():
+                run.font.name = font_family
+    for table in doc.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                for para in cell.paragraphs:
+                    for run in para.runs:
+                        if run.font and run.text.strip():
+                            run.font.name = font_family
+
+# Append cabinet footer text to the last section footer
+if footer_text:
+    last_section = doc.sections[-1] if doc.sections else None
+    if last_section and last_section.footer:
+        p = last_section.footer.add_paragraph()
+        run = p.add_run(footer_text)
+        run.font.size = Pt(8)
+        run.font.color.rgb = RGBColor(0x88, 0x88, 0x88)
+        if font_family:
+            run.font.name = font_family
 
 doc.save(output_path)
 unique_filled = list(set(all_filled))
@@ -287,6 +323,15 @@ export async function generateDocument(params: GenerateDocParams): Promise<Reada
 
         const { buffer: templateBuffer, name: templateName } = await getFileBuffer(templateDoc.fileId);
 
+        // Load cabinet document style from organization
+        const org = await db.query.organizations.findFirst({
+          where: eq(organizations.id, organizationId),
+        });
+        const cabinetStyle = org?.cabinetDocumentStyle || {};
+
+        // Inject cabinet branding into elements map
+        if (cabinetStyle.footerText) elementsMap["footer_cabinet"] = cabinetStyle.footerText;
+
         // Fill template
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "status", message: "Se completează documentul..." })}\n\n`));
 
@@ -294,7 +339,7 @@ export async function generateDocument(params: GenerateDocParams): Promise<Reada
         if (templateDoc.fileType === "xlsx") {
           filledBuffer = await fillXlsxTemplate(templateBuffer, templateName, elementsMap);
         } else {
-          filledBuffer = await fillDocxTemplate(templateBuffer, templateName, elementsMap);
+          filledBuffer = await fillDocxTemplate(templateBuffer, templateName, elementsMap, cabinetStyle);
         }
 
         // Post-generation verification: check for remaining {{...}} placeholders

@@ -2,7 +2,7 @@ import type { AppEnv } from "../types/hono";
 import { Hono } from "hono";
 import { z } from "zod";
 import { db } from "../db";
-import { orgConfig, apiIntegrations, solomonKnowledge } from "../db/schema";
+import { orgConfig, apiIntegrations, solomonKnowledge, organizations } from "../db/schema";
 import { eq, and } from "drizzle-orm";
 import { encrypt, decrypt } from "../lib/crypto";
 import type { AuthContext } from "../middleware/auth";
@@ -404,4 +404,52 @@ configRoutes.delete("/knowledge/:id", async (c) => {
 
   await db.delete(solomonKnowledge).where(eq(solomonKnowledge.id, id));
   return c.json({ ok: true });
+});
+
+// ─── GET /branding (cabinet document style) ───
+configRoutes.get("/branding", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  if (!auth.organizationId) return c.json({ error: "No organization" }, 400);
+
+  const org = await db.query.organizations.findFirst({
+    where: eq(organizations.id, auth.organizationId),
+  });
+
+  return c.json(org?.cabinetDocumentStyle || {});
+});
+
+// ─── PUT /branding (update cabinet document style) ───
+const brandingSchema = z.object({
+  primaryColor: z.string().optional(),
+  accentColor: z.string().optional(),
+  fontFamily: z.string().optional(),
+  logoUrl: z.string().optional(),
+  footerText: z.string().optional(),
+  highlightColor: z.string().optional(),
+  warningColor: z.string().optional(),
+  logoOnWorkDocs: z.boolean().optional(),
+  logoOnFinalDocs: z.boolean().optional(),
+});
+
+configRoutes.put("/branding", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  if (!auth.organizationId) return c.json({ error: "No organization" }, 400);
+  if (auth.role !== "admin") return c.json({ error: "Admin only" }, 403);
+
+  const body = brandingSchema.parse(await c.req.json());
+
+  // Merge with existing style
+  const org = await db.query.organizations.findFirst({
+    where: eq(organizations.id, auth.organizationId),
+  });
+  const existingStyle = (org?.cabinetDocumentStyle || {}) as Record<string, any>;
+  const merged = { ...existingStyle, ...body };
+
+  const [updated] = await db
+    .update(organizations)
+    .set({ cabinetDocumentStyle: merged })
+    .where(eq(organizations.id, auth.organizationId))
+    .returning();
+
+  return c.json(updated.cabinetDocumentStyle || {});
 });

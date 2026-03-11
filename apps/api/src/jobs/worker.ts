@@ -3,6 +3,7 @@ import { processTemplateWorker } from "./processTemplate";
 import { processReferenceDataWorker } from "./processReferenceData";
 import { processClientDocWorker } from "./processClientDoc";
 import { syncOnrcJob } from "./syncOnrc";
+import { checkDeadlines } from "./checkDeadlines";
 
 console.log("Workers started:");
 console.log("  - process-guide");
@@ -10,6 +11,7 @@ console.log("  - process-template");
 console.log("  - process-reference-data");
 console.log("  - process-client-doc");
 console.log("  - sync-onrc (cron: daily 03:00)");
+console.log("  - check-deadlines (cron: daily 08:00)");
 
 // ONRC sync cron — runs daily at 03:00
 function scheduleOnrcSync() {
@@ -37,6 +39,32 @@ function scheduleOnrcSync() {
 }
 
 scheduleOnrcSync();
+
+// Deadline check cron — runs daily at 08:00
+function scheduleDeadlineCheck() {
+  const now = new Date();
+  const next = new Date(now);
+  next.setHours(8, 0, 0, 0);
+  if (next <= now) next.setDate(next.getDate() + 1);
+  const delay = next.getTime() - now.getTime();
+
+  setTimeout(async () => {
+    try {
+      await checkDeadlines();
+    } catch (err) {
+      console.error("[checkDeadlines] Cron error:", err);
+    }
+    setInterval(async () => {
+      try {
+        await checkDeadlines();
+      } catch (err) {
+        console.error("[checkDeadlines] Cron error:", err);
+      }
+    }, 24 * 60 * 60 * 1000);
+  }, delay);
+}
+
+scheduleDeadlineCheck();
 
 process.on("SIGTERM", async () => {
   await processGuideWorker.close();

@@ -228,6 +228,18 @@ export const documents = pgTable("documents", {
   }>(),
   documentTypeClass: documentTypeEnum("document_type_class"),
   classificationConfidence: decimal("classification_confidence", { precision: 3, scale: 2 }),
+  processingResult: jsonb("processing_result").$type<{
+    document_type: string;
+    extracted_fields: Array<{
+      field_key: string;
+      field_value: any;
+      confidence: number;
+      source_page: number | null;
+      extraction_method: string;
+    }>;
+    raw_text: string;
+    processing_time_ms: number;
+  }>(),
   tags: text("tags").array(),
   uploadedBy: uuid("uploaded_by").references(() => users.id).notNull(),
   uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),

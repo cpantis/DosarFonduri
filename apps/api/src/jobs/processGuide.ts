@@ -1,7 +1,7 @@
 import { Worker, Job } from "bullmq";
 import Anthropic from "@anthropic-ai/sdk";
 import { db } from "../db";
-import { documents, rules, orgConfig } from "../db/schema";
+import { documents, rules, orgConfig, scoringCriteria } from "../db/schema";
 import { eq } from "drizzle-orm";
 import { getFileBuffer } from "../services/storage";
 import { extractTextFromPDF, extractTextFromDOCX, extractTextFromXLSX } from "../services/ocr";
@@ -263,6 +263,106 @@ Returneaza DOAR JSON valid — array de obiecte.`,
   });
 }
 
+/** Phase 3: Extract scoring grid → scoringCriteria table */
+async function extractScoringCriteria(
+  text: string,
+  model: string,
+  documentId: string,
+  organizationId: string,
+): Promise<void> {
+  const response = await anthropic.messages.create({
+    model,
+    max_tokens: 8000,
+    system: `Esti Solomon — expert in finantari europene.
+
+Extragi GRILA DE PUNCTAJ / CRITERII DE SELECTIE din ghiduri de finantare.
+Acestea sunt criteriile prin care se IERARHIZEAZA / PUNCTEAZA proiectele depuse.
+
+Fiecare criteriu are:
+- Un cod/numar (ex: CS1, C1, 1.1)
+- Un nume descriptiv
+- Punctaj maxim
+- O modalitate de evaluare: lookup (tabel), range (interval numeric), boolean (da/nu), formula
+
+IMPORTANT:
+- Extrage TOATE criteriile din grila de punctaj/selectie
+- Pentru fiecare criteriu, identifica tipul de evaluare si structura logicii
+- Daca criteriul se evalueaza pe baza unui tabel (ex: "conform Anexa X"), tipul este "lookup"
+- Daca criteriul depinde de un interval numeric (ex: "1-5 angajati = 10p, 6-10 = 20p"), tipul este "range"
+- Daca criteriul este da/nu, tipul este "boolean"
+- Daca criteriul necesita o formula de calcul, tipul este "formula"
+- Identifica cheia elementului (field/camp) pe care se bazeaza evaluarea
+
+Returneaza DOAR JSON valid — array de obiecte. Fara backticks, fara explicatii.`,
+    messages: [{
+      role: "user",
+      content: `Extrage grila de punctaj / criteriile de selectie din acest ghid.
+
+Pentru fiecare criteriu returneaza:
+{
+  "code": "codul criteriului (ex: CS1, C1, 1.1)",
+  "name": "numele criteriului",
+  "description": "descriere detaliata a criteriului si cum se acorda punctele",
+  "maxPoints": number,
+  "category": "categoria (ex: tehnic, financiar, management, relevant, sustenabilitate)",
+  "sourcePage": number | null,
+  "evaluationLogic": {
+    "type": "lookup" | "range" | "boolean" | "formula",
+    "elementKey": "cheia campului de evaluat (ex: numar_angajati, cifra_afaceri, experienta_ani)",
+    "ranges": [{"min": number, "max": number, "points": number}] // doar pt type=range
+    "formula": "expresie matematica cu {element_key}" // doar pt type=formula
+    "lookupColumn": "coloana punctaj din tabel" // doar pt type=lookup
+  }
+}
+
+Daca nu gasesti nicio grila de punctaj, returneaza un array gol [].
+
+TEXT GHID:
+${text.slice(0, 100000)}`
+    }],
+  });
+
+  const content = response.content[0].type === "text" ? response.content[0].text : "[]";
+  const cleaned = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+
+  let parsed: any[];
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch {
+    console.error("Failed to parse scoring criteria JSON");
+    parsed = [];
+  }
+
+  if (parsed.length > 0) {
+    // Remove existing criteria for this document before inserting
+    await db.delete(scoringCriteria).where(eq(scoringCriteria.documentId, documentId));
+
+    await db.insert(scoringCriteria).values(
+      parsed.map((c: any, idx: number) => ({
+        documentId,
+        organizationId,
+        code: c.code || `CS${idx + 1}`,
+        name: c.name || "Criteriu neprecizat",
+        description: c.description || null,
+        maxPoints: String(c.maxPoints || 0),
+        evaluationLogic: c.evaluationLogic || null,
+        category: c.category || null,
+        sortOrder: idx,
+        sourcePage: c.sourcePage || null,
+      }))
+    );
+  }
+
+  await logAIUsage({
+    organizationId,
+    agent: "ghid_rules",
+    model,
+    tokensInput: response.usage.input_tokens,
+    tokensOutput: response.usage.output_tokens,
+    action: "extract_scoring_criteria",
+  });
+}
+
 export const processGuideWorker = new Worker<ProcessGuidePayload>(
   "process-guide",
   async (job: Job<ProcessGuidePayload>) => {
@@ -298,29 +398,41 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
       const interpModel = config?.reguliInterpModel || "claude-opus-4-6";
       const useET = config?.reguliInterpET ?? true;
 
-      await job.updateProgress(30);
+      await job.updateProgress(25);
       publishJobProgress(organizationId, {
         jobId: job.id || "",
         jobType: "ghid",
         documentId,
         documentName: doc.name,
-        progress: 30,
+        progress: 25,
         status: "processing",
         message: `Extragere reguli fixe din "${doc.name}"...`,
       }).catch(() => {});
       await extractFixedRules(text, fixedModel, documentId, organizationId);
 
-      await job.updateProgress(60);
+      await job.updateProgress(50);
       publishJobProgress(organizationId, {
         jobId: job.id || "",
         jobType: "ghid",
         documentId,
         documentName: doc.name,
-        progress: 60,
+        progress: 50,
         status: "processing",
         message: `Extragere reguli interpretate din "${doc.name}"...`,
       }).catch(() => {});
       await extractInterpretedRules(text, interpModel, useET, documentId, organizationId);
+
+      await job.updateProgress(75);
+      publishJobProgress(organizationId, {
+        jobId: job.id || "",
+        jobType: "ghid",
+        documentId,
+        documentName: doc.name,
+        progress: 75,
+        status: "processing",
+        message: `Extragere grilă punctaj din "${doc.name}"...`,
+      }).catch(() => {});
+      await extractScoringCriteria(text, fixedModel, documentId, organizationId);
 
       const pageCount = (text.match(/--- Pagina/g) || []).length;
       await db.update(documents).set({

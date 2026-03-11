@@ -6,7 +6,7 @@ import { documentFolders, documents, templateElements } from "../db/schema";
 import { eq, and, isNull } from "drizzle-orm";
 import { uploadFile, getFileUrl, deleteFile } from "../services/storage";
 import { AuthContext } from "../middleware/auth";
-import { processGuideQueue, processTemplateQueue } from "../lib/queue";
+import { processGuideQueue, processTemplateQueue, processReferenceDataQueue } from "../lib/queue";
 
 export const documentRoutes = new Hono<AppEnv>();
 
@@ -147,9 +147,19 @@ documentRoutes.post("/folders/:folderId/documents", async (c) => {
   const ext = file.name.split(".").pop()?.toLowerCase() || "";
   const fileType = ext === "pdf" ? "pdf" : ext === "xlsx" || ext === "xls" ? "xlsx" : ext === "doc" ? "doc" : "docx";
 
-  const processingType = folder.type === "ghiduri" ? "ghid"
-    : folder.type === "templateuri" ? "template"
-    : "reference";
+  // Check for explicit processingType from form data (allows sub-classification in ghiduri folder)
+  const explicitType = formData.get("processingType") as string | null;
+
+  let processingType: string;
+  if (explicitType === "reference_data" && folder.type === "ghiduri") {
+    processingType = "reference_data";
+  } else if (folder.type === "ghiduri") {
+    processingType = "ghid";
+  } else if (folder.type === "templateuri") {
+    processingType = "template";
+  } else {
+    processingType = "reference";
+  }
 
   const [doc] = await db.insert(documents).values({
     folderId,
@@ -164,7 +174,7 @@ documentRoutes.post("/folders/:folderId/documents", async (c) => {
     uploadedBy: auth.userId,
   }).returning();
 
-  // Auto-process guides and templates
+  // Auto-process guides, templates, and reference data
   if (processingType === "ghid") {
     await processGuideQueue.add("process-guide", {
       documentId: doc.id,
@@ -172,6 +182,11 @@ documentRoutes.post("/folders/:folderId/documents", async (c) => {
     });
   } else if (processingType === "template") {
     await processTemplateQueue.add("process-template", {
+      documentId: doc.id,
+      organizationId: auth.organizationId!,
+    });
+  } else if (processingType === "reference_data") {
+    await processReferenceDataQueue.add("process-reference-data", {
       documentId: doc.id,
       organizationId: auth.organizationId!,
     });

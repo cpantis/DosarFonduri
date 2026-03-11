@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, text, integer, decimal, boolean, timestamp, pgEnum, jsonb, uniqueIndex, index } from "drizzle-orm/pg-core";
+import { pgTable, uuid, varchar, text, integer, bigint, decimal, boolean, timestamp, pgEnum, jsonb, uniqueIndex, index } from "drizzle-orm/pg-core";
 
 // === ENUMS ===
 export const planEnum = pgEnum("plan", ["starter", "professional", "enterprise"]);
@@ -11,9 +11,13 @@ export const companyStatusEnum = pgEnum("company_status", ["functiune", "radiata
 export const folderTypeEnum = pgEnum("folder_type", ["program", "masura", "sesiune", "ghiduri", "templateuri", "clienti_prospecti", "clienti_finali"]);
 export const docFileTypeEnum = pgEnum("doc_file_type", ["pdf", "docx", "xlsx", "doc"]);
 export const docStatusEnum = pgEnum("doc_status", ["uploaded", "processing", "processed", "error"]);
-export const docProcessingTypeEnum = pgEnum("doc_processing_type", ["ghid", "template", "reference", "client_doc"]);
+export const docProcessingTypeEnum = pgEnum("doc_processing_type", ["ghid", "template", "reference", "client_doc", "reference_data"]);
 export const ruleTypeEnum = pgEnum("rule_type", ["fixed", "interpreted"]);
 export const fieldTypeEnum = pgEnum("field_type", ["text", "number", "textarea", "date", "table", "signature", "select"]);
+export const refTableTypeEnum = pgEnum("ref_table_type", ["lookup", "classification", "list", "matrix"]);
+export const refExtractedByEnum = pgEnum("ref_extracted_by", ["ai", "manual"]);
+export const refUsageEnum = pgEnum("ref_usage", ["validates", "scores", "classifies"]);
+export const elementRoleLinkEnum = pgEnum("element_role_link", ["input", "output", "constraint"]);
 export const projectStatusEnum = pgEnum("project_status", ["draft", "in_progress", "review", "submitted", "approved", "rejected"]);
 export const eligibilityStatusEnum = pgEnum("eligibility_status", ["passed", "failed", "pending", "not_applicable"]);
 export const elementSourceEnum = pgEnum("element_source", ["onrc", "solomon", "manual", "calculated", "ghid"]);
@@ -34,13 +38,13 @@ export const organizations = pgTable("organizations", {
   status: orgStatusEnum("status").notNull().default("trial"),
   providerNotes: text("provider_notes"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull().$onUpdate(() => new Date()),
 });
 
 // === USERS ===
 export const users = pgTable("users", {
   id: uuid("id").defaultRandom().primaryKey(),
-  organizationId: uuid("organization_id").references(() => organizations.id),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
   email: varchar("email", { length: 255 }).notNull().unique(),
   passwordHash: varchar("password_hash", { length: 255 }).notNull(),
   name: varchar("name", { length: 255 }).notNull(),
@@ -55,12 +59,12 @@ export const users = pgTable("users", {
 // === FILES (centralized storage) ===
 export const files = pgTable("files", {
   id: uuid("id").defaultRandom().primaryKey(),
-  organizationId: uuid("organization_id").references(() => organizations.id).notNull(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
   storageKey: varchar("storage_key", { length: 500 }).notNull(),
   originalName: varchar("original_name", { length: 500 }).notNull(),
   mimeType: varchar("mime_type", { length: 100 }).notNull(),
-  size: integer("size").notNull(),
-  uploadedBy: uuid("uploaded_by").references(() => users.id).notNull(),
+  size: bigint("size", { mode: "number" }).notNull(),
+  uploadedBy: uuid("uploaded_by").references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -97,7 +101,7 @@ export const companies = pgTable("companies", {
   certificatFileId: uuid("certificat_file_id").references(() => files.id),
   lastSyncedAt: timestamp("last_synced_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull().$onUpdate(() => new Date()),
   createdBy: uuid("created_by").references(() => users.id).notNull(),
 }, (table) => ({
   cuiOrgIdx: uniqueIndex("cui_org_idx").on(table.cui, table.organizationId),
@@ -160,7 +164,7 @@ export const companyIfMembers = pgTable("company_if_members", {
 // === DOCUMENT FOLDERS (tree) ===
 export const documentFolders = pgTable("document_folders", {
   id: uuid("id").defaultRandom().primaryKey(),
-  organizationId: uuid("organization_id").references(() => organizations.id).notNull(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
   parentId: uuid("parent_id").references((): any => documentFolders.id, { onDelete: "cascade" }),
   name: varchar("name", { length: 255 }).notNull(),
   type: folderTypeEnum("type").notNull(),
@@ -176,7 +180,7 @@ export const documentFolders = pgTable("document_folders", {
 export const documents = pgTable("documents", {
   id: uuid("id").defaultRandom().primaryKey(),
   folderId: uuid("folder_id").references(() => documentFolders.id, { onDelete: "cascade" }).notNull(),
-  organizationId: uuid("organization_id").references(() => organizations.id).notNull(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
   name: varchar("name", { length: 500 }).notNull(),
   fileType: docFileTypeEnum("file_type").notNull(),
   fileId: uuid("file_id").references(() => files.id).notNull(),
@@ -197,7 +201,7 @@ export const documents = pgTable("documents", {
 export const rules = pgTable("rules", {
   id: uuid("id").defaultRandom().primaryKey(),
   documentId: uuid("document_id").references(() => documents.id, { onDelete: "cascade" }).notNull(),
-  organizationId: uuid("organization_id").references(() => organizations.id).notNull(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
   type: ruleTypeEnum("type").notNull(),
   category: varchar("category", { length: 100 }),
   description: text("description").notNull(),
@@ -211,11 +215,58 @@ export const rules = pgTable("rules", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// === GUIDE REFERENCE TABLES (structured data from annexes) ===
+export const guideReferenceTables = pgTable("guide_reference_tables", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  documentId: uuid("document_id").references(() => documents.id, { onDelete: "cascade" }).notNull(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  name: varchar("name", { length: 500 }).notNull(),
+  description: text("description"),
+  tableType: refTableTypeEnum("table_type").notNull(),
+  schema: jsonb("schema").$type<Array<{ key: string; label: string; type: string }>>(),
+  data: jsonb("data").$type<Array<Record<string, any>>>(),
+  lookupKey: varchar("lookup_key", { length: 100 }),
+  sourcePage: integer("source_page"),
+  sourceText: text("source_text"),
+  extractedBy: refExtractedByEnum("extracted_by").notNull().default("ai"),
+  validated: boolean("validated").notNull().default(false),
+  validatedBy: uuid("validated_by").references(() => users.id),
+  validatedAt: timestamp("validated_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  docIdx: index("ref_table_doc_idx").on(table.documentId),
+  orgIdx: index("ref_table_org_idx").on(table.organizationId),
+}));
+
+// === RULE ↔ REFERENCE TABLE LINKS ===
+export const ruleReferenceLinks = pgTable("rule_reference_links", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  ruleId: uuid("rule_id").references(() => rules.id, { onDelete: "cascade" }).notNull(),
+  referenceTableId: uuid("reference_table_id").references(() => guideReferenceTables.id, { onDelete: "cascade" }).notNull(),
+  usage: refUsageEnum("usage").notNull(),
+  description: text("description"),
+}, (table) => ({
+  ruleIdx: index("rule_ref_rule_idx").on(table.ruleId),
+  tableIdx: index("rule_ref_table_idx").on(table.referenceTableId),
+}));
+
+// === ELEMENT ↔ RULE LINKS ===
+export const elementRuleLinks = pgTable("element_rule_links", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  templateElementId: uuid("template_element_id").references(() => templateElements.id, { onDelete: "cascade" }).notNull(),
+  ruleId: uuid("rule_id").references(() => rules.id, { onDelete: "cascade" }).notNull(),
+  role: elementRoleLinkEnum("role").notNull(),
+  description: text("description"),
+}, (table) => ({
+  elementIdx: index("elem_rule_elem_idx").on(table.templateElementId),
+  ruleIdx: index("elem_rule_rule_idx").on(table.ruleId),
+}));
+
 // === TEMPLATE ELEMENTS ===
 export const templateElements = pgTable("template_elements", {
   id: uuid("id").defaultRandom().primaryKey(),
   documentId: uuid("document_id").references(() => documents.id, { onDelete: "cascade" }).notNull(),
-  organizationId: uuid("organization_id").references(() => organizations.id).notNull(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
   key: varchar("key", { length: 255 }).notNull(),
   label: varchar("label", { length: 255 }).notNull(),
   fieldType: fieldTypeEnum("field_type").notNull().default("text"),
@@ -235,7 +286,7 @@ export const templateElements = pgTable("template_elements", {
 // === PROJECTS ===
 export const projects = pgTable("projects", {
   id: uuid("id").defaultRandom().primaryKey(),
-  organizationId: uuid("organization_id").references(() => organizations.id).notNull(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
   companyId: uuid("company_id").references(() => companies.id, { onDelete: "cascade" }).notNull(),
   folderId: uuid("folder_id").references(() => documentFolders.id, { onDelete: "cascade" }).notNull(),
   name: varchar("name", { length: 500 }).notNull(),
@@ -253,7 +304,7 @@ export const projects = pgTable("projects", {
   lockedBy: uuid("locked_by").references(() => users.id),
   lockedAt: timestamp("locked_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull().$onUpdate(() => new Date()),
 }, (table) => ({
   orgIdx: index("project_org_idx").on(table.organizationId),
   companyIdx: index("project_company_idx").on(table.companyId),
@@ -270,7 +321,7 @@ export const projectElements = pgTable("project_elements", {
   confirmed: boolean("confirmed").notNull().default(false),
   confirmedBy: uuid("confirmed_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull().$onUpdate(() => new Date()),
 }, (table) => ({
   projectIdx: index("proj_el_project_idx").on(table.projectId),
 }));
@@ -396,7 +447,7 @@ export const orgConfig = pgTable("org_config", {
   notifTemplateReady: boolean("notif_template_ready").default(true),
   notifDeadline: boolean("notif_deadline").default(true),
   emailFrom: varchar("email_from", { length: 255 }),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull().$onUpdate(() => new Date()),
 });
 
 // === SOLOMON KNOWLEDGE BASE (actualizări legislative, bune practici, corecții) ===
@@ -414,7 +465,7 @@ export const solomonKnowledge = pgTable("solomon_knowledge", {
   enabled: boolean("enabled").default(true),
   createdBy: uuid("created_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull().$onUpdate(() => new Date()),
 });
 
 // === API INTEGRATIONS ===

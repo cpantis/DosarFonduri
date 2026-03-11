@@ -3,24 +3,28 @@ import {
   projects, projectElements, projectDocuments,
   templateElements, documents, orgConfig, companies,
 } from "../db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { getFileBuffer, uploadFile } from "./storage";
+import crypto from "crypto";
+
+function safeTmpPath(prefix: string, ext: string): string {
+  const os = require("os");
+  const path = require("path");
+  return path.join(os.tmpdir(), `${prefix}_${crypto.randomUUID()}.${ext}`);
+}
 
 // ═══ FILL DOCX TEMPLATE ═══
 async function fillDocxTemplate(
   templateBuffer: Buffer,
-  templateFileName: string,
+  _templateFileName: string,
   elements: Record<string, string>,
 ): Promise<Buffer> {
-  const { execSync } = await import("child_process");
+  const { execFileSync } = await import("child_process");
   const fs = await import("fs");
-  const os = await import("os");
-  const path = await import("path");
 
-  const tmpDir = os.tmpdir();
-  const inputPath = path.join(tmpDir, `tmpl_${Date.now()}_${templateFileName}`);
-  const outputPath = path.join(tmpDir, `filled_${Date.now()}_${templateFileName}`);
-  const dataPath = path.join(tmpDir, `data_${Date.now()}.json`);
+  const inputPath = safeTmpPath("tmpl", "docx");
+  const outputPath = safeTmpPath("filled", "docx");
+  const dataPath = safeTmpPath("data", "json");
 
   fs.writeFileSync(inputPath, templateBuffer);
   fs.writeFileSync(dataPath, JSON.stringify(elements));
@@ -97,11 +101,11 @@ unique_filled = list(set(all_filled))
 print(json.dumps({"filled_count": len(unique_filled), "filled_keys": unique_filled, "total_pages": current_page}))
 `;
 
-  const scriptPath = path.join(tmpDir, `fill_${Date.now()}.py`);
+  const scriptPath = safeTmpPath("fill", "py");
   fs.writeFileSync(scriptPath, script);
 
   try {
-    execSync(`python3 "${scriptPath}" "${inputPath}" "${outputPath}" "${dataPath}"`, {
+    execFileSync("python3", [scriptPath, inputPath, outputPath, dataPath], {
       encoding: "utf-8",
       timeout: 60000,
     });
@@ -116,18 +120,15 @@ print(json.dumps({"filled_count": len(unique_filled), "filled_keys": unique_fill
 // ═══ FILL XLSX TEMPLATE ═══
 async function fillXlsxTemplate(
   templateBuffer: Buffer,
-  templateFileName: string,
+  _templateFileName: string,
   elements: Record<string, string>,
 ): Promise<Buffer> {
-  const { execSync } = await import("child_process");
+  const { execFileSync } = await import("child_process");
   const fs = await import("fs");
-  const os = await import("os");
-  const path = await import("path");
 
-  const tmpDir = os.tmpdir();
-  const inputPath = path.join(tmpDir, `tmpl_${Date.now()}_${templateFileName}`);
-  const outputPath = path.join(tmpDir, `filled_${Date.now()}_${templateFileName}`);
-  const dataPath = path.join(tmpDir, `data_${Date.now()}.json`);
+  const inputPath = safeTmpPath("tmpl", "xlsx");
+  const outputPath = safeTmpPath("filled", "xlsx");
+  const dataPath = safeTmpPath("data", "json");
 
   fs.writeFileSync(inputPath, templateBuffer);
   fs.writeFileSync(dataPath, JSON.stringify(elements));
@@ -168,11 +169,11 @@ wb.save(output_path)
 print(json.dumps({"filled_count": len(set(filled)), "filled_keys": list(set(filled))}))
 `;
 
-  const scriptPath = path.join(tmpDir, `fill_xlsx_${Date.now()}.py`);
+  const scriptPath = safeTmpPath("fill_xlsx", "py");
   fs.writeFileSync(scriptPath, script);
 
   try {
-    execSync(`python3 "${scriptPath}" "${inputPath}" "${outputPath}" "${dataPath}"`, {
+    execFileSync("python3", [scriptPath, inputPath, outputPath, dataPath], {
       encoding: "utf-8",
       timeout: 60000,
     });
@@ -301,7 +302,7 @@ export async function generateDocument(params: GenerateDocParams): Promise<Reada
           userId,
         );
 
-        // Determine version (increment if regenerating)
+        // Determine version atomically using a single query
         const existingDocs = await db.query.projectDocuments.findMany({
           where: and(
             eq(projectDocuments.projectId, projectId),
@@ -447,6 +448,7 @@ export async function validateBeforeGenerate(
 
 // ═══ CROSS-DOCUMENT CONSISTENCY CHECK ═══
 // Verifică că aceleași câmpuri (key) au aceleași valori în toate template-urile proiectului
+// Fixed N+1 query: batch-loads templateElements and documents upfront
 export async function checkCrossDocumentConsistency(
   projectId: string,
 ): Promise<{ consistent: boolean; conflicts: Array<{ key: string; label: string; values: Array<{ templateName: string; value: string }> }> }> {
@@ -454,22 +456,36 @@ export async function checkCrossDocumentConsistency(
     where: eq(projectElements.projectId, projectId),
   });
 
+  const nonEmpty = projectEls.filter(pel => pel.value && pel.value.trim() !== "");
+  if (nonEmpty.length === 0) return { consistent: true, conflicts: [] };
+
+  // Batch load all referenced templateElements in one query
+  const tmplElIds = [...new Set(nonEmpty.map(pe => pe.templateElementId))];
+  const allTmplEls = tmplElIds.length > 0
+    ? await db.query.templateElements.findMany({
+        where: inArray(templateElements.id, tmplElIds),
+      })
+    : [];
+  const tmplElMap = new Map(allTmplEls.map(t => [t.id, t]));
+
+  // Batch load all referenced documents in one query
+  const docIds = [...new Set(allTmplEls.map(t => t.documentId))];
+  const allDocs = docIds.length > 0
+    ? await db.query.documents.findMany({
+        where: inArray(documents.id, docIds),
+      })
+    : [];
+  const docMap = new Map(allDocs.map(d => [d.id, d]));
+
   // Group by templateElement key
   const keyToValues = new Map<string, Array<{ templateName: string; value: string; label: string }>>();
 
-  for (const pel of projectEls) {
-    if (!pel.value || pel.value.trim() === "") continue;
-
-    const tmplEl = await db.query.templateElements.findFirst({
-      where: eq(templateElements.id, pel.templateElementId),
-    });
+  for (const pel of nonEmpty) {
+    const tmplEl = tmplElMap.get(pel.templateElementId);
     if (!tmplEl) continue;
 
-    const doc = await db.query.documents.findFirst({
-      where: eq(documents.id, tmplEl.documentId),
-    });
-
-    const entry = { templateName: doc?.name || "Necunoscut", value: pel.value, label: tmplEl.label };
+    const doc = docMap.get(tmplEl.documentId);
+    const entry = { templateName: doc?.name || "Necunoscut", value: pel.value!, label: tmplEl.label };
     const existing = keyToValues.get(tmplEl.key) || [];
     existing.push(entry);
     keyToValues.set(tmplEl.key, existing);
@@ -657,23 +673,24 @@ export async function generateAllDocuments(params: {
           })}\n\n`));
         }
 
-        // Find all templates that have elements for this project
+        // Find all templates that have elements for this project — batch query
         const projectEls = await db.query.projectElements.findMany({
           where: eq(projectElements.projectId, projectId),
         });
 
-        const templateDocIds = new Set<string>();
-        for (const pe of projectEls) {
-          const te = await db.query.templateElements.findFirst({
-            where: eq(templateElements.id, pe.templateElementId),
-          });
-          if (te) templateDocIds.add(te.documentId);
-        }
+        const tmplElIds = [...new Set(projectEls.map(pe => pe.templateElementId))];
+        const allTmplEls = tmplElIds.length > 0
+          ? await db.query.templateElements.findMany({
+              where: inArray(templateElements.id, tmplElIds),
+            })
+          : [];
 
-        const templateDocs = await Promise.all(
-          [...templateDocIds].map(id => db.query.documents.findFirst({ where: eq(documents.id, id) }))
-        );
-        const validDocs = templateDocs.filter(Boolean) as typeof templateDocs extends (infer T)[] ? NonNullable<T>[] : never;
+        const templateDocIds = [...new Set(allTmplEls.map(te => te.documentId))];
+        const validDocs = templateDocIds.length > 0
+          ? await db.query.documents.findMany({
+              where: inArray(documents.id, templateDocIds),
+            })
+          : [];
 
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({
           type: "status",
@@ -696,9 +713,7 @@ export async function generateAllDocuments(params: {
 
           try {
             // Build elements map for this specific template
-            const docTemplateEls = await db.query.templateElements.findMany({
-              where: eq(templateElements.documentId, doc.id),
-            });
+            const docTemplateEls = allTmplEls.filter(te => te.documentId === doc.id);
 
             const elementsMap: Record<string, string> = {};
             let filledCount = 0;

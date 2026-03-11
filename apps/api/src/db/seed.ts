@@ -5,6 +5,7 @@
  *   npx tsx src/db/seed.ts
  *
  * Requires DATABASE_URL in .env or environment.
+ * Set SEED_PROVIDER_EMAIL, SEED_PROVIDER_PASSWORD, SEED_PROVIDER_NAME via env vars.
  */
 import "dotenv/config";
 import { drizzle } from "drizzle-orm/postgres-js";
@@ -12,11 +13,22 @@ import postgres from "postgres";
 import { hash } from "bcryptjs";
 import * as schema from "./schema";
 
-const PROVIDER_EMAIL = process.env.SEED_PROVIDER_EMAIL || "calinpantis88@gmail.com";
-const PROVIDER_PASSWORD = process.env.SEED_PROVIDER_PASSWORD || "Test1!";
+const PROVIDER_EMAIL = process.env.SEED_PROVIDER_EMAIL || "admin@dosarfonduri.ro";
 const PROVIDER_NAME = process.env.SEED_PROVIDER_NAME || "DosarFonduri Admin";
 
+function getPassword(): string {
+  const pw = process.env.SEED_PROVIDER_PASSWORD;
+  if (!pw) {
+    throw new Error(
+      "SEED_PROVIDER_PASSWORD environment variable is required. " +
+      "Set a strong password before running the seed script.",
+    );
+  }
+  return pw;
+}
+
 async function seed() {
+  const password = getPassword();
   const client = postgres(process.env.DATABASE_URL!);
   const db = drizzle(client, { schema });
 
@@ -30,7 +42,7 @@ async function seed() {
   if (existing) {
     console.log(`⏭  Provider "${PROVIDER_EMAIL}" already exists — skipping.`);
   } else {
-    const passwordHash = await hash(PROVIDER_PASSWORD, 12);
+    const passwordHash = await hash(password, 12);
 
     const [provider] = await db.insert(schema.providerUsers).values({
       email: PROVIDER_EMAIL,
@@ -39,8 +51,7 @@ async function seed() {
     }).returning();
 
     console.log(`✅ Provider created: ${provider.email} (id: ${provider.id})`);
-    console.log(`   ⚠  Default password: ${PROVIDER_PASSWORD}`);
-    console.log(`   ⚠  Change it immediately after first login!`);
+    console.log(`   ⚠  Change the password after first login!`);
   }
 
   await client.end();

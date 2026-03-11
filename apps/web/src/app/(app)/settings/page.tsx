@@ -43,6 +43,7 @@ const SECTIONS = [
   { id: "solomon", icon: "🤖", label: "Solomon (Expert Fonduri)" },
   { id: "neemia", icon: "📝", label: "Neemia (Generare Dosar)" },
   { id: "ghid", icon: "📖", label: "Ghid Finantare (Reguli)" },
+  { id: "branding", icon: "🎨", label: "Branding Documente" },
   { id: "api", icon: "🔌", label: "Integrare API" },
   { id: "notificari", icon: "🔔", label: "Notificari" },
   { id: "export", icon: "📤", label: "Export & Backup" },
@@ -60,6 +61,28 @@ export default function SettingsPage() {
   const [showAddApi, setShowAddApi] = useState(false);
   const [newApi, setNewApi] = useState({ name: "", type: "ONRC", url: "", apiKey: "" });
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+
+  // Branding state
+  const [branding, setBranding] = useState<{
+    primaryColor: string;
+    accentColor: string;
+    fontFamily: string;
+    footerText: string;
+    highlightColor: string;
+    warningColor: string;
+    logoOnWorkDocs: boolean;
+    logoOnFinalDocs: boolean;
+  }>({
+    primaryColor: "#1a3a5c",
+    accentColor: "#4d8bff",
+    fontFamily: "DM Sans",
+    footerText: "",
+    highlightColor: "#FFF3CD",
+    warningColor: "#f87171",
+    logoOnWorkDocs: true,
+    logoOnFinalDocs: false,
+  });
+  const [brandingSaved, setBrandingSaved] = useState(false);
 
   const loadConfig = useCallback(async () => {
     try {
@@ -80,10 +103,23 @@ export default function SettingsPage() {
     }
   }, []);
 
+  const loadBranding = useCallback(async () => {
+    try {
+      const data = await apiGet("/api/config/branding");
+      if (data && typeof data === "object") {
+        setBranding(prev => ({
+          ...prev,
+          ...data,
+        }));
+      }
+    } catch {}
+  }, []);
+
   useEffect(() => {
     loadConfig();
     loadApis();
-  }, [loadConfig, loadApis]);
+    loadBranding();
+  }, [loadConfig, loadApis, loadBranding]);
 
   const updateConfig = async (updates: Partial<OrgConfig>) => {
     if (!config) return;
@@ -103,6 +139,16 @@ export default function SettingsPage() {
       await apiPut("/api/config", config);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const handleSaveBranding = async () => {
+    try {
+      await apiPut("/api/config/branding", branding);
+      setBrandingSaved(true);
+      setTimeout(() => setBrandingSaved(false), 2000);
     } catch (err: any) {
       alert(err.message);
     }
@@ -670,6 +716,152 @@ export default function SettingsPage() {
             </>
           )}
 
+          {/* ═══ BRANDING DOCUMENTE ═══ */}
+          {activeSection === "branding" && (
+            <>
+              <div className="text-[22px] font-extrabold mb-1">🎨 Branding Documente</div>
+              <div className="text-sm mb-7 leading-relaxed" style={{ color: "var(--text-secondary)" }}>
+                Personalizeaza aspectul documentelor generate de Neemia cu culorile si fontul cabinetului tau.
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                <div>
+                  <label className="block text-[11px] font-semibold uppercase mb-1.5" style={{ letterSpacing: ".7px", color: "var(--text-muted)" }}>Culoare principala (header tabele)</label>
+                  <div className="flex gap-2 items-center">
+                    <input
+                      type="color"
+                      value={branding.primaryColor}
+                      onChange={(e) => setBranding(prev => ({ ...prev, primaryColor: e.target.value }))}
+                      className="cursor-pointer"
+                      style={{ width: 40, height: 32, border: "1px solid var(--border)", borderRadius: "var(--r-sm)", background: "none", padding: 0 }}
+                    />
+                    <input
+                      className="flex-1 px-3 py-2 text-[13px] outline-none"
+                      style={{ borderRadius: "var(--r-sm)", border: "1px solid var(--border)", background: "var(--bg-deep)", color: "var(--text-primary)", fontFamily: "var(--font-mono)" }}
+                      value={branding.primaryColor}
+                      onChange={(e) => setBranding(prev => ({ ...prev, primaryColor: e.target.value }))}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold uppercase mb-1.5" style={{ letterSpacing: ".7px", color: "var(--text-muted)" }}>Culoare accent (badge-uri)</label>
+                  <div className="flex gap-2 items-center">
+                    <input
+                      type="color"
+                      value={branding.accentColor}
+                      onChange={(e) => setBranding(prev => ({ ...prev, accentColor: e.target.value }))}
+                      className="cursor-pointer"
+                      style={{ width: 40, height: 32, border: "1px solid var(--border)", borderRadius: "var(--r-sm)", background: "none", padding: 0 }}
+                    />
+                    <input
+                      className="flex-1 px-3 py-2 text-[13px] outline-none"
+                      style={{ borderRadius: "var(--r-sm)", border: "1px solid var(--border)", background: "var(--bg-deep)", color: "var(--text-primary)", fontFamily: "var(--font-mono)" }}
+                      value={branding.accentColor}
+                      onChange={(e) => setBranding(prev => ({ ...prev, accentColor: e.target.value }))}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                <div>
+                  <label className="block text-[11px] font-semibold uppercase mb-1.5" style={{ letterSpacing: ".7px", color: "var(--text-muted)" }}>Font documente</label>
+                  <select
+                    className="w-full px-3 py-2 text-[13px] outline-none"
+                    style={{ borderRadius: "var(--r-sm)", border: "1px solid var(--border)", background: "var(--bg-deep)", color: "var(--text-primary)", fontFamily: "var(--font-sans)" }}
+                    value={branding.fontFamily}
+                    onChange={(e) => setBranding(prev => ({ ...prev, fontFamily: e.target.value }))}
+                  >
+                    <option value="DM Sans">DM Sans</option>
+                    <option value="Arial">Arial</option>
+                    <option value="Times New Roman">Times New Roman</option>
+                    <option value="Calibri">Calibri</option>
+                    <option value="Georgia">Georgia</option>
+                    <option value="Roboto">Roboto</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold uppercase mb-1.5" style={{ letterSpacing: ".7px", color: "var(--text-muted)" }}>Culoare evidentiare (randuri)</label>
+                  <div className="flex gap-2 items-center">
+                    <input
+                      type="color"
+                      value={branding.highlightColor}
+                      onChange={(e) => setBranding(prev => ({ ...prev, highlightColor: e.target.value }))}
+                      className="cursor-pointer"
+                      style={{ width: 40, height: 32, border: "1px solid var(--border)", borderRadius: "var(--r-sm)", background: "none", padding: 0 }}
+                    />
+                    <input
+                      className="flex-1 px-3 py-2 text-[13px] outline-none"
+                      style={{ borderRadius: "var(--r-sm)", border: "1px solid var(--border)", background: "var(--bg-deep)", color: "var(--text-primary)", fontFamily: "var(--font-mono)" }}
+                      value={branding.highlightColor}
+                      onChange={(e) => setBranding(prev => ({ ...prev, highlightColor: e.target.value }))}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="mb-6">
+                <label className="block text-[11px] font-semibold uppercase mb-1.5" style={{ letterSpacing: ".7px", color: "var(--text-muted)" }}>Text footer cabinet</label>
+                <input
+                  className="w-full px-3 py-2 text-[13px] outline-none"
+                  style={{ borderRadius: "var(--r-sm)", border: "1px solid var(--border)", background: "var(--bg-deep)", color: "var(--text-primary)", fontFamily: "var(--font-sans)" }}
+                  placeholder="ex: Cabinet Consultant ABC SRL - dosarfonduri.ro"
+                  value={branding.footerText}
+                  onChange={(e) => setBranding(prev => ({ ...prev, footerText: e.target.value }))}
+                />
+              </div>
+
+              <div className="flex gap-6 mb-6">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={branding.logoOnWorkDocs}
+                    onChange={(e) => setBranding(prev => ({ ...prev, logoOnWorkDocs: e.target.checked }))}
+                  />
+                  <span className="text-[13px]">Logo pe documente de lucru</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={branding.logoOnFinalDocs}
+                    onChange={(e) => setBranding(prev => ({ ...prev, logoOnFinalDocs: e.target.checked }))}
+                  />
+                  <span className="text-[13px]">Logo pe documente finale</span>
+                </label>
+              </div>
+
+              {/* Preview */}
+              <div className="mb-6 p-4" style={{ borderRadius: "var(--r-md)", border: "1px solid var(--border)", background: "var(--bg-elevated)" }}>
+                <div className="text-[11px] font-semibold uppercase mb-3" style={{ letterSpacing: ".7px", color: "var(--text-muted)" }}>Previzualizare tabel</div>
+                <table className="w-full text-[12px]" style={{ borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr>
+                      <th style={{ background: branding.primaryColor, color: "#fff", padding: "6px 10px", fontFamily: branding.fontFamily, fontWeight: 700, textAlign: "left" }}>Element</th>
+                      <th style={{ background: branding.primaryColor, color: "#fff", padding: "6px 10px", fontFamily: branding.fontFamily, fontWeight: 700, textAlign: "left" }}>Valoare</th>
+                      <th style={{ background: branding.primaryColor, color: "#fff", padding: "6px 10px", fontFamily: branding.fontFamily, fontWeight: 700, textAlign: "center" }}>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr><td style={{ padding: "5px 10px", fontFamily: branding.fontFamily, borderBottom: "1px solid #dee2e6" }}>Denumire firma</td><td style={{ padding: "5px 10px", fontFamily: branding.fontFamily, borderBottom: "1px solid #dee2e6" }}>COMEXIM R SRL</td><td style={{ padding: "5px 10px", fontFamily: branding.fontFamily, borderBottom: "1px solid #dee2e6", textAlign: "center", color: branding.accentColor, fontWeight: 700 }}>CONFORM</td></tr>
+                    <tr style={{ background: "#f8f9fa" }}><td style={{ padding: "5px 10px", fontFamily: branding.fontFamily, borderBottom: "1px solid #dee2e6" }}>CUI</td><td style={{ padding: "5px 10px", fontFamily: branding.fontFamily, borderBottom: "1px solid #dee2e6" }}>2146135</td><td style={{ padding: "5px 10px", fontFamily: branding.fontFamily, borderBottom: "1px solid #dee2e6", textAlign: "center", color: branding.accentColor, fontWeight: 700 }}>CONFORM</td></tr>
+                    <tr style={{ background: branding.highlightColor }}><td style={{ padding: "5px 10px", fontFamily: branding.fontFamily, fontWeight: 700, borderBottom: "1px solid #dee2e6" }}>Valoare proiect</td><td style={{ padding: "5px 10px", fontFamily: branding.fontFamily, fontWeight: 700, borderBottom: "1px solid #dee2e6" }}>2,500,000 EUR</td><td style={{ padding: "5px 10px", fontFamily: branding.fontFamily, borderBottom: "1px solid #dee2e6", textAlign: "center", color: branding.warningColor, fontWeight: 700 }}>ATENTIE</td></tr>
+                  </tbody>
+                </table>
+                {branding.footerText && (
+                  <div className="mt-3 text-[10px]" style={{ color: "#888", fontFamily: branding.fontFamily }}>{branding.footerText}</div>
+                )}
+              </div>
+
+              <button
+                className="px-5 py-2.5 text-sm font-bold text-white cursor-pointer"
+                style={{ borderRadius: "var(--r-md)", border: "none", background: "var(--accent-blue)", fontFamily: "var(--font-sans)" }}
+                onClick={handleSaveBranding}
+              >
+                {brandingSaved ? "✓ Salvat!" : "Salveaza branding"}
+              </button>
+            </>
+          )}
+
           {/* ═══ NOTIFICARI ═══ */}
           {activeSection === "notificari" && (
             <>
@@ -754,6 +946,11 @@ export default function SettingsPage() {
                   <div className="text-2xl mb-1.5">📊</div>
                   <div className="text-[13px] font-semibold mb-0.5" style={{ color: "var(--text-primary)" }}>Raport activitate</div>
                   <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>CSV cu toate actiunile pe ultimele 30 zile</div>
+                </div>
+                <div className="export-btn" onClick={() => handleExport("/api/export/projects-csv", `dosarfonduri_proiecte_${new Date().toISOString().slice(0, 10)}.csv`)}>
+                  <div className="text-2xl mb-1.5">📋</div>
+                  <div className="text-[13px] font-semibold mb-0.5" style={{ color: "var(--text-primary)" }}>Export proiecte CSV</div>
+                  <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>CSV cu toate proiectele, firme, elemente, deadline-uri</div>
                 </div>
               </div>
             </>

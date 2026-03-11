@@ -24,6 +24,7 @@ async function providerApi<T = any>(path: string, options: RequestInit = {}): Pr
 
 const providerGet = <T = any>(path: string) => providerApi<T>(path);
 const providerPost = <T = any>(path: string, body: any) => providerApi<T>(path, { method: "POST", body: JSON.stringify(body) });
+const providerPut = <T = any>(path: string, body: any) => providerApi<T>(path, { method: "PUT", body: JSON.stringify(body) });
 const providerDelete = <T = any>(path: string) => providerApi<T>(path, { method: "DELETE" });
 
 // ─── Types ───
@@ -82,6 +83,14 @@ export default function ProviderDashboardPage() {
   const [genCode, setGenCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Edit plan modal state
+  const [editModal, setEditModal] = useState<{ id: string; plan: string; maxUsers: number } | null>(null);
+  // Email modal state
+  const [emailModal, setEmailModal] = useState<{ id: string; name: string } | null>(null);
+  const [emailSubject, setEmailSubject] = useState("");
+  const [emailMessage, setEmailMessage] = useState("");
+  const [emailSending, setEmailSending] = useState(false);
+
   const loadData = useCallback(async () => {
     try {
       const [cabs, unusedCodes, rev] = await Promise.all([
@@ -136,6 +145,50 @@ export default function ProviderDashboardPage() {
   const handleLogout = () => {
     localStorage.removeItem("df-provider-token");
     router.push("/provider/login");
+  };
+
+  const handleEditPlan = async () => {
+    if (!editModal) return;
+    try {
+      const updated = await providerPut(`/api/provider/cabinets/${editModal.id}`, {
+        plan: editModal.plan,
+        maxUsers: editModal.maxUsers,
+      });
+      setCabinets((prev) => prev.map((c) => c.id === editModal.id ? { ...c, plan: updated.plan, maxUsers: updated.maxUsers } : c));
+      setEditModal(null);
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const handleDeactivate = async (id: string) => {
+    if (!confirm("Sigur vrei să dezactivezi acest cabinet?")) return;
+    try {
+      await providerPost(`/api/provider/cabinets/${id}/deactivate`, {});
+      setCabinets((prev) => prev.map((c) => c.id === id ? { ...c, status: "inactive" } : c));
+      setSelectedCabinet(null);
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const handleSendEmail = async () => {
+    if (!emailModal || !emailSubject.trim() || !emailMessage.trim()) return;
+    setEmailSending(true);
+    try {
+      const result = await providerPost(`/api/provider/cabinets/${emailModal.id}/email`, {
+        subject: emailSubject,
+        message: emailMessage,
+      });
+      alert(`Email trimis la ${result.sent}/${result.total} utilizatori.`);
+      setEmailModal(null);
+      setEmailSubject("");
+      setEmailMessage("");
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setEmailSending(false);
+    }
   };
 
   const filtered = cabinets.filter((c) => {
@@ -356,13 +409,25 @@ export default function ProviderDashboardPage() {
                             ))}
                           </div>
                           <div className="flex gap-2">
-                            <button className="px-4 py-2 text-xs font-semibold cursor-pointer transition-all" style={{ borderRadius: "var(--r-sm)", border: "1px solid var(--border)", background: "transparent", color: "var(--text-secondary)", fontFamily: "var(--font-sans)" }}>
+                            <button
+                              className="px-4 py-2 text-xs font-semibold cursor-pointer transition-all"
+                              style={{ borderRadius: "var(--r-sm)", border: "1px solid var(--border)", background: "transparent", color: "var(--text-secondary)", fontFamily: "var(--font-sans)" }}
+                              onClick={() => setEditModal({ id: c.id, plan: c.plan, maxUsers: c.maxUsers })}
+                            >
                               ✏️ Editeaza plan
                             </button>
-                            <button className="px-4 py-2 text-xs font-semibold cursor-pointer transition-all" style={{ borderRadius: "var(--r-sm)", border: "1px solid var(--border)", background: "transparent", color: "var(--text-secondary)", fontFamily: "var(--font-sans)" }}>
+                            <button
+                              className="px-4 py-2 text-xs font-semibold cursor-pointer transition-all"
+                              style={{ borderRadius: "var(--r-sm)", border: "1px solid var(--border)", background: "transparent", color: "var(--text-secondary)", fontFamily: "var(--font-sans)" }}
+                              onClick={() => { setEmailModal({ id: c.id, name: c.name }); setEmailSubject(""); setEmailMessage(""); }}
+                            >
                               📧 Trimite email
                             </button>
-                            <button className="px-4 py-2 text-xs font-semibold cursor-pointer transition-all" style={{ borderRadius: "var(--r-sm)", border: "1px solid rgba(248,113,113,.25)", background: "transparent", color: "var(--accent-red)", fontFamily: "var(--font-sans)" }}>
+                            <button
+                              className="px-4 py-2 text-xs font-semibold cursor-pointer transition-all"
+                              style={{ borderRadius: "var(--r-sm)", border: "1px solid rgba(248,113,113,.25)", background: "transparent", color: "var(--accent-red)", fontFamily: "var(--font-sans)" }}
+                              onClick={() => handleDeactivate(c.id)}
+                            >
                               🚫 Dezactiveaza
                             </button>
                           </div>
@@ -568,6 +633,108 @@ export default function ProviderDashboardPage() {
                   </div>
                 </>
               )}
+            </div>
+          </div>
+        )}
+        {/* ═══ EDIT PLAN MODAL ═══ */}
+        {editModal && (
+          <div className="overlay" onClick={(e) => e.target === e.currentTarget && setEditModal(null)}>
+            <div className="modal">
+              <div className="flex justify-between items-center mb-1">
+                <div className="text-xl font-extrabold">✏️ Editeaza plan cabinet</div>
+                <button className="cursor-pointer text-lg" style={{ background: "none", border: "none", color: "var(--text-muted)" }} onClick={() => setEditModal(null)}>✕</button>
+              </div>
+              <div className="text-sm mb-5" style={{ color: "var(--text-secondary)" }}>
+                Modifică planul tarifar și limita de utilizatori.
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-[11px] font-semibold uppercase mb-1.5" style={{ letterSpacing: ".7px", color: "var(--text-muted)" }}>Plan tarifar</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {(["starter", "professional", "enterprise"] as const).map((p) => (
+                    <div
+                      key={p}
+                      className="py-3 px-2.5 text-center cursor-pointer transition-all"
+                      style={{
+                        borderRadius: "var(--r-sm)",
+                        border: `2px solid ${editModal.plan === p ? "var(--accent-purple)" : "var(--border)"}`,
+                        background: editModal.plan === p ? "rgba(167,139,250,.06)" : "var(--bg-elevated)",
+                      }}
+                      onClick={() => setEditModal({ ...editModal, plan: p })}
+                    >
+                      <div className="text-[13px] font-bold capitalize" style={{ color: PLAN_COLORS[p] }}>{p}</div>
+                      <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>{PLAN_PRICES[p]}€/luna</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-[11px] font-semibold uppercase mb-1.5" style={{ letterSpacing: ".7px", color: "var(--text-muted)" }}>Max utilizatori</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={editModal.maxUsers}
+                  onChange={(e) => setEditModal({ ...editModal, maxUsers: parseInt(e.target.value) || 1 })}
+                  className="w-full px-3.5 py-2.5 text-sm text-center outline-none"
+                  style={{ borderRadius: "var(--r-md)", border: "1px solid var(--border)", background: "var(--bg-deep)", color: "var(--text-primary)", fontFamily: "var(--font-mono)" }}
+                />
+              </div>
+
+              <div className="flex gap-2.5 justify-end">
+                <button className="px-5 py-2.5 text-sm font-semibold cursor-pointer" style={{ borderRadius: "var(--r-md)", border: "1px solid var(--border)", background: "transparent", color: "var(--text-secondary)", fontFamily: "var(--font-sans)" }} onClick={() => setEditModal(null)}>Anuleaza</button>
+                <button className="px-5 py-2.5 text-sm font-bold text-white cursor-pointer" style={{ borderRadius: "var(--r-md)", border: "none", background: "var(--accent-purple)", fontFamily: "var(--font-sans)" }} onClick={handleEditPlan}>Salveaza</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ═══ EMAIL MODAL ═══ */}
+        {emailModal && (
+          <div className="overlay" onClick={(e) => e.target === e.currentTarget && setEmailModal(null)}>
+            <div className="modal">
+              <div className="flex justify-between items-center mb-1">
+                <div className="text-xl font-extrabold">📧 Trimite email</div>
+                <button className="cursor-pointer text-lg" style={{ background: "none", border: "none", color: "var(--text-muted)" }} onClick={() => setEmailModal(null)}>✕</button>
+              </div>
+              <div className="text-sm mb-5" style={{ color: "var(--text-secondary)" }}>
+                Trimite un email către toți utilizatorii din <strong>{emailModal.name}</strong>.
+              </div>
+
+              <div className="mb-3">
+                <label className="block text-[11px] font-semibold uppercase mb-1.5" style={{ letterSpacing: ".7px", color: "var(--text-muted)" }}>Subiect</label>
+                <input
+                  value={emailSubject}
+                  onChange={(e) => setEmailSubject(e.target.value)}
+                  className="w-full px-3.5 py-2.5 text-sm outline-none"
+                  style={{ borderRadius: "var(--r-md)", border: "1px solid var(--border)", background: "var(--bg-deep)", color: "var(--text-primary)", fontFamily: "var(--font-sans)" }}
+                  placeholder="Subiect email..."
+                />
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-[11px] font-semibold uppercase mb-1.5" style={{ letterSpacing: ".7px", color: "var(--text-muted)" }}>Mesaj</label>
+                <textarea
+                  value={emailMessage}
+                  onChange={(e) => setEmailMessage(e.target.value)}
+                  className="w-full px-3.5 py-2.5 text-sm outline-none"
+                  style={{ borderRadius: "var(--r-md)", border: "1px solid var(--border)", background: "var(--bg-deep)", color: "var(--text-primary)", fontFamily: "var(--font-sans)", minHeight: 120, resize: "vertical" }}
+                  placeholder="Scrie mesajul..."
+                />
+              </div>
+
+              <div className="flex gap-2.5 justify-end">
+                <button className="px-5 py-2.5 text-sm font-semibold cursor-pointer" style={{ borderRadius: "var(--r-md)", border: "1px solid var(--border)", background: "transparent", color: "var(--text-secondary)", fontFamily: "var(--font-sans)" }} onClick={() => setEmailModal(null)}>Anuleaza</button>
+                <button
+                  className="px-5 py-2.5 text-sm font-bold text-white cursor-pointer"
+                  style={{ borderRadius: "var(--r-md)", border: "none", background: "var(--accent-blue)", fontFamily: "var(--font-sans)", opacity: emailSending ? 0.5 : 1 }}
+                  onClick={handleSendEmail}
+                  disabled={emailSending || !emailSubject.trim() || !emailMessage.trim()}
+                >
+                  {emailSending ? "Se trimite..." : "Trimite email"}
+                </button>
+              </div>
             </div>
           </div>
         )}

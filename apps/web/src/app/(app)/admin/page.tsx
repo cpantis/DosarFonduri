@@ -455,6 +455,44 @@ export default function AdminPage() {
               </div>
             )}
 
+            {/* Distribution by model */}
+            {costs?.byModel && costs.byModel.length > 0 && (
+              <div className="mb-6">
+                <div className="text-[11px] font-bold uppercase mb-2" style={{ letterSpacing: ".8px", color: "var(--text-muted)" }}>Cost per model AI</div>
+                <div className="flex overflow-hidden" style={{ height: 12, borderRadius: 6, background: "var(--bg-deep)" }}>
+                  {costs.byModel.map((m: any) => {
+                    const modelColors: Record<string, string> = {
+                      "claude-haiku-4-5-20251001": "var(--accent-green)",
+                      "claude-sonnet-4-20250514": "var(--accent-blue)",
+                      "claude-opus-4-6": "var(--accent-purple)",
+                    };
+                    const pct = (Number(m.totalCost) / costs.totalMonth) * 100;
+                    return <div key={m.model} style={{ width: `${pct}%`, background: modelColors[m.model] || "var(--accent-orange)", transition: "width .4s" }} />;
+                  })}
+                </div>
+                <div className="flex gap-4 mt-1.5 text-[11px]" style={{ color: "var(--text-muted)" }}>
+                  {costs.byModel.map((m: any) => {
+                    const modelColors: Record<string, string> = {
+                      "claude-haiku-4-5-20251001": "var(--accent-green)",
+                      "claude-sonnet-4-20250514": "var(--accent-blue)",
+                      "claude-opus-4-6": "var(--accent-purple)",
+                    };
+                    const modelNames: Record<string, string> = {
+                      "claude-haiku-4-5-20251001": "Haiku",
+                      "claude-sonnet-4-20250514": "Sonnet",
+                      "claude-opus-4-6": "Opus",
+                    };
+                    return (
+                      <span key={m.model} className="flex items-center gap-1">
+                        <span className="inline-block w-2 h-2 rounded-full" style={{ background: modelColors[m.model] || "var(--accent-orange)" }} />
+                        {modelNames[m.model] || m.model} — ${Number(m.totalCost).toFixed(2)} ({Number(m.totalCalls)} apeluri)
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {/* Daily chart */}
             {costs?.daily && costs.daily.length > 0 && (
               <div className="mb-6">

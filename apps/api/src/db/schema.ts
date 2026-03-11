@@ -340,6 +340,7 @@ export const projects = pgTable("projects", {
   prefixDocumente: varchar("prefix_documente", { length: 100 }),
   codMysmis: varchar("cod_mysmis", { length: 100 }),
   structuraDosar: text("structura_dosar"),
+  deadline: timestamp("deadline"),
   consultantId: uuid("consultant_id").references(() => users.id).notNull(),
   lockedBy: uuid("locked_by").references(() => users.id),
   lockedAt: timestamp("locked_at"),

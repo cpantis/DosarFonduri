@@ -469,7 +469,7 @@ describe("Neemia COMPOSE — Validation", () => {
       },
     };
     const configEmpty = { composeConfig: { sections: [] } };
-    const configNull = { composeConfig: null };
+    const configNull: { composeConfig: { sections: unknown[] } | null } = { composeConfig: null };
 
     expect(configWithSections.composeConfig?.sections?.length).toBeGreaterThan(0);
     expect(configEmpty.composeConfig?.sections?.length).toBe(0);

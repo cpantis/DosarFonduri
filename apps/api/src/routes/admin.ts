@@ -225,12 +225,31 @@ adminRoutes.get("/ai-costs", async (c) => {
     .groupBy(sql`DATE(${aiUsageLog.createdAt})`)
     .orderBy(sql`DATE(${aiUsageLog.createdAt})`);
 
+  // By model
+  const byModel = await db
+    .select({
+      model: aiUsageLog.model,
+      totalCost: sum(aiUsageLog.cost),
+      totalCalls: count(),
+      totalTokensInput: sum(aiUsageLog.tokensInput),
+      totalTokensOutput: sum(aiUsageLog.tokensOutput),
+    })
+    .from(aiUsageLog)
+    .where(
+      and(
+        eq(aiUsageLog.organizationId, auth.organizationId),
+        gte(aiUsageLog.createdAt, monthStart)
+      )
+    )
+    .groupBy(aiUsageLog.model);
+
   const totalMonth = byAgent.reduce((s, a) => s + Number(a.totalCost || 0), 0);
 
   return c.json({
     totalMonth,
     totalPrevMonth: Number(prevMonth?.totalCost || 0),
     byAgent,
+    byModel,
     byProject,
     daily,
   });

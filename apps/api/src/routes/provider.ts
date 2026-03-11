@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { sign, verify } from "hono/jwt";
 import { z } from "zod";
 import { db } from "../db";
-import { providerUsers, cabinetCodes, organizations } from "../db/schema";
+import { providerUsers, cabinetCodes, organizations, users } from "../db/schema";
 import { eq, isNull } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { lookupCUI_ListaFirme, searchCompany_ListaFirme } from "../services/listafirme";
@@ -109,6 +109,109 @@ providerRoutes.get("/search-company", providerAuth, async (c) => {
   } catch (err: any) {
     return c.json({ error: err.message }, 500);
   }
+});
+
+// ─── EDIT CABINET PLAN ─────────────────────────
+providerRoutes.put("/cabinets/:id", providerAuth, async (c) => {
+  const id = c.req.param("id");
+  const body = z.object({
+    plan: z.enum(["starter", "professional", "enterprise"]).optional(),
+    maxUsers: z.number().min(1).max(100).optional(),
+    status: z.enum(["active", "trial", "inactive", "expired"]).optional(),
+  }).parse(await c.req.json());
+
+  const org = await db.query.organizations.findFirst({
+    where: eq(organizations.id, id),
+  });
+  if (!org) return c.json({ error: "Cabinet negăsit" }, 404);
+
+  const updates: Record<string, any> = {};
+  if (body.plan) updates.plan = body.plan;
+  if (body.maxUsers) updates.maxUsers = body.maxUsers;
+  if (body.status) updates.status = body.status;
+
+  if (Object.keys(updates).length === 0) {
+    return c.json({ error: "Nimic de actualizat" }, 400);
+  }
+
+  const [updated] = await db
+    .update(organizations)
+    .set(updates)
+    .where(eq(organizations.id, id))
+    .returning();
+
+  return c.json(updated);
+});
+
+// ─── DEACTIVATE CABINET ─────────────────────────
+providerRoutes.post("/cabinets/:id/deactivate", providerAuth, async (c) => {
+  const id = c.req.param("id");
+  const org = await db.query.organizations.findFirst({
+    where: eq(organizations.id, id),
+  });
+  if (!org) return c.json({ error: "Cabinet negăsit" }, 404);
+
+  const [updated] = await db
+    .update(organizations)
+    .set({ status: "inactive" })
+    .where(eq(organizations.id, id))
+    .returning();
+
+  return c.json(updated);
+});
+
+// ─── SEND EMAIL TO CABINET ─────────────────────────
+providerRoutes.post("/cabinets/:id/email", providerAuth, async (c) => {
+  const id = c.req.param("id");
+  const { subject, message } = z.object({
+    subject: z.string().min(1).max(200),
+    message: z.string().min(1).max(5000),
+  }).parse(await c.req.json());
+
+  const org = await db.query.organizations.findFirst({
+    where: eq(organizations.id, id),
+  });
+  if (!org) return c.json({ error: "Cabinet negăsit" }, 404);
+
+  // Find all users in this organization
+  const orgUsers = await db.query.users.findMany({
+    where: eq(users.organizationId, id),
+  });
+
+  if (orgUsers.length === 0) {
+    return c.json({ error: "Cabinetul nu are utilizatori" }, 400);
+  }
+
+  const apiKey = process.env.RESEND_API_KEY;
+  const from = process.env.RESEND_FROM || "notificari@dosarfonduri.ro";
+
+  if (!apiKey) {
+    return c.json({ error: "RESEND_API_KEY nu este configurat" }, 500);
+  }
+
+  let sent = 0;
+  for (const user of orgUsers) {
+    try {
+      await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          from: `DosarFonduri Provider <${from}>`,
+          to: user.email,
+          subject,
+          html: `<h2>${subject}</h2><p>${message.replace(/\n/g, "<br/>")}</p><hr/><p style="color:#888;font-size:12px">Trimis de Provider DosarFonduri către ${org.name}</p>`,
+        }),
+      });
+      sent++;
+    } catch {
+      // continue sending to other users
+    }
+  }
+
+  return c.json({ sent, total: orgUsers.length });
 });
 
 // Revenue stats

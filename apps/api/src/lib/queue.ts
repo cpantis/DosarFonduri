@@ -5,11 +5,42 @@ import { redis } from "./redis";
 // standalone ioredis and BullMQ's bundled version is cosmetic — the API is identical.
 const conn = redis as Parameters<typeof Queue.prototype.add>[0] extends never ? any : typeof redis;
 
-export const processGuideQueue = new Queue("process-guide", { connection: conn as any });
-export const processTemplateQueue = new Queue("process-template", { connection: conn as any });
-export const processReferenceDataQueue = new Queue("process-reference-data", { connection: conn as any });
-export const processClientDocQueue = new Queue("process-client-doc", { connection: conn as any });
-export const syncOnrcQueue = new Queue("sync-onrc", { connection: conn as any });
+// Default job options with exponential backoff retry
+export const DEFAULT_JOB_OPTIONS = {
+  attempts: 3,
+  backoff: {
+    type: "exponential" as const,
+    delay: 5000, // 5s initial, then 10s, 20s
+  },
+  removeOnComplete: { count: 100 },
+  removeOnFail: { count: 200 },
+};
+
+export const processGuideQueue = new Queue("process-guide", {
+  connection: conn as any,
+  defaultJobOptions: DEFAULT_JOB_OPTIONS,
+});
+export const processTemplateQueue = new Queue("process-template", {
+  connection: conn as any,
+  defaultJobOptions: DEFAULT_JOB_OPTIONS,
+});
+export const processReferenceDataQueue = new Queue("process-reference-data", {
+  connection: conn as any,
+  defaultJobOptions: DEFAULT_JOB_OPTIONS,
+});
+export const processClientDocQueue = new Queue("process-client-doc", {
+  connection: conn as any,
+  defaultJobOptions: DEFAULT_JOB_OPTIONS,
+});
+export const syncOnrcQueue = new Queue("sync-onrc", {
+  connection: conn as any,
+  defaultJobOptions: {
+    attempts: 5,
+    backoff: { type: "exponential" as const, delay: 10000 },
+    removeOnComplete: { count: 50 },
+    removeOnFail: { count: 100 },
+  },
+});
 
 // Job priority constants (lower number = higher priority)
 export const JOB_PRIORITY = {

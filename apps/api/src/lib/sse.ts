@@ -1,4 +1,5 @@
 import { redis, isRedisReady } from "./redis";
+import type Redis from "ioredis";
 
 /**
  * Publish an SSE event via Redis pub/sub.
@@ -87,4 +88,79 @@ export function publishScoreUpdated(
     "score_updated",
     data,
   );
+}
+
+/** Job progress event */
+export function publishJobProgress(
+  organizationId: string,
+  data: {
+    jobId: string;
+    jobType: string;
+    documentId?: string;
+    documentName?: string;
+    progress: number; // 0-100
+    status: "processing" | "completed" | "failed" | "retrying";
+    attempt?: number;
+    maxAttempts?: number;
+    message: string;
+  },
+): Promise<void> {
+  return publishEvent(
+    `org:${organizationId}:jobs`,
+    "job_progress",
+    data,
+  );
+}
+
+/**
+ * Create an SSE ReadableStream that subscribes to Redis pub/sub channels.
+ * Used by the /api/events SSE endpoint.
+ */
+export function createSSEStream(channels: string[]): ReadableStream {
+  let subscriber: ReturnType<typeof redis.duplicate> | null = null;
+  let keepaliveTimer: ReturnType<typeof setInterval> | null = null;
+
+  return new ReadableStream({
+    start(controller) {
+      if (!isRedisReady()) {
+        controller.enqueue(`: no redis connection\n\n`);
+        return;
+      }
+
+      subscriber = redis.duplicate();
+
+      subscriber.on("message", (_channel: string, message: string) => {
+        try {
+          const parsed = JSON.parse(message);
+          const sseData = `event: ${parsed.event}\ndata: ${JSON.stringify(parsed.data)}\n\n`;
+          controller.enqueue(sseData);
+        } catch {
+          // Skip malformed messages
+        }
+      });
+
+      subscriber.subscribe(...channels).catch(() => {
+        controller.enqueue(`: subscribe failed\n\n`);
+      });
+
+      // Keepalive every 30s
+      keepaliveTimer = setInterval(() => {
+        try {
+          controller.enqueue(`: keepalive\n\n`);
+        } catch {
+          if (keepaliveTimer) clearInterval(keepaliveTimer);
+        }
+      }, 30000);
+
+      controller.enqueue(`event: connected\ndata: ${JSON.stringify({ channels })}\n\n`);
+    },
+    cancel() {
+      if (keepaliveTimer) clearInterval(keepaliveTimer);
+      if (subscriber) {
+        subscriber.unsubscribe().catch(() => {});
+        subscriber.disconnect();
+        subscriber = null;
+      }
+    },
+  });
 }

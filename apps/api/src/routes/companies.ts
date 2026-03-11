@@ -8,6 +8,7 @@ import {
 } from "../db/schema";
 import { eq, and } from "drizzle-orm";
 import { lookupCUI, FORMA_MAP } from "../services/onrc";
+import { lookupCUI_ListaFirme, searchCompany_ListaFirme } from "../services/listafirme";
 import { uploadFile, getFileBuffer, deleteFile } from "../services/storage";
 import { parseBilantPDF } from "../services/bilantParser";
 import { extractTextFromPDF } from "../services/ocr";
@@ -375,6 +376,254 @@ companyRoutes.post("/:id/upload-bilant", async (c) => {
   }
 
   return c.json({ ok: true, year, parsed });
+});
+
+// --- SEARCH CUI (ListaFirme.ro) ---
+companyRoutes.get("/search-cui", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const query = c.req.query("q") || "";
+  if (!query || query.length < 2) return c.json([]);
+
+  try {
+    // If query is numeric, treat as CUI lookup
+    const isNumeric = /^\d+$/.test(query.replace(/\D/g, ""));
+    if (isNumeric && query.replace(/\D/g, "").length >= 4) {
+      const result = await lookupCUI_ListaFirme(query);
+      if (result) {
+        return c.json([{
+          name: result.name,
+          fiscalCode: result.taxCode,
+          county: result.county,
+          legalForm: result.legalForm,
+          status: result.status,
+          source: "listafirme",
+        }]);
+      }
+      return c.json([]);
+    }
+
+    // Otherwise search by name
+    const results = await searchCompany_ListaFirme(query);
+    return c.json(results.slice(0, 10).map(r => ({
+      name: r.name,
+      fiscalCode: r.fiscalCode,
+      county: r.county,
+      source: "listafirme",
+    })));
+  } catch (err: any) {
+    // If ListaFirme is not configured, return empty
+    if (err.message?.includes("LISTAFIRME_API_KEY")) {
+      return c.json([]);
+    }
+    throw err;
+  }
+});
+
+// --- ADD COMPANY FROM LISTAFIRME ---
+companyRoutes.post("/from-listafirme", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  if (!auth.organizationId) return c.json({ error: "No organization" }, 403);
+
+  const { cui } = await c.req.json();
+  if (!cui) return c.json({ error: "CUI obligatoriu" }, 400);
+
+  const cleanCUI = cui.replace(/\D/g, "");
+
+  // Check duplicate
+  const existing = await db.query.companies.findFirst({
+    where: and(eq(companies.cui, cleanCUI), eq(companies.organizationId, auth.organizationId)),
+  });
+  if (existing) return c.json({ error: "Firma cu CUI " + cleanCUI + " există deja" }, 400);
+
+  // Lookup from ListaFirme
+  const lfData = await lookupCUI_ListaFirme(cleanCUI);
+  if (!lfData) return c.json({ error: "CUI-ul nu a fost găsit pe ListaFirme.ro" }, 404);
+
+  // Map legal form
+  const LISTAFIRME_FORMA_MAP: Record<string, string> = {
+    "SRL": "SRL", "SA": "SA", "PFA": "PFA", "II": "II", "IF": "IF",
+    "SNC": "SNC", "SCS": "SCS", "SCA": "SCA", "SC": "SC", "RA": "RA",
+  };
+  const formaRaw = (lfData.legalForm || "").toUpperCase();
+  const formaCode = Object.entries(LISTAFIRME_FORMA_MAP).find(([k]) => formaRaw.includes(k))?.[1] || "SRL";
+
+  // Parse founded year
+  const foundedYear = lfData.foundedDate ? parseInt(lfData.foundedDate.slice(0, 4)) : undefined;
+
+  // Insert company
+  const [company] = await db.insert(companies).values({
+    organizationId: auth.organizationId,
+    formaJuridica: formaCode as any,
+    denumire: lfData.name,
+    cui: lfData.taxCode,
+    regCom: lfData.regNo || undefined,
+    adresa: lfData.address || undefined,
+    localitate: lfData.city || undefined,
+    judet: lfData.county || undefined,
+    telefon: lfData.phone || undefined,
+    email: lfData.email || undefined,
+    website: lfData.web || undefined,
+    caen: lfData.nace || undefined,
+    stare: (lfData.status || "").toLowerCase().includes("radia") ? "radiata" as const : "functiune" as const,
+    anInfiintare: foundedYear && !isNaN(foundedYear) ? foundedYear : undefined,
+    onrcRawData: lfData.raw,
+    lastSyncedAt: new Date(),
+    createdBy: auth.userId,
+  }).returning();
+
+  // Insert administrators from ListaFirme
+  if (lfData.administrators.length > 0) {
+    await db.insert(companyAdministrators).values(
+      lfData.administrators.map(a => ({
+        companyId: company.id,
+        name: a.name,
+        role: a.role || "administrator",
+        appointmentDate: a.since || undefined,
+      }))
+    );
+  }
+
+  // Insert shareholders as associates
+  if (lfData.shareholders.length > 0) {
+    await db.insert(companyAssociates).values(
+      lfData.shareholders.map(s => ({
+        companyId: company.id,
+        type: "pf" as const,
+        name: s.name,
+        role: "asociat",
+        shares: s.shares ? parseInt(s.shares.replace(/\D/g, "")) || undefined : undefined,
+      }))
+    );
+  }
+
+  // Insert financials if available
+  if (lfData.turnover !== null || lfData.profit !== null) {
+    const currentYear = new Date().getFullYear() - 1; // last reported year
+    await db.insert(companyFinancials).values({
+      companyId: company.id,
+      year: currentYear,
+      source: "onrc" as const,
+      f20: {
+        cifraAfaceriNeta: lfData.turnover,
+        profitNet: lfData.profit,
+      },
+      f30: {
+        numarMediuSalariati: lfData.employees,
+      },
+    }).onConflictDoNothing();
+  }
+
+  return c.json(company, 201);
+});
+
+// --- UPLOAD ONRC (Certificat Constatator) - UPDATE EXISTING COMPANY ---
+companyRoutes.post("/:id/upload-onrc", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const id = c.req.param("id");
+
+  const company = await db.query.companies.findFirst({
+    where: and(eq(companies.id, id), eq(companies.organizationId, auth.organizationId!)),
+  });
+  if (!company) return c.json({ error: "Not found" }, 404);
+
+  const formData = await c.req.formData();
+  const file = formData.get("file") as File;
+  if (!file) return c.json({ error: "Fișier lipsă" }, 400);
+
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const fileId = await uploadFile(buffer, file.name, file.type, auth.organizationId!, auth.userId);
+
+  // Extract text from PDF
+  const pdfText = await extractTextFromPDF(buffer);
+
+  // Extract company data with Claude
+  const companyData = await extractCompanyFromDocument(pdfText);
+  if (!companyData) {
+    return c.json({ error: "Nu s-au putut extrage date din document." }, 400);
+  }
+
+  // Update company with extracted data
+  const updateData: Record<string, any> = {
+    certificatFileId: fileId,
+    lastSyncedAt: new Date(),
+    updatedAt: new Date(),
+  };
+  // Only update fields that were extracted and are non-empty
+  if (companyData.denumire) updateData.denumire = companyData.denumire;
+  if (companyData.regCom) updateData.regCom = companyData.regCom;
+  if (companyData.euid) updateData.euid = companyData.euid;
+  if (companyData.adresa) updateData.adresa = companyData.adresa;
+  if (companyData.localitate) updateData.localitate = companyData.localitate;
+  if (companyData.judet) updateData.judet = companyData.judet;
+  if (companyData.telefon) updateData.telefon = companyData.telefon;
+  if (companyData.email) updateData.email = companyData.email;
+  if (companyData.formaJuridica) updateData.formaJuridica = companyData.formaJuridica;
+  if (companyData.stare) updateData.stare = companyData.stare;
+  if (companyData.durata) updateData.durata = companyData.durata;
+  if (companyData.anInfiintare) updateData.anInfiintare = companyData.anInfiintare;
+  if (companyData.capitalSocial) updateData.capitalSocial = companyData.capitalSocial.toString();
+  if (companyData.moneda) updateData.moneda = companyData.moneda;
+  if (companyData.partiSociale) updateData.partiSociale = companyData.partiSociale;
+  if (companyData.naturaCapital) updateData.naturaCapital = companyData.naturaCapital;
+  if (companyData.caenPrincipal) updateData.caen = companyData.caenPrincipal;
+  updateData.onrcRawData = companyData;
+
+  await db.update(companies).set(updateData).where(eq(companies.id, id));
+
+  // Replace associates
+  if (companyData.asociati?.length > 0) {
+    await db.delete(companyAssociates).where(eq(companyAssociates.companyId, id));
+    await db.insert(companyAssociates).values(
+      companyData.asociati.map((a) => ({
+        companyId: id,
+        type: a.type as any,
+        name: a.name,
+        role: a.role,
+        citizenshipOrCountry: a.citizenship,
+        contribution: a.contribution?.toString(),
+        shares: a.shares,
+        pctBenefits: a.pctBenefits?.toString(),
+        pctLosses: a.pctLosses?.toString(),
+      }))
+    );
+  }
+
+  // Replace administrators
+  if (companyData.administratori?.length > 0) {
+    await db.delete(companyAdministrators).where(eq(companyAdministrators.companyId, id));
+    await db.insert(companyAdministrators).values(
+      companyData.administratori.map((a) => ({
+        companyId: id,
+        name: a.name,
+        role: a.role,
+        powers: a.powers,
+        mandateDuration: a.mandateDuration,
+      }))
+    );
+  }
+
+  // Insert/update financials from certificat constatator
+  if (companyData.financials?.length > 0) {
+    for (const f of companyData.financials) {
+      const existing = await db.query.companyFinancials.findFirst({
+        where: and(eq(companyFinancials.companyId, id), eq(companyFinancials.year, f.year)),
+      });
+      const finData = {
+        source: "onrc" as const,
+        f10: { capitaluriProprii: f.capitaluriProprii, activeImobilizate: { total: f.activeImobilizate }, activeCirculante: { total: f.activeCirculante } },
+        f20: { cifraAfaceriNeta: f.cifraAfaceri, profitBrut: f.profitBrut, profitNet: f.profitNet },
+        f30: { numarMediuSalariati: f.angajati, numarEfectivSalariati: f.angajatiEfectiv },
+        processedAt: new Date(),
+      };
+      if (existing) {
+        await db.update(companyFinancials).set(finData).where(eq(companyFinancials.id, existing.id));
+      } else {
+        await db.insert(companyFinancials).values({ companyId: id, year: f.year, ...finData });
+      }
+    }
+  }
+
+  return c.json({ ok: true, message: "Date actualizate din certificat constatator", updated: updateData });
 });
 
 // --- FINANCIALS PER YEAR ---

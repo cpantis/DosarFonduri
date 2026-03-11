@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ToastProvider } from "@/components/shared/Toast";
+import { useSSE } from "@/hooks/useSSE";
 
 function AppShell({ children }: { children: React.ReactNode }) {
   const auth = useAuthState();
@@ -60,6 +61,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider value={auth}>
+      <SSEProvider />
       <div
         className="flex h-screen overflow-hidden transition-colors"
         style={{
@@ -73,6 +75,47 @@ function AppShell({ children }: { children: React.ReactNode }) {
         </main>
       </div>
     </AuthContext.Provider>
+  );
+}
+
+/** Global SSE connection — connects once at app level */
+function SSEProvider() {
+  const { jobProgress } = useSSE({ enabled: true });
+
+  // Show active job progress indicators
+  if (jobProgress.length === 0) return null;
+
+  return (
+    <div className="fixed top-4 right-4 z-[150] flex flex-col gap-2" style={{ maxWidth: 360 }}>
+      {jobProgress.map(job => (
+        <div
+          key={job.id}
+          className="px-4 py-3 rounded-lg border text-xs font-medium"
+          style={{
+            background: "var(--bg-surface)",
+            borderColor: job.status === "failed" ? "var(--accent-red)" : "var(--accent-blue)",
+            color: "var(--text-primary)",
+            animation: "slideUp .2s ease-out",
+          }}
+        >
+          <div className="flex items-center gap-2 mb-1.5">
+            <span style={{ color: job.status === "failed" ? "var(--accent-red)" : "var(--accent-blue)" }}>
+              {job.status === "processing" ? "&#9881;" : job.status === "failed" ? "&#10060;" : "&#9989;"}
+            </span>
+            <span className="truncate">{job.message}</span>
+          </div>
+          <div style={{ height: 4, borderRadius: 2, background: "var(--bg-deep)", overflow: "hidden" }}>
+            <div style={{
+              height: "100%",
+              width: `${job.progress}%`,
+              borderRadius: 2,
+              background: job.status === "failed" ? "var(--accent-red)" : "var(--accent-blue)",
+              transition: "width 0.3s ease",
+            }} />
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 

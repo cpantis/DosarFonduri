@@ -20,6 +20,7 @@ import { referenceTableRoutes } from "./routes/reference-tables";
 import { authMiddleware } from "./middleware/auth";
 import { auditMiddleware } from "./middleware/audit";
 import { errorHandler } from "./middleware/errorHandler";
+import { createSSEStream } from "./lib/sse";
 
 // ─── Startup checks ─────────────────────────────────────
 const requiredEnv = ["DATABASE_URL", "JWT_SECRET", "PROVIDER_JWT_SECRET"];
@@ -65,6 +66,31 @@ app.route("/api/admin", adminRoutes);
 app.route("/api/config", configRoutes);
 app.route("/api/export", exportRoutes);
 app.route("/api/reference", referenceTableRoutes);
+
+// SSE event stream endpoint
+app.get("/api/events", async (c) => {
+  const auth = (c as any).get("auth");
+  if (!auth?.organizationId) return c.json({ error: "Unauthorized" }, 401);
+
+  const projectId = c.req.query("projectId");
+  const channels: string[] = [
+    `org:${auth.organizationId}:uploads`,
+    `org:${auth.organizationId}:jobs`,
+  ];
+  if (projectId) {
+    channels.push(`project:${projectId}:updates`);
+  }
+
+  const stream = createSSEStream(channels);
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      "Connection": "keep-alive",
+      "X-Accel-Buffering": "no",
+    },
+  });
+});
 
 // Global error handler
 app.onError(errorHandler);

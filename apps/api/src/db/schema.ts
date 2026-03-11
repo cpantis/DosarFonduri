@@ -630,3 +630,22 @@ export const cabinetCodes = pgTable("cabinet_codes", {
   createdBy: uuid("created_by").references(() => providerUsers.id).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+// === EXTRACTION CACHE (content-hash-based dedup) ===
+export const extractionCache = pgTable("extraction_cache", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  contentHash: varchar("content_hash", { length: 64 }).notNull(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  extractionType: varchar("extraction_type", { length: 50 }).notNull(), // "text", "classification", "rules_fixed", "rules_interpreted", "elements", "tables", "company", "bilant"
+  result: jsonb("result").notNull(), // cached extraction output
+  pageCount: integer("page_count"),
+  modelUsed: varchar("model_used", { length: 100 }),
+  tokensUsed: integer("tokens_used"),
+  processingTimeMs: integer("processing_time_ms"),
+  hitCount: integer("hit_count").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  expiresAt: timestamp("expires_at"), // null = never expires
+}, (table) => ({
+  hashTypeIdx: uniqueIndex("cache_hash_type_idx").on(table.contentHash, table.extractionType, table.organizationId),
+  orgIdx: index("cache_org_idx").on(table.organizationId),
+}));

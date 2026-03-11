@@ -22,6 +22,13 @@
       "when": 1741780800000,
       "tag": "0002_upload_audit_fixes",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1741867200000,
+      "tag": "0003_validation_scoring",
+      "breakpoints": true
     }
   ]
 }

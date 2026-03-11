@@ -5,12 +5,15 @@ import { db } from "../db";
 import {
   projects, projectElements, projectEligibility, projectDocuments,
   projectChecklist, templateElements, rules, companies, companyFinancials,
-  documentFolders, documents, auditLog, orgConfig, users,
+  documentFolders, documents, auditLog, orgConfig, users, elementAuditLog,
 } from "../db/schema";
 import { eq, and, count, asc, desc, sql } from "drizzle-orm";
 import { AuthContext } from "../middleware/auth";
 import { checkEligibility } from "../services/eligibility";
 import { deleteFile } from "../services/storage";
+import { validateElement, logElementChange } from "../services/elementValidation";
+import { computeProjectScores } from "../services/scoring";
+import { publishElementValidated, publishEligibilityUpdated, publishScoreUpdated } from "../lib/sse";
 
 export const projectRoutes = new Hono<AppEnv>();
 
@@ -356,6 +359,11 @@ projectRoutes.put("/:id/elements/:eid", async (c) => {
 
   const body = await c.req.json();
 
+  // Snapshot old state for audit log
+  const oldElement = await db.query.projectElements.findFirst({
+    where: eq(projectElements.id, eid),
+  });
+
   // Only update fields that are explicitly provided — avoid overwriting with undefined
   const updateData: Record<string, any> = { updatedAt: new Date() };
   if (body.value !== undefined) updateData.value = body.value;
@@ -368,10 +376,72 @@ projectRoutes.put("/:id/elements/:eid", async (c) => {
   const [updated] = await db.update(projectElements).set(updateData)
     .where(eq(projectElements.id, eid)).returning();
 
-  // Re-check eligibility if relevant value changed
+  // === CASCADE: Validate → Eligibility → Score → SSE ===
+
+  // 1. Validate element
+  const validation = await validateElement(eid, id);
+  await db.update(projectElements).set({
+    validationStatus: validation.status,
+    validationDetails: validation.details,
+  }).where(eq(projectElements.id, eid));
+
+  // 2. Audit log
+  if (oldElement && body.value !== undefined && oldElement.value !== body.value) {
+    await logElementChange({
+      projectElementId: eid,
+      oldValue: oldElement.value,
+      newValue: body.value,
+      oldValidationStatus: oldElement.validationStatus as any,
+      newValidationStatus: validation.status,
+      changedBy: auth.userId,
+      changeSource: (body.source || oldElement.source) as any,
+    });
+  }
+
+  // 3. SSE: element validated
+  const templateEl = await db.query.templateElements.findFirst({
+    where: eq(templateElements.id, updated.templateElementId),
+  });
+  publishElementValidated(id, {
+    elementId: eid,
+    elementKey: templateEl?.key || "",
+    value: updated.value,
+    validationStatus: validation.status,
+    message: `Element "${templateEl?.label || templateEl?.key}" → ${validation.status}`,
+  });
+
+  // 4. Re-check eligibility
   await checkEligibility(id, auth.organizationId!);
 
-  return c.json(updated);
+  // Get eligibility summary for SSE
+  const eligibility = await db.query.projectEligibility.findMany({
+    where: eq(projectEligibility.projectId, id),
+  });
+  publishEligibilityUpdated(id, {
+    total: eligibility.length,
+    passed: eligibility.filter(e => e.status === "passed").length,
+    failed: eligibility.filter(e => e.status === "failed").length,
+    pending: eligibility.filter(e => e.status === "pending").length,
+    message: `Eligibilitate re-evaluată: ${eligibility.filter(e => e.status === "passed").length}/${eligibility.length} trecute`,
+  });
+
+  // 5. Recompute scoring
+  const scoreResult = await computeProjectScores(id);
+  if (scoreResult.scores.length > 0) {
+    publishScoreUpdated(id, {
+      totalPoints: scoreResult.totalPoints,
+      maxTotalPoints: scoreResult.maxTotalPoints,
+      percentage: scoreResult.percentage,
+      message: `Punctaj actualizat: ${scoreResult.totalPoints}/${scoreResult.maxTotalPoints} (${scoreResult.percentage}%)`,
+    });
+  }
+
+  // Return updated element with validation
+  return c.json({
+    ...updated,
+    validationStatus: validation.status,
+    validationDetails: validation.details,
+  });
 });
 
 // ─── BULK CONFIRM ELEMENTS ───
@@ -503,6 +573,44 @@ projectRoutes.put("/:id/eligibility/:eid", async (c) => {
   }).where(eq(projectEligibility.id, eid)).returning();
 
   return c.json(updated);
+});
+
+// ─── SCORING ───
+projectRoutes.get("/:id/scores", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const id = c.req.param("id");
+
+  const result = await computeProjectScores(id);
+  return c.json(result);
+});
+
+projectRoutes.post("/:id/recompute-scores", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const id = c.req.param("id");
+
+  const result = await computeProjectScores(id);
+  return c.json(result);
+});
+
+// ─── VALIDATE ALL ELEMENTS ───
+projectRoutes.post("/:id/validate-all", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const id = c.req.param("id");
+
+  const { validateAllProjectElements } = await import("../services/elementValidation");
+  const stats = await validateAllProjectElements(id);
+  return c.json(stats);
+});
+
+// ─── ELEMENT AUDIT LOG ───
+projectRoutes.get("/:id/elements/:eid/history", async (c) => {
+  const { eid } = c.req.param();
+
+  const logs = await db.select().from(elementAuditLog)
+    .where(eq(elementAuditLog.projectElementId, eid))
+    .orderBy(desc(elementAuditLog.changedAt));
+
+  return c.json(logs);
 });
 
 // ─── CHECKLIST ───

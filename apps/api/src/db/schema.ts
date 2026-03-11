@@ -21,12 +21,23 @@ export const elementRoleLinkEnum = pgEnum("element_role_link", ["input", "output
 export const projectStatusEnum = pgEnum("project_status", ["draft", "in_progress", "review", "submitted", "approved", "rejected"]);
 export const eligibilityStatusEnum = pgEnum("eligibility_status", ["passed", "failed", "pending", "not_applicable"]);
 export const elementSourceEnum = pgEnum("element_source", ["onrc", "solomon", "manual", "calculated", "ghid"]);
+export const validationStatusEnum = pgEnum("validation_status", ["pending", "valid", "warning", "invalid"]);
 export const messageRoleEnum = pgEnum("message_role", ["user", "assistant", "system"]);
 export const aiAgentEnum = pgEnum("ai_agent", ["solomon", "neemia", "ghid_rules", "ocr"]);
 export const associateTypeEnum = pgEnum("associate_type", ["pf", "pj"]);
 export const financialSourceEnum = pgEnum("financial_source", ["onrc", "anaf_upload"]);
 export const generatedDocStatusEnum = pgEnum("generated_doc_status", ["generating", "generated", "validated", "error"]);
 export const generationModeEnum = pgEnum("generation_mode", ["fill", "compose"]);
+export const generationContextEnum = pgEnum("generation_context", ["work", "submission"]);
+export const documentTypeEnum = pgEnum("document_type_class", [
+  "guide", "guide_annex_table", "guide_annex_form",
+  "certificat_constatator", "bilant_anaf", "contract_arenda",
+  "oferta_pret", "registru_imobilizari", "declaratie_expert_contabil",
+  "document_mediu", "extras_cont", "certificat_fiscal",
+  "memoriu_template", "cerere_finantare_template",
+  "anexa_b_template", "anexa_c_template",
+  "other",
+]);
 
 // === ORGANIZATIONS ===
 export const organizations = pgTable("organizations", {
@@ -38,6 +49,17 @@ export const organizations = pgTable("organizations", {
   trialEndsAt: timestamp("trial_ends_at"),
   status: orgStatusEnum("status").notNull().default("trial"),
   providerNotes: text("provider_notes"),
+  cabinetDocumentStyle: jsonb("cabinet_document_style").$type<{
+    primaryColor?: string;      // header-e tabele, titluri (default: #1a3a5c)
+    accentColor?: string;       // highlight rând activ, badge CONFORM
+    fontFamily?: string;        // font document (default: DM Sans)
+    logoUrl?: string;           // URL logo cabinet (presigned or stored)
+    footerText?: string;        // text footer cabinet
+    highlightColor?: string;    // rândul activ din lookup tables
+    warningColor?: string;      // badge-uri atenție
+    logoOnWorkDocs?: boolean;   // logo pe documente de lucru (default: true)
+    logoOnFinalDocs?: boolean;  // logo pe documente finale (default: false)
+  }>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull().$onUpdate(() => new Date()),
 });
@@ -204,6 +226,8 @@ export const documents = pgTable("documents", {
     aiModel?: string;          // override org default for this template
     language?: string;         // "ro" default
   }>(),
+  documentTypeClass: documentTypeEnum("document_type_class"),
+  classificationConfidence: decimal("classification_confidence", { precision: 3, scale: 2 }),
   tags: text("tags").array(),
   uploadedBy: uuid("uploaded_by").references(() => users.id).notNull(),
   uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
@@ -336,6 +360,13 @@ export const projectElements = pgTable("project_elements", {
   sourceDocumentId: uuid("source_document_id").references(() => documents.id),
   confirmed: boolean("confirmed").notNull().default(false),
   confirmedBy: uuid("confirmed_by").references(() => users.id),
+  validationStatus: validationStatusEnum("validation_status").notNull().default("pending"),
+  validationDetails: jsonb("validation_details").$type<{
+    typeCheck?: { passed: boolean; message: string };
+    lookupResult?: { tableId: string; tableName: string; matched: boolean; matchedRow?: Record<string, any>; message: string };
+    crossChecks?: Array<{ check: string; passed: boolean; message: string }>;
+    ruleResults?: Array<{ ruleId: string; ruleText: string; status: string; message: string }>;
+  }>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull().$onUpdate(() => new Date()),
 }, (table) => ({
@@ -369,6 +400,7 @@ export const projectDocuments = pgTable("project_documents", {
   missingCount: integer("missing_count"),
   missingKeys: jsonb("missing_keys").$type<string[]>(),
   generationMode: generationModeEnum("generation_mode").default("fill"),
+  generationContext: generationContextEnum("generation_context").default("work"),
   composeContent: jsonb("compose_content").$type<{
     sections: Array<{
       marker: string;
@@ -407,6 +439,61 @@ export const projectChecklist = pgTable("project_checklist", {
   sortOrder: integer("sort_order").default(0),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+// === ELEMENT AUDIT LOG ===
+export const elementAuditLog = pgTable("element_audit_log", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  projectElementId: uuid("project_element_id").references(() => projectElements.id, { onDelete: "cascade" }).notNull(),
+  oldValue: text("old_value"),
+  newValue: text("new_value"),
+  oldValidationStatus: validationStatusEnum("old_validation_status"),
+  newValidationStatus: validationStatusEnum("new_validation_status"),
+  changedBy: uuid("changed_by").references(() => users.id),
+  changeSource: elementSourceEnum("change_source").notNull().default("manual"),
+  changedAt: timestamp("changed_at").defaultNow().notNull(),
+}, (table) => ({
+  elementIdx: index("audit_element_idx").on(table.projectElementId),
+}));
+
+// === SCORING CRITERIA (selection criteria per guide) ===
+export const scoringCriteria = pgTable("scoring_criteria", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  documentId: uuid("document_id").references(() => documents.id, { onDelete: "cascade" }).notNull(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  code: varchar("code", { length: 50 }).notNull(),
+  name: varchar("name", { length: 500 }).notNull(),
+  description: text("description"),
+  maxPoints: decimal("max_points", { precision: 5, scale: 2 }).notNull(),
+  evaluationLogic: jsonb("evaluation_logic").$type<{
+    type: "lookup" | "range" | "boolean" | "formula";
+    elementKey?: string;
+    referenceTableId?: string;
+    lookupColumn?: string;
+    ranges?: Array<{ min?: number; max?: number; points: number }>;
+    formula?: string;
+  }>(),
+  category: varchar("category", { length: 100 }),
+  sortOrder: integer("sort_order").default(0),
+  sourcePage: integer("source_page"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  docIdx: index("scoring_doc_idx").on(table.documentId),
+  orgIdx: index("scoring_org_idx").on(table.organizationId),
+}));
+
+// === PROJECT SCORES (computed per project per criteria) ===
+export const projectScores = pgTable("project_scores", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  criteriaId: uuid("criteria_id").references(() => scoringCriteria.id, { onDelete: "cascade" }).notNull(),
+  points: decimal("points", { precision: 5, scale: 2 }),
+  maxPoints: decimal("max_points", { precision: 5, scale: 2 }).notNull(),
+  reasoning: text("reasoning"),
+  inputElements: jsonb("input_elements").$type<Record<string, any>>(),
+  evaluatedAt: timestamp("evaluated_at").defaultNow().notNull(),
+}, (table) => ({
+  projectIdx: index("score_project_idx").on(table.projectId),
+}));
 
 // === SOLOMON CONVERSATIONS ===
 export const solomonConversations = pgTable("solomon_conversations", {

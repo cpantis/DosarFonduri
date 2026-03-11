@@ -44,11 +44,13 @@ export const processClientDocWorker = new Worker<ProcessClientDocPayload>(
 
       await job.updateProgress(60);
 
-      // Step 3: Update document with classification results
+      // Step 3: Update document with classification results (persist documentType!)
       const pageCount = (text.match(/--- Pagina|--- Sheet/g) || []).length || 1;
       await db.update(documents).set({
         status: "processed",
         pageCount,
+        documentTypeClass: classification.documentType as any,
+        classificationConfidence: classification.confidence.toFixed(2),
         processedAt: new Date(),
       }).where(eq(documents.id, documentId));
 

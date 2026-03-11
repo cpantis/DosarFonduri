@@ -35,3 +35,56 @@ export function publishUploadEvent(
     data,
   );
 }
+
+/** Element validated event — pushes to project channel */
+export function publishElementValidated(
+  projectId: string,
+  data: {
+    elementId: string;
+    elementKey: string;
+    value: string | null;
+    validationStatus: string;
+    message: string;
+  },
+): Promise<void> {
+  return publishEvent(
+    `project:${projectId}:updates`,
+    "element_validated",
+    data,
+  );
+}
+
+/** Eligibility re-evaluated event */
+export function publishEligibilityUpdated(
+  projectId: string,
+  data: {
+    total: number;
+    passed: number;
+    failed: number;
+    pending: number;
+    message: string;
+  },
+): Promise<void> {
+  return publishEvent(
+    `project:${projectId}:updates`,
+    "eligibility_updated",
+    data,
+  );
+}
+
+/** Score recalculated event */
+export function publishScoreUpdated(
+  projectId: string,
+  data: {
+    totalPoints: number;
+    maxTotalPoints: number;
+    percentage: number;
+    message: string;
+  },
+): Promise<void> {
+  return publishEvent(
+    `project:${projectId}:updates`,
+    "score_updated",
+    data,
+  );
+}

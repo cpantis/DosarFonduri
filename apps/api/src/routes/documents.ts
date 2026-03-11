@@ -1,12 +1,14 @@
 import type { AppEnv } from "../types/hono";
 import { Hono } from "hono";
 import { z } from "zod";
+import { createHash } from "crypto";
 import { db } from "../db";
 import { documentFolders, documents, templateElements } from "../db/schema";
 import { eq, and, isNull } from "drizzle-orm";
 import { uploadFile, getFileUrl, deleteFile } from "../services/storage";
 import { AuthContext } from "../middleware/auth";
-import { processGuideQueue, processTemplateQueue, processReferenceDataQueue } from "../lib/queue";
+import { processGuideQueue, processTemplateQueue, processReferenceDataQueue, processClientDocQueue, JOB_PRIORITY } from "../lib/queue";
+import { publishUploadEvent } from "../lib/sse";
 
 export const documentRoutes = new Hono<AppEnv>();
 
@@ -125,6 +127,61 @@ documentRoutes.get("/folders/:folderId/documents", async (c) => {
   return c.json(docs);
 });
 
+// --- UPLOAD VALIDATION ---
+
+/** Allowed MIME types mapped to our internal file type */
+const ALLOWED_MIME_TYPES: Record<string, string> = {
+  "application/pdf": "pdf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+  "application/vnd.ms-excel": "xlsx",
+  "application/msword": "doc",
+};
+
+/** Fallback: detect file type from extension when MIME is generic */
+const EXT_TO_FILETYPE: Record<string, string> = {
+  pdf: "pdf",
+  docx: "docx",
+  xlsx: "xlsx",
+  xls: "xlsx",
+  doc: "doc",
+};
+
+/** Max file size per processing type (bytes) */
+const MAX_SIZE: Record<string, number> = {
+  ghid: 50 * 1024 * 1024,          // 50 MB — ghiduri are large PDFs
+  reference_data: 30 * 1024 * 1024, // 30 MB
+  template: 20 * 1024 * 1024,       // 20 MB
+  client_doc: 20 * 1024 * 1024,     // 20 MB
+  reference: 20 * 1024 * 1024,      // 20 MB
+};
+
+/** Sanitize filename for AFIR compliance: remove diacritics, special chars */
+function sanitizeFilename(name: string): string {
+  return name
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")  // strip diacritics
+    .replace(/[ăâ]/gi, "a").replace(/[îì]/gi, "i")
+    .replace(/[șş]/gi, "s").replace(/[țţ]/gi, "t")
+    .replace(/[^a-zA-Z0-9._\-\s]/g, "_")              // only safe chars
+    .replace(/\s+/g, "_")                              // spaces → underscore
+    .replace(/_+/g, "_")                               // collapse multiple _
+    .replace(/^_|_$/g, "");                            // trim _ from edges
+}
+
+/** Compute SHA-256 hash of buffer */
+function fileHash(buffer: Buffer): string {
+  return createHash("sha256").update(buffer).digest("hex");
+}
+
+/** Map folder type → processing type */
+function resolveProcessingType(folderType: string, explicitType: string | null): string {
+  if (explicitType === "reference_data" && folderType === "ghiduri") return "reference_data";
+  if (folderType === "ghiduri") return "ghid";
+  if (folderType === "templateuri") return "template";
+  if (folderType === "clienti_prospecti" || folderType === "clienti_finali") return "client_doc";
+  return "reference";
+}
+
 // --- UPLOAD DOCUMENT ---
 documentRoutes.post("/folders/:folderId/documents", async (c) => {
   const auth = c.get("auth") as AuthContext;
@@ -141,58 +198,101 @@ documentRoutes.post("/folders/:folderId/documents", async (c) => {
 
   if (!file) return c.json({ error: "Fișier lipsă" }, 400);
 
-  const buffer = Buffer.from(await file.arrayBuffer());
-  const fileId = await uploadFile(buffer, file.name, file.type, auth.organizationId!, auth.userId);
-
+  // --- Resolve file type from MIME + extension ---
   const ext = file.name.split(".").pop()?.toLowerCase() || "";
-  const fileType = ext === "pdf" ? "pdf" : ext === "xlsx" || ext === "xls" ? "xlsx" : ext === "doc" ? "doc" : "docx";
-
-  // Check for explicit processingType from form data (allows sub-classification in ghiduri folder)
-  const explicitType = formData.get("processingType") as string | null;
-
-  let processingType: string;
-  if (explicitType === "reference_data" && folder.type === "ghiduri") {
-    processingType = "reference_data";
-  } else if (folder.type === "ghiduri") {
-    processingType = "ghid";
-  } else if (folder.type === "templateuri") {
-    processingType = "template";
-  } else {
-    processingType = "reference";
+  let fileType = ALLOWED_MIME_TYPES[file.type];
+  if (!fileType) {
+    fileType = EXT_TO_FILETYPE[ext];
+  }
+  if (!fileType) {
+    return c.json({
+      error: `Tip de fișier neacceptat: ${file.type || ext}. Acceptăm: PDF, DOCX, XLSX, XLS, DOC.`,
+    }, 400);
   }
 
+  // --- Validate file size ---
+  const explicitType = formData.get("processingType") as string | null;
+  const processingType = resolveProcessingType(folder.type, explicitType);
+  const maxSize = MAX_SIZE[processingType] || MAX_SIZE.reference;
+  if (file.size > maxSize) {
+    const maxMB = Math.round(maxSize / (1024 * 1024));
+    return c.json({
+      error: `Fișierul depășește limita de ${maxMB} MB pentru tipul "${processingType}".`,
+    }, 400);
+  }
+
+  // --- Read buffer + compute hash ---
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const hash = fileHash(buffer);
+
+  // --- Duplicate detection (same hash in same org) → warning, not blocking ---
+  const existing = await db.query.documents.findFirst({
+    where: and(
+      eq(documents.organizationId, auth.organizationId!),
+      eq(documents.fileHash, hash),
+    ),
+  });
+  const duplicateWarning = existing
+    ? `Fișier identic deja uploadat: "${existing.name}" (${existing.id}). Documentul a fost uploadat oricum.`
+    : null;
+
+  // --- Sanitize filename ---
+  const rawName = file.name.replace(/\.[^.]+$/, "");
+  const safeName = sanitizeFilename(rawName) || rawName;
+
+  // --- .doc legacy warning ---
+  const docWarning = fileType === "doc"
+    ? "Format .doc (legacy). Conversia automată la .docx va fi realizată la procesare."
+    : null;
+
+  // --- Upload to R2 with context path + metadata ---
+  const uploadContext = processingType === "ghid" || processingType === "reference_data"
+    ? "guides" : processingType === "template" ? "templates" : "uploads";
+  const fileId = await uploadFile(buffer, file.name, file.type, auth.organizationId!, auth.userId, uploadContext);
+
+  // --- Create DB record ---
   const [doc] = await db.insert(documents).values({
     folderId,
     organizationId: auth.organizationId!,
-    name: file.name.replace(/\.[^.]+$/, ""),
+    name: safeName,
     fileType: fileType as any,
+    mimeType: file.type || `application/${ext}`,
     fileId,
     fileSize: buffer.length,
+    fileHash: hash,
     status: "uploaded",
     processingType: processingType as any,
     tags,
     uploadedBy: auth.userId,
   }).returning();
 
-  // Auto-process guides, templates, and reference data
+  // --- Dispatch BullMQ job with priority ---
+  const jobPayload = { documentId: doc.id, organizationId: auth.organizationId! };
   if (processingType === "ghid") {
-    await processGuideQueue.add("process-guide", {
-      documentId: doc.id,
-      organizationId: auth.organizationId!,
-    });
+    await processGuideQueue.add("process-guide", jobPayload, { priority: JOB_PRIORITY.GUIDE });
   } else if (processingType === "template") {
-    await processTemplateQueue.add("process-template", {
-      documentId: doc.id,
-      organizationId: auth.organizationId!,
-    });
+    await processTemplateQueue.add("process-template", jobPayload, { priority: JOB_PRIORITY.TEMPLATE });
   } else if (processingType === "reference_data") {
-    await processReferenceDataQueue.add("process-reference-data", {
-      documentId: doc.id,
-      organizationId: auth.organizationId!,
-    });
+    await processReferenceDataQueue.add("process-reference-data", jobPayload, { priority: JOB_PRIORITY.REFERENCE_DATA });
+  } else if (processingType === "client_doc") {
+    await processClientDocQueue.add("process-client-doc", jobPayload, { priority: JOB_PRIORITY.CLIENT_DOC });
   }
 
-  return c.json(doc, 201);
+  // --- SSE notification ---
+  publishUploadEvent(auth.organizationId!, {
+    documentId: doc.id,
+    documentName: safeName,
+    status: "uploaded",
+    processingType,
+    message: `Document uploadat "${safeName}", procesare în curs...`,
+  }).catch(() => {}); // fire and forget
+
+  // --- Response with warnings ---
+  const warnings: string[] = [];
+  if (duplicateWarning) warnings.push(duplicateWarning);
+  if (docWarning) warnings.push(docWarning);
+
+  return c.json({ ...doc, warnings: warnings.length > 0 ? warnings : undefined }, 201);
 });
 
 // --- DOCUMENT DETAILS ---
@@ -238,16 +338,15 @@ documentRoutes.post("/documents/:id/process", async (c) => {
 
   await db.update(documents).set({ status: "processing" }).where(eq(documents.id, id));
 
+  const jobPayload = { documentId: doc.id, organizationId: auth.organizationId! };
   if (doc.processingType === "ghid") {
-    await processGuideQueue.add("process-guide", {
-      documentId: doc.id,
-      organizationId: auth.organizationId!,
-    });
+    await processGuideQueue.add("process-guide", jobPayload, { priority: JOB_PRIORITY.GUIDE });
   } else if (doc.processingType === "template") {
-    await processTemplateQueue.add("process-template", {
-      documentId: doc.id,
-      organizationId: auth.organizationId!,
-    });
+    await processTemplateQueue.add("process-template", jobPayload, { priority: JOB_PRIORITY.TEMPLATE });
+  } else if (doc.processingType === "reference_data") {
+    await processReferenceDataQueue.add("process-reference-data", jobPayload, { priority: JOB_PRIORITY.REFERENCE_DATA });
+  } else if (doc.processingType === "client_doc") {
+    await processClientDocQueue.add("process-client-doc", jobPayload, { priority: JOB_PRIORITY.CLIENT_DOC });
   }
 
   return c.json({ ok: true, message: "Procesare pornită" });
@@ -380,4 +479,44 @@ documentRoutes.delete("/documents/:docId/elements/:elId", async (c) => {
   );
 
   return c.json({ ok: true });
+});
+
+// --- SSE: subscribe to upload events for organization ---
+documentRoutes.get("/uploads/events", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  if (!auth.organizationId) return c.json({ error: "No organization" }, 403);
+
+  const { redis: subRedis } = await import("../lib/redis");
+  const subscriber = subRedis.duplicate();
+  const channel = `org:${auth.organizationId}:uploads`;
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      const encoder = new TextEncoder();
+      const send = (data: string) => {
+        try { controller.enqueue(encoder.encode(`data: ${data}\n\n`)); } catch { /* closed */ }
+      };
+
+      // Send heartbeat every 30s to keep connection alive
+      const heartbeat = setInterval(() => send('{"event":"heartbeat"}'), 30_000);
+
+      await subscriber.subscribe(channel);
+      subscriber.on("message", (_ch: string, message: string) => send(message));
+
+      // Cleanup on close
+      c.req.raw.signal.addEventListener("abort", () => {
+        clearInterval(heartbeat);
+        subscriber.unsubscribe(channel).catch(() => {});
+        subscriber.disconnect();
+      });
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      "Connection": "keep-alive",
+    },
+  });
 });

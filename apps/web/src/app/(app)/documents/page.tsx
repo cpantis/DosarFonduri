@@ -30,7 +30,7 @@ interface ApiDocument {
   fileType: "pdf" | "docx" | "xlsx" | "doc";
   fileSize: number;
   status: "uploaded" | "processing" | "processed" | "failed";
-  processingType: "ghid" | "template" | "reference" | "reference_data";
+  processingType: "ghid" | "template" | "reference" | "reference_data" | "client_doc";
   tags: string[];
   uploadedAt: string;
   uploadedBy: string;
@@ -241,9 +241,10 @@ export default function DocumentsPage() {
   const [renameVal, setRenameVal] = useState("");
   const [docs, setDocs] = useState<DocItem[]>([]);
   const [docsLoading, setDocsLoading] = useState(false);
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadWarnings, setUploadWarnings] = useState<string[]>([]);
   const [ghidSubType, setGhidSubType] = useState<"ghid" | "reference_data">("ghid");
   const [dragOver, setDragOver] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -443,60 +444,68 @@ export default function DocumentsPage() {
   }, [selectedFolder, fetchDocs]);
 
   const handleUpload = useCallback(async () => {
-    if (!uploadFile || !selectedFolder) return;
+    if (uploadFiles.length === 0 || !selectedFolder) return;
     setUploading(true);
     setUploadError(null);
+    setUploadWarnings([]);
     setUploadProgress(0);
 
-    // Simulate progress (real XHR progress would need XMLHttpRequest)
-    const progressInterval = setInterval(() => {
-      setUploadProgress(prev => Math.min(prev + Math.random() * 15, 90));
-    }, 200);
+    const uploadNode = selectedFolder ? findNodeById(tree, selectedFolder) : null;
+    const storedToken = typeof window !== "undefined" ? localStorage.getItem("df-token") : null;
+    const headers: Record<string, string> = {};
+    if (storedToken) headers["Authorization"] = `Bearer ${storedToken}`;
 
-    try {
-      const formData = new FormData();
-      formData.append("file", uploadFile);
-      formData.append("tags", JSON.stringify([]));
+    const totalFiles = uploadFiles.length;
+    let completed = 0;
+    const allWarnings: string[] = [];
+    const errors: string[] = [];
 
-      // Send explicit processingType for ghiduri sub-classification
-      const uploadNode = selectedFolder ? findNodeById(tree, selectedFolder) : null;
-      if (uploadNode?.type === "ghiduri" && ghidSubType === "reference_data") {
-        formData.append("processingType", "reference_data");
+    for (const file of uploadFiles) {
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("tags", JSON.stringify([]));
+
+        if (uploadNode?.type === "ghiduri" && ghidSubType === "reference_data") {
+          formData.append("processingType", "reference_data");
+        }
+
+        const res = await fetch(`/api/documents/folders/${selectedFolder}/documents`, {
+          method: "POST",
+          headers,
+          credentials: "include",
+          body: formData,
+        });
+
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({ error: "Upload failed" }));
+          errors.push(`${file.name}: ${body.error || `HTTP ${res.status}`}`);
+        } else {
+          const result = await res.json();
+          if (result.warnings) allWarnings.push(...result.warnings.map((w: string) => `${file.name}: ${w}`));
+        }
+      } catch (err: any) {
+        errors.push(`${file.name}: ${err.message || "Eroare la upload"}`);
       }
 
-      const storedToken = typeof window !== "undefined" ? localStorage.getItem("df-token") : null;
-      const headers: Record<string, string> = {};
-      if (storedToken) {
-        headers["Authorization"] = `Bearer ${storedToken}`;
-      }
+      completed++;
+      setUploadProgress(Math.round((completed / totalFiles) * 100));
+    }
 
-      const res = await fetch(`/api/documents/folders/${selectedFolder}/documents`, {
-        method: "POST",
-        headers,
-        credentials: "include",
-        body: formData,
-      });
-
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({ error: "Upload failed" }));
-        throw new Error(body.error || `HTTP ${res.status}`);
-      }
-
-      setUploadProgress(100);
-      await new Promise(r => setTimeout(r, 300)); // Brief success flash
+    if (errors.length > 0) {
+      setUploadError(errors.join("\n"));
+    } else {
+      await new Promise(r => setTimeout(r, 300));
       setShowUpload(false);
-      setUploadFile(null);
+      setUploadFiles([]);
       setUploadError(null);
       setUploadProgress(0);
-      fetchDocs(selectedFolder);
-    } catch (err: any) {
-      setUploadError(err.message || "Eroare la upload");
-      setUploadProgress(0);
-    } finally {
-      clearInterval(progressInterval);
-      setUploading(false);
     }
-  }, [uploadFile, selectedFolder, tree, ghidSubType, fetchDocs]);
+    if (allWarnings.length > 0) setUploadWarnings(allWarnings);
+
+    fetchDocs(selectedFolder);
+    setUploading(false);
+  }, [uploadFiles, selectedFolder, tree, ghidSubType, fetchDocs]);
 
   // Filtered documents
   const filteredDocs = docs.filter(d => {
@@ -1156,15 +1165,16 @@ export default function DocumentsPage() {
         .doc-detail::-webkit-scrollbar-thumb:hover { background: var(--border-active); }
       `}</style>
 
-      {/* Hidden file input for upload */}
+      {/* Hidden file input for upload (multiple) */}
       <input
         ref={fileInputRef}
         type="file"
-        accept=".pdf,.docx,.xlsx,.doc"
+        accept=".pdf,.docx,.xlsx,.xls,.doc"
+        multiple
         style={{ display: "none" }}
         onChange={e => {
-          const file = e.target.files?.[0];
-          if (file) setUploadFile(file);
+          const files = e.target.files;
+          if (files && files.length > 0) setUploadFiles(prev => [...prev, ...Array.from(files)]);
           e.target.value = "";
         }}
       />
@@ -1265,11 +1275,11 @@ export default function DocumentsPage() {
 
       {/* ─── UPLOAD MODAL ─── */}
       {showUpload && (
-        <div className="doc-overlay" onClick={e => { if (e.target === e.currentTarget) { setShowUpload(false); setUploadError(null); setUploadFile(null); setUploadProgress(0); } }}>
+        <div className="doc-overlay" onClick={e => { if (e.target === e.currentTarget) { setShowUpload(false); setUploadError(null); setUploadFiles([]); setUploadProgress(0); setUploadWarnings([]); } }}>
           <div className="doc-modal">
             <div className="doc-modal-title">
-              Upload document
-              <button className="doc-modal-close" onClick={() => { setShowUpload(false); setUploadFile(null); setUploadError(null); setUploadProgress(0); }}>{"\u2715"}</button>
+              Upload documente
+              <button className="doc-modal-close" onClick={() => { setShowUpload(false); setUploadFiles([]); setUploadError(null); setUploadProgress(0); setUploadWarnings([]); }}>{"\u2715"}</button>
             </div>
             <div className="doc-modal-sub">
               Destinatie: <strong style={{ color: "var(--text-primary)" }}>{breadcrumb.length > 0 ? breadcrumb.join(" \u203A ") : "Selecteaza un folder"}</strong>
@@ -1324,24 +1334,44 @@ export default function DocumentsPage() {
             )}
 
             <div
-              className={`doc-upload-zone ${dragOver ? "drag-active" : ""} ${uploadFile ? "has-file" : ""}`}
-              onClick={() => !uploadFile && fileInputRef.current?.click()}
+              className={`doc-upload-zone ${dragOver ? "drag-active" : ""} ${uploadFiles.length > 0 ? "has-file" : ""}`}
+              onClick={() => uploadFiles.length === 0 && fileInputRef.current?.click()}
               onDragOver={e => { e.preventDefault(); e.stopPropagation(); setDragOver(true); }}
               onDragLeave={e => { e.preventDefault(); e.stopPropagation(); setDragOver(false); }}
               onDrop={e => {
                 e.preventDefault();
                 e.stopPropagation();
                 setDragOver(false);
-                const file = e.dataTransfer.files?.[0];
-                if (file) setUploadFile(file);
+                const droppedFiles = e.dataTransfer.files;
+                if (droppedFiles && droppedFiles.length > 0) setUploadFiles(prev => [...prev, ...Array.from(droppedFiles)]);
               }}
             >
-              {uploadFile ? (
+              {uploadFiles.length > 0 ? (
                 <>
-                  <button className="doc-upload-zone-remove" onClick={e => { e.stopPropagation(); setUploadFile(null); setUploadError(null); }}>{"\u2715"}</button>
+                  <button className="doc-upload-zone-remove" onClick={e => { e.stopPropagation(); setUploadFiles([]); setUploadError(null); }}>{"\u2715"}</button>
                   <div className="doc-upload-zone-icon">{"\u2705"}</div>
-                  <div className="doc-upload-zone-title">{uploadFile.name}</div>
-                  <div className="doc-upload-zone-sub">{formatFileSize(uploadFile.size)} {"\u00B7"} Gata de upload</div>
+                  <div className="doc-upload-zone-title">
+                    {uploadFiles.length === 1 ? uploadFiles[0].name : `${uploadFiles.length} fisiere selectate`}
+                  </div>
+                  <div className="doc-upload-zone-sub">
+                    {formatFileSize(uploadFiles.reduce((sum, f) => sum + f.size, 0))} total {"\u00B7"} Gata de upload
+                  </div>
+                  {uploadFiles.length > 1 && (
+                    <div style={{ marginTop: 8, fontSize: 11, color: "var(--text-muted)", textAlign: "left", maxHeight: 80, overflow: "auto" }}>
+                      {uploadFiles.map((f, i) => (
+                        <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "1px 0" }}>
+                          <span>{f.name}</span>
+                          <span>{formatFileSize(f.size)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <button
+                    style={{ marginTop: 8, fontSize: 12, color: "var(--accent-blue)", background: "none", border: "none", cursor: "pointer", fontFamily: "var(--font-sans)" }}
+                    onClick={e => { e.stopPropagation(); fileInputRef.current?.click(); }}
+                  >
+                    + Adauga mai multe
+                  </button>
                 </>
               ) : (
                 <>
@@ -1349,7 +1379,7 @@ export default function DocumentsPage() {
                   <div className="doc-upload-zone-title">
                     {dragOver ? "Elibereaza pentru upload" : "Trage fisierele aici sau click pentru a alege"}
                   </div>
-                  <div className="doc-upload-zone-sub">PDF, DOCX, XLSX — max 50 MB per fisier</div>
+                  <div className="doc-upload-zone-sub">PDF, DOCX, XLSX, DOC — max 50 MB per fisier. Se pot selecta mai multe.</div>
                 </>
               )}
             </div>
@@ -1365,22 +1395,28 @@ export default function DocumentsPage() {
             )}
 
             {uploadError && (
-              <div className="doc-upload-error">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <div className="doc-upload-error" style={{ whiteSpace: "pre-line" }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
                   <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
                 </svg>
                 {uploadError}
               </div>
             )}
 
+            {uploadWarnings.length > 0 && (
+              <div style={{ padding: "10px 14px", marginBottom: 12, borderRadius: "var(--r-sm)", background: "rgba(251,191,36,.08)", border: "1px solid rgba(251,191,36,.2)", color: "var(--accent-yellow)", fontSize: 12, lineHeight: 1.5 }}>
+                {uploadWarnings.map((w, i) => <div key={i}>{w}</div>)}
+              </div>
+            )}
+
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-              <button className="doc-btn-secondary" onClick={() => { setShowUpload(false); setUploadFile(null); setUploadError(null); setUploadProgress(0); }}>Anuleaza</button>
+              <button className="doc-btn-secondary" onClick={() => { setShowUpload(false); setUploadFiles([]); setUploadError(null); setUploadProgress(0); setUploadWarnings([]); }}>Anuleaza</button>
               <button
                 className="doc-btn-primary"
-                disabled={!uploadFile || !selectedFolder || uploading}
+                disabled={uploadFiles.length === 0 || !selectedFolder || uploading}
                 onClick={handleUpload}
               >
-                {uploading ? `Se uploadeaza... ${Math.round(uploadProgress)}%` : "Upload & Proceseaza"}
+                {uploading ? `Se uploadeaza... ${Math.round(uploadProgress)}%` : uploadFiles.length > 1 ? `Upload ${uploadFiles.length} fisiere` : "Upload & Proceseaza"}
               </button>
             </div>
           </div>

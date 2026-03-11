@@ -15,6 +15,13 @@
       "when": 1741694400000,
       "tag": "0001_neemia_compose_mode",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1741780800000,
+      "tag": "0002_upload_audit_fixes",
+      "breakpoints": true
     }
   ]
 }

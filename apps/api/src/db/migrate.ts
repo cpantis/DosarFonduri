@@ -130,4 +130,12 @@ async function runMigrations() {
   await migrationClient.end();
 }
 
-runMigrations();
+runMigrations()
+  .then(() => {
+    console.log("Migration script finished, exiting.");
+    process.exit(0);
+  })
+  .catch((err) => {
+    console.error("Migration script failed:", err);
+    process.exit(1);
+  });

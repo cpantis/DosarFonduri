@@ -2,11 +2,13 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "./schema";
 
+// Don't throw at import time — index.ts has a requiredEnv guard that exits cleanly.
+// Throwing here crashes during import resolution, before health checks register.
 if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL environment variable is required. Set it in Railway Variables.");
+  console.error("❌ DATABASE_URL not set — database operations will fail.");
 }
 
-const client = postgres(process.env.DATABASE_URL, {
+const client = postgres(process.env.DATABASE_URL || "postgres://localhost:5432/dosarfonduri", {
   max: 20,
   idle_timeout: 30,
   connect_timeout: 10,

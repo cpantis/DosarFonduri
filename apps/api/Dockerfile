@@ -56,6 +56,8 @@ EXPOSE 8080
 
 WORKDIR /app/apps/api
 
-# Start server immediately (so Railway healthcheck passes), run migrations in background.
-# Migrations are idempotent — safe to retry if they fail on first attempt.
-CMD ["sh", "-c", "node dist/db/migrate.js & node dist/index.js"]
+# Run migrations first (with timeout), then start server.
+# Migrations are idempotent and fast (< 10s). Running sequentially ensures
+# the DB schema is ready before routes try to query.
+# If migrations fail, server still starts so health check works and setup-db can retry.
+CMD ["sh", "-c", "timeout 30 node dist/db/migrate.js || echo '[WARN] Migration failed, server starting anyway...'; exec node dist/index.js"]

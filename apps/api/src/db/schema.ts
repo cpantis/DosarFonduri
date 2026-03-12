@@ -20,7 +20,7 @@ export const refUsageEnum = pgEnum("ref_usage", ["validates", "scores", "classif
 export const elementRoleLinkEnum = pgEnum("element_role_link", ["input", "output", "constraint"]);
 export const projectStatusEnum = pgEnum("project_status", ["draft", "in_progress", "review", "submitted", "approved", "rejected"]);
 export const eligibilityStatusEnum = pgEnum("eligibility_status", ["passed", "failed", "pending", "not_applicable"]);
-export const elementSourceEnum = pgEnum("element_source", ["onrc", "solomon", "manual", "calculated", "ghid"]);
+export const elementSourceEnum = pgEnum("element_source", ["onrc", "solomon", "manual", "calculated", "ghid", "document_extracted"]);
 export const validationStatusEnum = pgEnum("validation_status", ["pending", "valid", "warning", "invalid"]);
 export const messageRoleEnum = pgEnum("message_role", ["user", "assistant", "system"]);
 export const aiAgentEnum = pgEnum("ai_agent", ["solomon", "neemia", "ghid_rules", "ocr"]);
@@ -228,6 +228,18 @@ export const documents = pgTable("documents", {
   }>(),
   documentTypeClass: documentTypeEnum("document_type_class"),
   classificationConfidence: decimal("classification_confidence", { precision: 3, scale: 2 }),
+  processingResult: jsonb("processing_result").$type<{
+    document_type: string;
+    extracted_fields: Array<{
+      field_key: string;
+      field_value: any;
+      confidence: number;
+      source_page: number | null;
+      extraction_method: string;
+    }>;
+    raw_text: string;
+    processing_time_ms: number;
+  }>(),
   tags: text("tags").array(),
   uploadedBy: uuid("uploaded_by").references(() => users.id).notNull(),
   uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
@@ -630,3 +642,22 @@ export const cabinetCodes = pgTable("cabinet_codes", {
   createdBy: uuid("created_by").references(() => providerUsers.id).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+// === EXTRACTION CACHE (content-hash-based dedup) ===
+export const extractionCache = pgTable("extraction_cache", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  contentHash: varchar("content_hash", { length: 64 }).notNull(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  extractionType: varchar("extraction_type", { length: 50 }).notNull(), // "text", "classification", "rules_fixed", "rules_interpreted", "elements", "tables", "company", "bilant"
+  result: jsonb("result").notNull(), // cached extraction output
+  pageCount: integer("page_count"),
+  modelUsed: varchar("model_used", { length: 100 }),
+  tokensUsed: integer("tokens_used"),
+  processingTimeMs: integer("processing_time_ms"),
+  hitCount: integer("hit_count").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  expiresAt: timestamp("expires_at"), // null = never expires
+}, (table) => ({
+  hashTypeIdx: uniqueIndex("cache_hash_type_idx").on(table.contentHash, table.extractionType, table.organizationId),
+  orgIdx: index("cache_org_idx").on(table.organizationId),
+}));

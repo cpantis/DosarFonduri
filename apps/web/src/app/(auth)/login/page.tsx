@@ -733,6 +733,18 @@ function SignupWizard({ onGo }: { onGo: () => void }) {
                   </div>
                 </div>
               </div>
+              {codeRes.companyName && (
+                <div style={{ marginTop: 10, fontSize: 13, color: "var(--text-secondary)" }}>
+                  Destinat: <strong style={{ color: "var(--text-primary)" }}>{codeRes.companyName}</strong>
+                  {codeRes.cui && <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, marginLeft: 6, color: "var(--text-muted)" }}>CUI {codeRes.cui}</span>}
+                </div>
+              )}
+              {codeRes.cui && cui && cui.replace(/\D/g, "") !== codeRes.cui && (
+                <div className="cui-err" style={{ marginTop: 8 }}>
+                  CUI-ul introdus la pasul 2 ({cui}) nu se potriveste cu firma destinatara a codului (CUI {codeRes.cui}).
+                  Intoarce-te la pasul 2 si corecteaza.
+                </div>
+              )}
             </div>
           )}
 

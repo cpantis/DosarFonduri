@@ -55,8 +55,18 @@ authRoutes.post("/signup", async (c) => {
     if (!code || code.organizationId) return c.json({ error: "Cod invalid sau deja folosit" }, 400);
     if (code.expiresAt < new Date()) return c.json({ error: "Cod expirat" }, 400);
 
-    // Create organization — use validated company name from listafirme.ro if available
-    const orgName = body.companyName || (body.name + " Cabinet");
+    // CUI handshake: if the code is tied to a CUI, the signup CUI must match
+    if (code.cui) {
+      const signupCUI = body.cui?.replace(/\D/g, "") || "";
+      if (signupCUI !== code.cui) {
+        return c.json({
+          error: `Codul este destinat firmei cu CUI ${code.cui}${code.companyName ? ` (${code.companyName})` : ""}. Introdu CUI-ul corect la pasul 2.`,
+        }, 400);
+      }
+    }
+
+    // Create organization — prefer: code.companyName (provider-set) > body.companyName (listafirme) > fallback
+    const orgName = code.companyName || body.companyName || (body.name + " Cabinet");
     const [org] = await db.insert(organizations).values({
       name: orgName,
       code: code.code,
@@ -234,6 +244,8 @@ authRoutes.post("/validate-code", async (c) => {
     plan: cabinetCode.plan,
     maxUsers: cabinetCode.maxUsers,
     trialDays: cabinetCode.trialDays,
+    cui: cabinetCode.cui || null,
+    companyName: cabinetCode.companyName || null,
   });
 });
 

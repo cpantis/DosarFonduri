@@ -46,6 +46,8 @@ interface UnusedCode {
   plan: string;
   maxUsers: number;
   trialDays: number;
+  cui: string | null;
+  companyName: string | null;
   expiresAt: string;
   createdAt: string;
 }
@@ -81,6 +83,9 @@ export default function ProviderDashboardPage() {
   const [genMaxUsers, setGenMaxUsers] = useState(5);
   const [genTrial, setGenTrial] = useState(30);
   const [genCode, setGenCode] = useState<string | null>(null);
+  const [genCui, setGenCui] = useState("");
+  const [genCuiLoad, setGenCuiLoad] = useState(false);
+  const [genCuiRes, setGenCuiRes] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   // Edit plan modal state
@@ -119,12 +124,29 @@ export default function ProviderDashboardPage() {
     loadData();
   }, [loadData, router]);
 
+  const handleLookupCui = async () => {
+    const clean = genCui.replace(/\D/g, "");
+    if (clean.length < 6) return;
+    setGenCuiLoad(true);
+    setGenCuiRes(null);
+    try {
+      const result = await providerGet(`/api/provider/lookup-cui/${clean}`);
+      setGenCuiRes(result);
+    } catch {
+      setGenCuiRes("error");
+    } finally {
+      setGenCuiLoad(false);
+    }
+  };
+
   const handleGenerateCode = async () => {
     try {
       const created = await providerPost("/api/provider/codes", {
         plan: genPlan,
         maxUsers: genMaxUsers,
         trialDays: genTrial,
+        cui: genCuiRes && genCuiRes !== "error" ? genCuiRes.taxCode : undefined,
+        companyName: genCuiRes && genCuiRes !== "error" ? genCuiRes.name : undefined,
       });
       setGenCode(created.code);
       setCodes((prev) => [...prev, created]);
@@ -291,7 +313,7 @@ export default function ProviderDashboardPage() {
                 fontFamily: "var(--font-sans)",
                 boxShadow: "0 2px 12px rgba(167,139,250,.25)",
               }}
-              onClick={() => { setShowGenerate(true); setGenCode(null); }}
+              onClick={() => { setShowGenerate(true); setGenCode(null); setGenCui(""); setGenCuiRes(null); }}
             >
               🔑 Genereaza cod nou
             </button>
@@ -474,6 +496,12 @@ export default function ProviderDashboardPage() {
                       <div className="text-base font-extrabold" style={{ fontFamily: "var(--font-mono)", color: "var(--accent-purple)", letterSpacing: "1px" }}>
                         {c.code}
                       </div>
+                      {c.companyName && (
+                        <div className="text-[13px] font-semibold mt-0.5" style={{ color: "var(--text-primary)" }}>
+                          {c.companyName}
+                          {c.cui && <span className="text-xs ml-1.5" style={{ fontFamily: "var(--font-mono)", color: "var(--text-muted)" }}>CUI {c.cui}</span>}
+                        </div>
+                      )}
                       <div className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
                         <span className="capitalize">{c.plan}</span> · {c.maxUsers} utilizatori · Trial {c.trialDays}z
                       </div>
@@ -619,6 +647,65 @@ export default function ProviderDashboardPage() {
                     </div>
                   </div>
 
+                  {/* CUI lookup — tie code to a specific company */}
+                  <div className="mb-4">
+                    <label className="block text-[11px] font-semibold uppercase mb-1.5" style={{ letterSpacing: ".7px", color: "var(--text-muted)" }}>
+                      Firma destinatara (CUI) — optional
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        value={genCui}
+                        onChange={(e) => { setGenCui(e.target.value); setGenCuiRes(null); }}
+                        onKeyDown={(e) => e.key === "Enter" && handleLookupCui()}
+                        className="flex-1 px-3.5 py-2.5 text-sm outline-none"
+                        style={{
+                          borderRadius: "var(--r-md)",
+                          border: `1px solid ${genCuiRes && genCuiRes !== "error" ? "var(--accent-green)" : genCuiRes === "error" ? "var(--accent-red)" : "var(--border)"}`,
+                          background: "var(--bg-deep)",
+                          color: "var(--text-primary)",
+                          fontFamily: "var(--font-mono)",
+                          letterSpacing: "1px",
+                        }}
+                        placeholder="ex: 19893984"
+                      />
+                      <button
+                        className="px-4 py-2.5 text-sm font-semibold cursor-pointer"
+                        style={{ borderRadius: "var(--r-md)", border: "1px solid var(--border)", background: "transparent", color: "var(--text-secondary)", fontFamily: "var(--font-sans)" }}
+                        onClick={handleLookupCui}
+                        disabled={genCuiLoad || genCui.replace(/\D/g, "").length < 6}
+                      >
+                        {genCuiLoad ? "..." : "Verifica"}
+                      </button>
+                    </div>
+                    <div className="text-[11px] mt-1" style={{ color: "var(--text-muted)" }}>
+                      Daca specifici un CUI, codul va putea fi activat doar de firma respectiva.
+                    </div>
+
+                    {genCuiRes && genCuiRes !== "error" && (
+                      <div className="mt-2 p-3" style={{ borderRadius: "var(--r-md)", border: "1px solid var(--accent-green)", background: "rgba(52,211,153,.04)" }}>
+                        <div className="text-[15px] font-bold" style={{ color: "var(--accent-green)" }}>{genCuiRes.name}</div>
+                        <div className="text-xs mt-1" style={{ color: "var(--text-secondary)" }}>
+                          CUI: {genCuiRes.taxCode} · {genCuiRes.county}{genCuiRes.city ? `, ${genCuiRes.city}` : ""}
+                          {genCuiRes.nace ? ` · CAEN: ${genCuiRes.nace}` : ""}
+                        </div>
+                        <div className="text-xs" style={{ color: "var(--text-muted)" }}>
+                          {genCuiRes.address}
+                          {genCuiRes.status && (
+                            <span style={{ color: genCuiRes.status?.toLowerCase().includes("activ") ? "var(--accent-green)" : "var(--accent-red)", fontWeight: 600, marginLeft: 8 }}>
+                              {genCuiRes.status}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {genCuiRes === "error" && (
+                      <div className="mt-2 p-2.5 text-xs" style={{ borderRadius: "var(--r-md)", border: "1px solid var(--accent-red)", background: "rgba(248,113,113,.04)", color: "var(--accent-red)" }}>
+                        CUI-ul nu a fost gasit. Verifica si incearca din nou.
+                      </div>
+                    )}
+                  </div>
+
                   <div className="flex gap-2.5 justify-end">
                     <button className="px-5 py-2.5 text-sm font-semibold cursor-pointer" style={{ borderRadius: "var(--r-md)", border: "1px solid var(--border)", background: "transparent", color: "var(--text-secondary)", fontFamily: "var(--font-sans)" }} onClick={() => setShowGenerate(false)}>Anuleaza</button>
                     <button className="px-5 py-2.5 text-sm font-bold text-white cursor-pointer" style={{ borderRadius: "var(--r-md)", border: "none", background: "var(--accent-purple)", fontFamily: "var(--font-sans)" }} onClick={handleGenerateCode}>🔑 Genereaza cod</button>
@@ -633,6 +720,11 @@ export default function ProviderDashboardPage() {
                     <div className="text-xs" style={{ color: "var(--text-secondary)" }}>
                       Plan: <span className="capitalize">{genPlan}</span> · {genMaxUsers} utilizatori · Trial: {genTrial} zile
                     </div>
+                    {genCuiRes && genCuiRes !== "error" && (
+                      <div className="text-xs mt-1.5" style={{ color: "var(--accent-green)" }}>
+                        Destinat: {genCuiRes.name} (CUI {genCuiRes.taxCode})
+                      </div>
+                    )}
                   </div>
                   <div className="flex gap-2.5 justify-end">
                     <button

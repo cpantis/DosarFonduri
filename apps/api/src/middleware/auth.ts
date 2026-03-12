@@ -11,8 +11,11 @@ export interface AuthContext {
   email: string;
 }
 
+// Throttle lastActiveAt updates: at most once per 5 minutes per user
+const ACTIVITY_THROTTLE_MS = 5 * 60 * 1000;
+const lastActiveCache = new Map<string, number>();
+
 export const authMiddleware = async (c: Context, next: Next) => {
-  // Skip auth for public routes already handled before this middleware
   const token = c.req.header("Authorization")?.replace("Bearer ", "");
   if (!token) return c.json({ error: "Unauthorized" }, 401);
 
@@ -23,8 +26,14 @@ export const authMiddleware = async (c: Context, next: Next) => {
     });
     if (!user || user.status === "disabled") return c.json({ error: "Unauthorized" }, 401);
 
-    // Update last active
-    await db.update(users).set({ lastActiveAt: new Date() }).where(eq(users.id, user.id));
+    // Throttle lastActiveAt DB writes to once per 5 minutes
+    const now = Date.now();
+    const lastUpdate = lastActiveCache.get(user.id) || 0;
+    if (now - lastUpdate > ACTIVITY_THROTTLE_MS) {
+      lastActiveCache.set(user.id, now);
+      // Fire-and-forget — don't block the request on a non-critical update
+      db.update(users).set({ lastActiveAt: new Date() }).where(eq(users.id, user.id)).catch(() => {});
+    }
 
     c.set("auth", {
       userId: user.id,

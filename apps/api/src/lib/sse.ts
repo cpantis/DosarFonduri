@@ -163,6 +163,7 @@ export function createSSEStream(channels: string[]): ReadableStream {
     start(controller) {
       if (!isRedisReady()) {
         controller.enqueue(`: no redis connection\n\n`);
+        controller.close();
         return;
       }
 

@@ -37,12 +37,22 @@ if (!process.env.REDIS_URL) {
 
 const app = new Hono();
 
+// Health check FIRST — must respond before any middleware or route import fails.
+// Railway starts healthchecking immediately after the container starts.
+app.get("/", (c) => c.json({ status: "ok", service: "dosarfonduri-api" }));
+app.get("/health", (c) => c.json({ status: "ok", service: "dosarfonduri-api", timestamp: new Date().toISOString() }));
+
 // Global middleware
 app.use("*", logger());
 app.use("*", cors({
   origin: (() => {
-    const url = process.env.FRONTEND_URL || "http://localhost:3000";
-    return url.startsWith("http") ? url : `https://${url}`;
+    const raw = process.env.FRONTEND_URL || "http://localhost:3000";
+    // Support comma-separated origins (e.g. "https://app.dosarfonduri.ro,http://localhost:3000")
+    const origins = raw.split(",").map((u) => {
+      const trimmed = u.trim();
+      return trimmed.startsWith("http") ? trimmed : `https://${trimmed}`;
+    });
+    return origins.length === 1 ? origins[0] : origins;
   })(),
   credentials: true,
 }));
@@ -95,16 +105,11 @@ app.get("/api/events", async (c) => {
 // Global error handler
 app.onError(errorHandler);
 
-// Health check (both / and /health for Railway healthcheck flexibility)
-// IMPORTANT: These must return 200 instantly — no DB calls, no async work.
-// Railway starts healthchecking immediately after the container starts.
-app.get("/", (c) => c.json({ status: "ok", service: "dosarfonduri-api" }));
-app.get("/health", (c) => c.json({ status: "ok", service: "dosarfonduri-api", timestamp: new Date().toISOString() }));
-
 // Temporary setup endpoint — triggers migrations + seed via HTTP
 app.get("/setup-db", async (c) => {
   const secret = c.req.query("key");
-  if (secret !== "DosarSetup2026") return c.json({ error: "Forbidden" }, 403);
+  const expectedSecret = process.env.SETUP_DB_SECRET || "DosarSetup2026";
+  if (secret !== expectedSecret) return c.json({ error: "Forbidden" }, 403);
 
   try {
     const { db } = await import("./db");

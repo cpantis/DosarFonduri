@@ -46,35 +46,42 @@ export function Sidebar() {
     <aside
       className="flex flex-col h-full transition-all duration-200 flex-shrink-0"
       style={{
-        width: collapsed ? 64 : 240,
-        minWidth: collapsed ? 64 : 240,
-        background: "var(--bg-surface)",
-        borderRight: "1px solid var(--border)",
+        width: collapsed ? 68 : 250,
+        minWidth: collapsed ? 68 : 250,
+        background: "var(--sidebar-bg)",
+        borderRight: "1px solid var(--sidebar-border)",
       }}
     >
       {/* Logo */}
       <div
         className="flex items-center gap-3 flex-shrink-0"
         style={{
-          padding: collapsed ? "20px 12px" : "20px",
-          borderBottom: "1px solid var(--border)",
+          padding: collapsed ? "24px 14px" : "24px 22px",
+          borderBottom: "1px solid var(--sidebar-border)",
           justifyContent: collapsed ? "center" : "flex-start",
         }}
       >
         <div
-          className="w-9 h-9 flex items-center justify-center text-white text-base font-extrabold flex-shrink-0"
+          className="flex items-center justify-center text-white font-extrabold flex-shrink-0"
           style={{
-            borderRadius: "10px",
+            width: 38,
+            height: 38,
+            borderRadius: 10,
+            fontSize: 15,
             background: "var(--accent-blue)",
-            boxShadow: "0 2px 12px rgba(77,139,255,.25)",
+            boxShadow: "0 2px 12px rgba(77,139,255,.3)",
           }}
         >
           DF
         </div>
         {!collapsed && (
           <span
-            className="text-[17px] font-extrabold tracking-tight"
-            style={{ color: "var(--text-primary)", letterSpacing: "-0.3px" }}
+            style={{
+              fontSize: 18,
+              fontWeight: 800,
+              letterSpacing: "-0.4px",
+              color: "#ffffff",
+            }}
           >
             DosarFonduri
           </span>
@@ -82,18 +89,24 @@ export function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
+      <nav className="flex-1 overflow-y-auto" style={{ padding: collapsed ? "12px 8px" : "16px 12px" }}>
         {NAV_ITEMS.map((section) => (
-          <div key={section.section}>
+          <div key={section.section} style={{ marginBottom: 8 }}>
             {!collapsed && (
               <div
-                className="px-3 pt-4 pb-1.5 text-[10px] font-bold uppercase"
-                style={{ letterSpacing: "1px", color: "var(--text-muted)" }}
+                style={{
+                  padding: "16px 14px 6px",
+                  fontSize: 10,
+                  fontWeight: 700,
+                  textTransform: "uppercase",
+                  letterSpacing: "1.2px",
+                  color: "var(--sidebar-section)",
+                }}
               >
                 {section.section}
               </div>
             )}
-            {collapsed && <div className="pt-2" />}
+            {collapsed && <div style={{ paddingTop: 8 }} />}
             {section.items.map((item) => {
               const isActive = pathname.startsWith(item.href);
               const isHovered = hoveredItem === item.href;
@@ -101,30 +114,34 @@ export function Sidebar() {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className="flex items-center gap-2.5 py-2 text-sm mb-0.5"
+                  className="flex items-center no-underline"
                   style={{
-                    borderRadius: "var(--r-sm)",
-                    background: isActive
-                      ? "rgba(77,139,255,.1)"
-                      : isHovered
-                      ? "var(--bg-hover)"
-                      : undefined,
-                    color: isActive
-                      ? "var(--accent-blue)"
-                      : isHovered
-                      ? "var(--text-primary)"
-                      : "var(--text-secondary)",
-                    fontWeight: isActive ? 600 : 500,
-                    padding: collapsed ? "9px 0" : "9px 12px",
+                    borderRadius: 8,
+                    gap: 12,
+                    padding: collapsed ? "11px 0" : "11px 14px",
+                    marginBottom: 2,
                     justifyContent: collapsed ? "center" : "flex-start",
+                    background: isActive
+                      ? "var(--sidebar-active-bg)"
+                      : isHovered
+                      ? "var(--sidebar-hover)"
+                      : "transparent",
+                    color: isActive
+                      ? "#ffffff"
+                      : isHovered
+                      ? "rgba(255,255,255,.9)"
+                      : "var(--sidebar-text)",
+                    fontWeight: isActive ? 600 : 500,
+                    fontSize: 13.5,
                     transition: "all .15s",
-                    fontSize: "14px",
+                    borderLeft: isActive ? "3px solid var(--accent-blue)" : "3px solid transparent",
+                    position: "relative",
                   }}
                   title={item.label}
                   onMouseEnter={() => setHoveredItem(item.href)}
                   onMouseLeave={() => setHoveredItem(null)}
                 >
-                  <span className="w-5 text-center flex-shrink-0" style={{ fontSize: "16px" }}>{item.icon}</span>
+                  <span className="flex-shrink-0 text-center" style={{ width: 22, fontSize: 17 }}>{item.icon}</span>
                   {!collapsed && <span>{item.label}</span>}
                 </Link>
               );
@@ -134,50 +151,71 @@ export function Sidebar() {
       </nav>
 
       {/* Collapse toggle */}
-      <div className="px-3 py-1">
+      <div style={{ padding: collapsed ? "4px 10px" : "4px 12px" }}>
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="w-full flex items-center justify-center py-1.5 text-xs cursor-pointer"
+          className="flex items-center justify-center cursor-pointer"
           style={{
-            borderRadius: "var(--r-sm)",
-            color: "var(--text-muted)",
-            border: "1px solid var(--border)",
-            background: "var(--bg-elevated)",
+            width: "100%",
+            padding: "7px 0",
+            borderRadius: 8,
+            color: "rgba(255,255,255,.35)",
+            border: "1px solid var(--sidebar-border)",
+            background: "rgba(255,255,255,.03)",
             transition: "all .15s",
             fontFamily: "var(--font-sans)",
+            fontSize: 11,
           }}
-          title={collapsed ? "Extinde sidebar" : "Restrânge sidebar"}
-          aria-label={collapsed ? "Extinde sidebar" : "Restrânge sidebar"}
+          title={collapsed ? "Extinde sidebar" : "Restrange sidebar"}
+          aria-label={collapsed ? "Extinde sidebar" : "Restrange sidebar"}
           aria-expanded={!collapsed}
         >
           {collapsed ? "\u25B6" : "\u25C0"}
         </button>
       </div>
 
-      {/* Footer */}
+      {/* Footer — user info */}
       <div
-        className="p-3 flex items-center gap-2.5"
+        className="flex items-center"
         style={{
-          borderTop: "1px solid var(--border)",
+          padding: collapsed ? "16px 10px" : "16px 18px",
+          borderTop: "1px solid var(--sidebar-border)",
+          gap: 10,
           justifyContent: collapsed ? "center" : "flex-start",
         }}
       >
         <div
-          className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
-          style={{ background: "var(--accent-purple)" }}
+          className="flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
+          style={{
+            width: 34,
+            height: 34,
+            borderRadius: "50%",
+            background: "var(--accent-purple)",
+          }}
         >
           {user?.name ? getInitials(user.name) : "?"}
         </div>
         {!collapsed && (
           <>
-            <div className="flex-1 min-w-0">
+            <div style={{ flex: 1, minWidth: 0 }}>
               <div
-                className="text-[13px] font-semibold truncate"
-                style={{ color: "var(--text-primary)" }}
+                className="truncate"
+                style={{
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: "#ffffff",
+                  lineHeight: 1.3,
+                }}
               >
                 {user?.name || "..."}
               </div>
-              <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>
+              <div
+                style={{
+                  fontSize: 11,
+                  color: "rgba(255,255,255,.4)",
+                  lineHeight: 1.3,
+                }}
+              >
                 {user?.role === "admin"
                   ? "Administrator"
                   : user?.role === "consultant"
@@ -187,15 +225,19 @@ export function Sidebar() {
             </div>
             <button
               onClick={toggle}
-              className="w-8 h-8 rounded-full flex items-center justify-center text-base flex-shrink-0 cursor-pointer"
+              className="flex items-center justify-center flex-shrink-0 cursor-pointer"
               style={{
-                border: "1px solid var(--border)",
-                background: "var(--bg-elevated)",
+                width: 32,
+                height: 32,
+                borderRadius: "50%",
+                border: "1px solid var(--sidebar-border)",
+                background: "rgba(255,255,255,.05)",
                 transition: "all .15s",
+                fontSize: 15,
               }}
               title={theme === "dark" ? "Comuta la Light Mode" : "Comuta la Dark Mode"}
             >
-              {theme === "dark" ? "☀️" : "🌙"}
+              {theme === "dark" ? "\u2600\uFE0F" : "\uD83C\uDF19"}
             </button>
           </>
         )}

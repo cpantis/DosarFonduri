@@ -90,6 +90,45 @@ export function publishScoreUpdated(
   );
 }
 
+/** Per-field extraction event — streams during document processing */
+export function publishFieldExtracted(
+  organizationId: string,
+  data: {
+    documentId: string;
+    documentName: string;
+    projectId?: string;
+    fieldKey: string;
+    fieldValue: any;
+    confidence: number;
+    fieldIndex: number;
+    totalFields: number;
+    documentType: string;
+  },
+): Promise<void> {
+  return publishEvent(
+    `org:${organizationId}:uploads`,
+    "field_extracted",
+    data,
+  );
+}
+
+/** Extraction started event */
+export function publishExtractionStarted(
+  organizationId: string,
+  data: {
+    documentId: string;
+    documentName: string;
+    documentType: string;
+    message: string;
+  },
+): Promise<void> {
+  return publishEvent(
+    `org:${organizationId}:uploads`,
+    "extraction_started",
+    data,
+  );
+}
+
 /** Job progress event */
 export function publishJobProgress(
   organizationId: string,

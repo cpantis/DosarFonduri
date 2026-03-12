@@ -7,6 +7,15 @@ interface SSEEvent {
   data: any;
 }
 
+interface ExtractionProgress {
+  documentId: string;
+  documentName: string;
+  documentType: string;
+  extractedFields: Array<{ key: string; value: any; confidence: number }>;
+  totalFields: number;
+  completed: boolean;
+}
+
 interface UseSSEOptions {
   projectId?: string;
   enabled?: boolean;
@@ -22,6 +31,7 @@ export function useSSE({ projectId, enabled = true, onEvent }: UseSSEOptions = {
   const eventSourceRef = useRef<EventSource | null>(null);
   const [connected, setConnected] = useState(false);
   const [jobProgress, setJobProgress] = useState<Map<string, { progress: number; message: string; status: string }>>(new Map());
+  const [extractionProgress, setExtractionProgress] = useState<Map<string, ExtractionProgress>>(new Map());
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectAttemptsRef = useRef(0);
 
@@ -114,6 +124,59 @@ export function useSSE({ projectId, enabled = true, onEvent }: UseSSEOptions = {
       case "score_updated":
         toast("info", data.message || `Punctaj actualizat: ${data.percentage}%`);
         break;
+      case "extraction_started":
+        setExtractionProgress(prev => {
+          const next = new Map(prev);
+          next.set(data.documentId, {
+            documentId: data.documentId,
+            documentName: data.documentName,
+            documentType: data.documentType,
+            extractedFields: [],
+            totalFields: 0,
+            completed: false,
+          });
+          return next;
+        });
+        break;
+      case "field_extracted":
+        setExtractionProgress(prev => {
+          const next = new Map(prev);
+          const existing = next.get(data.documentId);
+          const fields = existing?.extractedFields || [];
+          // Avoid duplicates
+          if (!fields.some(f => f.key === data.fieldKey)) {
+            fields.push({ key: data.fieldKey, value: data.fieldValue, confidence: data.confidence });
+          }
+          next.set(data.documentId, {
+            documentId: data.documentId,
+            documentName: data.documentName || existing?.documentName || "",
+            documentType: data.documentType || existing?.documentType || "",
+            extractedFields: fields,
+            totalFields: data.totalFields || existing?.totalFields || 0,
+            completed: fields.length >= (data.totalFields || 0),
+          });
+          return next;
+        });
+        break;
+      case "extraction_complete":
+        setExtractionProgress(prev => {
+          const next = new Map(prev);
+          const existing = next.get(data.documentId);
+          if (existing) {
+            next.set(data.documentId, { ...existing, completed: true });
+            // Clean up after 8s
+            setTimeout(() => {
+              setExtractionProgress(p => {
+                const n = new Map(p);
+                n.delete(data.documentId);
+                return n;
+              });
+            }, 8000);
+          }
+          return next;
+        });
+        toast("success", data.message || `Extracție completă: ${data.fields_count} câmpuri`);
+        break;
       case "job_progress":
         setJobProgress(prev => {
           const next = new Map(prev);
@@ -164,5 +227,6 @@ export function useSSE({ projectId, enabled = true, onEvent }: UseSSEOptions = {
   return {
     connected,
     jobProgress: Array.from(jobProgress.entries()).map(([id, info]) => ({ id, ...info })),
+    extractionProgress: Array.from(extractionProgress.values()),
   };
 }

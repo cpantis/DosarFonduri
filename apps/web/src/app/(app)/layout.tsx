@@ -78,15 +78,105 @@ function AppShell({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** Human-readable field key labels */
+const FIELD_LABELS: Record<string, string> = {
+  denumire_solicitant: "Denumire",
+  cui: "CUI",
+  nr_inmatriculare: "Nr. Inmatriculare",
+  forma_juridica: "Forma Juridica",
+  caen_principal: "CAEN Principal",
+  adresa_sediu: "Adresa Sediu",
+  localitate: "Localitate",
+  judet: "Judet",
+  stare_firma: "Stare Firma",
+  capital_social: "Capital Social",
+  data_inregistrare: "Data Inregistrare",
+  furnizor_nume: "Furnizor",
+  total_oferta_eur: "Total Oferta",
+  banca: "Banca",
+  sold_disponibil: "Sold Disponibil",
+  data_extras: "Data Extras",
+  iban: "IBAN",
+  tip_document_mediu: "Tip Document",
+  numar_document_mediu: "Nr. Document",
+  ani_activitate_agroalimentara: "Ani Activitate",
+  nr_contract: "Nr. Contract",
+  suprafata_contracte: "Suprafata (ha)",
+  putere_tractoare_existente: "Putere Tractoare (CP)",
+};
+
+function fieldLabel(key: string): string {
+  return FIELD_LABELS[key] || key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+}
+
 /** Global SSE connection — connects once at app level */
 function SSEProvider() {
-  const { jobProgress } = useSSE({ enabled: true });
+  const { jobProgress, extractionProgress } = useSSE({ enabled: true });
 
-  // Show active job progress indicators
-  if (jobProgress.length === 0) return null;
+  // Show active job progress + extraction progress indicators
+  if (jobProgress.length === 0 && extractionProgress.length === 0) return null;
 
   return (
-    <div className="fixed top-4 right-4 z-[150] flex flex-col gap-2" style={{ maxWidth: 360 }}>
+    <div className="fixed top-4 right-4 z-[150] flex flex-col gap-2" style={{ maxWidth: 380 }}>
+      {/* Extraction progress cards */}
+      {extractionProgress.map(ext => (
+        <div
+          key={`ext-${ext.documentId}`}
+          className="px-4 py-3 rounded-lg border text-xs font-medium"
+          style={{
+            background: "var(--bg-surface)",
+            borderColor: ext.completed ? "var(--accent-green)" : "var(--accent-blue)",
+            color: "var(--text-primary)",
+            animation: "slideUp .2s ease-out",
+          }}
+        >
+          <div className="flex items-center gap-2 mb-2">
+            <span style={{ color: ext.completed ? "var(--accent-green)" : "var(--accent-blue)", fontSize: 14 }}>
+              {ext.completed ? "\u2705" : "\u{1F50D}"}
+            </span>
+            <span className="truncate" style={{ flex: 1 }}>
+              {ext.completed
+                ? `Extractie completa. ${ext.extractedFields.length} campuri populate.`
+                : `Extrag date... (${ext.extractedFields.length}/${ext.totalFields || "?"} campuri)`}
+            </span>
+          </div>
+          <div className="text-[10px] mb-1.5" style={{ color: "var(--text-muted)" }}>
+            {ext.documentName}
+          </div>
+          {/* Per-field progress chips */}
+          <div className="flex flex-wrap gap-1">
+            {ext.extractedFields.slice(-8).map(f => (
+              <span
+                key={f.key}
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded"
+                style={{
+                  background: "rgba(52,211,153,.08)",
+                  color: "var(--accent-green)",
+                  fontSize: 10,
+                  fontWeight: 600,
+                  animation: "slideUp .15s ease-out",
+                }}
+              >
+                {fieldLabel(f.key)} {"\u2713"}
+              </span>
+            ))}
+          </div>
+          {/* Progress bar */}
+          {ext.totalFields > 0 && (
+            <div style={{ height: 3, borderRadius: 2, background: "var(--bg-deep)", overflow: "hidden", marginTop: 6 }}>
+              <div style={{
+                height: "100%",
+                width: `${Math.round((ext.extractedFields.length / ext.totalFields) * 100)}%`,
+                borderRadius: 2,
+                background: ext.completed ? "var(--accent-green)" : "var(--accent-blue)",
+                transition: "width 0.3s ease",
+              }} />
+            </div>
+          )}
+        </div>
+      ))}
+
+      {/* Job progress cards */}
       {jobProgress.map(job => (
         <div
           key={job.id}

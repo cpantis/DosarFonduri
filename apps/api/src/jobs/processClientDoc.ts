@@ -10,7 +10,7 @@ import { createHash } from "crypto";
 import { getFileBuffer } from "../services/storage";
 import { extractTextFromPDF, extractTextFromDOCX, extractTextFromXLSX, classifyDocument } from "../services/ocr";
 import { logAIUsage } from "../services/aiUsage";
-import { publishEvent, publishEligibilityUpdated, publishScoreUpdated } from "../lib/sse";
+import { publishEvent, publishEligibilityUpdated, publishScoreUpdated, publishFieldExtracted, publishExtractionStarted } from "../lib/sse";
 import { validateElement, logElementChange } from "../services/elementValidation";
 import { checkEligibility } from "../services/eligibility";
 import { computeProjectScores } from "../services/scoring";
@@ -556,6 +556,14 @@ export const processClientDocWorker = new Worker<ProcessClientDocPayload>(
       let cacheHit = false;
       const contentHash = getContentHash(text);
 
+      // Notify frontend that extraction is starting
+      publishExtractionStarted(organizationId, {
+        documentId,
+        documentName: doc.name,
+        documentType: classification.documentType,
+        message: `Extrag date din "${doc.name}" (${classification.documentType})...`,
+      }).catch(() => {});
+
       try {
         // Check cache first
         extractionResult = await checkCachedExtraction(
@@ -592,6 +600,26 @@ export const processClientDocWorker = new Worker<ProcessClientDocPayload>(
               extractionResult,
               text.length,
             );
+          }
+        }
+
+        // Stream per-field SSE events so frontend shows fields appearing one by one
+        if (extractionResult && extractionResult.extracted_fields.length > 0) {
+          const visibleFields = extractionResult.extracted_fields.filter(f => !f.field_key.startsWith("_"));
+          const totalVisible = visibleFields.length;
+
+          for (let i = 0; i < visibleFields.length; i++) {
+            const field = visibleFields[i];
+            publishFieldExtracted(organizationId, {
+              documentId,
+              documentName: doc.name,
+              fieldKey: field.field_key,
+              fieldValue: field.field_value,
+              confidence: field.confidence,
+              fieldIndex: i + 1,
+              totalFields: totalVisible,
+              documentType: classification.documentType,
+            }).catch(() => {});
           }
         }
       } catch (extractError) {

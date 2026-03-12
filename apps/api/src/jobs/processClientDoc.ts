@@ -2,15 +2,16 @@ import { Worker, Job } from "bullmq";
 import { db } from "../db";
 import {
   documents, projects, projectElements, templateElements,
-  documentFolders, elementAuditLog,
+  documentFolders, elementAuditLog, projectEligibility,
 } from "../db/schema";
 import { eq, and } from "drizzle-orm";
 import { getFileBuffer } from "../services/storage";
 import { extractTextFromPDF, extractTextFromDOCX, extractTextFromXLSX, classifyDocument } from "../services/ocr";
 import { logAIUsage } from "../services/aiUsage";
-import { publishEvent } from "../lib/sse";
-import { validateElement } from "../services/elementValidation";
-import { logElementChange } from "../services/elementValidation";
+import { publishEvent, publishEligibilityUpdated, publishScoreUpdated } from "../lib/sse";
+import { validateElement, logElementChange } from "../services/elementValidation";
+import { checkEligibility } from "../services/eligibility";
+import { computeProjectScores } from "../services/scoring";
 import type { ExtractionResult } from "../services/extractionTypes";
 
 // Extractors
@@ -382,6 +383,44 @@ async function saveExtractedFieldsToProjectElements(
       elementIds: modifiedElementIds,
       message: `${updatedCount} elemente actualizate din document`,
     }).catch(() => {});
+  }
+
+  // === CASCADE: Eligibility → Scoring → SSE ===
+  // Mirror the cascade from projects.ts PUT /:id/elements/:eid
+  if (modifiedElementIds.length > 0) {
+    // 1. Re-check eligibility
+    try {
+      await checkEligibility(project.id, organizationId);
+
+      const eligibility = await db.query.projectEligibility.findMany({
+        where: eq(projectEligibility.projectId, project.id),
+      });
+
+      publishEligibilityUpdated(project.id, {
+        total: eligibility.length,
+        passed: eligibility.filter(e => e.status === "passed").length,
+        failed: eligibility.filter(e => e.status === "failed").length,
+        pending: eligibility.filter(e => e.status === "pending").length,
+        message: `Eligibilitate re-evaluată: ${eligibility.filter(e => e.status === "passed").length}/${eligibility.length} trecute`,
+      }).catch(() => {});
+    } catch (err) {
+      console.error(`[saveExtracted] Eligibility check failed for project ${project.id}:`, err);
+    }
+
+    // 2. Recompute scoring
+    try {
+      const scoreResult = await computeProjectScores(project.id);
+      if (scoreResult.scores.length > 0) {
+        publishScoreUpdated(project.id, {
+          totalPoints: scoreResult.totalPoints,
+          maxTotalPoints: scoreResult.maxTotalPoints,
+          percentage: scoreResult.percentage,
+          message: `Punctaj actualizat: ${scoreResult.totalPoints}/${scoreResult.maxTotalPoints} (${scoreResult.percentage}%)`,
+        }).catch(() => {});
+      }
+    } catch (err) {
+      console.error(`[saveExtracted] Score computation failed for project ${project.id}:`, err);
+    }
   }
 
   return { projectId: project.id, updatedCount };

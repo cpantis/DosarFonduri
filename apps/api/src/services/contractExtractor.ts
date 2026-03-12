@@ -17,8 +17,10 @@ export async function extractContract(pdfText: string): Promise<ExtractionResult
 
 IMPORTANT:
 - Un contract poate avea MULTIPLE parcele/UAT-uri — returnează array
+- Extrage FIECARE parcelă menționată, cu UAT-ul aferent
 - Suprafața e în hectare (ha)
 - Datele trebuie să fie în format ISO (YYYY-MM-DD)
+- Dacă nu poți extrage un câmp, pune null ca valoare
 - Returnează DOAR JSON valid, fără backticks, fără explicații`,
     messages: [{
       role: "user",
@@ -57,30 +59,29 @@ ${pdfText.slice(0, 60000)}`,
   try {
     const data = JSON.parse(cleaned);
 
-    if (data.nr_contract) {
-      fields.push({ field_key: "nr_contract", field_value: data.nr_contract, confidence: 0.9, source_page: 1, extraction_method: "ai_sonnet" });
-    }
-    if (data.data_contract) {
-      fields.push({ field_key: "data_contract", field_value: data.data_contract, confidence: 0.9, source_page: 1, extraction_method: "ai_sonnet" });
-    }
-    if (data.arendas_nume) {
-      fields.push({ field_key: "arendas_nume", field_value: data.arendas_nume, confidence: 0.85, source_page: 1, extraction_method: "ai_sonnet" });
-    }
-    if (data.arendas_cui) {
-      fields.push({ field_key: "arendas_cui", field_value: data.arendas_cui, confidence: 0.85, source_page: 1, extraction_method: "ai_sonnet" });
-    }
+    fields.push({ field_key: "nr_contract", field_value: data.nr_contract ?? null, confidence: data.nr_contract ? 0.9 : 0, source_page: 1, extraction_method: "ai_sonnet" });
+    fields.push({ field_key: "data_contract", field_value: data.data_contract ?? null, confidence: data.data_contract ? 0.9 : 0, source_page: 1, extraction_method: "ai_sonnet" });
+    fields.push({ field_key: "arendas_nume", field_value: data.arendas_nume ?? null, confidence: data.arendas_nume ? 0.85 : 0, source_page: 1, extraction_method: "ai_sonnet" });
+    fields.push({ field_key: "arendas_cui", field_value: data.arendas_cui ?? null, confidence: data.arendas_cui ? 0.85 : 0, source_page: 1, extraction_method: "ai_sonnet" });
 
     const parcele = data.parcele || [];
+    // Calculate total surface across all parcels
+    let suprafataTotala = 0;
     parcele.forEach((p: any, i: number) => {
       const prefix = `parcela_${i}`;
-      if (p.UAT) fields.push({ field_key: `${prefix}_UAT`, field_value: p.UAT, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
-      if (p.suprafata_ha) fields.push({ field_key: `${prefix}_suprafata_ha`, field_value: p.suprafata_ha, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
-      if (p.durata_contract) fields.push({ field_key: `${prefix}_durata_contract`, field_value: p.durata_contract, confidence: 0.8, source_page: null, extraction_method: "ai_sonnet" });
-      if (p.data_start) fields.push({ field_key: `${prefix}_data_start`, field_value: p.data_start, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
-      if (p.data_sfarsit) fields.push({ field_key: `${prefix}_data_sfarsit`, field_value: p.data_sfarsit, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
-      if (p.arendator_nume) fields.push({ field_key: `${prefix}_arendator_nume`, field_value: p.arendator_nume, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
-      if (p.arendator_cui) fields.push({ field_key: `${prefix}_arendator_cui`, field_value: p.arendator_cui, confidence: 0.8, source_page: null, extraction_method: "ai_sonnet" });
+      fields.push({ field_key: `${prefix}_UAT`, field_value: p.UAT ?? null, confidence: p.UAT ? 0.85 : 0, source_page: null, extraction_method: "ai_sonnet" });
+      fields.push({ field_key: `${prefix}_suprafata_ha`, field_value: p.suprafata_ha ?? null, confidence: p.suprafata_ha != null ? 0.85 : 0, source_page: null, extraction_method: "ai_sonnet" });
+      fields.push({ field_key: `${prefix}_durata_contract`, field_value: p.durata_contract ?? null, confidence: p.durata_contract ? 0.8 : 0, source_page: null, extraction_method: "ai_sonnet" });
+      fields.push({ field_key: `${prefix}_data_start`, field_value: p.data_start ?? null, confidence: p.data_start ? 0.85 : 0, source_page: null, extraction_method: "ai_sonnet" });
+      fields.push({ field_key: `${prefix}_data_sfarsit`, field_value: p.data_sfarsit ?? null, confidence: p.data_sfarsit ? 0.85 : 0, source_page: null, extraction_method: "ai_sonnet" });
+      fields.push({ field_key: `${prefix}_arendator_nume`, field_value: p.arendator_nume ?? null, confidence: p.arendator_nume ? 0.85 : 0, source_page: null, extraction_method: "ai_sonnet" });
+      fields.push({ field_key: `${prefix}_arendator_cui`, field_value: p.arendator_cui ?? null, confidence: p.arendator_cui ? 0.8 : 0, source_page: null, extraction_method: "ai_sonnet" });
+      if (p.suprafata_ha) suprafataTotala += parseFloat(p.suprafata_ha) || 0;
     });
+
+    // Aggregate: total surface from this contract
+    fields.push({ field_key: "suprafata_contracte", field_value: suprafataTotala, confidence: parcele.length > 0 ? 0.85 : 0, source_page: null, extraction_method: "ai_sonnet" });
+    fields.push({ field_key: "numar_parcele", field_value: parcele.length, confidence: 0.95, source_page: null, extraction_method: "ai_sonnet" });
 
     // Also store the full structured data
     fields.push({ field_key: "_raw_parcele", field_value: parcele, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });

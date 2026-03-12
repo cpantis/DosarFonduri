@@ -4,7 +4,32 @@ import type { ExtractionResult } from "./extractionTypes";
 const anthropic = new Anthropic();
 
 /**
+ * Count business days (Mon-Fri) between two dates.
+ * Returns the number of business days elapsed since `dateStr` until `referenceDate`.
+ */
+function businessDaysSince(dateStr: string, referenceDate: Date = new Date()): number {
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return -1;
+
+  let count = 0;
+  const current = new Date(d);
+  current.setHours(0, 0, 0, 0);
+  const ref = new Date(referenceDate);
+  ref.setHours(0, 0, 0, 0);
+
+  while (current < ref) {
+    current.setDate(current.getDate() + 1);
+    const day = current.getDay();
+    if (day !== 0 && day !== 6) count++;
+  }
+
+  return count;
+}
+
+/**
  * Extracts structured data from bank account statements (extras de cont).
+ *
+ * Includes AFIR freshness check: statement must be < 5 business days old.
  */
 export async function extractExtrasCont(pdfText: string): Promise<ExtractionResult> {
   const start = Date.now();
@@ -17,6 +42,8 @@ export async function extractExtrasCont(pdfText: string): Promise<ExtractionResu
 IMPORTANT:
 - Soldul disponibil e suma de bani disponibilă la data extrasului
 - Moneda e de obicei RON/LEI sau EUR
+- Data extrasului trebuie să fie în format ISO (YYYY-MM-DD)
+- Dacă nu poți extrage un câmp, pune null ca valoare
 - Returnează DOAR JSON valid, fără backticks, fără explicații`,
     messages: [{
       role: "user",
@@ -44,13 +71,44 @@ ${pdfText.slice(0, 20000)}`,
   try {
     const data = JSON.parse(cleaned);
 
-    if (data.banca) fields.push({ field_key: "banca", field_value: data.banca, confidence: 0.9, source_page: 1, extraction_method: "ai_haiku" });
-    if (data.sold_disponibil != null) fields.push({ field_key: "sold_disponibil", field_value: data.sold_disponibil, confidence: 0.9, source_page: 1, extraction_method: "ai_haiku" });
-    if (data.data_extras) fields.push({ field_key: "data_extras", field_value: data.data_extras, confidence: 0.9, source_page: 1, extraction_method: "ai_haiku" });
-    if (data.moneda) fields.push({ field_key: "moneda_extras", field_value: data.moneda, confidence: 0.9, source_page: 1, extraction_method: "ai_haiku" });
-    if (data.iban) fields.push({ field_key: "iban", field_value: data.iban, confidence: 0.9, source_page: 1, extraction_method: "ai_haiku" });
-    if (data.titular_cont) fields.push({ field_key: "titular_cont", field_value: data.titular_cont, confidence: 0.85, source_page: 1, extraction_method: "ai_haiku" });
-    if (data.titular_cui) fields.push({ field_key: "titular_cont_cui", field_value: data.titular_cui, confidence: 0.8, source_page: 1, extraction_method: "ai_haiku" });
+    fields.push({ field_key: "banca", field_value: data.banca ?? null, confidence: data.banca ? 0.9 : 0, source_page: 1, extraction_method: "ai_haiku" });
+    fields.push({ field_key: "sold_disponibil", field_value: data.sold_disponibil ?? null, confidence: data.sold_disponibil != null ? 0.9 : 0, source_page: 1, extraction_method: "ai_haiku" });
+    fields.push({ field_key: "data_extras", field_value: data.data_extras ?? null, confidence: data.data_extras ? 0.9 : 0, source_page: 1, extraction_method: "ai_haiku" });
+    fields.push({ field_key: "moneda_extras", field_value: data.moneda ?? null, confidence: data.moneda ? 0.9 : 0, source_page: 1, extraction_method: "ai_haiku" });
+    fields.push({ field_key: "iban", field_value: data.iban ?? null, confidence: data.iban ? 0.9 : 0, source_page: 1, extraction_method: "ai_haiku" });
+    fields.push({ field_key: "titular_cont", field_value: data.titular_cont ?? null, confidence: data.titular_cont ? 0.85 : 0, source_page: 1, extraction_method: "ai_haiku" });
+    fields.push({ field_key: "titular_cont_cui", field_value: data.titular_cui ?? null, confidence: data.titular_cui ? 0.8 : 0, source_page: 1, extraction_method: "ai_haiku" });
+
+    // AFIR freshness check: statement must be < 5 business days old
+    if (data.data_extras) {
+      const daysSince = businessDaysSince(data.data_extras);
+      const isFresh = daysSince >= 0 && daysSince <= 5;
+
+      fields.push({
+        field_key: "extras_zile_lucratoare_vechime",
+        field_value: daysSince,
+        confidence: 0.95,
+        source_page: null,
+        extraction_method: "ai_haiku",
+      });
+      fields.push({
+        field_key: "extras_afir_valid",
+        field_value: isFresh,
+        confidence: 0.95,
+        source_page: null,
+        extraction_method: "ai_haiku",
+      });
+
+      if (!isFresh) {
+        fields.push({
+          field_key: "extras_avertisment",
+          field_value: `Extrasul de cont are ${daysSince} zile lucrătoare vechime (maxim AFIR: 5 zile lucrătoare)`,
+          confidence: 0.95,
+          source_page: null,
+          extraction_method: "ai_haiku",
+        });
+      }
+    }
   } catch {
     console.error("Failed to parse extras cont extraction JSON");
   }

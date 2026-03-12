@@ -20,6 +20,7 @@ Tipuri posibile:
 - "decizie_incadrare" — decizie etapa de încadrare
 - "acord_mediu" — acord de mediu complet
 
+Dacă nu poți extrage un câmp, pune null ca valoare.
 Returnează DOAR JSON valid, fără backticks, fără explicații.`,
     messages: [{
       role: "user",
@@ -48,14 +49,14 @@ ${pdfText.slice(0, 30000)}`,
   try {
     const data = JSON.parse(cleaned);
 
-    if (data.tip_document) fields.push({ field_key: "tip_document_mediu", field_value: data.tip_document, confidence: 0.9, source_page: 1, extraction_method: "ai_haiku" });
-    if (data.numar_document) fields.push({ field_key: "numar_document_mediu", field_value: data.numar_document, confidence: 0.9, source_page: 1, extraction_method: "ai_haiku" });
-    if (data.data_emitere) fields.push({ field_key: "data_emitere_mediu", field_value: data.data_emitere, confidence: 0.85, source_page: 1, extraction_method: "ai_haiku" });
-    if (data.emitent) fields.push({ field_key: "emitent_mediu", field_value: data.emitent, confidence: 0.85, source_page: 1, extraction_method: "ai_haiku" });
-    if (data.titular_nume) fields.push({ field_key: "titular_mediu_nume", field_value: data.titular_nume, confidence: 0.85, source_page: null, extraction_method: "ai_haiku" });
-    if (data.titular_cui) fields.push({ field_key: "titular_mediu_cui", field_value: data.titular_cui, confidence: 0.8, source_page: null, extraction_method: "ai_haiku" });
-    if (data.proiect_denumire) fields.push({ field_key: "proiect_mediu_denumire", field_value: data.proiect_denumire, confidence: 0.8, source_page: null, extraction_method: "ai_haiku" });
-    if (data.locatie) fields.push({ field_key: "locatie_mediu", field_value: data.locatie, confidence: 0.8, source_page: null, extraction_method: "ai_haiku" });
+    fields.push({ field_key: "tip_document_mediu", field_value: data.tip_document ?? null, confidence: data.tip_document ? 0.9 : 0, source_page: 1, extraction_method: "ai_haiku" });
+    fields.push({ field_key: "numar_document_mediu", field_value: data.numar_document ?? null, confidence: data.numar_document ? 0.9 : 0, source_page: 1, extraction_method: "ai_haiku" });
+    fields.push({ field_key: "data_emitere_mediu", field_value: data.data_emitere ?? null, confidence: data.data_emitere ? 0.85 : 0, source_page: 1, extraction_method: "ai_haiku" });
+    fields.push({ field_key: "emitent_mediu", field_value: data.emitent ?? null, confidence: data.emitent ? 0.85 : 0, source_page: 1, extraction_method: "ai_haiku" });
+    fields.push({ field_key: "titular_mediu_nume", field_value: data.titular_nume ?? null, confidence: data.titular_nume ? 0.85 : 0, source_page: null, extraction_method: "ai_haiku" });
+    fields.push({ field_key: "titular_mediu_cui", field_value: data.titular_cui ?? null, confidence: data.titular_cui ? 0.8 : 0, source_page: null, extraction_method: "ai_haiku" });
+    fields.push({ field_key: "proiect_mediu_denumire", field_value: data.proiect_denumire ?? null, confidence: data.proiect_denumire ? 0.8 : 0, source_page: null, extraction_method: "ai_haiku" });
+    fields.push({ field_key: "locatie_mediu", field_value: data.locatie ?? null, confidence: data.locatie ? 0.8 : 0, source_page: null, extraction_method: "ai_haiku" });
   } catch {
     console.error("Failed to parse document mediu extraction JSON");
   }

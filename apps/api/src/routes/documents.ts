@@ -3,9 +3,9 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { createHash } from "crypto";
 import { db } from "../db";
-import { documentFolders, documents, templateElements } from "../db/schema";
+import { documentFolders, documents, files, templateElements } from "../db/schema";
 import { eq, and, isNull } from "drizzle-orm";
-import { uploadFile, getFileUrl, deleteFile } from "../services/storage";
+import { uploadFile, getFileUrl, deleteFile, createPresignedUploadUrl, verifyFileUploaded } from "../services/storage";
 import { AuthContext } from "../middleware/auth";
 import { processGuideQueue, processTemplateQueue, processReferenceDataQueue, processClientDocQueue, JOB_PRIORITY } from "../lib/queue";
 import { publishUploadEvent } from "../lib/sse";
@@ -182,7 +182,141 @@ function resolveProcessingType(folderType: string, explicitType: string | null):
   return "reference";
 }
 
-// --- UPLOAD DOCUMENT ---
+// --- PRESIGNED UPLOAD URL (direct browser → R2 upload, bypasses Node memory) ---
+const presignedSchema = z.object({
+  filename: z.string().min(1),
+  mime_type: z.string().min(1),
+  size_bytes: z.number().int().positive(),
+  folder_id: z.string().uuid(),
+  processing_type: z.string().optional(),
+});
+
+documentRoutes.post("/presigned-url", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  if (!auth.organizationId) return c.json({ error: "No organization" }, 403);
+
+  const body = presignedSchema.parse(await c.req.json());
+
+  // Validate folder exists and belongs to org
+  const folder = await db.query.documentFolders.findFirst({
+    where: and(eq(documentFolders.id, body.folder_id), eq(documentFolders.organizationId, auth.organizationId)),
+  });
+  if (!folder) return c.json({ error: "Folder not found" }, 404);
+
+  // Validate file type
+  const ext = body.filename.split(".").pop()?.toLowerCase() || "";
+  let fileType = ALLOWED_MIME_TYPES[body.mime_type];
+  if (!fileType) fileType = EXT_TO_FILETYPE[ext];
+  if (!fileType) {
+    return c.json({
+      error: `Tip de fișier neacceptat: ${body.mime_type || ext}. Acceptăm: PDF, DOCX, XLSX, XLS, DOC.`,
+    }, 400);
+  }
+
+  // Validate size
+  const processingType = resolveProcessingType(folder.type, body.processing_type || null);
+  const maxSize = MAX_SIZE[processingType] || MAX_SIZE.reference;
+  if (body.size_bytes > maxSize) {
+    const maxMB = Math.round(maxSize / (1024 * 1024));
+    return c.json({
+      error: `Fișierul depășește limita de ${maxMB} MB pentru tipul "${processingType}".`,
+    }, 400);
+  }
+
+  // Determine upload context
+  const uploadContext = processingType === "ghid" || processingType === "reference_data"
+    ? "guides" : processingType === "template" ? "templates" : "uploads";
+
+  const { presignedUrl, fileId, storageKey, expiresIn } = await createPresignedUploadUrl(
+    body.filename,
+    body.mime_type,
+    body.size_bytes,
+    auth.organizationId,
+    auth.userId,
+    uploadContext,
+  );
+
+  // Sanitize filename
+  const rawName = body.filename.replace(/\.[^.]+$/, "");
+  const safeName = sanitizeFilename(rawName) || rawName;
+
+  // Pre-create document record in "uploaded" status (will be confirmed later)
+  const [doc] = await db.insert(documents).values({
+    folderId: body.folder_id,
+    organizationId: auth.organizationId,
+    name: safeName,
+    fileType: fileType as any,
+    mimeType: body.mime_type || `application/${ext}`,
+    fileId,
+    fileSize: body.size_bytes,
+    fileHash: null,
+    status: "uploaded",
+    processingType: processingType as any,
+    tags: [],
+    uploadedBy: auth.userId,
+  }).returning();
+
+  return c.json({
+    presigned_url: presignedUrl,
+    document_id: doc.id,
+    file_id: fileId,
+    storage_key: storageKey,
+    expires_in: expiresIn,
+  }, 201);
+});
+
+// --- CONFIRM UPLOAD (after browser uploads directly to R2) ---
+documentRoutes.post("/documents/:id/confirm-upload", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  if (!auth.organizationId) return c.json({ error: "No organization" }, 403);
+
+  const id = c.req.param("id");
+
+  const doc = await db.query.documents.findFirst({
+    where: and(eq(documents.id, id), eq(documents.organizationId, auth.organizationId)),
+  });
+  if (!doc) return c.json({ error: "Document not found" }, 404);
+
+  // Verify the file actually exists in R2
+  const { exists, size } = await verifyFileUploaded(
+    (await db.query.files.findFirst({ where: eq(files.id, doc.fileId) }))!.storageKey
+  );
+
+  if (!exists) {
+    return c.json({ error: "Fișierul nu a fost găsit în storage. Reîncearcă upload-ul." }, 400);
+  }
+
+  // Update file size with actual uploaded size
+  if (size > 0 && size !== doc.fileSize) {
+    await db.update(files).set({ size }).where(eq(files.id, doc.fileId));
+    await db.update(documents).set({ fileSize: size }).where(eq(documents.id, id));
+  }
+
+  // Dispatch BullMQ processing job
+  const jobPayload = { documentId: doc.id, organizationId: auth.organizationId };
+  if (doc.processingType === "ghid") {
+    await processGuideQueue.add("process-guide", jobPayload, { priority: JOB_PRIORITY.GUIDE });
+  } else if (doc.processingType === "template") {
+    await processTemplateQueue.add("process-template", jobPayload, { priority: JOB_PRIORITY.TEMPLATE });
+  } else if (doc.processingType === "reference_data") {
+    await processReferenceDataQueue.add("process-reference-data", jobPayload, { priority: JOB_PRIORITY.REFERENCE_DATA });
+  } else if (doc.processingType === "client_doc") {
+    await processClientDocQueue.add("process-client-doc", jobPayload, { priority: JOB_PRIORITY.CLIENT_DOC });
+  }
+
+  // SSE notification
+  publishUploadEvent(auth.organizationId, {
+    documentId: doc.id,
+    documentName: doc.name,
+    status: "uploaded",
+    processingType: doc.processingType || "reference",
+    message: `Document uploadat "${doc.name}", procesare în curs...`,
+  }).catch(() => {});
+
+  return c.json({ ok: true, document_id: doc.id, actual_size: size });
+});
+
+// --- UPLOAD DOCUMENT (legacy — buffers through Node, still works for small files) ---
 documentRoutes.post("/folders/:folderId/documents", async (c) => {
   const auth = c.get("auth") as AuthContext;
   const folderId = c.req.param("folderId");

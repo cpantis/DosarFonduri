@@ -190,6 +190,9 @@ const FOLDER_TO_PROCESSING: Record<string, string> = {
   clienti_finali: "client_doc",
 };
 
+/** Files above this size use presigned URL (direct browser → R2) to avoid Node memory pressure */
+const PRESIGNED_THRESHOLD = 10 * 1024 * 1024; // 10 MB
+
 /* ══════════════════════════════════════════
    SKELETON COMPONENTS
    ══════════════════════════════════════════ */
@@ -452,8 +455,8 @@ export default function DocumentsPage() {
 
     const uploadNode = selectedFolder ? findNodeById(tree, selectedFolder) : null;
     const storedToken = typeof window !== "undefined" ? localStorage.getItem("df-token") : null;
-    const headers: Record<string, string> = {};
-    if (storedToken) headers["Authorization"] = `Bearer ${storedToken}`;
+    const authHeaders: Record<string, string> = {};
+    if (storedToken) authHeaders["Authorization"] = `Bearer ${storedToken}`;
 
     const totalFiles = uploadFiles.length;
     let completed = 0;
@@ -462,27 +465,86 @@ export default function DocumentsPage() {
 
     for (const file of uploadFiles) {
       try {
-        const formData = new FormData();
-        formData.append("file", file);
-        formData.append("tags", JSON.stringify([]));
+        const usePresigned = file.size > PRESIGNED_THRESHOLD;
 
-        if (uploadNode?.type === "ghiduri" && ghidSubType === "reference_data") {
-          formData.append("processingType", "reference_data");
-        }
+        if (usePresigned) {
+          // --- Large file: presigned URL → direct browser upload to R2 ---
+          const processingType = (uploadNode?.type === "ghiduri" && ghidSubType === "reference_data")
+            ? "reference_data" : undefined;
 
-        const res = await fetch(`/api/documents/folders/${selectedFolder}/documents`, {
-          method: "POST",
-          headers,
-          credentials: "include",
-          body: formData,
-        });
+          // Step 1: Get presigned URL from API
+          const presignedRes = await fetch("/api/documents/presigned-url", {
+            method: "POST",
+            headers: { ...authHeaders, "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({
+              filename: file.name,
+              mime_type: file.type || "application/octet-stream",
+              size_bytes: file.size,
+              folder_id: selectedFolder,
+              ...(processingType && { processing_type: processingType }),
+            }),
+          });
 
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({ error: "Upload failed" }));
-          errors.push(`${file.name}: ${body.error || `HTTP ${res.status}`}`);
+          if (!presignedRes.ok) {
+            const body = await presignedRes.json().catch(() => ({ error: "Failed to get presigned URL" }));
+            errors.push(`${file.name}: ${body.error || `HTTP ${presignedRes.status}`}`);
+            completed++;
+            setUploadProgress(Math.round((completed / totalFiles) * 100));
+            continue;
+          }
+
+          const { presigned_url, document_id } = await presignedRes.json();
+
+          // Step 2: Upload directly to R2 via presigned URL
+          const uploadRes = await fetch(presigned_url, {
+            method: "PUT",
+            headers: { "Content-Type": file.type || "application/octet-stream" },
+            body: file,
+          });
+
+          if (!uploadRes.ok) {
+            errors.push(`${file.name}: Upload direct la storage a eșuat (HTTP ${uploadRes.status})`);
+            completed++;
+            setUploadProgress(Math.round((completed / totalFiles) * 100));
+            continue;
+          }
+
+          // Step 3: Confirm upload to trigger processing
+          const confirmRes = await fetch(`/api/documents/documents/${document_id}/confirm-upload`, {
+            method: "POST",
+            headers: { ...authHeaders, "Content-Type": "application/json" },
+            credentials: "include",
+          });
+
+          if (!confirmRes.ok) {
+            const body = await confirmRes.json().catch(() => ({ error: "Confirm failed" }));
+            errors.push(`${file.name}: ${body.error || "Confirmare eșuată"}`);
+          }
         } else {
-          const result = await res.json();
-          if (result.warnings) allWarnings.push(...result.warnings.map((w: string) => `${file.name}: ${w}`));
+          // --- Small file: classic FormData upload through Node ---
+          const formData = new FormData();
+          formData.append("file", file);
+          formData.append("tags", JSON.stringify([]));
+
+          if (uploadNode?.type === "ghiduri" && ghidSubType === "reference_data") {
+            formData.append("processingType", "reference_data");
+          }
+
+          const res = await fetch(`/api/documents/folders/${selectedFolder}/documents`, {
+            method: "POST",
+            headers: authHeaders,
+            credentials: "include",
+            body: formData,
+          });
+
+          if (!res.ok) {
+            const body = await res.json().catch(() => ({ error: "Upload failed" }));
+            errors.push(`${file.name}: ${body.error || `HTTP ${res.status}`}`);
+          } else {
+            const result = await res.json();
+            if (result.warnings) allWarnings.push(...result.warnings.map((w: string) => `${file.name}: ${w}`));
+          }
         }
       } catch (err: any) {
         errors.push(`${file.name}: ${err.message || "Eroare la upload"}`);

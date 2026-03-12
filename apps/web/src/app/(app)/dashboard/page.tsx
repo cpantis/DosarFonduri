@@ -159,16 +159,18 @@ export default function DashboardPage() {
         ) : (
           <>
             {/* Stats */}
-            <div className="grid grid-cols-4 stats-responsive" style={{ gap: 20, marginBottom: 32 }}>
+            <div className="grid grid-cols-4 stats-responsive" style={{ gap: 16, marginBottom: 28 }}>
               {STATS.map((s, i) => {
                 const st = STAT_STYLES[i];
                 return (
-                  <div key={i} style={{ padding: 24, borderRadius: "var(--r-md)", border: "1px solid var(--border)", background: "var(--bg-surface)", transition: "all .2s" }}>
-                    <div className="flex items-center justify-center" style={{ width: 48, height: 48, borderRadius: 12, background: st.iconBg, fontSize: 22, marginBottom: 16 }}>
+                  <div key={i} className="flex items-center" style={{ gap: 14, padding: "16px 18px", borderRadius: "var(--r-md)", border: "1px solid var(--border)", background: "var(--bg-surface)", transition: "all .2s" }}>
+                    <div className="flex items-center justify-center flex-shrink-0" style={{ width: 40, height: 40, borderRadius: 10, background: st.iconBg, fontSize: 18 }}>
                       {s.icon}
                     </div>
-                    <div style={{ fontSize: 32, fontWeight: 800, lineHeight: 1, fontFamily: "var(--font-mono)", letterSpacing: "-1px", color: st.accent }}>{s.value}</div>
-                    <div style={{ fontSize: 13, marginTop: 8, color: "var(--text-secondary)", fontWeight: 500 }}>{s.label}</div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 22, fontWeight: 800, lineHeight: 1, fontFamily: "var(--font-mono)", letterSpacing: "-0.5px", color: st.accent }}>{s.value}</div>
+                      <div style={{ fontSize: 12, marginTop: 4, color: "var(--text-secondary)", fontWeight: 500 }}>{s.label}</div>
+                    </div>
                   </div>
                 );
               })}

@@ -1,11 +1,16 @@
 import { Worker, Job } from "bullmq";
 import { db } from "../db";
-import { documents } from "../db/schema";
-import { eq } from "drizzle-orm";
+import {
+  documents, projects, projectElements, templateElements,
+  documentFolders, elementAuditLog,
+} from "../db/schema";
+import { eq, and } from "drizzle-orm";
 import { getFileBuffer } from "../services/storage";
 import { extractTextFromPDF, extractTextFromDOCX, extractTextFromXLSX, classifyDocument } from "../services/ocr";
 import { logAIUsage } from "../services/aiUsage";
 import { publishEvent } from "../lib/sse";
+import { validateElement } from "../services/elementValidation";
+import { logElementChange } from "../services/elementValidation";
 import type { ExtractionResult } from "../services/extractionTypes";
 
 // Extractors
@@ -149,6 +154,239 @@ function getExtractorModel(documentType: string): string {
   }
 }
 
+/**
+ * Find the project associated with a document via folder hierarchy.
+ * Documents are uploaded to a project's folder or a subfolder of it.
+ */
+async function findProjectForDocument(doc: { folderId: string; organizationId: string }) {
+  // Direct match: project folder === document folder
+  let project = await db.query.projects.findFirst({
+    where: and(
+      eq(projects.folderId, doc.folderId),
+      eq(projects.organizationId, doc.organizationId),
+    ),
+  });
+  if (project) return project;
+
+  // Navigate up: document might be in a subfolder of the project's folder
+  const folder = await db.query.documentFolders.findFirst({
+    where: eq(documentFolders.id, doc.folderId),
+  });
+  if (folder?.parentId) {
+    project = await db.query.projects.findFirst({
+      where: and(
+        eq(projects.folderId, folder.parentId),
+        eq(projects.organizationId, doc.organizationId),
+      ),
+    });
+    if (project) return project;
+
+    // One more level up (e.g. document in session/clienti/subfolder)
+    const parentFolder = await db.query.documentFolders.findFirst({
+      where: eq(documentFolders.id, folder.parentId),
+    });
+    if (parentFolder?.parentId) {
+      project = await db.query.projects.findFirst({
+        where: and(
+          eq(projects.folderId, parentFolder.parentId),
+          eq(projects.organizationId, doc.organizationId),
+        ),
+      });
+    }
+  }
+
+  return project ?? null;
+}
+
+/**
+ * Find template elements matching a field key within the organization.
+ * Searches in guide/template folders associated with the project's folder hierarchy.
+ */
+async function findTemplateElementByKey(
+  fieldKey: string,
+  organizationId: string,
+  projectFolderId: string,
+): Promise<{ id: string; key: string; fieldType: string } | null> {
+  // Find guide/template folders under the project's folder
+  const guideFolders = await db.query.documentFolders.findMany({
+    where: and(
+      eq(documentFolders.parentId, projectFolderId),
+      eq(documentFolders.organizationId, organizationId),
+    ),
+  });
+
+  // Search template elements in docs from those folders
+  for (const folder of guideFolders) {
+    if (folder.type !== "ghiduri" && folder.type !== "templateuri") continue;
+
+    const docs = await db.query.documents.findMany({
+      where: eq(documents.folderId, folder.id),
+    });
+
+    for (const doc of docs) {
+      const tmplEl = await db.query.templateElements.findFirst({
+        where: and(
+          eq(templateElements.documentId, doc.id),
+          eq(templateElements.key, fieldKey),
+        ),
+      });
+      if (tmplEl) return tmplEl;
+    }
+  }
+
+  // Fallback: search all template elements in the org with this key
+  const tmplEl = await db.query.templateElements.findFirst({
+    where: and(
+      eq(templateElements.organizationId, organizationId),
+      eq(templateElements.key, fieldKey),
+    ),
+  });
+
+  return tmplEl ?? null;
+}
+
+/**
+ * Save extracted fields from document processing into project_elements.
+ *
+ * Conflict resolution:
+ * - No existing element → create with source 'document_extracted'
+ * - Existing with source 'document_extracted' → update (newer doc wins), audit old value
+ * - Existing with source 'solomon' or 'manual' → skip (don't overwrite consultant data),
+ *   but log a warning for review
+ */
+async function saveExtractedFieldsToProjectElements(
+  extractionResult: ExtractionResult,
+  documentId: string,
+  organizationId: string,
+  doc: { folderId: string; organizationId: string },
+): Promise<{ projectId: string; updatedCount: number } | null> {
+  const project = await findProjectForDocument(doc);
+  if (!project) {
+    console.log(`[saveExtracted] No project found for document folder ${doc.folderId}`);
+    return null;
+  }
+
+  const modifiedElementIds: string[] = [];
+  let updatedCount = 0;
+
+  for (const field of extractionResult.extracted_fields) {
+    // Skip internal/raw fields (prefixed with _)
+    if (field.field_key.startsWith("_")) continue;
+
+    // Skip null/undefined values
+    if (field.field_value == null) continue;
+
+    // Find matching template element
+    const tmplEl = await findTemplateElementByKey(
+      field.field_key,
+      organizationId,
+      project.folderId,
+    );
+
+    if (!tmplEl) {
+      // No template element definition for this key — skip silently
+      continue;
+    }
+
+    // Stringify value for storage (project_elements.value is TEXT)
+    const stringValue = typeof field.field_value === "object"
+      ? JSON.stringify(field.field_value)
+      : String(field.field_value);
+
+    // Check for existing project element
+    const existing = await db.query.projectElements.findFirst({
+      where: and(
+        eq(projectElements.projectId, project.id),
+        eq(projectElements.templateElementId, tmplEl.id),
+      ),
+    });
+
+    if (!existing) {
+      // CREATE new project element
+      const [created] = await db.insert(projectElements).values({
+        projectId: project.id,
+        templateElementId: tmplEl.id,
+        value: stringValue,
+        source: "document_extracted",
+        sourceDocumentId: documentId,
+        validationStatus: "pending",
+      }).returning();
+
+      modifiedElementIds.push(created.id);
+      updatedCount++;
+    } else if (existing.source === "document_extracted" || existing.source === "calculated" || existing.source === "ghid") {
+      // UPDATE — document_extracted/calculated/ghid can be overwritten by newer extraction
+      // Audit the old value
+      await logElementChange({
+        projectElementId: existing.id,
+        oldValue: existing.value,
+        newValue: stringValue,
+        oldValidationStatus: existing.validationStatus as any,
+        newValidationStatus: "pending",
+        changedBy: null, // system/automated
+        changeSource: "document_extracted",
+      });
+
+      await db.update(projectElements).set({
+        value: stringValue,
+        source: "document_extracted",
+        sourceDocumentId: documentId,
+        validationStatus: "pending",
+        confirmed: false,
+        confirmedBy: null,
+      }).where(eq(projectElements.id, existing.id));
+
+      modifiedElementIds.push(existing.id);
+      updatedCount++;
+    } else {
+      // CONFLICT — existing value from solomon/manual/onrc — do NOT overwrite
+      // Log the conflict for consultant review
+      console.log(
+        `[saveExtracted] Conflict: element ${tmplEl.key} (project ${project.id}) ` +
+        `has source '${existing.source}', extracted value skipped. ` +
+        `Existing: "${existing.value}", Extracted: "${stringValue}"`,
+      );
+
+      // Save conflict info in audit log so consultant can review
+      await logElementChange({
+        projectElementId: existing.id,
+        oldValue: existing.value,
+        newValue: `[CONFLICT] ${stringValue}`,
+        oldValidationStatus: existing.validationStatus as any,
+        newValidationStatus: existing.validationStatus as any,
+        changedBy: null,
+        changeSource: "document_extracted",
+      });
+    }
+  }
+
+  // Validate modified elements
+  for (const elementId of modifiedElementIds) {
+    try {
+      const validation = await validateElement(elementId, project.id);
+      await db.update(projectElements).set({
+        validationStatus: validation.status,
+        validationDetails: validation.details,
+      }).where(eq(projectElements.id, elementId));
+    } catch (err) {
+      console.error(`[saveExtracted] Validation failed for element ${elementId}:`, err);
+    }
+  }
+
+  // SSE: notify frontend that elements were updated
+  if (updatedCount > 0) {
+    publishEvent(`project:${project.id}:updates`, "elements_updated", {
+      projectId: project.id,
+      documentId,
+      updatedCount,
+      elementIds: modifiedElementIds,
+      message: `${updatedCount} elemente actualizate din document`,
+    }).catch(() => {});
+  }
+
+  return { projectId: project.id, updatedCount };
+}
+
 export const processClientDocWorker = new Worker<ProcessClientDocPayload>(
   "process-client-doc",
   async (job: Job<ProcessClientDocPayload>) => {
@@ -223,9 +461,31 @@ export const processClientDocWorker = new Worker<ProcessClientDocPayload>(
         processedAt: new Date(),
       }).where(eq(documents.id, documentId));
 
+      // Step 5: Save extracted fields into project_elements
+      let elementsSaveResult: { projectId: string; updatedCount: number } | null = null;
+      if (extractionResult && extractionResult.extracted_fields.length > 0) {
+        try {
+          elementsSaveResult = await saveExtractedFieldsToProjectElements(
+            extractionResult,
+            documentId,
+            organizationId,
+            { folderId: doc.folderId, organizationId },
+          );
+          if (elementsSaveResult) {
+            console.log(
+              `[processClientDoc] Saved ${elementsSaveResult.updatedCount} elements ` +
+              `to project ${elementsSaveResult.projectId} from doc ${documentId}`,
+            );
+          }
+        } catch (err) {
+          // Non-fatal: extraction data is still saved in processingResult
+          console.error(`[processClientDoc] Failed to save extracted fields to project_elements:`, err);
+        }
+      }
+
       await job.updateProgress(95);
 
-      // Step 5: SSE notifications
+      // Step 6: SSE notifications
       publishEvent(`org:${organizationId}:uploads`, "document_processed", {
         documentId,
         documentName: doc.name,

@@ -202,11 +202,48 @@ function SignupWizard({ onGo }: { onGo: () => void }) {
   const [show, setShow] = useState(false);
   const [wantCo, setWantCo] = useState<boolean | null>(null);
   const [cui, setCui] = useState("");
+  const [cuiLoad, setCuiLoad] = useState(false);
+  const [cuiRes, setCuiRes] = useState<any>(null);
   const [cabinetCode, setCabinetCode] = useState("");
   const [codeLoad, setCodeLoad] = useState(false);
   const [codeRes, setCodeRes] = useState<any>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [isInvited, setIsInvited] = useState(false);
+  const [inviteInfo, setInviteInfo] = useState<any>(null);
+
+  // Check if email belongs to an invited user
+  const checkInvited = async () => {
+    if (!email.includes("@")) return;
+    try {
+      const r = await apiPost("/api/auth/check-invited", { email });
+      if (r.invited) {
+        setIsInvited(true);
+        setInviteInfo(r);
+      } else {
+        setIsInvited(false);
+        setInviteInfo(null);
+      }
+    } catch {
+      // endpoint unavailable — continue normal flow
+    }
+  };
+
+  // Validate CUI via listafirme.ro
+  const checkCui = async () => {
+    const cleanCui = cui.replace(/\D/g, "");
+    if (cleanCui.length < 6) return;
+    setCuiLoad(true);
+    setCuiRes(null);
+    try {
+      const r = await apiPost("/api/auth/lookup-cui", { cui: cleanCui });
+      setCuiRes(r.found ? r.company : "error");
+    } catch {
+      setCuiRes("error");
+    } finally {
+      setCuiLoad(false);
+    }
+  };
 
   const checkCode = async () => {
     if (!cabinetCode.trim()) return;
@@ -227,11 +264,12 @@ function SignupWizard({ onGo }: { onGo: () => void }) {
     setError("");
     try {
       const data = await apiPost("/api/auth/signup", {
-        name: `${prenume} ${nume}`,
+        name: `${nume} ${prenume}`,
         email,
         password: pw,
         cabinetCode: cabinetCode || undefined,
         cui: cui || undefined,
+        companyName: cuiRes && cuiRes !== "error" ? cuiRes.name : undefined,
       });
       setToken(data.token);
       router.push("/dashboard");
@@ -243,7 +281,10 @@ function SignupWizard({ onGo }: { onGo: () => void }) {
   };
 
   const ok1 = nume && prenume && email && pw.length >= 6;
-  const labels = ["Date personale", "Firma (optional)", "Cod cabinet"];
+  const labels = isInvited
+    ? ["Date personale", "Activare cont"]
+    : ["Date personale", "Firma (optional)", "Cod cabinet"];
+  const totalSteps = labels.length;
 
   return (
     <>
@@ -263,7 +304,7 @@ function SignupWizard({ onGo }: { onGo: () => void }) {
                 <div className="wz-n">{dn ? "✓" : s}</div>
                 <span>{l}</span>
               </div>
-              {s < 3 && <div className={`wz-line ${dn ? "done" : ""}`} />}
+              {s < totalSteps && <div className={`wz-line ${dn ? "done" : ""}`} />}
             </div>
           );
         })}
@@ -299,6 +340,7 @@ function SignupWizard({ onGo }: { onGo: () => void }) {
               placeholder="ion.popescu@firma.ro"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              onBlur={checkInvited}
             />
           </div>
           <div className="fg">
@@ -322,7 +364,33 @@ function SignupWizard({ onGo }: { onGo: () => void }) {
               <div className="f-hint ok">Parola valida ✓</div>
             )}
           </div>
-          <button className="btn-p" disabled={!ok1} onClick={() => setStep(2)}>
+
+          {isInvited && inviteInfo && (
+            <div className="cui-ok" style={{ marginBottom: 16 }}>
+              <div className="cn">Cont pre-inregistrat</div>
+              <div className="cr">
+                <strong>Organizatie:</strong> {inviteInfo.organizationName}
+              </div>
+              <div className="cr">
+                <strong>Rol:</strong> {inviteInfo.role}
+              </div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 6 }}>
+                Contul tau a fost creat de un administrator. Seteaza-ti parola si activeaza-l.
+              </div>
+            </div>
+          )}
+
+          <button
+            className="btn-p"
+            disabled={!ok1}
+            onClick={() => {
+              if (isInvited) {
+                setStep(2); // Goes to "Activare cont" (finalize directly)
+              } else {
+                setStep(2); // Goes to "Firma (optional)"
+              }
+            }}
+          >
             Continua →
           </button>
           <div className="sw-row">
@@ -334,7 +402,38 @@ function SignupWizard({ onGo }: { onGo: () => void }) {
         </div>
       )}
 
-      {step === 2 && (
+      {/* Step 2 for INVITED users — direct activation */}
+      {step === 2 && isInvited && (
+        <div className="step-c">
+          <div className="cui-ok" style={{ marginBottom: 20 }}>
+            <div className="cn">Activare cont</div>
+            <div className="cr">
+              <strong>Organizatie:</strong> {inviteInfo?.organizationName}
+            </div>
+            <div className="cr">
+              <strong>Rol:</strong> {inviteInfo?.role}
+            </div>
+            <div className="cr">
+              <strong>Email:</strong> {email}
+            </div>
+          </div>
+          <p style={{ fontSize: 14, color: "var(--text-secondary)", marginBottom: 20, lineHeight: 1.6 }}>
+            Contul tau va fi activat si vei fi adaugat in organizatia{" "}
+            <strong style={{ color: "var(--text-primary)" }}>{inviteInfo?.organizationName}</strong>.
+          </p>
+          <div style={{ display: "flex", gap: 10 }}>
+            <button className="btn-s" onClick={() => setStep(1)}>
+              ← Inapoi
+            </button>
+            <button className="btn-p" disabled={busy} onClick={finalize}>
+              {busy ? <Spinner light /> : "Activeaza contul"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Step 2 for NEW users — firma (optional) with CUI validation */}
+      {step === 2 && !isInvited && (
         <div className="step-c">
           {wantCo === null ? (
             <>
@@ -371,23 +470,98 @@ function SignupWizard({ onGo }: { onGo: () => void }) {
                 <label className="fl">CUI Firma</label>
                 <div style={{ display: "flex", gap: 8 }}>
                   <input
-                    className="fi mono"
-                    placeholder="ex: 12345678"
+                    className={`fi mono ${
+                      cuiRes && cuiRes !== "error"
+                        ? "ok"
+                        : cuiRes === "error"
+                        ? "err"
+                        : ""
+                    }`}
+                    placeholder="ex: 19893984"
                     value={cui}
                     style={{ flex: 1 }}
-                    onChange={(e) => setCui(e.target.value)}
+                    onChange={(e) => {
+                      setCui(e.target.value);
+                      setCuiRes(null);
+                    }}
+                    onKeyDown={(e) => e.key === "Enter" && checkCui()}
                   />
+                  <button
+                    className="btn-s"
+                    style={{ width: "auto", padding: "12px 20px" }}
+                    onClick={checkCui}
+                    disabled={cuiLoad || cui.replace(/\D/g, "").length < 6}
+                  >
+                    {cuiLoad ? "..." : "Verifica"}
+                  </button>
                 </div>
                 <div className="f-hint">
-                  Introduci CUI-ul firmei tale de consultanta
+                  Introduci CUI-ul firmei tale de consultanta — il verificam automat
                 </div>
               </div>
+
+              {cuiLoad && (
+                <div className="cui-load">
+                  <Spinner size={16} /> Se verifica CUI-ul in baza de date...
+                </div>
+              )}
+
+              {cuiRes && cuiRes !== "error" && (
+                <div className="cui-ok">
+                  <div className="cn">{cuiRes.name}</div>
+                  <div className="cr">
+                    <strong>CUI:</strong> {cuiRes.cui}
+                  </div>
+                  {cuiRes.regNo && (
+                    <div className="cr">
+                      <strong>Reg. Com.:</strong> {cuiRes.regNo}
+                    </div>
+                  )}
+                  <div className="cr">
+                    <strong>Judet:</strong> {cuiRes.county}{cuiRes.city ? `, ${cuiRes.city}` : ""}
+                  </div>
+                  {cuiRes.address && (
+                    <div className="cr">
+                      <strong>Adresa:</strong> {cuiRes.address}
+                    </div>
+                  )}
+                  {cuiRes.nace && (
+                    <div className="cr">
+                      <strong>CAEN:</strong> {cuiRes.nace}{cuiRes.naceDescription ? ` — ${cuiRes.naceDescription}` : ""}
+                    </div>
+                  )}
+                  <div className="cr">
+                    <strong>Stare:</strong>{" "}
+                    <span style={{
+                      color: cuiRes.status?.toLowerCase().includes("activ")
+                        ? "var(--accent-green)"
+                        : "var(--accent-red)",
+                      fontWeight: 600,
+                    }}>
+                      {cuiRes.status}
+                    </span>
+                  </div>
+                  {cuiRes.foundedDate && (
+                    <div className="cr">
+                      <strong>Infiintata:</strong> {cuiRes.foundedDate}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {cuiRes === "error" && (
+                <div className="cui-err">
+                  CUI-ul nu a fost gasit. Verifica si incearca din nou sau continua manual.
+                </div>
+              )}
+
               <div style={{ display: "flex", gap: 10, marginTop: 24 }}>
                 <button
                   className="btn-s"
                   onClick={() => {
                     setWantCo(null);
                     setCui("");
+                    setCuiRes(null);
                   }}
                 >
                   ← Inapoi

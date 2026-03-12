@@ -9,7 +9,7 @@ export const themeEnum = pgEnum("theme", ["dark", "light"]);
 export const formaJuridicaEnum = pgEnum("forma_juridica", ["SRL", "SA", "SNC", "SCS", "SCA", "PFA", "II", "IF", "SC", "RA", "SA_BVB"]);
 export const companyStatusEnum = pgEnum("company_status", ["functiune", "radiata", "dizolvata", "lichidare"]);
 export const folderTypeEnum = pgEnum("folder_type", ["program", "masura", "sesiune", "ghiduri", "templateuri", "clienti_prospecti", "clienti_finali"]);
-export const docFileTypeEnum = pgEnum("doc_file_type", ["pdf", "docx", "xlsx", "doc"]);
+export const docFileTypeEnum = pgEnum("doc_file_type", ["pdf", "docx", "xlsx", "doc", "png", "jpg"]);
 export const docStatusEnum = pgEnum("doc_status", ["uploaded", "processing", "processed", "error", "failed"]);
 export const docProcessingTypeEnum = pgEnum("doc_processing_type", ["ghid", "template", "reference", "client_doc", "reference_data"]);
 export const ruleTypeEnum = pgEnum("rule_type", ["fixed", "interpreted"]);
@@ -36,6 +36,8 @@ export const documentTypeEnum = pgEnum("document_type_class", [
   "document_mediu", "extras_cont", "certificat_fiscal",
   "memoriu_template", "cerere_finantare_template",
   "anexa_b_template", "anexa_c_template",
+  "carte_identitate", "diploma_studii", "act_constitutiv",
+  "statut", "descriere_proiect", "adeverinta", "foto_echipament",
   "other",
 ]);
 

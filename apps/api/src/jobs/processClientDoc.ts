@@ -25,6 +25,7 @@ import { extractRegistruImobilizari } from "../services/registruExtractor";
 import { extractDocumentMediu } from "../services/mediuExtractor";
 import { extractExtrasCont } from "../services/extrasContExtractor";
 import { extractDeclaratie } from "../services/declaratieExtractor";
+import { extractCertificatFiscal } from "../services/certificatFiscalExtractor";
 
 interface ProcessClientDocPayload {
   documentId: string;
@@ -137,6 +138,8 @@ async function runExtractor(documentType: string, text: string): Promise<Extract
       return extractDocumentMediu(text);
     case "extras_cont":
       return extractExtrasCont(text);
+    case "certificat_fiscal":
+      return extractCertificatFiscal(text);
     case "declaratie_expert_contabil":
       return extractDeclaratie(text);
     default:

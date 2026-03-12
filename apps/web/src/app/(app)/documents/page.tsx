@@ -27,10 +27,25 @@ interface ApiFolderNode {
 interface ApiDocument {
   id: string;
   name: string;
-  fileType: "pdf" | "docx" | "xlsx" | "doc";
+  fileType: "pdf" | "docx" | "xlsx" | "doc" | "png" | "jpg";
   fileSize: number;
-  status: "uploaded" | "processing" | "processed" | "failed";
+  status: "uploaded" | "processing" | "processed" | "error" | "failed";
   processingType: "ghid" | "template" | "reference" | "reference_data" | "client_doc";
+  documentTypeClass: string | null;
+  classificationConfidence: string | null;
+  pageCount: number | null;
+  processingResult: {
+    document_type: string;
+    extracted_fields: Array<{
+      field_key: string;
+      field_value: any;
+      confidence: number;
+      source_page: number | null;
+      extraction_method: string;
+    }>;
+    raw_text: string;
+    processing_time_ms: number;
+  } | null;
   tags: string[];
   uploadedAt: string;
   uploadedBy: string;
@@ -39,27 +54,59 @@ interface ApiDocument {
 interface DocItem {
   id: string;
   name: string;
-  type: "PDF" | "DOCX" | "XLSX" | "DOC";
+  type: "PDF" | "DOCX" | "XLSX" | "DOC" | "PNG" | "JPG";
   size: string;
   uploaded: string;
   uploadedBy: string;
-  status: "procesat" | "neprocesat" | "template" | "referință";
+  status: "procesat" | "neprocesat" | "template" | "referință" | "eroare";
   reguliExtrase: number;
   campuri?: number;
   tags: string[];
+  documentTypeClass: string | null;
+  classificationConfidence: number | null;
+  pageCount: number | null;
+  extractedFields: Array<{ field_key: string; field_value: any; confidence: number }>;
 }
 
 /* ══════════════════════════════════════════
    CONSTANTS
    ══════════════════════════════════════════ */
 
-const TYPE_ICONS: Record<string, string> = { PDF: "\u{1F4D5}", DOCX: "\u{1F4D8}", XLSX: "\u{1F4D7}", DOC: "\u{1F4D8}" };
+const TYPE_ICONS: Record<string, string> = { PDF: "\u{1F4D5}", DOCX: "\u{1F4D8}", XLSX: "\u{1F4D7}", DOC: "\u{1F4D8}", PNG: "\u{1F5BC}", JPG: "\u{1F5BC}" };
 
 const STATUS_MAP: Record<string, { label: string; color: string; bg: string; icon: string }> = {
   procesat: { label: "Procesat AI", color: "var(--accent-green)", bg: "rgba(52,211,153,0.12)", icon: "\u2713" },
   neprocesat: { label: "Neprocesat", color: "var(--accent-yellow)", bg: "rgba(251,191,36,0.12)", icon: "\u23F3" },
   template: { label: "Template", color: "var(--accent-blue)", bg: "rgba(77,139,255,0.12)", icon: "\u{1F4DD}" },
   "referință": { label: "Referință", color: "var(--accent-purple)", bg: "rgba(167,139,250,0.12)", icon: "\u{1F4CC}" },
+  eroare: { label: "Eroare", color: "var(--accent-red)", bg: "rgba(248,113,113,0.12)", icon: "\u26A0" },
+};
+
+const DOCUMENT_TYPE_LABELS: Record<string, string> = {
+  guide: "Ghid solicitant",
+  guide_annex_table: "Anexa ghid (tabele)",
+  guide_annex_form: "Anexa ghid (formular)",
+  certificat_constatator: "Certificat constatator",
+  bilant_anaf: "Bilant ANAF",
+  contract_arenda: "Contract arenda",
+  oferta_pret: "Oferta de pret",
+  registru_imobilizari: "Registru imobilizari",
+  declaratie_expert_contabil: "Declaratie expert contabil",
+  document_mediu: "Document de mediu",
+  extras_cont: "Extras de cont",
+  certificat_fiscal: "Certificat fiscal",
+  memoriu_template: "Template memoriu",
+  cerere_finantare_template: "Template cerere finantare",
+  anexa_b_template: "Template Anexa B",
+  anexa_c_template: "Template Anexa C",
+  carte_identitate: "Carte de identitate",
+  diploma_studii: "Diploma studii",
+  act_constitutiv: "Act constitutiv",
+  statut: "Statut societate",
+  descriere_proiect: "Descriere proiect",
+  adeverinta: "Adeverinta",
+  foto_echipament: "Foto echipament",
+  other: "Alt document",
 };
 
 const NODE_ICONS: Record<string, string> = {
@@ -80,6 +127,7 @@ const NODE_DOTS: Record<string, { size: number; color: string }> = {
    ══════════════════════════════════════════ */
 
 function mapApiStatusToLocal(status: ApiDocument["status"], processingType: ApiDocument["processingType"]): DocItem["status"] {
+  if (status === "error" || status === "failed") return "eroare";
   if (processingType === "template") return "template";
   if (processingType === "reference" || processingType === "reference_data") return "referință";
   if (status === "processed") return "procesat";
@@ -93,6 +141,7 @@ function formatFileSize(bytes: number): string {
 }
 
 function mapApiDocToLocal(doc: ApiDocument): DocItem {
+  const visibleFields = doc.processingResult?.extracted_fields?.filter(f => !f.field_key.startsWith("_")) || [];
   return {
     id: doc.id,
     name: doc.name,
@@ -104,6 +153,10 @@ function mapApiDocToLocal(doc: ApiDocument): DocItem {
     reguliExtrase: 0,
     campuri: doc.processingType === "template" ? 0 : undefined,
     tags: doc.tags || [],
+    documentTypeClass: doc.documentTypeClass || null,
+    classificationConfidence: doc.classificationConfidence ? parseFloat(doc.classificationConfidence) : null,
+    pageCount: doc.pageCount || null,
+    extractedFields: visibleFields,
   };
 }
 
@@ -953,6 +1006,26 @@ export default function DocumentsPage() {
               </div>
             </div>
           )}
+          {selDoc.documentTypeClass && (
+            <div className="doc-detail-cell">
+              <div className="doc-detail-cell-label">Tip document</div>
+              <div className="doc-detail-cell-value">{DOCUMENT_TYPE_LABELS[selDoc.documentTypeClass] || selDoc.documentTypeClass}</div>
+            </div>
+          )}
+          {selDoc.classificationConfidence != null && (
+            <div className="doc-detail-cell">
+              <div className="doc-detail-cell-label">Incredere clasificare</div>
+              <div className="doc-detail-cell-value mono" style={{ color: selDoc.classificationConfidence >= 0.8 ? "var(--accent-green)" : selDoc.classificationConfidence >= 0.5 ? "var(--accent-yellow)" : "var(--accent-red)" }}>
+                {Math.round(selDoc.classificationConfidence * 100)}%
+              </div>
+            </div>
+          )}
+          {selDoc.pageCount != null && selDoc.pageCount > 0 && (
+            <div className="doc-detail-cell">
+              <div className="doc-detail-cell-label">Pagini</div>
+              <div className="doc-detail-cell-value mono">{selDoc.pageCount}</div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -961,6 +1034,22 @@ export default function DocumentsPage() {
           <div className="doc-detail-stitle">Tags</div>
           <div className="doc-detail-tags">
             {selDoc.tags.map((t, i) => <span key={i} className="doc-detail-tag">{t}</span>)}
+          </div>
+        </div>
+      )}
+
+      {selDoc.extractedFields.length > 0 && (
+        <div className="doc-detail-section">
+          <div className="doc-detail-stitle">Date extrase ({selDoc.extractedFields.length} campuri)</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 200, overflowY: "auto" }}>
+            {selDoc.extractedFields.map((f, i) => (
+              <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 10px", background: "var(--bg-deep)", borderRadius: "var(--r-sm)", border: "1px solid var(--border)", fontSize: 12 }}>
+                <span style={{ color: "var(--text-muted)", fontWeight: 600, maxWidth: "45%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.field_key.replace(/_/g, " ")}</span>
+                <span style={{ color: "var(--text-primary)", fontFamily: "var(--font-mono)", fontSize: 11, maxWidth: "50%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "right" }}>
+                  {typeof f.field_value === "object" ? JSON.stringify(f.field_value).slice(0, 40) : String(f.field_value).slice(0, 40)}
+                </span>
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -1231,7 +1320,7 @@ export default function DocumentsPage() {
       <input
         ref={fileInputRef}
         type="file"
-        accept=".pdf,.docx,.xlsx,.xls,.doc"
+        accept=".pdf,.docx,.xlsx,.xls,.doc,.png,.jpg,.jpeg"
         multiple
         style={{ display: "none" }}
         onChange={e => {
@@ -1441,7 +1530,7 @@ export default function DocumentsPage() {
                   <div className="doc-upload-zone-title">
                     {dragOver ? "Elibereaza pentru upload" : "Trage fisierele aici sau click pentru a alege"}
                   </div>
-                  <div className="doc-upload-zone-sub">PDF, DOCX, XLSX, DOC — max 50 MB per fisier. Se pot selecta mai multe.</div>
+                  <div className="doc-upload-zone-sub">PDF, DOCX, XLSX, DOC, PNG, JPG — max 50 MB per fisier. Se pot selecta mai multe.</div>
                 </>
               )}
             </div>

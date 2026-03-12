@@ -117,6 +117,8 @@ export const DOCUMENT_TYPES = [
   "document_mediu", "extras_cont", "certificat_fiscal",
   "memoriu_template", "cerere_finantare_template",
   "anexa_b_template", "anexa_c_template",
+  "carte_identitate", "diploma_studii", "act_constitutiv",
+  "statut", "descriere_proiect", "adeverinta", "foto_echipament",
   "other",
 ] as const;
 

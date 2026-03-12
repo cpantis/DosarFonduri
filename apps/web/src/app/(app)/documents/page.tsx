@@ -1013,8 +1013,8 @@ export default function DocumentsPage() {
         @keyframes docProgressStripe { 0% { background-position: 0 0 } 100% { background-position: 40px 0 } }
 
         /* ─── Topbar ─── */
-        .doc-topbar { padding: 14px 28px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 16px; background: var(--bg-surface); flex-shrink: 0; }
-        .doc-topbar-title { font-size: 20px; font-weight: 800; flex: 1; letter-spacing: -.3px; display: flex; align-items: center; gap: 10px; }
+        .doc-topbar { padding: 18px 32px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 16px; background: var(--bg-surface); flex-shrink: 0; }
+        .doc-topbar-title { font-size: 22px; font-weight: 800; flex: 1; letter-spacing: -.4px; display: flex; align-items: center; gap: 10px; }
         .doc-topbar-title-icon { width: 30px; height: 30px; border-radius: var(--r-sm); background: rgba(77,139,255,.1); display: flex; align-items: center; justify-content: center; font-size: 15px; }
         .doc-topbar-stats { display: flex; gap: 16px; }
         .doc-topbar-stat { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); }

@@ -234,8 +234,8 @@ export default function SettingsPage() {
   if (!config) {
     return (
       <>
-        <div className="px-7 py-3.5 flex items-center gap-4 flex-shrink-0" style={{ borderBottom: "1px solid var(--border)", background: "var(--bg-surface)" }}>
-          <div className="text-xl font-extrabold flex-1">Configurari</div>
+        <div className="flex items-center gap-4 flex-shrink-0" style={{ padding: "18px 32px", borderBottom: "1px solid var(--border)", background: "var(--bg-surface)" }}>
+          <div className="flex-1" style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-.4px" }}>Configurari</div>
         </div>
         <div className="flex-1 flex items-center justify-center">
           {configError ? (
@@ -287,8 +287,8 @@ export default function SettingsPage() {
       `}</style>
 
       {/* Topbar */}
-      <div className="px-7 py-3.5 flex items-center gap-4 flex-shrink-0" style={{ borderBottom: "1px solid var(--border)", background: "var(--bg-surface)" }}>
-        <div className="text-xl font-extrabold flex-1" style={{ letterSpacing: "-.3px" }}>Configurari</div>
+      <div className="flex items-center gap-4 flex-shrink-0" style={{ padding: "18px 32px", borderBottom: "1px solid var(--border)", background: "var(--bg-surface)" }}>
+        <div className="flex-1" style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-.4px" }}>Configurari</div>
         <button
           className="px-5 py-2 text-[13px] font-bold text-white flex items-center gap-1.5 cursor-pointer transition-all"
           style={{

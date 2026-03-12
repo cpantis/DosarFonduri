@@ -177,8 +177,8 @@ export default function AdminPage() {
   if (user?.role !== "admin") {
     return (
       <>
-        <div className="px-7 py-3.5 flex items-center gap-4 flex-shrink-0" style={{ borderBottom: "1px solid var(--border)", background: "var(--bg-surface)" }}>
-          <div className="text-xl font-extrabold flex-1">Administrare</div>
+        <div className="flex items-center gap-4 flex-shrink-0" style={{ padding: "18px 32px", borderBottom: "1px solid var(--border)", background: "var(--bg-surface)" }}>
+          <div className="flex-1" style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-.4px" }}>Administrare</div>
         </div>
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
@@ -196,7 +196,7 @@ export default function AdminPage() {
   return (
     <>
       <style>{`
-        .admin-tabs{display:flex;border-bottom:1px solid var(--border);padding:0 28px;background:var(--bg-surface);flex-shrink:0}
+        .admin-tabs{display:flex;border-bottom:1px solid var(--border);padding:0 32px;background:var(--bg-surface);flex-shrink:0}
         .admin-tab{padding:12px 20px;font-size:13px;font-weight:600;color:var(--text-secondary);cursor:pointer;border-bottom:2px solid transparent;transition:all .15s;font-family:var(--font-sans);background:none;border-top:none;border-left:none;border-right:none;display:flex;align-items:center;gap:8px}
         .admin-tab:hover{color:var(--text-primary)}.admin-tab.on{color:var(--accent-blue);border-bottom-color:var(--accent-blue)}
         .admin-tab .tab-count{font-size:11px;font-family:var(--font-mono);background:var(--bg-elevated);padding:1px 7px;border-radius:8px;color:var(--text-muted)}
@@ -225,8 +225,8 @@ export default function AdminPage() {
       `}</style>
 
       {/* Topbar */}
-      <div className="px-7 py-3.5 flex items-center gap-4 flex-shrink-0" style={{ borderBottom: "1px solid var(--border)", background: "var(--bg-surface)" }}>
-        <div className="text-xl font-extrabold flex-1" style={{ letterSpacing: "-.3px" }}>Administrare</div>
+      <div className="flex items-center gap-4 flex-shrink-0" style={{ padding: "18px 32px", borderBottom: "1px solid var(--border)", background: "var(--bg-surface)" }}>
+        <div className="flex-1" style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-.4px" }}>Administrare</div>
       </div>
 
       {/* Tabs */}
@@ -245,7 +245,7 @@ export default function AdminPage() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-7">
+      <div className="flex-1 overflow-y-auto" style={{ padding: "24px 32px" }}>
 
         {/* ═══ UTILIZATORI ═══ */}
         {activeTab === "users" && (

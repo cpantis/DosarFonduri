@@ -6,6 +6,7 @@ import { users, organizations, cabinetCodes } from "../db/schema";
 import { eq, and } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import type { AppEnv } from "../types/hono";
+import { lookupCUI_ListaFirme } from "../services/listafirme";
 
 export const authRoutes = new Hono<AppEnv>();
 
@@ -15,6 +16,7 @@ const signupSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
   cui: z.string().optional(),
+  companyName: z.string().optional(),
   cabinetCode: z.string().optional(),
 });
 
@@ -53,9 +55,10 @@ authRoutes.post("/signup", async (c) => {
     if (!code || code.organizationId) return c.json({ error: "Cod invalid sau deja folosit" }, 400);
     if (code.expiresAt < new Date()) return c.json({ error: "Cod expirat" }, 400);
 
-    // Create organization
+    // Create organization — use validated company name from listafirme.ro if available
+    const orgName = body.companyName || (body.name + " Cabinet");
     const [org] = await db.insert(organizations).values({
-      name: body.name + " Cabinet",
+      name: orgName,
       code: code.code,
       plan: code.plan,
       maxUsers: code.maxUsers,
@@ -145,6 +148,70 @@ authRoutes.get("/me", async (c) => {
   } catch {
     return c.json({ error: "Invalid token" }, 401);
   }
+});
+
+// --- LOOKUP CUI (public, for signup step 2) ---
+// Validates a CUI via listafirme.ro and returns basic company info.
+// Rate-limited by design: only used during signup wizard.
+authRoutes.post("/lookup-cui", async (c) => {
+  const { cui } = await c.req.json();
+  if (!cui) return c.json({ error: "CUI obligatoriu" }, 400);
+
+  const cleanCUI = String(cui).replace(/\D/g, "");
+  if (cleanCUI.length < 6 || cleanCUI.length > 12) {
+    return c.json({ found: false, error: "CUI trebuie sa aiba intre 6 si 12 cifre" });
+  }
+
+  try {
+    const result = await lookupCUI_ListaFirme(cleanCUI);
+    if (!result) {
+      return c.json({ found: false, error: "CUI nu a fost gasit in baza de date" });
+    }
+
+    return c.json({
+      found: true,
+      company: {
+        name: result.name,
+        cui: result.taxCode,
+        regNo: result.regNo,
+        status: result.status,
+        legalForm: result.legalForm,
+        nace: result.nace,
+        naceDescription: result.naceDescription,
+        county: result.county,
+        city: result.city,
+        address: result.address,
+        foundedDate: result.foundedDate,
+        turnover: result.turnover,
+        employees: result.employees,
+      },
+    });
+  } catch (err: any) {
+    console.error("CUI lookup error:", err?.message);
+    return c.json({ found: false, error: "Eroare la verificarea CUI. Incearca mai tarziu." });
+  }
+});
+
+// --- CHECK INVITED ---
+authRoutes.post("/check-invited", async (c) => {
+  const { email } = await c.req.json();
+  if (!email) return c.json({ invited: false });
+
+  const user = await db.query.users.findFirst({
+    where: and(eq(users.email, email), eq(users.status, "invited")),
+  });
+
+  if (!user) return c.json({ invited: false });
+
+  let orgName = "";
+  if (user.organizationId) {
+    const org = await db.query.organizations.findFirst({
+      where: eq(organizations.id, user.organizationId),
+    });
+    orgName = org?.name || "";
+  }
+
+  return c.json({ invited: true, organizationName: orgName, role: user.role });
 });
 
 // --- VALIDATE CODE ---

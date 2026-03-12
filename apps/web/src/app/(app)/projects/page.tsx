@@ -210,14 +210,14 @@ export default function ProjectsPage() {
         .btn-create{display:flex;align-items:center;gap:6px;padding:8px 18px;border-radius:var(--r-md);border:none;background:var(--accent-blue);color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--font-sans);box-shadow:0 2px 12px rgba(77,139,255,.25);transition:all .15s}
         .btn-create:hover{background:#5d9bff}
 
-        .stats-row{display:flex;gap:12px;padding:16px 28px;border-bottom:1px solid var(--border);background:var(--bg-surface);flex-shrink:0}
+        .stats-row{display:flex;gap:12px;padding:16px 32px;border-bottom:1px solid var(--border);background:var(--bg-surface);flex-shrink:0}
         .stat-pill{display:flex;align-items:center;gap:6px;padding:6px 14px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;border:1px solid transparent}
         .stat-pill:hover{background:var(--bg-hover)}
         .stat-pill.active{border-color:var(--accent-blue);background:rgba(77,139,255,.06)}
         .stat-pill .sp-dot{width:8px;height:8px;border-radius:50%}
         .stat-pill .sp-count{font-family:var(--font-mono);font-weight:700}
 
-        .toolbar{padding:12px 28px;display:flex;align-items:center;gap:10px;flex-shrink:0}
+        .toolbar{padding:12px 32px;display:flex;align-items:center;gap:10px;flex-shrink:0}
         .fi{padding:8px 14px;border-radius:var(--r-md);border:1px solid var(--border);background:var(--bg-deep);color:var(--text-primary);font-size:13px;font-family:var(--font-sans);outline:none;transition:border-color .2s}
         .fi:focus{border-color:var(--accent-blue)}.fi::placeholder{color:var(--text-muted)}
         .pill-group{display:flex;background:var(--bg-deep);border-radius:var(--r-md);padding:2px;gap:1px}
@@ -329,8 +329,8 @@ export default function ProjectsPage() {
       `}</style>
 
       {/* Topbar */}
-      <div className="px-7 py-3.5 flex items-center gap-4 flex-shrink-0" style={{ borderBottom: "1px solid var(--border)", background: "var(--bg-surface)" }}>
-        <div className="text-xl font-extrabold flex-1" style={{ letterSpacing: "-.3px" }}>Proiecte</div>
+      <div className="flex items-center gap-4 flex-shrink-0" style={{ padding: "18px 32px", borderBottom: "1px solid var(--border)", background: "var(--bg-surface)" }}>
+        <div className="flex-1" style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-.4px" }}>Proiecte</div>
         <button className="btn-create" onClick={() => { setShowCreate(true); setCreateStep(1); setCreateData({ name: "", firmaId: null, folderId: null, program: null, masura: null, sesiune: null }); }}>+ Proiect nou</button>
       </div>
 
@@ -373,7 +373,7 @@ export default function ProjectsPage() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto" style={{ padding: "20px 28px" }}>
+      <div className="flex-1 overflow-y-auto" style={{ padding: "24px 32px" }}>
         {loading ? (
           <div className="empty-state"><div className="es-icon">&#8987;</div><div className="es-text">Se încarcă proiectele...</div></div>
         ) : filtered.length === 0 ? (

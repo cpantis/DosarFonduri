@@ -136,6 +136,8 @@ const ALLOWED_MIME_TYPES: Record<string, string> = {
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
   "application/vnd.ms-excel": "xlsx",
   "application/msword": "doc",
+  "image/png": "png",
+  "image/jpeg": "jpg",
 };
 
 /** Fallback: detect file type from extension when MIME is generic */
@@ -145,6 +147,9 @@ const EXT_TO_FILETYPE: Record<string, string> = {
   xlsx: "xlsx",
   xls: "xlsx",
   doc: "doc",
+  png: "png",
+  jpg: "jpg",
+  jpeg: "jpg",
 };
 
 /** Max file size per processing type (bytes) */

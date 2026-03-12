@@ -19,6 +19,8 @@ IMPORTANT:
 - Declarația atestă anii de activitate în domeniul agroalimentar
 - Codurile CAEN relevante sunt cele agroalimentare (01xx, 02xx, 10xx, 11xx, etc.)
 - Ponderea veniturilor = procentul veniturilor din activitate agroalimentară din total
+- Aceste date determină punctajul la criteriul CS3 (vechime în activitate)
+- Dacă nu poți extrage un câmp, pune null ca valoare
 - Returnează DOAR JSON valid, fără backticks, fără explicații`,
     messages: [{
       role: "user",
@@ -53,13 +55,16 @@ ${pdfText.slice(0, 40000)}`,
   try {
     const data = JSON.parse(cleaned);
 
-    if (data.ani_activitate_agroalimentara != null) fields.push({ field_key: "ani_activitate_agroalimentara", field_value: data.ani_activitate_agroalimentara, confidence: 0.9, source_page: 1, extraction_method: "ai_sonnet" });
-    if (data.coduri_caen_activitate) fields.push({ field_key: "coduri_caen_activitate", field_value: data.coduri_caen_activitate, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
-    if (data.cifra_afaceri_agroalimentara != null) fields.push({ field_key: "cifra_afaceri_agroalimentara", field_value: data.cifra_afaceri_agroalimentara, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
-    if (data.ponderea_venituri_agro_in_total != null) fields.push({ field_key: "ponderea_venituri_agro_in_total", field_value: data.ponderea_venituri_agro_in_total, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
-    if (data.expert_nume) fields.push({ field_key: "expert_contabil_nume", field_value: data.expert_nume, confidence: 0.9, source_page: 1, extraction_method: "ai_sonnet" });
-    if (data.expert_nr_autorizatie) fields.push({ field_key: "expert_contabil_autorizatie", field_value: data.expert_nr_autorizatie, confidence: 0.85, source_page: 1, extraction_method: "ai_sonnet" });
-    if (data.data_declaratie) fields.push({ field_key: "data_declaratie_expert", field_value: data.data_declaratie, confidence: 0.9, source_page: 1, extraction_method: "ai_sonnet" });
+    fields.push({ field_key: "ani_activitate_agroalimentara", field_value: data.ani_activitate_agroalimentara ?? null, confidence: data.ani_activitate_agroalimentara != null ? 0.9 : 0, source_page: 1, extraction_method: "ai_sonnet" });
+    fields.push({ field_key: "coduri_caen_activitate", field_value: data.coduri_caen_activitate ?? null, confidence: data.coduri_caen_activitate ? 0.85 : 0, source_page: null, extraction_method: "ai_sonnet" });
+    fields.push({ field_key: "cifra_afaceri_agroalimentara", field_value: data.cifra_afaceri_agroalimentara ?? null, confidence: data.cifra_afaceri_agroalimentara != null ? 0.85 : 0, source_page: null, extraction_method: "ai_sonnet" });
+    fields.push({ field_key: "cifra_afaceri_totala", field_value: data.cifra_afaceri_totala ?? null, confidence: data.cifra_afaceri_totala != null ? 0.85 : 0, source_page: null, extraction_method: "ai_sonnet" });
+    fields.push({ field_key: "ponderea_venituri_agro_in_total", field_value: data.ponderea_venituri_agro_in_total ?? null, confidence: data.ponderea_venituri_agro_in_total != null ? 0.85 : 0, source_page: null, extraction_method: "ai_sonnet" });
+    fields.push({ field_key: "expert_contabil_nume", field_value: data.expert_nume ?? null, confidence: data.expert_nume ? 0.9 : 0, source_page: 1, extraction_method: "ai_sonnet" });
+    fields.push({ field_key: "expert_contabil_autorizatie", field_value: data.expert_nr_autorizatie ?? null, confidence: data.expert_nr_autorizatie ? 0.85 : 0, source_page: 1, extraction_method: "ai_sonnet" });
+    fields.push({ field_key: "data_declaratie_expert", field_value: data.data_declaratie ?? null, confidence: data.data_declaratie ? 0.9 : 0, source_page: 1, extraction_method: "ai_sonnet" });
+    fields.push({ field_key: "firma_nume", field_value: data.firma_nume ?? null, confidence: data.firma_nume ? 0.85 : 0, source_page: null, extraction_method: "ai_sonnet" });
+    fields.push({ field_key: "firma_cui", field_value: data.firma_cui ?? null, confidence: data.firma_cui ? 0.85 : 0, source_page: null, extraction_method: "ai_sonnet" });
 
     if (data.ani_detaliati) fields.push({ field_key: "_raw_ani_detaliati", field_value: data.ani_detaliati, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
   } catch {

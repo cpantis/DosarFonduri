@@ -2,15 +2,18 @@ import { Worker, Job } from "bullmq";
 import { db } from "../db";
 import {
   documents, projects, projectElements, templateElements,
-  documentFolders, elementAuditLog,
+  documentFolders, elementAuditLog, projectEligibility,
+  extractionCache,
 } from "../db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
+import { createHash } from "crypto";
 import { getFileBuffer } from "../services/storage";
 import { extractTextFromPDF, extractTextFromDOCX, extractTextFromXLSX, classifyDocument } from "../services/ocr";
 import { logAIUsage } from "../services/aiUsage";
-import { publishEvent } from "../lib/sse";
-import { validateElement } from "../services/elementValidation";
-import { logElementChange } from "../services/elementValidation";
+import { publishEvent, publishEligibilityUpdated, publishScoreUpdated, publishFieldExtracted, publishExtractionStarted } from "../lib/sse";
+import { validateElement, logElementChange } from "../services/elementValidation";
+import { checkEligibility } from "../services/eligibility";
+import { computeProjectScores } from "../services/scoring";
 import type { ExtractionResult } from "../services/extractionTypes";
 
 // Extractors
@@ -152,6 +155,88 @@ function getExtractorModel(documentType: string): string {
     default:
       return "claude-sonnet-4-20250514";
   }
+}
+
+/**
+ * Compute SHA-256 hash of document text content for cache dedup.
+ */
+function getContentHash(text: string): string {
+  return createHash("sha256").update(text).digest("hex");
+}
+
+const CACHE_MAX_AGE_DAYS = 30;
+
+/**
+ * Check extraction cache for a previously extracted result.
+ * Returns cached ExtractionResult if found and not expired, null otherwise.
+ */
+async function checkCachedExtraction(
+  contentHash: string,
+  documentType: string,
+  organizationId: string,
+): Promise<ExtractionResult | null> {
+  const cached = await db.query.extractionCache.findFirst({
+    where: and(
+      eq(extractionCache.contentHash, contentHash),
+      eq(extractionCache.extractionType, documentType),
+      eq(extractionCache.organizationId, organizationId),
+    ),
+  });
+
+  if (!cached) return null;
+
+  // Check expiry: expiresAt or 30-day max age
+  const now = new Date();
+  if (cached.expiresAt && cached.expiresAt < now) return null;
+
+  const ageMs = now.getTime() - cached.createdAt.getTime();
+  if (ageMs > CACHE_MAX_AGE_DAYS * 24 * 60 * 60 * 1000) return null;
+
+  // Increment hit count
+  await db.update(extractionCache)
+    .set({ hitCount: sql`${extractionCache.hitCount} + 1` })
+    .where(eq(extractionCache.id, cached.id));
+
+  console.log(
+    `[extractionCache] HIT for ${documentType} (hash=${contentHash.slice(0, 12)}…) ` +
+    `— saved ~${cached.tokensUsed ?? "?"} tokens, model=${cached.modelUsed ?? "?"}`,
+  );
+
+  return cached.result as ExtractionResult;
+}
+
+/**
+ * Save extraction result to cache for future dedup.
+ */
+async function saveToExtractionCache(
+  contentHash: string,
+  documentType: string,
+  organizationId: string,
+  result: ExtractionResult,
+  textLength: number,
+): Promise<void> {
+  const modelUsed = getExtractorModel(documentType);
+  const tokensEstimate = Math.min(Math.round(textLength / 4), 20000) + 2000;
+
+  await db.insert(extractionCache).values({
+    contentHash,
+    organizationId,
+    extractionType: documentType,
+    result: result as any,
+    modelUsed,
+    tokensUsed: tokensEstimate,
+    processingTimeMs: result.processing_time_ms,
+    hitCount: 0,
+  }).onConflictDoUpdate({
+    target: [extractionCache.contentHash, extractionCache.extractionType, extractionCache.organizationId],
+    set: {
+      result: result as any,
+      modelUsed,
+      tokensUsed: tokensEstimate,
+      processingTimeMs: result.processing_time_ms,
+      createdAt: new Date(),
+    },
+  });
 }
 
 /**
@@ -384,6 +469,44 @@ async function saveExtractedFieldsToProjectElements(
     }).catch(() => {});
   }
 
+  // === CASCADE: Eligibility → Scoring → SSE ===
+  // Mirror the cascade from projects.ts PUT /:id/elements/:eid
+  if (modifiedElementIds.length > 0) {
+    // 1. Re-check eligibility
+    try {
+      await checkEligibility(project.id, organizationId);
+
+      const eligibility = await db.query.projectEligibility.findMany({
+        where: eq(projectEligibility.projectId, project.id),
+      });
+
+      publishEligibilityUpdated(project.id, {
+        total: eligibility.length,
+        passed: eligibility.filter(e => e.status === "passed").length,
+        failed: eligibility.filter(e => e.status === "failed").length,
+        pending: eligibility.filter(e => e.status === "pending").length,
+        message: `Eligibilitate re-evaluată: ${eligibility.filter(e => e.status === "passed").length}/${eligibility.length} trecute`,
+      }).catch(() => {});
+    } catch (err) {
+      console.error(`[saveExtracted] Eligibility check failed for project ${project.id}:`, err);
+    }
+
+    // 2. Recompute scoring
+    try {
+      const scoreResult = await computeProjectScores(project.id);
+      if (scoreResult.scores.length > 0) {
+        publishScoreUpdated(project.id, {
+          totalPoints: scoreResult.totalPoints,
+          maxTotalPoints: scoreResult.maxTotalPoints,
+          percentage: scoreResult.percentage,
+          message: `Punctaj actualizat: ${scoreResult.totalPoints}/${scoreResult.maxTotalPoints} (${scoreResult.percentage}%)`,
+        }).catch(() => {});
+      }
+    } catch (err) {
+      console.error(`[saveExtracted] Score computation failed for project ${project.id}:`, err);
+    }
+  }
+
   return { projectId: project.id, updatedCount };
 }
 
@@ -428,22 +551,76 @@ export const processClientDocWorker = new Worker<ProcessClientDocPayload>(
         action: "classify_client_document",
       });
 
-      // Step 3: Extract structured data based on document type
+      // Step 3: Extract structured data (with cache dedup)
       let extractionResult: ExtractionResult | null = null;
+      let cacheHit = false;
+      const contentHash = getContentHash(text);
+
+      // Notify frontend that extraction is starting
+      publishExtractionStarted(organizationId, {
+        documentId,
+        documentName: doc.name,
+        documentType: classification.documentType,
+        message: `Extrag date din "${doc.name}" (${classification.documentType})...`,
+      }).catch(() => {});
+
       try {
-        extractionResult = await runExtractor(classification.documentType, text);
-        await job.updateProgress(80);
+        // Check cache first
+        extractionResult = await checkCachedExtraction(
+          contentHash,
+          classification.documentType,
+          organizationId,
+        );
 
         if (extractionResult) {
-          const extractModel = getExtractorModel(classification.documentType);
-          await logAIUsage({
-            organizationId,
-            agent: "ocr",
-            model: extractModel,
-            tokensInput: Math.min(Math.round(text.length / 4), 20000),
-            tokensOutput: 2000,
-            action: `extract_${classification.documentType}`,
-          });
+          cacheHit = true;
+          await job.updateProgress(80);
+          // No AI usage logged — cache hit saves cost
+        } else {
+          // Cache miss — run extractor
+          extractionResult = await runExtractor(classification.documentType, text);
+          await job.updateProgress(80);
+
+          if (extractionResult) {
+            const extractModel = getExtractorModel(classification.documentType);
+            await logAIUsage({
+              organizationId,
+              agent: "ocr",
+              model: extractModel,
+              tokensInput: Math.min(Math.round(text.length / 4), 20000),
+              tokensOutput: 2000,
+              action: `extract_${classification.documentType}`,
+            });
+
+            // Save to cache for future dedup
+            await saveToExtractionCache(
+              contentHash,
+              classification.documentType,
+              organizationId,
+              extractionResult,
+              text.length,
+            );
+          }
+        }
+
+        // Stream per-field SSE events so frontend shows fields appearing one by one
+        if (extractionResult && extractionResult.extracted_fields.length > 0) {
+          const visibleFields = extractionResult.extracted_fields.filter(f => !f.field_key.startsWith("_"));
+          const totalVisible = visibleFields.length;
+
+          for (let i = 0; i < visibleFields.length; i++) {
+            const field = visibleFields[i];
+            publishFieldExtracted(organizationId, {
+              documentId,
+              documentName: doc.name,
+              fieldKey: field.field_key,
+              fieldValue: field.field_value,
+              confidence: field.confidence,
+              fieldIndex: i + 1,
+              totalFields: totalVisible,
+              documentType: classification.documentType,
+            }).catch(() => {});
+          }
         }
       } catch (extractError) {
         // Extraction failure is non-fatal — document is still classified
@@ -503,7 +680,10 @@ export const processClientDocWorker = new Worker<ProcessClientDocPayload>(
           documentType: classification.documentType,
           fields_count: extractionResult.extracted_fields.length,
           processing_time_ms: extractionResult.processing_time_ms,
-          message: `Extrase ${extractionResult.extracted_fields.length} câmpuri din "${doc.name}"`,
+          cacheHit,
+          message: cacheHit
+            ? `Extrase ${extractionResult.extracted_fields.length} câmpuri din "${doc.name}" (din cache)`
+            : `Extrase ${extractionResult.extracted_fields.length} câmpuri din "${doc.name}"`,
         }).catch(() => {});
       }
 

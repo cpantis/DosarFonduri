@@ -5,6 +5,7 @@ const anthropic = new Anthropic();
 
 /**
  * Extracts structured data from "ofertă de preț" (price quote) documents.
+ * Uses Sonnet for accurate technical specification extraction.
  */
 export async function extractOferta(pdfText: string): Promise<ExtractionResult> {
   const start = Date.now();
@@ -16,7 +17,9 @@ export async function extractOferta(pdfText: string): Promise<ExtractionResult> 
 
 IMPORTANT:
 - Prețurile sunt în EUR dacă nu se specifică altfel
-- este_no_till = true dacă echipamentul e de tip no-till/direct seeding
+- este_no_till = true dacă echipamentul e de tip no-till/direct seeding/minimum-till
+- Extrage specificațiile tehnice EXACTE, inclusiv dacă menționează tehnologia no-till/minimum-till
+- Dacă nu poți extrage un câmp, pune null ca valoare
 - Returnează DOAR JSON valid, fără backticks, fără explicații`,
     messages: [{
       role: "user",
@@ -54,21 +57,21 @@ ${pdfText.slice(0, 60000)}`,
   try {
     const data = JSON.parse(cleaned);
 
-    if (data.furnizor_nume) fields.push({ field_key: "furnizor_nume", field_value: data.furnizor_nume, confidence: 0.9, source_page: 1, extraction_method: "ai_sonnet" });
-    if (data.furnizor_cui) fields.push({ field_key: "furnizor_cui", field_value: data.furnizor_cui, confidence: 0.85, source_page: 1, extraction_method: "ai_sonnet" });
-    if (data.total_oferta_eur) fields.push({ field_key: "total_oferta_eur", field_value: data.total_oferta_eur, confidence: 0.9, source_page: null, extraction_method: "ai_sonnet" });
-    if (data.valabilitate_oferta) fields.push({ field_key: "valabilitate_oferta", field_value: data.valabilitate_oferta, confidence: 0.8, source_page: null, extraction_method: "ai_sonnet" });
-    if (data.data_oferta) fields.push({ field_key: "data_oferta", field_value: data.data_oferta, confidence: 0.85, source_page: 1, extraction_method: "ai_sonnet" });
-    if (data.nr_oferta) fields.push({ field_key: "nr_oferta", field_value: data.nr_oferta, confidence: 0.85, source_page: 1, extraction_method: "ai_sonnet" });
+    fields.push({ field_key: "furnizor_nume", field_value: data.furnizor_nume ?? null, confidence: data.furnizor_nume ? 0.9 : 0, source_page: 1, extraction_method: "ai_sonnet" });
+    fields.push({ field_key: "furnizor_cui", field_value: data.furnizor_cui ?? null, confidence: data.furnizor_cui ? 0.85 : 0, source_page: 1, extraction_method: "ai_sonnet" });
+    fields.push({ field_key: "total_oferta_eur", field_value: data.total_oferta_eur ?? null, confidence: data.total_oferta_eur != null ? 0.9 : 0, source_page: null, extraction_method: "ai_sonnet" });
+    fields.push({ field_key: "valabilitate_oferta", field_value: data.valabilitate_oferta ?? null, confidence: data.valabilitate_oferta ? 0.8 : 0, source_page: null, extraction_method: "ai_sonnet" });
+    fields.push({ field_key: "data_oferta", field_value: data.data_oferta ?? null, confidence: data.data_oferta ? 0.85 : 0, source_page: 1, extraction_method: "ai_sonnet" });
+    fields.push({ field_key: "nr_oferta", field_value: data.nr_oferta ?? null, confidence: data.nr_oferta ? 0.85 : 0, source_page: 1, extraction_method: "ai_sonnet" });
 
     const articole = data.articole || [];
     articole.forEach((a: any, i: number) => {
       const prefix = `articol_${i}`;
-      if (a.utilaj_denumire) fields.push({ field_key: `${prefix}_utilaj_denumire`, field_value: a.utilaj_denumire, confidence: 0.9, source_page: null, extraction_method: "ai_sonnet" });
-      if (a.specificatii_tehnice) fields.push({ field_key: `${prefix}_specificatii_tehnice`, field_value: a.specificatii_tehnice, confidence: 0.8, source_page: null, extraction_method: "ai_sonnet" });
+      fields.push({ field_key: `${prefix}_utilaj_denumire`, field_value: a.utilaj_denumire ?? null, confidence: a.utilaj_denumire ? 0.9 : 0, source_page: null, extraction_method: "ai_sonnet" });
+      fields.push({ field_key: `${prefix}_specificatii_tehnice`, field_value: a.specificatii_tehnice ?? null, confidence: a.specificatii_tehnice ? 0.8 : 0, source_page: null, extraction_method: "ai_sonnet" });
       if (a.pret_unitar_eur != null) fields.push({ field_key: `${prefix}_pret_unitar_eur`, field_value: a.pret_unitar_eur, confidence: 0.9, source_page: null, extraction_method: "ai_sonnet" });
       if (a.pret_total_eur != null) fields.push({ field_key: `${prefix}_pret_total_eur`, field_value: a.pret_total_eur, confidence: 0.9, source_page: null, extraction_method: "ai_sonnet" });
-      if (a.este_no_till != null) fields.push({ field_key: `${prefix}_este_no_till`, field_value: a.este_no_till, confidence: 0.75, source_page: null, extraction_method: "ai_sonnet" });
+      fields.push({ field_key: `${prefix}_este_no_till`, field_value: a.este_no_till ?? null, confidence: a.este_no_till != null ? 0.75 : 0, source_page: null, extraction_method: "ai_sonnet" });
     });
 
     fields.push({ field_key: "_raw_articole", field_value: articole, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });

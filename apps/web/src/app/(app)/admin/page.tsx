@@ -206,7 +206,7 @@ export default function AdminPage() {
         .u-detail{padding:20px;border-radius:var(--r-md);border:1px solid var(--accent-blue);background:rgba(77,139,255,.03);margin-top:8px;margin-bottom:8px}
         .ud-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px}
         .ud-cell{padding:10px 12px;background:var(--bg-deep);border-radius:var(--r-sm);border:1px solid var(--border)}
-        .cost-card{padding:16px 18px;border-radius:var(--r-md);border:1px solid var(--border);background:var(--bg-surface)}
+        .cost-card{padding:14px 16px;border-radius:var(--r-md);border:1px solid var(--border);background:var(--bg-surface)}
         .cost-table-wrap{border:1px solid var(--border);border-radius:var(--r-md);overflow:hidden;background:var(--bg-surface)}
         .cost-table{width:100%;border-collapse:collapse;font-size:12px}
         .cost-table th{padding:10px 14px;font-weight:700;color:var(--text-muted);border-bottom:1px solid var(--border);font-size:10px;text-transform:uppercase;letter-spacing:.5px;text-align:center}
@@ -398,10 +398,10 @@ export default function AdminPage() {
         {activeTab === "costs" && (
           <>
             {/* Summary cards */}
-            <div className="grid grid-cols-4 gap-3.5 mb-6">
+            <div className="grid grid-cols-5 gap-3 mb-6">
               <div className="cost-card">
                 <div className="text-[11px] font-semibold uppercase mb-1.5" style={{ letterSpacing: ".6px", color: "var(--text-muted)" }}>Total luna curenta</div>
-                <div className="text-[28px] font-extrabold" style={{ fontFamily: "var(--font-mono)", letterSpacing: "-1px" }}>
+                <div className="text-[22px] font-extrabold" style={{ fontFamily: "var(--font-mono)", letterSpacing: "-1px" }}>
                   ${(costs?.totalMonth || 0).toFixed(2)}
                 </div>
                 {costs && (
@@ -418,7 +418,7 @@ export default function AdminPage() {
                     <div className="text-[11px] font-semibold uppercase mb-1.5" style={{ letterSpacing: ".6px", color: "var(--text-muted)" }}>
                       {labels[agent] || agent}
                     </div>
-                    <div className="text-[28px] font-extrabold" style={{ fontFamily: "var(--font-mono)", letterSpacing: "-1px" }}>
+                    <div className="text-[22px] font-extrabold" style={{ fontFamily: "var(--font-mono)", letterSpacing: "-1px" }}>
                       ${Number(agentData?.totalCost || 0).toFixed(2)}
                     </div>
                     <div className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>

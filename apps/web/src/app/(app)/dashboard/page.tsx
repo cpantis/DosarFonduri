@@ -122,12 +122,6 @@ export default function DashboardPage() {
         .dl-event{font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:3px;line-height:1.4}
         .dl-proj{font-size:12px;color:var(--text-muted)}
 
-        .quick-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:16px 20px}
-        .quick-btn{padding:16px 12px;border-radius:var(--r-md);border:1px solid var(--border);background:var(--bg-elevated);cursor:pointer;transition:all .15s;text-align:center;font-family:var(--font-sans)}
-        .quick-btn:hover{border-color:var(--accent-blue);background:rgba(77,139,255,.04);transform:translateY(-1px)}
-        .quick-btn .qb-icon{font-size:24px;margin-bottom:6px}
-        .quick-btn .qb-label{font-size:12px;font-weight:600;color:var(--text-secondary)}
-
         @media(max-width:1200px){.dash-grid{grid-template-columns:1fr}}
         @media(max-width:768px){.stats-responsive{grid-template-columns:repeat(2,1fr)!important}}
       `}</style>
@@ -165,16 +159,18 @@ export default function DashboardPage() {
         ) : (
           <>
             {/* Stats */}
-            <div className="grid grid-cols-4 stats-responsive" style={{ gap: 20, marginBottom: 32 }}>
+            <div className="grid grid-cols-4 stats-responsive" style={{ gap: 16, marginBottom: 28 }}>
               {STATS.map((s, i) => {
                 const st = STAT_STYLES[i];
                 return (
-                  <div key={i} style={{ padding: 24, borderRadius: "var(--r-md)", border: "1px solid var(--border)", background: "var(--bg-surface)", transition: "all .2s" }}>
-                    <div className="flex items-center justify-center" style={{ width: 48, height: 48, borderRadius: 12, background: st.iconBg, fontSize: 22, marginBottom: 16 }}>
+                  <div key={i} className="flex items-center" style={{ gap: 14, padding: "16px 18px", borderRadius: "var(--r-md)", border: "1px solid var(--border)", background: "var(--bg-surface)", transition: "all .2s" }}>
+                    <div className="flex items-center justify-center flex-shrink-0" style={{ width: 40, height: 40, borderRadius: 10, background: st.iconBg, fontSize: 18 }}>
                       {s.icon}
                     </div>
-                    <div style={{ fontSize: 32, fontWeight: 800, lineHeight: 1, fontFamily: "var(--font-mono)", letterSpacing: "-1px", color: st.accent }}>{s.value}</div>
-                    <div style={{ fontSize: 13, marginTop: 8, color: "var(--text-secondary)", fontWeight: 500 }}>{s.label}</div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 22, fontWeight: 800, lineHeight: 1, fontFamily: "var(--font-mono)", letterSpacing: "-0.5px", color: st.accent }}>{s.value}</div>
+                      <div style={{ fontSize: 12, marginTop: 4, color: "var(--text-secondary)", fontWeight: 500 }}>{s.label}</div>
+                    </div>
                   </div>
                 );
               })}
@@ -218,17 +214,8 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              {/* RIGHT: Feed + Deadlines */}
+              {/* RIGHT: Deadlines + Activity */}
               <div className="flex flex-col" style={{ gap: 20 }}>
-                <div className="feed-card">
-                  <div className="feed-header">&#9889; Actiuni rapide</div>
-                  <div className="quick-grid">
-                    <div className="quick-btn" onClick={() => router.push("/projects")}><div className="qb-icon">&#10133;</div><div className="qb-label">Proiect nou</div></div>
-                    <div className="quick-btn" onClick={() => router.push("/companies")}><div className="qb-icon">&#127970;</div><div className="qb-label">Firma noua</div></div>
-                    <div className="quick-btn" onClick={() => router.push("/documents")}><div className="qb-icon">&#128228;</div><div className="qb-label">Upload doc</div></div>
-                    <div className="quick-btn"><div className="qb-icon">&#129302;</div><div className="qb-label">Solomon</div></div>
-                  </div>
-                </div>
                 <div className="feed-card">
                   <div className="feed-header">&#128197; Termene apropiate</div>
                   {(!data?.deadlines || data.deadlines.length === 0) ? (

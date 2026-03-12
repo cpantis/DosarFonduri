@@ -172,6 +172,18 @@ export default function ProviderDashboardPage() {
     }
   };
 
+  const handleAccessCabinet = async (id: string) => {
+    try {
+      const data = await providerPost(`/api/provider/cabinets/${id}/access`, {});
+      // Store the user-level token so the app works normally
+      localStorage.setItem("df-token", data.token);
+      // Open in new tab so provider dashboard stays open
+      window.open("/dashboard", "_blank");
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
   const handleSendEmail = async () => {
     if (!emailModal || !emailSubject.trim() || !emailMessage.trim()) return;
     setEmailSending(true);
@@ -409,6 +421,13 @@ export default function ProviderDashboardPage() {
                             ))}
                           </div>
                           <div className="flex gap-2">
+                            <button
+                              className="px-4 py-2 text-xs font-bold cursor-pointer transition-all"
+                              style={{ borderRadius: "var(--r-sm)", border: "1px solid var(--accent-blue)", background: "rgba(77,139,255,.08)", color: "var(--accent-blue)", fontFamily: "var(--font-sans)" }}
+                              onClick={() => handleAccessCabinet(c.id)}
+                            >
+                              🔓 Acceseaza cabinet
+                            </button>
                             <button
                               className="px-4 py-2 text-xs font-semibold cursor-pointer transition-all"
                               style={{ borderRadius: "var(--r-sm)", border: "1px solid var(--border)", background: "transparent", color: "var(--text-secondary)", fontFamily: "var(--font-sans)" }}

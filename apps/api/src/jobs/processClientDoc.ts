@@ -26,6 +26,7 @@ import { extractDocumentMediu } from "../services/mediuExtractor";
 import { extractExtrasCont } from "../services/extrasContExtractor";
 import { extractDeclaratie } from "../services/declaratieExtractor";
 import { extractCertificatFiscal } from "../services/certificatFiscalExtractor";
+import { extractGeneric } from "../services/genericExtractor";
 
 interface ProcessClientDocPayload {
   documentId: string;
@@ -113,7 +114,9 @@ function detectBilantYear(text: string): number {
 
 /**
  * Run the appropriate extractor based on document type.
- * Returns null for document types that don't have extractors.
+ * Uses dedicated extractors for known types, falls back to the
+ * generic AI extractor for any unrecognized type — so new document
+ * types work immediately without code changes.
  */
 async function runExtractor(documentType: string, text: string): Promise<ExtractionResult | null> {
   const start = Date.now();
@@ -143,7 +146,13 @@ async function runExtractor(documentType: string, text: string): Promise<Extract
     case "declaratie_expert_contabil":
       return extractDeclaratie(text);
     default:
-      return null;
+      // Generic AI extractor — handles any document type without a dedicated extractor.
+      // Skips guides and templates (they have their own processing pipelines).
+      if (documentType === "guide" || documentType.endsWith("_template") || documentType.startsWith("guide_annex")) {
+        return null;
+      }
+      console.log(`[runExtractor] No dedicated extractor for "${documentType}", using generic AI extractor`);
+      return extractGeneric(text, documentType);
   }
 }
 

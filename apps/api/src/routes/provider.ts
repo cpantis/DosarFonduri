@@ -3,7 +3,7 @@ import { sign, verify } from "hono/jwt";
 import { z } from "zod";
 import { db } from "../db";
 import { providerUsers, cabinetCodes, organizations, users } from "../db/schema";
-import { eq, isNull } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { lookupCUI_ListaFirme, searchCompany_ListaFirme } from "../services/listafirme";
 import type { AppEnv } from "../types/hono";
@@ -30,7 +30,7 @@ providerRoutes.post("/auth/login", async (c) => {
   if (!user) return c.json({ error: "Invalid credentials" }, 401);
   const valid = await bcrypt.compare(password, user.passwordHash);
   if (!valid) return c.json({ error: "Invalid credentials" }, 401);
-  const token = await sign({ sub: user.id }, process.env.PROVIDER_JWT_SECRET!, "HS256");
+  const token = await sign({ sub: user.id, exp: Math.floor(Date.now() / 1000) + 7 * 86400 }, process.env.PROVIDER_JWT_SECRET!, "HS256");
   return c.json({ token, user: { id: user.id, email: user.email, name: user.name } });
 });
 
@@ -228,5 +228,63 @@ providerRoutes.get("/revenue", providerAuth, async (c) => {
     activeCabinets: orgs.filter(o => o.status === "active").length,
     trialCabinets: orgs.filter(o => o.status === "trial").length,
     mrr,
+  });
+});
+
+// ─── ACCESS CABINET — Provider enters a cabinet as admin ─────
+// Generates a user-level JWT for the first admin of the cabinet,
+// allowing the provider to manage companies, documents, projects etc.
+providerRoutes.post("/cabinets/:id/access", providerAuth, async (c) => {
+  const orgId = c.req.param("id");
+
+  const org = await db.query.organizations.findFirst({
+    where: eq(organizations.id, orgId),
+  });
+  if (!org) return c.json({ error: "Cabinet negăsit" }, 404);
+
+  // Find the admin user for this cabinet
+  let adminUser = await db.query.users.findFirst({
+    where: and(eq(users.organizationId, orgId), eq(users.role, "admin")),
+  });
+
+  // If no admin exists, create a provider-managed admin user
+  if (!adminUser) {
+    const providerUser = await db.query.providerUsers.findFirst({
+      where: eq(providerUsers.id, c.get("providerId") as string),
+    });
+
+    const passwordHash = await bcrypt.hash("provider-managed-" + Date.now(), 12);
+    const [newUser] = await db.insert(users).values({
+      email: providerUser?.email || `provider-admin@${org.code.toLowerCase()}.local`,
+      name: providerUser?.name || "Provider Admin",
+      passwordHash,
+      organizationId: orgId,
+      role: "admin",
+      status: "active",
+    }).returning();
+
+    adminUser = newUser;
+  }
+
+  // Generate a user-level JWT (same as regular login) valid for 4 hours
+  const token = await sign(
+    { sub: adminUser.id, exp: Math.floor(Date.now() / 1000) + 4 * 3600 },
+    process.env.JWT_SECRET!,
+    "HS256",
+  );
+
+  return c.json({
+    token,
+    user: {
+      id: adminUser.id,
+      email: adminUser.email,
+      name: adminUser.name,
+      role: adminUser.role,
+    },
+    organization: {
+      id: org.id,
+      name: org.name,
+      plan: org.plan,
+    },
   });
 });

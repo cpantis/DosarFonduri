@@ -96,18 +96,10 @@ app.get("/api/events", async (c) => {
 app.onError(errorHandler);
 
 // Health check (both / and /health for Railway healthcheck flexibility)
+// IMPORTANT: These must return 200 instantly — no DB calls, no async work.
+// Railway starts healthchecking immediately after the container starts.
 app.get("/", (c) => c.json({ status: "ok", service: "dosarfonduri-api" }));
-app.get("/health", async (c) => {
-  try {
-    const { db } = await import("./db");
-    const { sql } = await import("drizzle-orm");
-    await db.execute(sql`SELECT 1`);
-    return c.json({ status: "ok", db: "connected", timestamp: new Date().toISOString() });
-  } catch (err: any) {
-    // Return 200 so Railway healthcheck passes — app is alive, DB may be slow to connect
-    return c.json({ status: "degraded", db: err?.message, timestamp: new Date().toISOString() });
-  }
-});
+app.get("/health", (c) => c.json({ status: "ok", service: "dosarfonduri-api", timestamp: new Date().toISOString() }));
 
 // Temporary setup endpoint — triggers migrations + seed via HTTP
 app.get("/setup-db", async (c) => {

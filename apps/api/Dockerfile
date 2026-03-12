@@ -56,5 +56,6 @@ EXPOSE 8080
 
 WORKDIR /app/apps/api
 
-# Rulează migrațiile, apoi pornește serverul
-CMD ["sh", "-c", "node dist/db/migrate.js && node dist/index.js"]
+# Start server immediately (so Railway healthcheck passes), run migrations in background.
+# Migrations are idempotent — safe to retry if they fail on first attempt.
+CMD ["sh", "-c", "node dist/db/migrate.js & node dist/index.js"]

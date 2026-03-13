@@ -624,7 +624,7 @@ function SignupWizard({ onGo }: { onGo: () => void }) {
                 onClick={checkCode}
                 disabled={codeLoad || !cabinetCode.trim()}
               >
-                {codeLoad ? "..." : "Activeaza"}
+                {codeLoad ? "..." : "Verifica"}
               </button>
             </div>
           </div>

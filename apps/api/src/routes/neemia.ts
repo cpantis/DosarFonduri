@@ -1,7 +1,7 @@
 import type { AppEnv } from "../types/hono";
 import { Hono } from "hono";
 import { db } from "../db";
-import { projectDocuments, documents, templateElements, projectElements, guideReferenceTables } from "../db/schema";
+import { projectDocuments, documents, templateElements, projectElements, guideReferenceTables, projects } from "../db/schema";
 import { eq, and } from "drizzle-orm";
 import { AuthContext } from "../middleware/auth";
 import {
@@ -16,9 +16,32 @@ import { getFileUrl } from "../services/storage";
 
 export const neemiaRoutes = new Hono<AppEnv>();
 
+// Helper: verify project belongs to the user's organization
+async function verifyProjectOrg(projectId: string, organizationId: string) {
+  return db.query.projects.findFirst({
+    where: and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)),
+  });
+}
+
+// Helper: verify project document belongs to the user's organization (via project)
+async function verifyProjectDocOrg(docId: string, organizationId: string) {
+  const projDoc = await db.query.projectDocuments.findFirst({
+    where: eq(projectDocuments.id, docId),
+  });
+  if (!projDoc) return null;
+  const project = await verifyProjectOrg(projDoc.projectId, organizationId);
+  if (!project) return null;
+  return projDoc;
+}
+
 // Validate before generation
 neemiaRoutes.post("/projects/:projectId/validate", async (c) => {
+  const auth = c.get("auth") as AuthContext;
   const projectId = c.req.param("projectId");
+
+  const project = await verifyProjectOrg(projectId, auth.organizationId!);
+  if (!project) return c.json({ error: "Project not found" }, 404);
+
   const { templateDocumentId } = await c.req.json();
 
   const result = await validateBeforeGenerate(projectId, templateDocumentId);
@@ -29,6 +52,10 @@ neemiaRoutes.post("/projects/:projectId/validate", async (c) => {
 neemiaRoutes.post("/projects/:projectId/generate", async (c) => {
   const auth = c.get("auth") as AuthContext;
   const projectId = c.req.param("projectId");
+
+  const project = await verifyProjectOrg(projectId, auth.organizationId!);
+  if (!project) return c.json({ error: "Project not found" }, 404);
+
   const { templateDocumentId } = await c.req.json();
 
   const stream = await generateDocument({
@@ -49,7 +76,11 @@ neemiaRoutes.post("/projects/:projectId/generate", async (c) => {
 
 // List generated documents per project
 neemiaRoutes.get("/projects/:projectId/documents", async (c) => {
+  const auth = c.get("auth") as AuthContext;
   const projectId = c.req.param("projectId");
+
+  const project = await verifyProjectOrg(projectId, auth.organizationId!);
+  if (!project) return c.json({ error: "Project not found" }, 404);
 
   const docs = await db.query.projectDocuments.findMany({
     where: eq(projectDocuments.projectId, projectId),
@@ -75,11 +106,10 @@ neemiaRoutes.get("/projects/:projectId/documents", async (c) => {
 
 // Download generated document
 neemiaRoutes.get("/documents/:docId/download", async (c) => {
+  const auth = c.get("auth") as AuthContext;
   const docId = c.req.param("docId");
 
-  const projDoc = await db.query.projectDocuments.findFirst({
-    where: eq(projectDocuments.id, docId),
-  });
+  const projDoc = await verifyProjectDocOrg(docId, auth.organizationId!);
   if (!projDoc || !projDoc.generatedFileId) return c.json({ error: "Not found" }, 404);
 
   const url = await getFileUrl(projDoc.generatedFileId);
@@ -91,12 +121,14 @@ neemiaRoutes.put("/documents/:docId/validate", async (c) => {
   const auth = c.get("auth") as AuthContext;
   const docId = c.req.param("docId");
 
+  const projDoc = await verifyProjectDocOrg(docId, auth.organizationId!);
+  if (!projDoc) return c.json({ error: "Not found" }, 404);
+
   const [updated] = await db.update(projectDocuments).set({
     status: "validated",
     validatedBy: auth.userId,
   }).where(eq(projectDocuments.id, docId)).returning();
 
-  if (!updated) return c.json({ error: "Not found" }, 404);
   return c.json(updated);
 });
 
@@ -105,9 +137,7 @@ neemiaRoutes.post("/documents/:docId/regenerate", async (c) => {
   const auth = c.get("auth") as AuthContext;
   const docId = c.req.param("docId");
 
-  const projDoc = await db.query.projectDocuments.findFirst({
-    where: eq(projectDocuments.id, docId),
-  });
+  const projDoc = await verifyProjectDocOrg(docId, auth.organizationId!);
   if (!projDoc) return c.json({ error: "Not found" }, 404);
 
   const stream = await generateDocument({
@@ -128,7 +158,12 @@ neemiaRoutes.post("/documents/:docId/regenerate", async (c) => {
 
 // Version history for a template document
 neemiaRoutes.get("/projects/:projectId/documents/:templateDocId/versions", async (c) => {
+  const auth = c.get("auth") as AuthContext;
   const projectId = c.req.param("projectId");
+
+  const project = await verifyProjectOrg(projectId, auth.organizationId!);
+  if (!project) return c.json({ error: "Project not found" }, 404);
+
   const templateDocId = c.req.param("templateDocId");
 
   const versions = await db.query.projectDocuments.findMany({
@@ -149,7 +184,12 @@ neemiaRoutes.get("/projects/:projectId/documents/:templateDocId/versions", async
 
 // Cross-document consistency check
 neemiaRoutes.get("/projects/:projectId/consistency", async (c) => {
+  const auth = c.get("auth") as AuthContext;
   const projectId = c.req.param("projectId");
+
+  const project = await verifyProjectOrg(projectId, auth.organizationId!);
+  if (!project) return c.json({ error: "Project not found" }, 404);
+
   const result = await checkCrossDocumentConsistency(projectId);
   return c.json(result);
 });
@@ -158,13 +198,22 @@ neemiaRoutes.get("/projects/:projectId/consistency", async (c) => {
 neemiaRoutes.post("/projects/:projectId/calculate", async (c) => {
   const auth = c.get("auth") as AuthContext;
   const projectId = c.req.param("projectId");
+
+  const project = await verifyProjectOrg(projectId, auth.organizationId!);
+  if (!project) return c.json({ error: "Project not found" }, 404);
+
   const results = await computeCalculatedFields(projectId, auth.organizationId!);
   return c.json(results);
 });
 
 // Get template pages with filled elements — for document preview
 neemiaRoutes.get("/projects/:projectId/template-pages/:templateDocId", async (c) => {
+  const auth = c.get("auth") as AuthContext;
   const projectId = c.req.param("projectId");
+
+  const project = await verifyProjectOrg(projectId, auth.organizationId!);
+  if (!project) return c.json({ error: "Project not found" }, 404);
+
   const templateDocId = c.req.param("templateDocId");
 
   const templateDoc = await db.query.documents.findFirst({
@@ -251,6 +300,9 @@ neemiaRoutes.post("/projects/:projectId/generate-all", async (c) => {
   const auth = c.get("auth") as AuthContext;
   const projectId = c.req.param("projectId");
 
+  const project = await verifyProjectOrg(projectId, auth.organizationId!);
+  if (!project) return c.json({ error: "Project not found" }, 404);
+
   const stream = await generateAllDocuments({
     projectId,
     organizationId: auth.organizationId!,
@@ -272,6 +324,10 @@ neemiaRoutes.post("/projects/:projectId/generate-all", async (c) => {
 neemiaRoutes.post("/projects/:projectId/compose/validate", async (c) => {
   const auth = c.get("auth") as AuthContext;
   const projectId = c.req.param("projectId");
+
+  const project = await verifyProjectOrg(projectId, auth.organizationId!);
+  if (!project) return c.json({ error: "Project not found" }, 404);
+
   const { templateDocumentId } = await c.req.json();
 
   const result = await validateComposeReadiness(projectId, templateDocumentId, auth.organizationId!);
@@ -282,6 +338,10 @@ neemiaRoutes.post("/projects/:projectId/compose/validate", async (c) => {
 neemiaRoutes.post("/projects/:projectId/compose/preview", async (c) => {
   const auth = c.get("auth") as AuthContext;
   const projectId = c.req.param("projectId");
+
+  const project = await verifyProjectOrg(projectId, auth.organizationId!);
+  if (!project) return c.json({ error: "Project not found" }, 404);
+
   const { templateDocumentId } = await c.req.json();
 
   const stream = await composeDocument({
@@ -305,6 +365,10 @@ neemiaRoutes.post("/projects/:projectId/compose/preview", async (c) => {
 neemiaRoutes.post("/projects/:projectId/compose/generate", async (c) => {
   const auth = c.get("auth") as AuthContext;
   const projectId = c.req.param("projectId");
+
+  const project = await verifyProjectOrg(projectId, auth.organizationId!);
+  if (!project) return c.json({ error: "Project not found" }, 404);
+
   const { templateDocumentId, editedSections } = await c.req.json();
 
   const stream = await composeDocument({
@@ -329,6 +393,10 @@ neemiaRoutes.post("/projects/:projectId/compose/generate", async (c) => {
 neemiaRoutes.get("/projects/:projectId/compose/context/:templateDocId", async (c) => {
   const auth = c.get("auth") as AuthContext;
   const projectId = c.req.param("projectId");
+
+  const project = await verifyProjectOrg(projectId, auth.organizationId!);
+  if (!project) return c.json({ error: "Project not found" }, 404);
+
   const templateDocId = c.req.param("templateDocId");
 
   const context = await buildComposeContext(projectId, auth.organizationId!, templateDocId);

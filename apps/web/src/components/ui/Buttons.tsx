@@ -23,7 +23,7 @@ export function BtnSecondary({ children, icon, size = "md", className = "", ...p
   return (
     <button
       {...props}
-      className={`bg-white border border-slate-200 hover:bg-slate-50 hover:border-slate-300 text-slate-700 font-medium rounded-lg transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${sizeClasses} ${className}`}
+      className={`bg-white border border-blue-600/30 hover:bg-blue-50/50 hover:border-blue-600/50 text-blue-600 font-medium rounded-lg transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${sizeClasses} ${className}`}
     >
       {icon && <span className="text-[14px]">{icon}</span>}{children}
     </button>
@@ -35,7 +35,7 @@ export function BtnDanger({ children, size = "md", className = "", ...props }: O
   return (
     <button
       {...props}
-      className={`text-red-600 bg-white border border-red-200 hover:bg-red-50 hover:border-red-300 font-medium rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed ${sizeClasses} ${className}`}
+      className={`text-red-500 bg-white border border-red-500/30 hover:bg-red-50/50 hover:border-red-500/50 font-medium rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed ${sizeClasses} ${className}`}
     >
       {children}
     </button>

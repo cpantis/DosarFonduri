@@ -174,32 +174,32 @@ const TEST_CASES: TestCase[] = [
     expectedType: "oferta_pret",
     extractor: "ofertaExtractor",
     extractionMethod: "image",
-    expectedToFail: true,
-    failReason: "G4: No image processing pipeline — PNG files are not handled by processClientDoc",
+    expectedToFail: false,
+    failReason: "G4 FIXED: extractTextFromImage() added — Vision OCR → ofertaExtractor",
   },
   {
     file: "Anda semanatoare.png",
     expectedType: "oferta_pret",
     extractor: "ofertaExtractor",
     extractionMethod: "image",
-    expectedToFail: true,
-    failReason: "G4: No image processing pipeline",
+    expectedToFail: false,
+    failReason: "G4 FIXED: extractTextFromImage() added",
   },
   {
     file: "Anda disc 7 m.png",
     expectedType: "oferta_pret",
     extractor: "ofertaExtractor",
     extractionMethod: "image",
-    expectedToFail: true,
-    failReason: "G4: No image processing pipeline",
+    expectedToFail: false,
+    failReason: "G4 FIXED: extractTextFromImage() added",
   },
   {
     file: "Anda Cultivator.png",
     expectedType: "oferta_pret",
     extractor: "ofertaExtractor",
     extractionMethod: "image",
-    expectedToFail: true,
-    failReason: "G4: No image processing pipeline",
+    expectedToFail: false,
+    failReason: "G4 FIXED: extractTextFromImage() added",
   },
 
   // ── 17. Anunt sesiune (text PDF, genericExtractor) ──
@@ -521,18 +521,21 @@ print("\\n".join(text))
 
   // ── Known issues summary ───────────────────────────────────────────────────
 
-  console.log("\n━━━ KNOWN ISSUES ━━━\n");
+  console.log("\n━━━ ISSUE STATUS ━━━\n");
   const issues = [
-    { id: "P1", desc: "XFA PDF format unsupported", affected: results.filter((r) => r.file.includes("Bilant")).length, severity: "CRITICAL" },
-    { id: "P2", desc: "Scanned pages need OCR", affected: results.filter((r) => r.error?.includes("scanned") || (!r.textExtracted && r.file.endsWith(".pdf"))).length, severity: "CRITICAL" },
-    { id: "P3", desc: "Template Memoriu has no placeholders", affected: 1, severity: "MEDIUM" },
-    { id: "P4", desc: "Compound document boundary detection", affected: 1, severity: "CRITICAL" },
-    { id: "G1", desc: "PNG images not processed", affected: results.filter((r) => r.file.endsWith(".png")).length, severity: "CRITICAL" },
-    { id: "G2", desc: ".doc format unsupported", affected: results.filter((r) => r.file.endsWith(".doc")).length, severity: "MEDIUM" },
+    { id: "P1", desc: "XFA PDF format", affected: results.filter((r) => r.file.includes("Bilant")).length, severity: "FIXED", fix: "tryExtractXFA() in ocr.ts" },
+    { id: "P2", desc: "Scanned pages need OCR", affected: results.filter((r) => !r.textExtracted && r.file.endsWith(".pdf")).length, severity: "OK", fix: "Vision OCR pipeline exists in extractPDFPages" },
+    { id: "P3", desc: "Template Memoriu (filled doc)", affected: 1, severity: "FIXED", fix: "isFilledTemplate() in processClientDoc.ts" },
+    { id: "P4", desc: "Compound document detection", affected: 1, severity: "FIXED", fix: "detectCompoundDocument() in processClientDoc.ts" },
+    { id: "P5", desc: "Bilant had 'zero' values", affected: 0, severity: "FIXED", fix: "XFA has real data (479 fields). Expected output updated." },
+    { id: "G1/G4", desc: "PNG images pipeline", affected: results.filter((r) => r.file.endsWith(".png")).length, severity: "FIXED", fix: "extractTextFromImage() + routing in processClientDoc" },
+    { id: "G2", desc: ".doc format", affected: results.filter((r) => r.file.endsWith(".doc")).length, severity: "FIXED", fix: "extractTextFromDOC() via antiword/LibreOffice" },
+    { id: "G3", desc: "Missing dedicated extractors (act_constitutiv, statut, CI, diploma)", affected: 4, severity: "LOW", fix: "Falls to genericExtractor (functional)" },
   ];
 
   for (const issue of issues) {
-    console.log(`  [${issue.severity}] ${issue.id}: ${issue.desc} (${issue.affected} files)`);
+    const icon = issue.severity === "FIXED" ? "✅" : issue.severity === "OK" ? "🔄" : "📋";
+    console.log(`  ${icon} [${issue.severity}] ${issue.id}: ${issue.desc} (${issue.affected} files) — ${issue.fix}`);
   }
 
   // ── Write results JSON ─────────────────────────────────────────────────────

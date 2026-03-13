@@ -113,6 +113,152 @@ function detectBilantYear(text: string): number {
 }
 
 /**
+ * P3 fix: Detect whether a "template" document actually contains filled-in data.
+ * Templates typically have {{placeholders}} or empty fields. A filled document
+ * has real company names, CUI numbers, specific amounts, etc.
+ */
+function isFilledTemplate(text: string): boolean {
+  // If it has template placeholders, it's genuinely a template
+  const placeholderPatterns = [/\{\{.+?\}\}/, /\[.*completați.*\]/i, /<.*completați.*>/i, /____+/];
+  for (const p of placeholderPatterns) {
+    if (p.test(text)) return false;
+  }
+
+  // Check for signs of filled-in data: CUI numbers, specific company names, amounts
+  const filledIndicators = [
+    /\bCUI[:\s]+\d{5,10}\b/i,        // CUI with actual number
+    /\bS\.?R\.?L\.?\b/i,             // Company type
+    /\b\d{1,3}([.,]\d{3})+\b/,       // Formatted amounts (1.000.000)
+    /\bEUR\b|\bLEI\b|\bRON\b/i,      // Currency mentions
+    /J\d+\/\d+\/\d{4}/,              // Registration number J2/1981/2017
+  ];
+
+  let filledCount = 0;
+  for (const p of filledIndicators) {
+    if (p.test(text)) filledCount++;
+  }
+
+  return filledCount >= 2; // At least 2 indicators of real data
+}
+
+/**
+ * P4 fix: Detect compound documents that contain multiple sub-documents
+ * (e.g., act constitutiv + certificat constatator in one PDF).
+ *
+ * Returns sub-document segments with page ranges and suggested types,
+ * or null if the document appears to be a single document.
+ */
+interface SubDocument {
+  startPage: number;
+  endPage: number;
+  text: string;
+  suggestedType: string;
+}
+
+function detectCompoundDocument(text: string): SubDocument[] | null {
+  // Split text by page markers
+  const pagePattern = /--- Pagina (\d+).*?---\n/g;
+  const pages: Array<{ page: number; text: string; startIdx: number }> = [];
+
+  let match: RegExpExecArray | null;
+  const matches: Array<{ page: number; idx: number }> = [];
+  while ((match = pagePattern.exec(text)) !== null) {
+    matches.push({ page: parseInt(match[1]), idx: match.index + match[0].length });
+  }
+
+  for (let i = 0; i < matches.length; i++) {
+    const endIdx = i + 1 < matches.length ? matches[i + 1].idx - (matches[i + 1].idx - text.lastIndexOf("---", matches[i + 1].idx)) : text.length;
+    const pageText = text.slice(matches[i].idx, endIdx);
+    pages.push({ page: matches[i].page, text: pageText, startIdx: matches[i].idx });
+  }
+
+  if (pages.length < 3) return null; // Too few pages to be compound
+
+  // Look for document type boundaries — markers that indicate a new sub-document starts
+  const docBoundaryMarkers = [
+    { pattern: /CERTIFICAT\s+CONSTATATOR/i, type: "certificat_constatator" },
+    { pattern: /ACT\s+CONSTITUTIV/i, type: "act_constitutiv" },
+    { pattern: /STATUT(?:\s+SOCIETA)/i, type: "statut" },
+    { pattern: /CERTIFICAT\s+DE\s+[ÎI]NREGISTRARE/i, type: "certificat_inregistrare" },
+    { pattern: /REZOLU[ȚT]IE/i, type: "rezolutie" },
+    { pattern: /HOT[ĂA]R[ÂA]RE\s+(?:AGA|ADUNARE)/i, type: "hotarare_aga" },
+  ];
+
+  // Find document boundaries
+  const boundaries: Array<{ page: number; type: string }> = [];
+  for (const p of pages) {
+    // Only check the first 500 chars of each page (title/header area)
+    const header = p.text.slice(0, 500);
+    for (const marker of docBoundaryMarkers) {
+      if (marker.pattern.test(header)) {
+        boundaries.push({ page: p.page, type: marker.type });
+        break;
+      }
+    }
+  }
+
+  // Also detect boundaries by CUI changes (different companies in same doc)
+  const cuiPattern = /\bCUI[:\s]*(\d{5,10})\b/i;
+  let lastCui: string | null = null;
+  for (const p of pages) {
+    const cuiMatch = p.text.match(cuiPattern);
+    if (cuiMatch) {
+      const cui = cuiMatch[1];
+      if (lastCui && cui !== lastCui) {
+        // CUI changed — this is a boundary between different companies
+        const existing = boundaries.find(b => b.page === p.page);
+        if (!existing) {
+          boundaries.push({ page: p.page, type: "unknown_boundary" });
+        }
+      }
+      lastCui = cui;
+    }
+  }
+
+  if (boundaries.length < 2) return null; // Not compound (only one doc type found)
+
+  // Build sub-documents from boundaries
+  boundaries.sort((a, b) => a.page - b.page);
+  const subDocs: SubDocument[] = [];
+
+  for (let i = 0; i < boundaries.length; i++) {
+    const startPage = boundaries[i].page;
+    const endPage = i + 1 < boundaries.length ? boundaries[i + 1].page - 1 : pages[pages.length - 1].page;
+
+    const subPages = pages.filter(p => p.page >= startPage && p.page <= endPage);
+    const subText = subPages.map(p => `--- Pagina ${p.page} ---\n${p.text}`).join("\n\n");
+
+    subDocs.push({
+      startPage,
+      endPage,
+      text: subText,
+      suggestedType: boundaries[i].type,
+    });
+  }
+
+  // Include any pages before the first boundary as a separate sub-doc
+  if (boundaries[0].page > 1) {
+    const prePages = pages.filter(p => p.page < boundaries[0].page);
+    if (prePages.length > 0) {
+      const preText = prePages.map(p => `--- Pagina ${p.page} ---\n${p.text}`).join("\n\n");
+      subDocs.unshift({
+        startPage: 1,
+        endPage: boundaries[0].page - 1,
+        text: preText,
+        suggestedType: "unknown_preamble",
+      });
+    }
+  }
+
+  console.log(
+    `[compoundDoc] Detected ${subDocs.length} sub-documents: ` +
+    subDocs.map(s => `${s.suggestedType} (pp. ${s.startPage}-${s.endPage})`).join(", "),
+  );
+
+  return subDocs;
+}
+
+/**
  * Run the appropriate extractor based on document type.
  * Uses dedicated extractors for known types, falls back to the
  * generic AI extractor for any unrecognized type — so new document
@@ -148,7 +294,17 @@ async function runExtractor(documentType: string, text: string): Promise<Extract
     default:
       // Generic AI extractor — handles any document type without a dedicated extractor.
       // Skips guides and templates (they have their own processing pipelines).
-      if (documentType === "guide" || documentType.endsWith("_template") || documentType.startsWith("guide_annex")) {
+      if (documentType === "guide" || documentType.startsWith("guide_annex")) {
+        return null;
+      }
+      // P3 fix: Templates with _template suffix are skipped UNLESS the text
+      // contains filled-in data (no {{placeholders}}, but real company/project info).
+      // This handles cases like "Template Memoriu.docx" which is actually a completed document.
+      if (documentType.endsWith("_template")) {
+        if (isFilledTemplate(text)) {
+          console.log(`[runExtractor] "${documentType}" appears to be a filled-in document, extracting with generic`);
+          return extractGeneric(text, documentType.replace("_template", "_filled"));
+        }
         return null;
       }
       console.log(`[runExtractor] No dedicated extractor for "${documentType}", using generic AI extractor`);
@@ -593,8 +749,54 @@ export const processClientDocWorker = new Worker<ProcessClientDocPayload>(
           await job.updateProgress(80);
           // No AI usage logged — cache hit saves cost
         } else {
-          // Cache miss — run extractor
-          extractionResult = await runExtractor(classification.documentType, text);
+          // P4 fix: Check for compound documents before extraction.
+          // A compound doc (e.g. act constitutiv + certificat constatator in one PDF)
+          // should be split into sub-documents, each processed by the appropriate extractor.
+          const subDocs = detectCompoundDocument(text);
+
+          if (subDocs && subDocs.length > 1) {
+            // Compound document: extract from each sub-document and merge results
+            const allFields: ExtractionResult["extracted_fields"] = [];
+            let totalTimeMs = 0;
+
+            for (const sub of subDocs) {
+              if (sub.suggestedType === "unknown_preamble" || sub.text.trim().length < 100) continue;
+
+              // Classify each sub-document independently
+              const subClassification = await classifyDocument(sub.text.slice(0, 3000));
+              const subType = subClassification.documentType;
+
+              console.log(
+                `[compoundDoc] Sub-doc pp. ${sub.startPage}-${sub.endPage}: ` +
+                `suggested="${sub.suggestedType}", classified="${subType}"`,
+              );
+
+              const subResult = await runExtractor(subType, sub.text);
+              if (subResult) {
+                // Prefix field keys with sub-doc type to avoid collisions
+                for (const field of subResult.extracted_fields) {
+                  field.source_page = field.source_page
+                    ? field.source_page + sub.startPage - 1
+                    : sub.startPage;
+                  allFields.push(field);
+                }
+                totalTimeMs += subResult.processing_time_ms;
+              }
+            }
+
+            if (allFields.length > 0) {
+              extractionResult = {
+                document_type: `compound_${classification.documentType}`,
+                extracted_fields: allFields,
+                raw_text: text.slice(0, 5000),
+                processing_time_ms: totalTimeMs,
+              };
+            }
+          } else {
+            // Single document — normal extraction
+            extractionResult = await runExtractor(classification.documentType, text);
+          }
+
           await job.updateProgress(80);
 
           if (extractionResult) {

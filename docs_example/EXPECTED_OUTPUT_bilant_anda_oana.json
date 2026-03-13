@@ -4,48 +4,104 @@
   "extractor": "bilantParser",
   "format": "PDF XFA (Adobe LiveCycle)",
   "pages": 1,
+  "xfa_extraction": {
+    "status": "FIXED — tryExtractXFA() now extracts 479 fields from XFA datasets XML",
+    "datasets_xref": 74,
+    "total_fields": 479
+  },
+  "identification_fields": {
+    "denumire": "ANDA OANA AGRO FERMA SRL",
+    "cui": "38480585",
+    "regCom": "J2/1981/2017",
+    "caen": "0111",
+    "localitate": "Calugareni",
+    "judet_cod": "02",
+    "adresa_nr": "87",
+    "telefon": "0752863865",
+    "forma_proprietate": "35",
+    "tip_bilant": "UU",
+    "administrator": "CHIS-POPOVICI OANA ANDA",
+    "auditor": "DUICA STEFAN",
+    "auditor_cod": "A0010826"
+  },
   "expected_fields": {
     "year": 2023,
-    "f10": {
-      "activeImobilizate": { "necorporale": 0, "corporale": 0, "financiare": 0, "total": 0 },
-      "activeCirculante": { "stocuri": 0, "creante": 0, "investitiiTS": 0, "casa": 0, "total": 0 },
-      "cheltuieliAvans": 0,
-      "datoriiSubAnul": 0,
-      "datoriiPesteAnul": 0,
-      "venituriAvans": 0,
-      "capital": { "subscrisVarsat": 0, "rezerve": 0, "profitReportat": 0, "profitExercitiu": 0 },
-      "capitaluriProprii": 0
+    "period": "01.01.2023 - 31.12.2023",
+    "period_comparison": "31.12.2022",
+    "f10_bilant_prescurtat": {
+      "profitExercitiu_2022": 1,
+      "profitExercitiu_2023": 54340,
+      "note": "F10 only has R01 (profit/pierdere), R85, R100, R103 = 0"
     },
-    "f20": {
-      "cifraAfaceriNeta": 0,
-      "venituriExploatare": 0,
-      "cheltuieliExploatare": 0,
-      "profitExploatare": 0,
-      "venituriTotale": 0,
-      "cheltuieliTotale": 0,
-      "profitBrut": 0,
-      "impozitProfit": 0,
-      "profitNet": 0
+    "f20_cont_profit_pierdere": {
+      "cifraAfaceriNeta_2022": 1461655,
+      "cifraAfaceriNeta_2023": 1913806,
+      "venituriExploatare_2022": 565487,
+      "venituriExploatare_2023": -254167,
+      "cheltuieliMatPrim_2022": 688114,
+      "cheltuieliMatPrim_2023": 742802,
+      "cheltuieliAltExpl_2022": 34451,
+      "cheltuieliAltExpl_2023": 37859,
+      "ajustariValoare_2022": 14744,
+      "ajustariValoare_2023": 35081,
+      "cheltuieliPersonal_2022": 425717,
+      "cheltuieliPersonal_2023": 774674,
+      "impozitProfit_2022": 8469,
+      "impozitProfit_2023": 14883,
+      "profitNet_2022": 855647,
+      "profitNet_2023": 54340,
+      "note": "form1/R01-R08 contain F20 P&L data, C1=2022, C2=2023"
     },
-    "f30": {
-      "numarMediuSalariati": 0,
-      "numarEfectivSalariati": 0
+    "f30_date_informative": {
+      "numarMediuSalariati_2022": 1,
+      "numarMediuSalariati_2023": 1,
+      "numarEfectivSalariati_2022": 1,
+      "numarEfectivSalariati_2023": 1
     },
-    "f40": null
+    "f40_active_imobilizate": {
+      "note": "F40 contains detailed fixed asset movements",
+      "active_necorporale_sold_initial": 1362,
+      "active_necorporale_sold_final": 1362,
+      "active_corporale_sold_initial_brut": 712253,
+      "active_corporale_intrari": 127900,
+      "active_corporale_amortizare_cumulata": 147738,
+      "active_corporale_amortizare_an": 564515
+    },
+    "bilant_detaliat": {
+      "active_imobilizate_2022": 2027142,
+      "active_imobilizate_2023": 1632376,
+      "cifra_afaceri_2022": 1461655,
+      "cifra_afaceri_2023": 1913806,
+      "cheltuieli_materiale_2022": 688114,
+      "cheltuieli_materiale_2023": 742802,
+      "profit_brut_2022": 864116,
+      "profit_brut_2023": 69223,
+      "profit_net_2022": 855647,
+      "profit_net_2023": 54340,
+      "capital_social_2022": 300,
+      "capital_social_2023": 300,
+      "cheltuieli_personal_2022": 425717,
+      "cheltuieli_personal_2023": 774674,
+      "datorii_2022": 1163026,
+      "datorii_2023": 1590417
+    }
   },
   "adapted_fields_processClientDoc": {
-    "cifra_afaceri": 0,
-    "profit_net": 0,
-    "profit_exploatare": 0,
-    "active_totale": 0,
-    "capitaluri_proprii": 0,
-    "numar_angajati": 0,
-    "datorii_totale": 0
+    "cifra_afaceri_2023": 1913806,
+    "profit_net_2023": 54340,
+    "profit_exploatare_2023": "N/A (not directly in XFA, needs calculation)",
+    "active_totale_2023": 1632376,
+    "capitaluri_proprii_2023": "300 (capital social only in XFA)",
+    "numar_angajati_2023": 1,
+    "datorii_totale_2023": 1590417
   },
-  "critical_issues": [
-    "XFA FORMAT: page.get_text() returns only placeholder text, NOT the actual form data",
-    "ALL VALUES ARE 0/EMPTY: This is an uncompleted form - not useful for testing extraction accuracy",
-    "bilantParser.ts receives empty/placeholder text and will fail to extract real data",
-    "ocr.ts has NO XFA handling - extractPDFPages will return placeholder text"
+  "resolved_issues": [
+    "FIXED: XFA extraction now works via tryExtractXFA() in ocr.ts",
+    "FIXED: Bilant contains REAL DATA (not zeros) — initial assessment was wrong because page.get_text() showed placeholder",
+    "The bilant is a completed financial statement for ANDA OANA AGRO FERMA SRL, fiscal year 2023"
+  ],
+  "remaining_issues": [
+    "bilantParser.ts prompt needs updating to understand XFA field format (tag: value) instead of tabular PDF text",
+    "F20 data is in form1/R01-R08 not in a traditional F20 section header"
   ]
 }

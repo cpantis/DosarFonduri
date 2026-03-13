@@ -1481,10 +1481,10 @@ export default function DocumentsPage() {
                 e.target.value = "";
               }}
             />
-            <label
-              htmlFor={uploadFiles.length === 0 ? "doc-upload-input" : undefined}
+            <div
               className={`doc-upload-zone ${dragOver ? "drag-active" : ""} ${uploadFiles.length > 0 ? "has-file" : ""}`}
-              style={{ display: "block" }}
+              style={{ display: "block", cursor: "pointer" }}
+              onClick={() => { if (uploadFiles.length === 0) fileInputRef.current?.click(); }}
               onDragOver={e => { e.preventDefault(); e.stopPropagation(); setDragOver(true); }}
               onDragLeave={e => { e.preventDefault(); e.stopPropagation(); setDragOver(false); }}
               onDrop={e => {
@@ -1531,7 +1531,7 @@ export default function DocumentsPage() {
                   <div className="doc-upload-zone-sub">PDF, DOCX, XLSX, DOC, PNG, JPG — max 50 MB per fisier. Se pot selecta mai multe.</div>
                 </>
               )}
-            </label>
+            </div>
 
             {/* Upload progress bar */}
             {uploading && (

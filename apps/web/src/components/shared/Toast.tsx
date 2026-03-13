@@ -39,10 +39,17 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   }, [dismissToast]);
 
   const colors: Record<ToastType, string> = {
-    success: "var(--accent-green)",
-    error: "var(--accent-red)",
-    warning: "var(--accent-yellow)",
-    info: "var(--accent-blue)",
+    success: "#34d399",
+    error: "#f87171",
+    warning: "#fbbf24",
+    info: "#4d8bff",
+  };
+
+  const borderClasses: Record<ToastType, string> = {
+    success: "border-emerald-500",
+    error: "border-red-500",
+    warning: "border-amber-500",
+    info: "border-blue-500",
   };
 
   return (
@@ -50,11 +57,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {children}
       <div className="fixed bottom-4 right-4 z-[200] flex flex-col gap-2" role="status" aria-live="polite">
         {toasts.map(t => (
-          <div key={t.id} className="px-4 py-3 rounded-lg border shadow-lg text-sm font-medium"
+          <div key={t.id} className={`px-4 py-3 rounded-lg border shadow-lg text-sm font-medium bg-white text-slate-900 ${borderClasses[t.type]}`}
             style={{
-              background: "var(--bg-surface)",
-              borderColor: colors[t.type],
-              color: "var(--text-primary)",
               borderLeft: `3px solid ${colors[t.type]}`,
               animation: t.dismissing ? "slideDown .2s ease-in forwards" : "slideUp .2s ease-out",
             }}>

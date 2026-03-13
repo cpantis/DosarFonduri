@@ -5,24 +5,31 @@ import { apiGet, apiPost, apiDelete } from "@/lib/api";
 
 /* ═══ HELPERS ═══ */
 
-const STATUS_MAP: Record<string, { label: string; color: string; bg: string }> = {
-  draft: { label: "Ciornă", color: "var(--badge-draft-color)", bg: "var(--badge-draft-bg)" },
-  in_progress: { label: "În lucru", color: "var(--badge-progress-color)", bg: "var(--badge-progress-bg)" },
-  review: { label: "Verificare", color: "var(--badge-review-color)", bg: "var(--badge-review-bg)" },
-  submitted: { label: "Depus", color: "var(--badge-submitted-color)", bg: "var(--badge-submitted-bg)" },
-  rejected: { label: "Respins", color: "var(--badge-rejected-color)", bg: "var(--badge-rejected-bg)" },
-  approved: { label: "Aprobat", color: "var(--badge-approved-color)", bg: "var(--badge-approved-bg)" },
+const STATUS_MAP: Record<string, { label: string; cls: string }> = {
+  draft: { label: "Ciornă", cls: "bg-slate-100 text-slate-600 border-slate-200" },
+  in_progress: { label: "În lucru", cls: "bg-blue-50 text-blue-700 border-blue-200" },
+  review: { label: "Verificare", cls: "bg-amber-50 text-amber-700 border-amber-200" },
+  submitted: { label: "Depus", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+  rejected: { label: "Respins", cls: "bg-red-50 text-red-700 border-red-200" },
+  approved: { label: "Aprobat", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+};
+
+const STATUS_DOT: Record<string, string> = {
+  draft: "bg-slate-400",
+  in_progress: "bg-blue-500",
+  review: "bg-amber-500",
+  submitted: "bg-emerald-500",
 };
 
 const pct = (a: number, b: number) => b > 0 ? Math.round((a / b) * 100) : 0;
 
 // Workflow stage definitions
 const WORKFLOW_STAGES = [
-  { key: "eligibility", label: "Eligibilitate", icon: "\u{1F6E1}", color: "var(--accent-yellow)" },
-  { key: "writing", label: "Scriere", icon: "\u{1F4DD}", color: "var(--accent-blue)" },
-  { key: "documents", label: "Documente", icon: "\u{1F4C4}", color: "var(--accent-orange)" },
-  { key: "review", label: "Verificare", icon: "\u{1F50D}", color: "var(--accent-purple)" },
-  { key: "submission", label: "Depunere", icon: "\u{1F4E4}", color: "var(--accent-green)" },
+  { key: "eligibility", label: "Eligibilitate", icon: "\u{1F6E1}" },
+  { key: "writing", label: "Scriere", icon: "\u{1F4DD}" },
+  { key: "documents", label: "Documente", icon: "\u{1F4C4}" },
+  { key: "review", label: "Verificare", icon: "\u{1F50D}" },
+  { key: "submission", label: "Depunere", icon: "\u{1F4E4}" },
 ];
 
 function getWorkflowStage(p: any): { currentStage: number; stageProgress: number[] } {
@@ -205,181 +212,101 @@ export default function ProjectsPage() {
   };
 
   return (
-    <>
-      <style>{`
-        .btn-create{display:flex;align-items:center;gap:6px;padding:8px 18px;border-radius:var(--r-md);border:none;background:var(--accent-blue);color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--font-sans);box-shadow:0 2px 12px rgba(77,139,255,.25);transition:all .15s}
-        .btn-create:hover{background:#5d9bff}
-
-        .stats-row{display:flex;gap:12px;padding:16px 32px;border-bottom:1px solid var(--border);background:var(--bg-surface);flex-shrink:0}
-        .stat-pill{display:flex;align-items:center;gap:6px;padding:6px 14px;border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;border:1px solid transparent}
-        .stat-pill:hover{background:var(--bg-hover)}
-        .stat-pill.active{border-color:var(--accent-blue);background:rgba(77,139,255,.06)}
-        .stat-pill .sp-dot{width:8px;height:8px;border-radius:50%}
-        .stat-pill .sp-count{font-family:var(--font-mono);font-weight:700}
-
-        .toolbar{padding:12px 32px;display:flex;align-items:center;gap:10px;flex-shrink:0}
-        .fi{padding:8px 14px;border-radius:var(--r-md);border:1px solid var(--border);background:var(--bg-deep);color:var(--text-primary);font-size:13px;font-family:var(--font-sans);outline:none;transition:border-color .2s}
-        .fi:focus{border-color:var(--accent-blue)}.fi::placeholder{color:var(--text-muted)}
-        .pill-group{display:flex;background:var(--bg-deep);border-radius:var(--r-md);padding:2px;gap:1px}
-        .pill{padding:4px 10px;border-radius:6px;font-size:11px;font-weight:600;border:none;cursor:pointer;background:transparent;color:var(--text-muted);font-family:var(--font-sans);transition:all .15s}
-        .pill:hover{color:var(--text-secondary)}.pill.on{background:var(--accent-blue);color:#fff}
-        .view-toggle{display:flex;margin-left:auto;background:var(--bg-deep);border-radius:var(--r-sm);padding:2px;gap:1px}
-        .vt-btn{padding:5px 10px;border-radius:4px;border:none;cursor:pointer;font-size:14px;background:transparent;transition:all .12s;color:var(--text-muted)}
-        .vt-btn:hover{background:var(--bg-hover)}.vt-btn.on{background:var(--bg-elevated);color:var(--text-primary)}
-
-        .proj-grid{display:grid;grid-template-columns:repeat(auto-fill, minmax(380px, 1fr));gap:16px}
-        .proj-card{padding:20px;border-radius:var(--r-md);border:1px solid var(--border);background:var(--bg-surface);cursor:pointer;transition:all .18s;display:flex;flex-direction:column;gap:14px}
-        .proj-card:hover{border-color:var(--border-active);background:var(--bg-elevated);transform:translateY(-1px)}
-        .pc-top{display:flex;align-items:flex-start;gap:12px}
-        .pc-info{flex:1;min-width:0}
-        .pc-name{font-size:16px;font-weight:700;margin-bottom:3px}
-        .pc-firma{font-size:12px;color:var(--text-secondary);margin-bottom:6px}
-        .pc-path{font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:4px}
-        .pc-path .pp-dot{width:8px;height:8px;border-radius:50%;background:var(--accent-blue);flex-shrink:0}
-        .status-badge{display:inline-flex;align-items:center;gap:4px;padding:4px 12px;border-radius:12px;font-size:11px;font-weight:700}
-        .pc-valoare{font-size:11px;font-family:var(--font-mono);color:var(--text-muted);margin-top:6px}
-        .pc-progress{display:flex;flex-direction:column;gap:8px}
-        .pc-bar-row{display:flex;align-items:center;gap:10px}
-        .pc-bar-label{font-size:11px;color:var(--text-muted);width:80px;flex-shrink:0}
-        .pc-bar{flex:1;height:6px;background:var(--bg-deep);border-radius:3px;overflow:hidden}
-        .pc-bar-fill{height:100%;border-radius:3px;transition:width .4s}
-        .pc-bar-pct{font-size:11px;font-family:var(--font-mono);color:var(--text-secondary);width:36px;text-align:right;flex-shrink:0}
-        .pc-workflow{display:flex;align-items:center;gap:0;padding:10px 0;border-top:1px solid var(--border)}
-        .wf-step{display:flex;flex-direction:column;align-items:center;flex:1;position:relative}
-        .wf-icon{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;border:2px solid var(--border);background:var(--bg-deep);transition:all .2s;position:relative;z-index:1}
-        .wf-step.done .wf-icon{border-color:var(--accent-green);background:rgba(52,211,153,.12)}
-        .wf-step.active .wf-icon{border-color:var(--accent-blue);background:rgba(77,139,255,.12);box-shadow:0 0 8px rgba(77,139,255,.3)}
-        .wf-label{font-size:9px;font-weight:600;color:var(--text-muted);margin-top:3px;text-align:center;white-space:nowrap}
-        .wf-step.done .wf-label{color:var(--accent-green)}
-        .wf-step.active .wf-label{color:var(--accent-blue)}
-        .wf-line{position:absolute;top:14px;left:calc(50% + 14px);width:calc(100% - 28px);height:2px;background:var(--border);z-index:0}
-        .wf-step.done .wf-line{background:var(--accent-green)}
-        .wf-step.active .wf-line{background:linear-gradient(90deg, var(--accent-blue) 50%, var(--border) 50%)}
-        .pc-overall{display:flex;align-items:center;gap:8px;padding:6px 0}
-        .pc-overall-label{font-size:11px;font-weight:600;color:var(--text-secondary)}
-        .pc-overall-bar{flex:1;height:8px;background:var(--bg-deep);border-radius:4px;overflow:hidden}
-        .pc-overall-fill{height:100%;border-radius:4px;transition:width .4s}
-        .pc-overall-pct{font-size:13px;font-family:var(--font-mono);font-weight:700;min-width:36px;text-align:right}
-        .pc-footer{display:flex;align-items:center;gap:10px;padding-top:10px;border-top:1px solid var(--border)}
-        .pc-consultant{font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:4px;flex:1}
-        .pc-updated{font-size:11px;color:var(--text-muted);font-family:var(--font-mono)}
-        .lock-indicator{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600;background:var(--badge-review-bg);color:var(--accent-yellow)}
-
-        .proj-table{width:100%;border:1px solid var(--border);border-radius:var(--r-md);overflow:hidden;background:var(--bg-surface)}
-        .pt-row{display:grid;grid-template-columns:1fr 140px 90px 100px 100px 100px 90px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--border);transition:background .12s;cursor:pointer}
-        .pt-row:last-child{border-bottom:none}
-        .pt-row:hover{background:var(--bg-hover)}
-        .pt-row.header{background:var(--bg-elevated);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text-muted);cursor:default}
-        .pt-row.header:hover{background:var(--bg-elevated)}
-        .pt-name{font-size:13px;font-weight:600}
-        .pt-firma{font-size:11px;color:var(--text-muted)}
-        .pt-program{font-size:11px;color:var(--text-secondary);font-family:var(--font-mono)}
-        .mini-bar{height:4px;border-radius:2px;background:var(--bg-deep);overflow:hidden;width:100%}
-        .mini-fill{height:100%;border-radius:2px;transition:width .4s}
-        .mini-pct{font-size:10px;font-family:var(--font-mono);color:var(--text-muted);margin-top:2px}
-        .pt-time{font-size:11px;color:var(--text-muted)}
-
-        .empty-state{text-align:center;padding:60px;color:var(--text-muted)}
-        .empty-state .es-icon{font-size:40px;opacity:.5;margin-bottom:8px}
-        .empty-state .es-text{font-size:14px}
-
-        .overlay{position:fixed;inset:0;background:var(--overlay-bg);display:flex;align-items:center;justify-content:center;z-index:100;animation:fadeIn .2s}
-        @keyframes fadeIn{from{opacity:0}to{opacity:1}}
-        .modal{background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--r-lg);width:540px;max-height:85vh;overflow-y:auto;padding:28px;animation:slideUp .3s ease}
-        @keyframes slideUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
-        .modal-title{font-size:20px;font-weight:800;margin-bottom:4px;display:flex;justify-content:space-between;align-items:center}
-        .modal-close{background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:18px}.modal-close:hover{color:var(--text-primary)}
-
-        .wz-bar{display:flex;align-items:center;margin-bottom:24px}
-        .wz-step{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--text-muted)}
-        .wz-step.on{color:var(--accent-blue)}.wz-step.done{color:var(--accent-green)}
-        .wz-num{width:24px;height:24px;border-radius:50%;border:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;font-family:var(--font-mono)}
-        .wz-step.on .wz-num{border-color:var(--accent-blue);background:var(--accent-blue);color:#fff}
-        .wz-step.done .wz-num{border-color:var(--accent-green);background:var(--accent-green);color:#fff}
-        .wz-line{flex:1;height:2px;background:var(--border);margin:0 10px}.wz-line.done{background:var(--accent-green)}
-
-        .fg{margin-bottom:16px}
-        .fl{display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.7px;color:var(--text-muted);margin-bottom:6px}
-        .fi-full{width:100%;padding:10px 14px;border-radius:var(--r-md);border:1px solid var(--border);background:var(--bg-deep);color:var(--text-primary);font-size:14px;font-family:var(--font-sans);outline:none}
-        .fi-full:focus{border-color:var(--accent-blue)}.fi-full::placeholder{color:var(--text-muted)}
-
-        .firma-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-        .firma-option{padding:12px;border-radius:var(--r-sm);border:1px solid var(--border);background:var(--bg-elevated);cursor:pointer;transition:all .15s;font-size:13px;font-weight:600}
-        .firma-option:hover{border-color:var(--border-active)}.firma-option.on{border-color:var(--accent-blue);background:rgba(77,139,255,.06);color:var(--accent-blue)}
-
-        .prog-section{margin-bottom:12px}
-        .prog-header{font-size:13px;font-weight:700;color:var(--text-primary);margin-bottom:6px;display:flex;align-items:center;gap:6px}
-        .prog-header .ph-dot{width:10px;height:10px;border-radius:50%;background:var(--accent-blue)}
-        .masura-row{padding:8px 12px 8px 28px;font-size:13px;color:var(--text-secondary);display:flex;align-items:center;gap:6px;cursor:pointer;border-radius:var(--r-sm);transition:all .12s}
-        .masura-row:hover{background:var(--bg-hover);color:var(--text-primary)}
-        .masura-row .mr-dot{width:6px;height:6px;border-radius:50%;background:var(--accent-orange)}
-        .sesiune-row{padding:6px 12px 6px 52px;font-size:12px;color:var(--text-muted);display:flex;align-items:center;gap:6px;cursor:pointer;border-radius:var(--r-sm);transition:all .12s}
-        .sesiune-row:hover{background:var(--bg-hover);color:var(--text-secondary)}
-        .sesiune-row.on{background:rgba(77,139,255,.06);color:var(--accent-blue);font-weight:600}
-        .sesiune-row .sr-dot{width:4px;height:4px;border-radius:50%;background:var(--text-muted)}
-
-        .btn-row{display:flex;gap:10px;justify-content:flex-end;margin-top:20px}
-        .btn-p{padding:10px 20px;border-radius:var(--r-md);border:none;background:var(--accent-blue);color:#fff;font-size:14px;font-weight:700;font-family:var(--font-sans);cursor:pointer}.btn-p:hover{background:#5d9bff}.btn-p:disabled{opacity:.4;cursor:not-allowed}
-        .btn-s{padding:10px 20px;border-radius:var(--r-md);border:1px solid var(--border);background:transparent;color:var(--text-secondary);font-size:14px;font-weight:600;font-family:var(--font-sans);cursor:pointer}.btn-s:hover{border-color:var(--border-active);color:var(--text-primary)}
-
-        .summary-card{padding:16px;border-radius:var(--r-md);border:1px solid var(--accent-blue);background:rgba(77,139,255,.04);margin-bottom:16px}
-        .summary-row{display:flex;gap:8px;font-size:13px;margin-bottom:4px}
-        .summary-row .sr-label{color:var(--text-muted);min-width:80px}
-        .summary-row .sr-value{color:var(--text-primary);font-weight:600}
-      `}</style>
-
+    <div className="px-8 py-6 max-w-7xl mx-auto flex flex-col min-h-full">
       {/* Topbar */}
-      <div className="flex items-center gap-4 flex-shrink-0" style={{ padding: "18px 32px", borderBottom: "1px solid var(--border)", background: "var(--bg-surface)" }}>
-        <div className="flex-1" style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-.4px" }}>Proiecte</div>
-        <button className="btn-create" onClick={() => { setShowCreate(true); setCreateStep(1); setCreateData({ name: "", firmaId: null, folderId: null, program: null, masura: null, sesiune: null }); }}>+ Proiect nou</button>
+      <div className="flex items-center gap-4 flex-shrink-0 pb-6 border-b border-slate-200">
+        <div className="flex-1 text-2xl font-bold text-slate-900 tracking-tight">Proiecte</div>
+        <button
+          className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[13px] font-semibold cursor-pointer shadow-sm transition-all duration-150"
+          onClick={() => { setShowCreate(true); setCreateStep(1); setCreateData({ name: "", firmaId: null, folderId: null, program: null, masura: null, sesiune: null }); }}
+        >+ Proiect nou</button>
       </div>
 
       {/* Stats pills */}
-      <div className="stats-row">
-        <div className={`stat-pill ${statusFilter === "all" ? "active" : ""}`} onClick={() => setStatusFilter("all")}>
-          <span className="sp-count">{stats.total}</span> Total
+      <div className="flex gap-3 py-4 border-b border-slate-200 flex-shrink-0">
+        <div
+          className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[12px] font-semibold cursor-pointer transition-all duration-150 border ${statusFilter === "all" ? "border-blue-300 bg-blue-50/60 text-slate-900" : "border-transparent text-slate-500 hover:bg-slate-50"}`}
+          onClick={() => setStatusFilter("all")}
+        >
+          <span className="font-mono font-bold">{stats.total}</span> Total
         </div>
-        <div className={`stat-pill ${statusFilter === "draft" ? "active" : ""}`} onClick={() => setStatusFilter("draft")}>
-          <span className="sp-dot" style={{ background: "var(--badge-draft-color)" }} />
-          <span className="sp-count">{stats.draft}</span> Ciornă
+        <div
+          className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[12px] font-semibold cursor-pointer transition-all duration-150 border ${statusFilter === "draft" ? "border-blue-300 bg-blue-50/60 text-slate-900" : "border-transparent text-slate-500 hover:bg-slate-50"}`}
+          onClick={() => setStatusFilter("draft")}
+        >
+          <span className="w-2 h-2 rounded-full bg-slate-400" />
+          <span className="font-mono font-bold">{stats.draft}</span> Ciornă
         </div>
-        <div className={`stat-pill ${statusFilter === "in_progress" ? "active" : ""}`} onClick={() => setStatusFilter("in_progress")}>
-          <span className="sp-dot" style={{ background: "var(--badge-progress-color)" }} />
-          <span className="sp-count">{stats.inProgress}</span> În lucru
+        <div
+          className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[12px] font-semibold cursor-pointer transition-all duration-150 border ${statusFilter === "in_progress" ? "border-blue-300 bg-blue-50/60 text-slate-900" : "border-transparent text-slate-500 hover:bg-slate-50"}`}
+          onClick={() => setStatusFilter("in_progress")}
+        >
+          <span className="w-2 h-2 rounded-full bg-blue-500" />
+          <span className="font-mono font-bold">{stats.inProgress}</span> În lucru
         </div>
-        <div className={`stat-pill ${statusFilter === "review" ? "active" : ""}`} onClick={() => setStatusFilter("review")}>
-          <span className="sp-dot" style={{ background: "var(--badge-review-color)" }} />
-          <span className="sp-count">{stats.review}</span> Verificare
+        <div
+          className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[12px] font-semibold cursor-pointer transition-all duration-150 border ${statusFilter === "review" ? "border-blue-300 bg-blue-50/60 text-slate-900" : "border-transparent text-slate-500 hover:bg-slate-50"}`}
+          onClick={() => setStatusFilter("review")}
+        >
+          <span className="w-2 h-2 rounded-full bg-amber-500" />
+          <span className="font-mono font-bold">{stats.review}</span> Verificare
         </div>
-        <div className={`stat-pill ${statusFilter === "submitted" ? "active" : ""}`} onClick={() => setStatusFilter("submitted")}>
-          <span className="sp-dot" style={{ background: "var(--badge-submitted-color)" }} />
-          <span className="sp-count">{stats.submitted}</span> Depus
+        <div
+          className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[12px] font-semibold cursor-pointer transition-all duration-150 border ${statusFilter === "submitted" ? "border-blue-300 bg-blue-50/60 text-slate-900" : "border-transparent text-slate-500 hover:bg-slate-50"}`}
+          onClick={() => setStatusFilter("submitted")}
+        >
+          <span className="w-2 h-2 rounded-full bg-emerald-500" />
+          <span className="font-mono font-bold">{stats.submitted}</span> Depus
         </div>
       </div>
 
       {/* Toolbar */}
-      <div className="toolbar">
-        <input className="fi" placeholder="Caută proiect, firmă, program..." value={search} onChange={e => setSearch(e.target.value)} style={{ width: 280 }} />
-        <div className="pill-group">
-          <button className={`pill ${programFilter === "all" ? "on" : ""}`} onClick={() => setProgramFilter("all")}>Toate</button>
+      <div className="flex items-center gap-2.5 py-3 flex-shrink-0">
+        <input
+          className="w-72 bg-white border border-slate-200 rounded-lg px-3 py-2 text-[13px] text-slate-700 outline-none transition-colors duration-200 focus:border-blue-500 placeholder:text-slate-400"
+          placeholder="Caută proiect, firmă, program..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
+        <div className="flex bg-slate-100 rounded-lg p-0.5 gap-px">
+          <button
+            className={`px-2.5 py-1 rounded-md text-[11px] font-semibold border-none cursor-pointer transition-all duration-150 ${programFilter === "all" ? "bg-white shadow-sm text-slate-900" : "bg-transparent text-slate-500 hover:text-slate-700"}`}
+            onClick={() => setProgramFilter("all")}
+          >Toate</button>
           {[...new Set(projects.map(p => p.programPath?.program).filter(Boolean))].map(pr => (
-            <button key={pr} className={`pill ${programFilter === pr ? "on" : ""}`} onClick={() => setProgramFilter(pr)}>{pr}</button>
+            <button
+              key={pr}
+              className={`px-2.5 py-1 rounded-md text-[11px] font-semibold border-none cursor-pointer transition-all duration-150 ${programFilter === pr ? "bg-white shadow-sm text-slate-900" : "bg-transparent text-slate-500 hover:text-slate-700"}`}
+              onClick={() => setProgramFilter(pr)}
+            >{pr}</button>
           ))}
         </div>
-        <div className="view-toggle">
-          <button className={`vt-btn ${viewMode === "cards" ? "on" : ""}`} onClick={() => setViewMode("cards")} title="Carduri">&#9638;</button>
-          <button className={`vt-btn ${viewMode === "table" ? "on" : ""}`} onClick={() => setViewMode("table")} title="Tabel">&#9776;</button>
+        <div className="flex ml-auto bg-slate-100 rounded-md p-0.5 gap-px">
+          <button
+            className={`px-2.5 py-1.5 rounded border-none cursor-pointer text-sm transition-all duration-150 ${viewMode === "cards" ? "bg-white shadow-sm text-slate-900" : "bg-transparent text-slate-400 hover:bg-slate-50"}`}
+            onClick={() => setViewMode("cards")} title="Carduri"
+          >&#9638;</button>
+          <button
+            className={`px-2.5 py-1.5 rounded border-none cursor-pointer text-sm transition-all duration-150 ${viewMode === "table" ? "bg-white shadow-sm text-slate-900" : "bg-transparent text-slate-400 hover:bg-slate-50"}`}
+            onClick={() => setViewMode("table")} title="Tabel"
+          >&#9776;</button>
         </div>
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto" style={{ padding: "24px 32px" }}>
+      <div className="flex-1 overflow-y-auto pt-2 pb-8">
         {loading ? (
-          <div className="empty-state"><div className="es-icon">&#8987;</div><div className="es-text">Se încarcă proiectele...</div></div>
+          <div className="text-center py-16 text-slate-400">
+            <div className="text-[40px] opacity-50 mb-2">&#8987;</div>
+            <div className="text-sm">Se încarcă proiectele...</div>
+          </div>
         ) : filtered.length === 0 ? (
-          <div className="empty-state"><div className="es-icon">&#128188;</div><div className="es-text">Niciun proiect găsit</div></div>
+          <div className="text-center py-16 text-slate-400">
+            <div className="text-[40px] opacity-50 mb-2">&#128188;</div>
+            <div className="text-sm">Niciun proiect găsit</div>
+          </div>
         ) : viewMode === "cards" ? (
-          <div className="proj-grid">
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(380px,1fr))] gap-4">
             {filtered.map(p => {
               const st = STATUS_MAP[p.status] || STATUS_MAP.draft;
               const prog = p.progress || {};
@@ -390,19 +317,23 @@ export default function ProjectsPage() {
               const programPath = p.programPath || {};
               const valDisplay = formatValoare(p.valoare);
               return (
-                <div className="proj-card" key={p.id} onClick={() => router.push(`/projects/${p.id}`)}>
-                  <div className="pc-top">
-                    <div className="pc-info">
-                      <div className="pc-name">{p.name}</div>
-                      <div className="pc-firma">{p.company?.denumire || "—"}</div>
-                      <div className="pc-path">
-                        <span className="pp-dot" />
+                <div
+                  className="bg-white rounded-xl border border-slate-200 p-5 cursor-pointer transition-all duration-200 flex flex-col gap-3.5 hover:border-slate-300 hover:shadow-sm hover:-translate-y-px"
+                  key={p.id}
+                  onClick={() => router.push(`/projects/${p.id}`)}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[16px] font-bold text-slate-900 mb-0.5">{p.name}</div>
+                      <div className="text-[12px] text-slate-500 mb-1.5">{p.company?.denumire || "—"}</div>
+                      <div className="text-[11px] text-slate-400 flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0" />
                         {programPath.program || "—"} &rsaquo; {programPath.masura || "—"} &rsaquo; {programPath.sesiune || "—"}
                       </div>
-                      {valDisplay !== "—" && <div className="pc-valoare">{valDisplay}</div>}
+                      {valDisplay !== "—" && <div className="text-[11px] font-mono text-slate-400 mt-1.5">{valDisplay}</div>}
                     </div>
                     <div>
-                      <span className="status-badge" style={{ background: st.bg, color: st.color }}>{st.label}</span>
+                      <span className={`inline-flex items-center gap-1 text-[10px] font-semibold rounded-full border px-2 py-0.5 ${st.cls}`}>{st.label}</span>
                     </div>
                   </div>
 
@@ -411,46 +342,60 @@ export default function ProjectsPage() {
                     const wf = getWorkflowStage(p);
                     const overallPct = Math.round(wf.stageProgress.reduce((s, v) => s + v, 0) / wf.stageProgress.length);
                     return <>
-                      <div className="pc-workflow">
+                      <div className="flex items-center pt-2.5 border-t border-slate-100">
                         {WORKFLOW_STAGES.map((stage, i) => {
                           const done = wf.stageProgress[i] === 100;
                           const active = i === wf.currentStage;
                           return (
-                            <div key={stage.key} className={`wf-step ${done ? "done" : ""} ${active ? "active" : ""}`}>
-                              <div className="wf-icon">{stage.icon}</div>
-                              <span className="wf-label">{stage.label}</span>
-                              {i < WORKFLOW_STAGES.length - 1 && <div className="wf-line" />}
+                            <div key={stage.key} className="flex flex-col items-center flex-1 relative">
+                              <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[12px] border-2 relative z-[1] transition-all duration-200 ${
+                                done ? "border-emerald-400 bg-emerald-50" :
+                                active ? "border-blue-400 bg-blue-50 shadow-[0_0_8px_rgba(59,130,246,0.3)]" :
+                                "border-slate-200 bg-slate-50"
+                              }`}>{stage.icon}</div>
+                              <span className={`text-[9px] font-semibold mt-0.5 text-center whitespace-nowrap ${
+                                done ? "text-emerald-500" :
+                                active ? "text-blue-500" :
+                                "text-slate-400"
+                              }`}>{stage.label}</span>
+                              {i < WORKFLOW_STAGES.length - 1 && (
+                                <div className={`absolute top-3.5 left-[calc(50%+14px)] h-0.5 z-0 ${
+                                  done ? "bg-emerald-400" :
+                                  active ? "bg-gradient-to-r from-blue-400 to-slate-200" :
+                                  "bg-slate-200"
+                                }`} style={{ width: "calc(100% - 28px)" }} />
+                              )}
                             </div>
                           );
                         })}
                       </div>
-                      <div className="pc-overall">
-                        <span className="pc-overall-label">Progres</span>
-                        <div className="pc-overall-bar">
-                          <div className="pc-overall-fill" style={{
-                            width: `${overallPct}%`,
-                            background: overallPct === 100 ? "var(--accent-green)" : overallPct > 60 ? "var(--accent-blue)" : "var(--accent-yellow)"
-                          }} />
+                      <div className="flex items-center gap-2 py-1.5">
+                        <span className="text-[11px] font-semibold text-slate-500">Progres</span>
+                        <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full transition-[width] duration-400 bg-gradient-to-r from-blue-500 to-emerald-500"
+                            style={{ width: `${overallPct}%` }}
+                          />
                         </div>
-                        <span className="pc-overall-pct" style={{
-                          color: overallPct === 100 ? "var(--accent-green)" : overallPct > 60 ? "var(--accent-blue)" : "var(--accent-yellow)"
-                        }}>{overallPct}%</span>
+                        <span className={`text-[13px] font-mono font-bold min-w-[36px] text-right ${
+                          overallPct === 100 ? "text-emerald-500" : overallPct > 60 ? "text-blue-500" : "text-amber-500"
+                        }`}>{overallPct}%</span>
                       </div>
                     </>;
                   })()}
 
-                  <div className="pc-footer">
-                    <span className="pc-consultant">&#128100; {p.consultantId || "—"}</span>
-                    {p.lock && <span className="lock-indicator">&#128274; {p.lock.lockedByName}</span>}
-                    <span className="pc-updated">{p.updatedAt ? formatRelativeTime(p.updatedAt) : "—"}</span>
+                  <div className="flex items-center gap-2.5 pt-2.5 border-t border-slate-100">
+                    <span className="text-[11px] text-slate-400 flex items-center gap-1 flex-1">&#128100; {p.consultantId || "—"}</span>
+                    {p.lock && <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-600">&#128274; {p.lock.lockedByName}</span>}
+                    <span className="text-[11px] text-slate-400 font-mono">{p.updatedAt ? formatRelativeTime(p.updatedAt) : "—"}</span>
                   </div>
                 </div>
               );
             })}
           </div>
         ) : (
-          <div className="proj-table">
-            <div className="pt-row header">
+          <div className="w-full border border-slate-200 rounded-xl overflow-hidden bg-white">
+            <div className="grid grid-cols-[1fr_140px_90px_100px_100px_100px_90px] items-center px-4 py-2.5 border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase tracking-wide text-slate-500">
               <div>Proiect / Firmă</div>
               <div>Program</div>
               <div>Status</div>
@@ -467,23 +412,39 @@ export default function ProjectsPage() {
               const docs = prog.docs || { done: 0, total: 0 };
               const programPath = p.programPath || {};
               return (
-                <div className="pt-row" key={p.id} onClick={() => router.push(`/projects/${p.id}`)}>
-                  <div><div className="pt-name">{p.name}{p.lock && <span className="lock-indicator" style={{ marginLeft: 8 }}>&#128274;</span>}</div><div className="pt-firma">{p.company?.denumire || "—"}</div></div>
-                  <div className="pt-program">{programPath.masura || "—"}</div>
-                  <div><span className="status-badge" style={{ background: st.bg, color: st.color }}>{st.label}</span></div>
+                <div
+                  className="grid grid-cols-[1fr_140px_90px_100px_100px_100px_90px] items-center px-4 py-2.5 border-b border-slate-100 last:border-b-0 transition-colors duration-150 cursor-pointer hover:bg-slate-50"
+                  key={p.id}
+                  onClick={() => router.push(`/projects/${p.id}`)}
+                >
                   <div>
-                    <div className="mini-bar"><div className="mini-fill" style={{ width: `${pct(eligibility.passed, eligibility.total)}%`, background: pct(eligibility.passed, eligibility.total) === 100 ? "var(--accent-green)" : "var(--accent-yellow)" }} /></div>
-                    <div className="mini-pct">{eligibility.passed}/{eligibility.total}</div>
+                    <div className="text-[13px] font-semibold text-slate-900">
+                      {p.name}
+                      {p.lock && <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-600 ml-2">&#128274;</span>}
+                    </div>
+                    <div className="text-[11px] text-slate-400">{p.company?.denumire || "—"}</div>
+                  </div>
+                  <div className="text-[11px] text-slate-500 font-mono">{programPath.masura || "—"}</div>
+                  <div><span className={`inline-flex items-center gap-1 text-[10px] font-semibold rounded-full border px-2 py-0.5 ${st.cls}`}>{st.label}</span></div>
+                  <div>
+                    <div className="h-1 rounded-sm bg-slate-100 overflow-hidden w-full">
+                      <div className={`h-full rounded-sm transition-[width] duration-400 ${pct(eligibility.passed, eligibility.total) === 100 ? "bg-emerald-500" : "bg-amber-400"}`} style={{ width: `${pct(eligibility.passed, eligibility.total)}%` }} />
+                    </div>
+                    <div className="text-[10px] font-mono text-slate-400 mt-0.5">{eligibility.passed}/{eligibility.total}</div>
                   </div>
                   <div>
-                    <div className="mini-bar"><div className="mini-fill" style={{ width: `${pct(elements.filled, elements.total)}%`, background: "var(--accent-blue)" }} /></div>
-                    <div className="mini-pct">{elements.filled}/{elements.total}</div>
+                    <div className="h-1 rounded-sm bg-slate-100 overflow-hidden w-full">
+                      <div className="h-full rounded-sm transition-[width] duration-400 bg-blue-500" style={{ width: `${pct(elements.filled, elements.total)}%` }} />
+                    </div>
+                    <div className="text-[10px] font-mono text-slate-400 mt-0.5">{elements.filled}/{elements.total}</div>
                   </div>
                   <div>
-                    <div className="mini-bar"><div className="mini-fill" style={{ width: `${pct(docs.done, docs.total)}%`, background: "var(--accent-orange)" }} /></div>
-                    <div className="mini-pct">{docs.done}/{docs.total}</div>
+                    <div className="h-1 rounded-sm bg-slate-100 overflow-hidden w-full">
+                      <div className="h-full rounded-sm transition-[width] duration-400 bg-orange-400" style={{ width: `${pct(docs.done, docs.total)}%` }} />
+                    </div>
+                    <div className="text-[10px] font-mono text-slate-400 mt-0.5">{docs.done}/{docs.total}</div>
                   </div>
-                  <div className="pt-time">{p.updatedAt ? formatRelativeTime(p.updatedAt) : "—"}</div>
+                  <div className="text-[11px] text-slate-400">{p.updatedAt ? formatRelativeTime(p.updatedAt) : "—"}</div>
                 </div>
               );
             })}
@@ -493,56 +454,72 @@ export default function ProjectsPage() {
 
       {/* ═══ CREATE PROJECT MODAL ═══ */}
       {showCreate && (
-        <div className="overlay" onClick={e => e.target === e.currentTarget && setShowCreate(false)}>
-          <div className="modal">
-            <div className="modal-title">Proiect nou<button className="modal-close" onClick={() => setShowCreate(false)}>&#10005;</button></div>
+        <div
+          className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[100] animate-[fadeIn_0.2s]"
+          onClick={e => e.target === e.currentTarget && setShowCreate(false)}
+        >
+          <div className="bg-white border border-slate-200 rounded-2xl w-[540px] max-h-[85vh] overflow-y-auto p-7 animate-[slideUp_0.3s_ease]">
+            <div className="text-xl font-extrabold text-slate-900 mb-1 flex justify-between items-center">
+              Proiect nou
+              <button className="bg-transparent border-none text-slate-400 cursor-pointer text-lg hover:text-slate-700" onClick={() => setShowCreate(false)}>&#10005;</button>
+            </div>
 
-            <div className="wz-bar">
+            <div className="flex items-center mb-6">
               {["Firmă", "Program", "Confirmare"].map((label, i) => {
                 const s = i + 1;
-                return <div key={s} style={{ display: "contents" }}>
-                  <div className={`wz-step ${createStep === s ? "on" : ""} ${createStep > s ? "done" : ""}`}>
-                    <div className="wz-num">{createStep > s ? "✓" : s}</div><span>{label}</span>
+                return <div key={s} className="contents">
+                  <div className={`flex items-center gap-1.5 text-[12px] font-semibold ${createStep === s ? "text-blue-600" : createStep > s ? "text-emerald-500" : "text-slate-400"}`}>
+                    <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center text-[11px] font-bold font-mono ${
+                      createStep === s ? "border-blue-600 bg-blue-600 text-white" :
+                      createStep > s ? "border-emerald-500 bg-emerald-500 text-white" :
+                      "border-slate-300"
+                    }`}>{createStep > s ? "✓" : s}</div>
+                    <span>{label}</span>
                   </div>
-                  {s < 3 && <div className={`wz-line ${createStep > s ? "done" : ""}`} />}
+                  {s < 3 && <div className={`flex-1 h-0.5 mx-2.5 ${createStep > s ? "bg-emerald-500" : "bg-slate-200"}`} />}
                 </div>;
               })}
             </div>
 
             {/* Step 1: Select firma */}
             {createStep === 1 && (<>
-              <div className="fg">
-                <label className="fl">Selectează firma</label>
-                <div className="firma-grid">
+              <div className="mb-4">
+                <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1.5">Selectează firma</label>
+                <div className="grid grid-cols-2 gap-2">
                   {companies.map(f => (
-                    <div key={f.id} className={`firma-option ${createData.firmaId === f.id ? "on" : ""}`}
+                    <div key={f.id}
+                      className={`p-3 rounded-md border cursor-pointer transition-all duration-150 text-[13px] font-semibold ${createData.firmaId === f.id ? "border-blue-500 bg-blue-50/60 text-blue-600" : "border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300"}`}
                       onClick={() => setCreateData(p => ({ ...p, firmaId: f.id }))}>
                       &#127970; {f.name}
                     </div>
                   ))}
                 </div>
               </div>
-              <div className="btn-row">
-                <button className="btn-s" onClick={() => setShowCreate(false)}>Anulează</button>
-                <button className="btn-p" disabled={!createData.firmaId} onClick={() => setCreateStep(2)}>Continuă &rarr;</button>
+              <div className="flex gap-2.5 justify-end mt-5">
+                <button className="px-4 py-2 rounded-lg bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 text-sm font-semibold cursor-pointer" onClick={() => setShowCreate(false)}>Anulează</button>
+                <button className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed" disabled={!createData.firmaId} onClick={() => setCreateStep(2)}>Continuă &rarr;</button>
               </div>
             </>)}
 
             {/* Step 2: Select program path */}
             {createStep === 2 && (<>
-              <div className="fg">
-                <label className="fl">Selectează programul și sesiunea</label>
+              <div className="mb-4">
+                <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1.5">Selectează programul și sesiunea</label>
                 {folderTree.map(prog => (
-                  <div className="prog-section" key={prog.program}>
-                    <div className="prog-header"><span className="ph-dot" /> {prog.program}</div>
+                  <div className="mb-3" key={prog.program}>
+                    <div className="text-[13px] font-bold text-slate-900 mb-1.5 flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-blue-500" /> {prog.program}
+                    </div>
                     {prog.masuri.map(m => (
                       <div key={m.name}>
-                        <div className="masura-row"><span className="mr-dot" /> {m.name}</div>
+                        <div className="py-2 px-3 pl-7 text-[13px] text-slate-500 flex items-center gap-1.5 cursor-pointer rounded-md transition-all duration-150 hover:bg-slate-50 hover:text-slate-700">
+                          <span className="w-1.5 h-1.5 rounded-full bg-orange-400" /> {m.name}
+                        </div>
                         {m.sesiuni.map(s => (
                           <div key={s.folderId}
-                            className={`sesiune-row ${createData.folderId === s.folderId ? "on" : ""}`}
+                            className={`py-1.5 px-3 pl-[52px] text-[12px] flex items-center gap-1.5 cursor-pointer rounded-md transition-all duration-150 ${createData.folderId === s.folderId ? "bg-blue-50/60 text-blue-600 font-semibold" : "text-slate-400 hover:bg-slate-50 hover:text-slate-500"}`}
                             onClick={() => setCreateData(p => ({ ...p, folderId: s.folderId, program: prog.program, masura: m.name, sesiune: s.name }))}>
-                            <span className="sr-dot" /> {s.name}
+                            <span className="w-1 h-1 rounded-full bg-slate-300" /> {s.name}
                           </div>
                         ))}
                       </div>
@@ -550,33 +527,39 @@ export default function ProjectsPage() {
                   </div>
                 ))}
               </div>
-              <div className="btn-row">
-                <button className="btn-s" onClick={() => setCreateStep(1)}>&larr; Înapoi</button>
-                <button className="btn-p" disabled={!createData.folderId} onClick={() => setCreateStep(3)}>Continuă &rarr;</button>
+              <div className="flex gap-2.5 justify-end mt-5">
+                <button className="px-4 py-2 rounded-lg bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 text-sm font-semibold cursor-pointer" onClick={() => setCreateStep(1)}>&larr; Înapoi</button>
+                <button className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed" disabled={!createData.folderId} onClick={() => setCreateStep(3)}>Continuă &rarr;</button>
               </div>
             </>)}
 
             {/* Step 3: Name + confirm */}
             {createStep === 3 && (<>
-              <div className="fg">
-                <label className="fl">Denumire proiect</label>
-                <input className="fi-full" placeholder="ex: Modernizare linie producție..." value={createData.name} onChange={e => setCreateData(p => ({ ...p, name: e.target.value }))} autoFocus />
+              <div className="mb-4">
+                <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1.5">Denumire proiect</label>
+                <input
+                  className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 bg-white text-slate-900 text-sm outline-none focus:border-blue-500 placeholder:text-slate-400"
+                  placeholder="ex: Modernizare linie producție..."
+                  value={createData.name}
+                  onChange={e => setCreateData(p => ({ ...p, name: e.target.value }))}
+                  autoFocus
+                />
               </div>
 
-              <div className="summary-card">
-                <div className="summary-row"><span className="sr-label">Firmă:</span><span className="sr-value">{companies.find(f => f.id === createData.firmaId)?.name}</span></div>
-                <div className="summary-row"><span className="sr-label">Program:</span><span className="sr-value">{createData.program}</span></div>
-                <div className="summary-row"><span className="sr-label">Măsură:</span><span className="sr-value">{createData.masura}</span></div>
-                <div className="summary-row"><span className="sr-label">Sesiune:</span><span className="sr-value">{createData.sesiune}</span></div>
+              <div className="p-4 rounded-xl border border-blue-200 bg-blue-50/30 mb-4">
+                <div className="flex gap-2 text-[13px] mb-1"><span className="text-slate-400 min-w-[80px]">Firmă:</span><span className="text-slate-900 font-semibold">{companies.find(f => f.id === createData.firmaId)?.name}</span></div>
+                <div className="flex gap-2 text-[13px] mb-1"><span className="text-slate-400 min-w-[80px]">Program:</span><span className="text-slate-900 font-semibold">{createData.program}</span></div>
+                <div className="flex gap-2 text-[13px] mb-1"><span className="text-slate-400 min-w-[80px]">Măsură:</span><span className="text-slate-900 font-semibold">{createData.masura}</span></div>
+                <div className="flex gap-2 text-[13px]"><span className="text-slate-400 min-w-[80px]">Sesiune:</span><span className="text-slate-900 font-semibold">{createData.sesiune}</span></div>
               </div>
 
-              <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 16, lineHeight: 1.5 }}>
+              <div className="text-[12px] text-slate-400 mb-4 leading-relaxed">
                 La creare, proiectul va prelua automat ghidurile, template-urile și regulile din sesiunea selectată. Solomon va fi disponibil pentru pregătirea și verificarea conformității dosarului.
               </div>
 
-              <div className="btn-row">
-                <button className="btn-s" onClick={() => setCreateStep(2)}>&larr; Înapoi</button>
-                <button className="btn-p" disabled={!createData.name.trim() || creating} onClick={handleCreate}>
+              <div className="flex gap-2.5 justify-end mt-5">
+                <button className="px-4 py-2 rounded-lg bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 text-sm font-semibold cursor-pointer" onClick={() => setCreateStep(2)}>&larr; Înapoi</button>
+                <button className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed" disabled={!createData.name.trim() || creating} onClick={handleCreate}>
                   {creating ? "Se creează..." : "Creează proiect"}
                 </button>
               </div>
@@ -584,6 +567,6 @@ export default function ProjectsPage() {
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }

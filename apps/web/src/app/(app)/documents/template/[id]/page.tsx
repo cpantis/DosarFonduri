@@ -257,11 +257,12 @@ export default function TemplateViewerPage() {
   };
 
   // ─── PROGRESS COLORS ───
-  const progressColor = pct >= 80 ? "var(--accent-green)" : pct >= 40 ? "var(--accent-yellow)" : "var(--accent-red)";
+  const progressColor = pct >= 80 ? "text-emerald-500" : pct >= 40 ? "text-amber-500" : "text-red-500";
+  const progressBg = pct >= 80 ? "bg-emerald-500" : pct >= 40 ? "bg-amber-500" : "bg-red-500";
 
   if (loading) {
     return (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--text-muted)", fontSize: 14 }}>
+      <div className="flex items-center justify-center h-full text-slate-400 text-sm">
         Se incarca template-ul...
       </div>
     );
@@ -269,9 +270,9 @@ export default function TemplateViewerPage() {
 
   if (error || !template) {
     return (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--accent-red)", fontSize: 14, flexDirection: "column", gap: 12 }}>
+      <div className="flex items-center justify-center h-full text-red-500 text-sm flex-col gap-3">
         <span>{error || "Template negasit"}</span>
-        <button onClick={() => router.back()} style={{ padding: "6px 16px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--text-secondary)", cursor: "pointer", fontFamily: "var(--font-sans)", fontSize: 13 }}>Inapoi</button>
+        <button onClick={() => router.back()} className="px-4 py-1.5 rounded-md border border-slate-200 bg-transparent text-slate-500 cursor-pointer font-sans text-[13px]">Inapoi</button>
       </div>
     );
   }
@@ -280,92 +281,92 @@ export default function TemplateViewerPage() {
     <>
       <style>{`
         .tv{display:flex;flex-direction:column;height:100%}
-        .tv-header{padding:12px 24px;border-bottom:1px solid var(--border);background:var(--bg-surface);display:flex;align-items:center;gap:16px;flex-shrink:0}
-        .tv-back{background:none;border:1px solid var(--border);border-radius:var(--r-sm);padding:6px 12px;color:var(--text-secondary);font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font-sans);display:flex;align-items:center;gap:4px;transition:all .15s}
-        .tv-back:hover{border-color:var(--border-active);color:var(--text-primary)}
+        .tv-header{padding:12px 24px;border-bottom:1px solid rgb(226 232 240);background:white;display:flex;align-items:center;gap:16px;flex-shrink:0}
+        .tv-back{background:none;border:1px solid rgb(226 232 240);border-radius:6px;padding:6px 12px;color:rgb(100 116 139);font-size:13px;font-weight:600;cursor:pointer;font-family:'Inter',system-ui,sans-serif;display:flex;align-items:center;gap:4px;transition:all .15s}
+        .tv-back:hover{border-color:rgb(203 213 225);color:rgb(15 23 42)}
         .tv-title{font-size:16px;font-weight:800;flex:1}
-        .tv-file-badge{font-size:10px;font-weight:700;text-transform:uppercase;padding:3px 8px;border-radius:4px;background:rgba(77,139,255,.1);color:var(--accent-blue);letter-spacing:.5px}
+        .tv-file-badge{font-size:10px;font-weight:700;text-transform:uppercase;padding:3px 8px;border-radius:4px;background:rgba(77,139,255,.1);color:rgb(37 99 235);letter-spacing:.5px}
         .tv-mode-badge{font-size:9px;font-weight:700;padding:2px 8px;border-radius:3px;text-transform:uppercase;letter-spacing:.5px}
-        .tv-mode-badge.fill{background:rgba(77,139,255,.12);color:var(--accent-blue)}
-        .tv-mode-badge.compose{background:rgba(167,139,250,.15);color:var(--accent-purple)}
+        .tv-mode-badge.fill{background:rgba(77,139,255,.12);color:rgb(37 99 235)}
+        .tv-mode-badge.compose{background:rgba(167,139,250,.15);color:rgb(139 92 246)}
         .tv-progress{display:flex;align-items:center;gap:10px}
-        .tv-pbar{width:100px;height:6px;background:var(--bg-deep);border-radius:3px;overflow:hidden}
+        .tv-pbar{width:100px;height:6px;background:rgb(248 250 252);border-radius:3px;overflow:hidden}
         .tv-pfill{height:100%;border-radius:3px;transition:width .3s}
-        .tv-ppct{font-size:13px;font-weight:700;font-family:var(--font-mono)}
+        .tv-ppct{font-size:13px;font-weight:700;font-family:'JetBrains Mono',monospace}
         .tv-body{flex:1;display:flex;overflow:hidden}
 
         /* Split handle */
-        .tv-split-handle{width:6px;cursor:col-resize;background:var(--bg-surface);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .15s;position:relative;z-index:2}
-        .tv-split-handle:hover,.tv-split-handle:active{background:var(--border-active)}
-        .tv-sh-dots{width:2px;height:32px;background:var(--text-muted);border-radius:1px;opacity:.4;transition:opacity .15s}
+        .tv-split-handle{width:6px;cursor:col-resize;background:white;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .15s;position:relative;z-index:2}
+        .tv-split-handle:hover,.tv-split-handle:active{background:rgb(203 213 225)}
+        .tv-sh-dots{width:2px;height:32px;background:rgb(148 163 184);border-radius:1px;opacity:.4;transition:opacity .15s}
         .tv-split-handle:hover .tv-sh-dots{opacity:.8}
 
         /* Left panel: elements checklist */
-        .tv-left{min-width:280px;max-width:640px;border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;background:var(--bg-surface);flex-shrink:0}
-        .tv-left-bar{padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-shrink:0}
-        .pill-group{display:flex;background:var(--bg-deep);border-radius:var(--r-md);padding:2px;gap:1px}
-        .pill{padding:4px 10px;border-radius:6px;font-size:11px;font-weight:600;border:none;cursor:pointer;background:transparent;color:var(--text-muted);font-family:var(--font-sans);transition:all .15s}
-        .pill:hover{color:var(--text-secondary)}.pill.on{background:var(--accent-blue);color:#fff}
+        .tv-left{min-width:280px;max-width:640px;border-right:1px solid rgb(226 232 240);display:flex;flex-direction:column;overflow:hidden;background:white;flex-shrink:0}
+        .tv-left-bar{padding:10px 16px;border-bottom:1px solid rgb(226 232 240);display:flex;align-items:center;gap:8px;flex-shrink:0}
+        .pill-group{display:flex;background:rgb(248 250 252);border-radius:10px;padding:2px;gap:1px}
+        .pill{padding:4px 10px;border-radius:6px;font-size:11px;font-weight:600;border:none;cursor:pointer;background:transparent;color:rgb(148 163 184);font-family:'Inter',system-ui,sans-serif;transition:all .15s}
+        .pill:hover{color:rgb(100 116 139)}.pill.on{background:rgb(37 99 235);color:#fff}
         .tv-left-scroll{flex:1;overflow-y:auto;padding:8px 12px}
 
-        .tv-pg-header{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text-muted);padding:12px 6px 6px;display:flex;align-items:center;gap:6px}
-        .tv-pg-header .pg-num{color:var(--accent-blue)}
-        .tv-pg-count{margin-left:auto;font-family:var(--font-mono);color:var(--text-muted);font-size:10px}
+        .tv-pg-header{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:rgb(148 163 184);padding:12px 6px 6px;display:flex;align-items:center;gap:6px}
+        .tv-pg-header .pg-num{color:rgb(37 99 235)}
+        .tv-pg-count{margin-left:auto;font-family:'JetBrains Mono',monospace;color:rgb(148 163 184);font-size:10px}
 
         /* Element cards — Neemia-aligned */
-        .el-card{padding:10px 12px;border-radius:var(--r-sm);border:1px solid var(--border);background:var(--bg-elevated);cursor:pointer;transition:all .12s;margin-bottom:4px}
-        .el-card:hover{border-color:var(--border-active)}
-        .el-card.active{background:rgba(77,139,255,.06);border-color:var(--accent-blue)}
-        .el-card.is-validated{border-left:3px solid var(--accent-green)}
-        .el-card.is-detected{border-left:3px solid var(--accent-yellow)}
-        .el-card.is-manual{border-left:3px solid var(--accent-purple)}
+        .el-card{padding:10px 12px;border-radius:6px;border:1px solid rgb(226 232 240);background:rgb(248 250 252);cursor:pointer;transition:all .12s;margin-bottom:4px}
+        .el-card:hover{border-color:rgb(203 213 225)}
+        .el-card.active{background:rgba(77,139,255,.06);border-color:rgb(59 130 246)}
+        .el-card.is-validated{border-left:3px solid rgb(16 185 129)}
+        .el-card.is-detected{border-left:3px solid rgb(245 158 11)}
+        .el-card.is-manual{border-left:3px solid rgb(139 92 246)}
         .el-card-top{display:flex;align-items:center;gap:8px;margin-bottom:4px}
-        .el-label{font-size:12px;font-weight:600;color:var(--text-primary);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-        .el-type{font-size:10px;font-family:var(--font-mono);color:var(--text-muted);padding:1px 6px;background:var(--bg-deep);border-radius:4px;flex-shrink:0}
+        .el-label{font-size:12px;font-weight:600;color:rgb(15 23 42);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+        .el-type{font-size:10px;font-family:'JetBrains Mono',monospace;color:rgb(148 163 184);padding:1px 6px;background:rgb(248 250 252);border-radius:4px;flex-shrink:0}
         .el-card-bottom{display:flex;align-items:center;gap:8px}
-        .el-key{font-size:11px;font-family:var(--font-mono);color:var(--text-secondary)}
-        .el-line{font-size:10px;color:var(--text-muted)}
-        .el-validate{flex-shrink:0;padding:3px 10px;border-radius:4px;border:1px solid var(--border);background:transparent;font-size:10px;font-weight:700;cursor:pointer;font-family:var(--font-sans);transition:all .12s;color:var(--text-muted);margin-left:auto}
-        .el-validate:hover{border-color:var(--accent-green);color:var(--accent-green)}
-        .el-validate.on{background:rgba(52,211,153,.1);border-color:var(--accent-green);color:var(--accent-green)}
+        .el-key{font-size:11px;font-family:'JetBrains Mono',monospace;color:rgb(100 116 139)}
+        .el-line{font-size:10px;color:rgb(148 163 184)}
+        .el-validate{flex-shrink:0;padding:3px 10px;border-radius:4px;border:1px solid rgb(226 232 240);background:transparent;font-size:10px;font-weight:700;cursor:pointer;font-family:'Inter',system-ui,sans-serif;transition:all .12s;color:rgb(148 163 184);margin-left:auto}
+        .el-validate:hover{border-color:rgb(16 185 129);color:rgb(16 185 129)}
+        .el-validate.on{background:rgba(52,211,153,.1);border-color:rgb(16 185 129);color:rgb(16 185 129)}
         .el-status{font-size:10px;font-weight:700;flex-shrink:0}
-        .el-status.validated{color:var(--accent-green)}
-        .el-status.detected{color:var(--accent-yellow)}
-        .el-status.manual{color:var(--accent-purple)}
+        .el-status.validated{color:rgb(16 185 129)}
+        .el-status.detected{color:rgb(245 158 11)}
+        .el-status.manual{color:rgb(139 92 246)}
 
-        .btn-add{width:calc(100% - 12px);margin:8px 6px;padding:8px;border-radius:var(--r-sm);border:1px dashed var(--border);background:transparent;color:var(--text-muted);font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font-sans);transition:all .15s;text-align:center}
-        .btn-add:hover{border-color:var(--accent-purple);color:var(--accent-purple)}
+        .btn-add{width:calc(100% - 12px);margin:8px 6px;padding:8px;border-radius:6px;border:1px dashed rgb(226 232 240);background:transparent;color:rgb(148 163 184);font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',system-ui,sans-serif;transition:all .15s;text-align:center}
+        .btn-add:hover{border-color:rgb(139 92 246);color:rgb(139 92 246)}
 
-        .add-form{margin:8px 6px;padding:14px;background:var(--bg-elevated);border-radius:var(--r-md);border:1px solid var(--border)}
+        .add-form{margin:8px 6px;padding:14px;background:rgb(248 250 252);border-radius:10px;border:1px solid rgb(226 232 240)}
         .add-form-title{font-size:12px;font-weight:700;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center}
-        .add-form-close{background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:14px}.add-form-close:hover{color:var(--text-primary)}
+        .add-form-close{background:none;border:none;color:rgb(148 163 184);cursor:pointer;font-size:14px}.add-form-close:hover{color:rgb(15 23 42)}
         .add-row{display:flex;gap:6px;margin-bottom:8px}
-        .add-input{flex:1;padding:6px 10px;border-radius:var(--r-sm);border:1px solid var(--border);background:var(--bg-deep);color:var(--text-primary);font-size:12px;font-family:var(--font-sans);outline:none}
-        .add-input:focus{border-color:var(--accent-blue)}.add-input::placeholder{color:var(--text-muted)}
-        .add-select{padding:6px 10px;border-radius:var(--r-sm);border:1px solid var(--border);background:var(--bg-deep);color:var(--text-primary);font-size:12px;font-family:var(--font-sans);outline:none}
-        .add-btn{padding:6px 16px;border-radius:var(--r-sm);border:none;background:var(--accent-blue);color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font-sans)}.add-btn:disabled{opacity:.4;cursor:not-allowed}
+        .add-input{flex:1;padding:6px 10px;border-radius:6px;border:1px solid rgb(226 232 240);background:rgb(248 250 252);color:rgb(15 23 42);font-size:12px;font-family:'Inter',system-ui,sans-serif;outline:none}
+        .add-input:focus{border-color:rgb(37 99 235)}.add-input::placeholder{color:rgb(148 163 184)}
+        .add-select{padding:6px 10px;border-radius:6px;border:1px solid rgb(226 232 240);background:rgb(248 250 252);color:rgb(15 23 42);font-size:12px;font-family:'Inter',system-ui,sans-serif;outline:none}
+        .add-btn{padding:6px 16px;border-radius:6px;border:none;background:rgb(37 99 235);color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:'Inter',system-ui,sans-serif}.add-btn:disabled{opacity:.4;cursor:not-allowed}
 
-        .tv-legend{padding:8px 16px;border-top:1px solid var(--border);display:flex;gap:14px;font-size:10px;color:var(--text-muted);flex-shrink:0}
+        .tv-legend{padding:8px 16px;border-top:1px solid rgb(226 232 240);display:flex;gap:14px;font-size:10px;color:rgb(148 163 184);flex-shrink:0}
         .tv-legend-item{display:flex;align-items:center;gap:4px}
         .tv-legend-dot{width:8px;height:8px;border-radius:50%}
 
         /* Right panel: Document preview — Neemia pixel-perfect style */
-        .tv-right{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;background:var(--bg-deep)}
-        .tv-right-bar{padding:10px 24px;border-bottom:1px solid var(--border);background:var(--bg-surface);display:flex;align-items:center;gap:12px;flex-shrink:0}
-        .tv-right-page{font-size:13px;font-family:var(--font-mono);color:var(--text-secondary)}
+        .tv-right{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;background:rgb(248 250 252)}
+        .tv-right-bar{padding:10px 24px;border-bottom:1px solid rgb(226 232 240);background:white;display:flex;align-items:center;gap:12px;flex-shrink:0}
+        .tv-right-page{font-size:13px;font-family:'JetBrains Mono',monospace;color:rgb(100 116 139)}
         .tv-right-title{font-size:14px;font-weight:700;flex:1}
-        .tv-val-all{padding:5px 12px;border-radius:var(--r-sm);border:1px solid var(--accent-green);background:transparent;color:var(--accent-green);font-size:11px;font-weight:600;cursor:pointer;font-family:var(--font-sans);transition:all .15s}
+        .tv-val-all{padding:5px 12px;border-radius:6px;border:1px solid rgb(16 185 129);background:transparent;color:rgb(16 185 129);font-size:11px;font-weight:600;cursor:pointer;font-family:'Inter',system-ui,sans-serif;transition:all .15s}
         .tv-val-all:hover{background:rgba(52,211,153,.08)}
 
         /* Page navigation bar — like Neemia */
-        .tv-page-nav{display:flex;align-items:center;gap:10px;padding:8px 16px;border-bottom:1px solid var(--border);background:var(--bg-surface);flex-shrink:0}
+        .tv-page-nav{display:flex;align-items:center;gap:10px;padding:8px 16px;border-bottom:1px solid rgb(226 232 240);background:white;flex-shrink:0}
         .tv-pn-scroll{display:flex;gap:4px;flex:1;overflow-x:auto;padding:2px 0}
-        .tv-pn-thumb{display:flex;align-items:center;gap:4px;padding:4px 10px;border-radius:var(--r-sm);border:1px solid transparent;cursor:pointer;transition:all .15s;font-size:11px;font-weight:600;color:var(--text-muted);white-space:nowrap}
-        .tv-pn-thumb:hover{background:var(--bg-hover);border-color:var(--border)}
-        .tv-pn-thumb.active{background:rgba(77,139,255,.08);border-color:var(--accent-blue);color:var(--accent-blue)}
-        .tv-pn-thumb.complete .tv-pn-dot{background:var(--accent-green)}
-        .tv-pn-thumb.partial .tv-pn-dot{background:var(--accent-yellow)}
-        .tv-pn-thumb.empty .tv-pn-dot{background:var(--accent-red)}
+        .tv-pn-thumb{display:flex;align-items:center;gap:4px;padding:4px 10px;border-radius:6px;border:1px solid transparent;cursor:pointer;transition:all .15s;font-size:11px;font-weight:600;color:rgb(148 163 184);white-space:nowrap}
+        .tv-pn-thumb:hover{background:rgb(241 245 249);border-color:rgb(226 232 240)}
+        .tv-pn-thumb.active{background:rgba(77,139,255,.08);border-color:rgb(59 130 246);color:rgb(37 99 235)}
+        .tv-pn-thumb.complete .tv-pn-dot{background:rgb(16 185 129)}
+        .tv-pn-thumb.partial .tv-pn-dot{background:rgb(245 158 11)}
+        .tv-pn-thumb.empty .tv-pn-dot{background:rgb(239 68 68)}
         .tv-pn-dot{width:6px;height:6px;border-radius:50%}
 
         .tv-right-scroll{flex:1;overflow:auto;padding:24px;display:flex;justify-content:center}
@@ -402,9 +403,9 @@ export default function TemplateViewerPage() {
 
         .tv-left-scroll::-webkit-scrollbar,.tv-right-scroll::-webkit-scrollbar{width:5px}
         .tv-left-scroll::-webkit-scrollbar-track,.tv-right-scroll::-webkit-scrollbar-track{background:transparent}
-        .tv-left-scroll::-webkit-scrollbar-thumb,.tv-right-scroll::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+        .tv-left-scroll::-webkit-scrollbar-thumb,.tv-right-scroll::-webkit-scrollbar-thumb{background:rgb(226 232 240);border-radius:3px}
 
-        .tv-empty-page{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--text-muted);font-size:14px;gap:8px}
+        .tv-empty-page{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:rgb(148 163 184);font-size:14px;gap:8px}
         .tv-empty-icon{font-size:48px;opacity:.3}
       `}</style>
 
@@ -416,46 +417,46 @@ export default function TemplateViewerPage() {
           <span className="tv-file-badge">{template.fileType}</span>
           <span className={`tv-mode-badge ${genMode}`}>{genMode === "compose" ? "COMPOSE" : "FILL"}</span>
           <button
-            className="tv-compose-toggle"
+            className="tv-compose-toggle px-2.5 py-1 rounded border border-slate-200 bg-transparent text-violet-500 text-[11px] font-bold cursor-pointer font-sans"
             onClick={() => setShowComposeConfig(v => !v)}
-            style={{ padding: "4px 10px", borderRadius: 4, border: "1px solid var(--border)", background: "transparent", color: "var(--accent-purple)", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-sans)" }}
           >
             {showComposeConfig ? "Ascunde config" : "Config generare"}
           </button>
           <div className="tv-progress">
-            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{validatedEls}/{totalEls} validate</span>
-            <div className="tv-pbar"><div className="tv-pfill" style={{ width: `${pct}%`, background: progressColor }} /></div>
-            <span className="tv-ppct" style={{ color: progressColor }}>{pct}%</span>
+            <span className="text-xs text-slate-400">{validatedEls}/{totalEls} validate</span>
+            <div className="tv-pbar"><div className={`tv-pfill ${progressBg}`} style={{ width: `${pct}%` }} /></div>
+            <span className={`tv-ppct ${progressColor}`}>{pct}%</span>
           </div>
         </div>
 
         {/* COMPOSE CONFIG PANEL */}
         {showComposeConfig && (
-          <div style={{ padding: "16px 24px", borderBottom: "1px solid var(--border)", background: "var(--bg-elevated)" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)" }}>Mod generare:</span>
-              <div style={{ display: "flex", background: "var(--bg-deep)", borderRadius: 8, padding: 2, gap: 1 }}>
+          <div className="px-6 py-4 border-b border-slate-200 bg-slate-50">
+            <div className="flex items-center gap-3 mb-3">
+              <span className="text-xs font-bold text-slate-500">Mod generare:</span>
+              <div className="flex bg-slate-50 rounded-lg p-0.5 gap-px">
                 <button
                   onClick={() => setGenMode("fill")}
-                  style={{ padding: "4px 14px", borderRadius: 6, fontSize: 12, fontWeight: 600, border: "none", cursor: "pointer", fontFamily: "var(--font-sans)", background: genMode === "fill" ? "var(--accent-blue)" : "transparent", color: genMode === "fill" ? "#fff" : "var(--text-muted)" }}
+                  className={`px-3.5 py-1 rounded-md text-xs font-semibold border-none cursor-pointer font-sans ${genMode === "fill" ? "bg-blue-600 text-white" : "bg-transparent text-slate-400"}`}
                 >
                   FILL
                 </button>
                 <button
                   onClick={() => setGenMode("compose")}
-                  style={{ padding: "4px 14px", borderRadius: 6, fontSize: 12, fontWeight: 600, border: "none", cursor: "pointer", fontFamily: "var(--font-sans)", background: genMode === "compose" ? "var(--accent-purple)" : "transparent", color: genMode === "compose" ? "#fff" : "var(--text-muted)" }}
+                  className={`px-3.5 py-1 rounded-md text-xs font-semibold border-none cursor-pointer font-sans ${genMode === "compose" ? "bg-violet-500 text-white" : "bg-transparent text-slate-400"}`}
                 >
                   COMPOSE
                 </button>
               </div>
-              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+              <span className="text-[11px] text-slate-400">
                 {genMode === "fill" ? "Înlocuiește {{placeholder}} cu valori — fără AI" : "AI generează conținut narativ + tabele dinamice"}
               </span>
-              <div style={{ flex: 1 }} />
+              <div className="flex-1" />
               <button
                 onClick={handleSaveComposeConfig}
                 disabled={composeSaving}
-                style={{ padding: "5px 16px", borderRadius: 4, border: "1px solid var(--accent-green)", background: "rgba(52,211,153,.08)", color: "var(--accent-green)", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-sans)", opacity: composeSaving ? 0.5 : 1 }}
+                className="px-4 py-1.5 rounded border border-emerald-500 bg-emerald-500/[.08] text-emerald-500 text-xs font-bold cursor-pointer font-sans"
+                style={{ opacity: composeSaving ? 0.5 : 1 }}
               >
                 {composeSaving ? "Se salvează..." : "Salvează config"}
               </button>
@@ -463,41 +464,41 @@ export default function TemplateViewerPage() {
 
             {genMode === "compose" && (
               <>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-                  <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-secondary)" }}>Model AI:</span>
+                <div className="flex items-center gap-2.5 mb-2.5">
+                  <span className="text-[11px] font-semibold text-slate-500">Model AI:</span>
                   <input
                     value={composeAiModel}
                     onChange={e => setComposeAiModel(e.target.value)}
                     placeholder="claude-sonnet-4-20250514 (default din org)"
-                    style={{ flex: 1, maxWidth: 320, padding: "4px 10px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg-deep)", color: "var(--text-primary)", fontSize: 12, fontFamily: "var(--font-mono)" }}
+                    className="flex-1 max-w-[320px] px-2.5 py-1 rounded border border-slate-200 bg-slate-50 text-slate-900 text-xs font-mono"
                   />
                   <button
                     onClick={handleDetectMarkers}
                     disabled={composeDetecting}
-                    style={{ padding: "4px 12px", borderRadius: 4, border: "1px solid var(--accent-blue)", background: "rgba(77,139,255,.06)", color: "var(--accent-blue)", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "var(--font-sans)" }}
+                    className="px-3 py-1 rounded border border-blue-500 bg-blue-600/[.06] text-blue-600 text-[11px] font-semibold cursor-pointer font-sans"
                   >
                     {composeDetecting ? "Se detectează..." : "Auto-detectează markeri"}
                   </button>
                   <button
                     onClick={handleAddComposeSection}
-                    style={{ padding: "4px 12px", borderRadius: 4, border: "1px solid var(--accent-purple)", background: "rgba(167,139,250,.06)", color: "var(--accent-purple)", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "var(--font-sans)" }}
+                    className="px-3 py-1 rounded border border-violet-500 bg-violet-500/[.06] text-violet-500 text-[11px] font-semibold cursor-pointer font-sans"
                   >
                     + Secțiune
                   </button>
                 </div>
 
                 {composeSections.length === 0 && (
-                  <div style={{ fontSize: 12, color: "var(--text-muted)", padding: "10px 0" }}>
+                  <div className="text-xs text-slate-400 py-2.5">
                     Nicio secțiune COMPOSE definită. Adăugați markeri {"{{COMPOSE:...}}"} sau {"{{TABLE:...}}"} în template, apoi folosiți &quot;Auto-detectează&quot;.
                   </div>
                 )}
 
                 {composeSections.map((sec, si) => (
-                  <div key={si} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg-surface)" }}>
+                  <div key={si} className="flex items-center gap-2 mb-1.5 px-2.5 py-1.5 rounded-md border border-slate-200 bg-white">
                     <select
                       value={sec.type}
                       onChange={e => handleUpdateComposeSection(si, "type", e.target.value)}
-                      style={{ padding: "3px 6px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg-deep)", color: "var(--text-primary)", fontSize: 11, fontFamily: "var(--font-sans)" }}
+                      className="px-1.5 py-0.5 rounded border border-slate-200 bg-slate-50 text-slate-900 text-[11px] font-sans"
                     >
                       <option value="narrative">Narativ</option>
                       <option value="table">Tabel</option>
@@ -507,23 +508,23 @@ export default function TemplateViewerPage() {
                       value={sec.marker}
                       onChange={e => handleUpdateComposeSection(si, "marker", e.target.value)}
                       placeholder="COMPOSE:secțiune"
-                      style={{ width: 180, padding: "3px 8px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg-deep)", color: "var(--text-primary)", fontSize: 11, fontFamily: "var(--font-mono)" }}
+                      className="w-[180px] px-2 py-0.5 rounded border border-slate-200 bg-slate-50 text-slate-900 text-[11px] font-mono"
                     />
                     <input
                       value={sec.label}
                       onChange={e => handleUpdateComposeSection(si, "label", e.target.value)}
                       placeholder="Etichetă secțiune"
-                      style={{ flex: 1, padding: "3px 8px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg-deep)", color: "var(--text-primary)", fontSize: 11, fontFamily: "var(--font-sans)" }}
+                      className="flex-1 px-2 py-0.5 rounded border border-slate-200 bg-slate-50 text-slate-900 text-[11px] font-sans"
                     />
                     <input
                       value={sec.instructions || ""}
                       onChange={e => handleUpdateComposeSection(si, "instructions", e.target.value)}
                       placeholder="Instrucțiuni AI (opțional)"
-                      style={{ flex: 1, padding: "3px 8px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--bg-deep)", color: "var(--text-primary)", fontSize: 11, fontFamily: "var(--font-sans)" }}
+                      className="flex-1 px-2 py-0.5 rounded border border-slate-200 bg-slate-50 text-slate-900 text-[11px] font-sans"
                     />
                     <button
                       onClick={() => handleRemoveComposeSection(si)}
-                      style={{ padding: "2px 8px", borderRadius: 4, border: "1px solid var(--accent-red)", background: "transparent", color: "var(--accent-red)", fontSize: 11, cursor: "pointer", fontFamily: "var(--font-sans)" }}
+                      className="px-2 py-0.5 rounded border border-red-500 bg-transparent text-red-500 text-[11px] cursor-pointer font-sans"
                     >
                       &times;
                     </button>
@@ -586,7 +587,7 @@ export default function TemplateViewerPage() {
               })}
 
               {filteredEls.length === 0 && (
-                <div style={{ textAlign: "center", padding: 40, color: "var(--text-muted)", fontSize: 13 }}>
+                <div className="text-center p-10 text-slate-400 text-[13px]">
                   Niciun element cu filtrul selectat
                 </div>
               )}
@@ -608,7 +609,7 @@ export default function TemplateViewerPage() {
                     <select className="add-select" value={newEl.type} onChange={e => setNewEl(p => ({ ...p, type: e.target.value }))}>
                       {TYPE_OPTIONS.map(t => <option key={t}>{t}</option>)}
                     </select>
-                    <span style={{ fontSize: 11, color: "var(--accent-purple)", alignSelf: "center" }}>Pag. {currentPageNum}</span>
+                    <span className="text-[11px] text-violet-500 self-center">Pag. {currentPageNum}</span>
                   </div>
                   <button className="add-btn" disabled={!newEl.key || !newEl.label} onClick={handleAddElement}>Adauga element</button>
                 </div>
@@ -616,9 +617,9 @@ export default function TemplateViewerPage() {
             </div>
 
             <div className="tv-legend">
-              <div className="tv-legend-item"><div className="tv-legend-dot" style={{ background: "var(--accent-green)" }} /> Validat</div>
-              <div className="tv-legend-item"><div className="tv-legend-dot" style={{ background: "var(--accent-yellow)" }} /> Extras automat</div>
-              <div className="tv-legend-item"><div className="tv-legend-dot" style={{ background: "var(--accent-purple)" }} /> Adaugat manual</div>
+              <div className="tv-legend-item"><div className="tv-legend-dot bg-emerald-500" /> Validat</div>
+              <div className="tv-legend-item"><div className="tv-legend-dot bg-amber-500" /> Extras automat</div>
+              <div className="tv-legend-item"><div className="tv-legend-dot bg-violet-500" /> Adaugat manual</div>
             </div>
           </div>
 
@@ -647,7 +648,7 @@ export default function TemplateViewerPage() {
                     >
                       <span className="tv-pn-dot" />
                       <span>Pag. {pg.num}</span>
-                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 10 }}>{pg.validatedElements}/{pg.totalElements}</span>
+                      <span className="font-mono text-[10px]">{pg.validatedElements}/{pg.totalElements}</span>
                     </div>
                   );
                 })}

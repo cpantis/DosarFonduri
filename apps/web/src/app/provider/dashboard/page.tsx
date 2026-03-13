@@ -74,14 +74,15 @@ interface Revenue {
   mrr: number;
 }
 
-const STATUS_MAP: Record<string, { label: string; color: string; bg: string }> = {
-  active: { label: "Activ", color: "var(--accent-green)", bg: "var(--badge-submitted-bg)" },
-  trial: { label: "Trial", color: "var(--accent-yellow)", bg: "var(--badge-review-bg)" },
-  inactive: { label: "Inactiv", color: "var(--badge-draft-color)", bg: "var(--badge-draft-bg)" },
-  expired: { label: "Expirat", color: "var(--accent-red)", bg: "var(--badge-rejected-bg)" },
+const STATUS_MAP: Record<string, { label: string; colorClass: string; bgClass: string }> = {
+  active: { label: "Activ", colorClass: "text-emerald-500", bgClass: "bg-emerald-500/10" },
+  trial: { label: "Trial", colorClass: "text-amber-500", bgClass: "bg-amber-500/10" },
+  inactive: { label: "Inactiv", colorClass: "text-slate-400", bgClass: "bg-slate-400/10" },
+  expired: { label: "Expirat", colorClass: "text-red-500", bgClass: "bg-red-500/10" },
 };
 
-const PLAN_COLORS: Record<string, string> = { starter: "var(--accent-orange)", professional: "var(--accent-blue)", enterprise: "var(--accent-purple)" };
+const PLAN_COLOR_CLASSES: Record<string, string> = { starter: "text-orange-500", professional: "text-blue-600", enterprise: "text-violet-500" };
+const PLAN_BG_CLASSES: Record<string, string> = { starter: "bg-orange-500", professional: "bg-blue-600", enterprise: "bg-violet-500" };
 const PLAN_PRICES: Record<string, number> = { starter: 49, professional: 149, enterprise: 399 };
 
 export default function ProviderDashboardPage() {
@@ -282,8 +283,8 @@ export default function ProviderDashboardPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center" style={{ background: "var(--bg-deep)" }}>
-        <div className="text-sm" style={{ color: "var(--text-muted)" }}>Se incarca...</div>
+      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+        <div className="text-sm text-slate-400">Se incarca...</div>
       </div>
     );
   }
@@ -291,52 +292,50 @@ export default function ProviderDashboardPage() {
   return (
     <>
       <style>{`
-        .page{display:flex;height:100vh;overflow:hidden;background:var(--bg-deep);color:var(--text-primary)}
-        .side{width:220px;min-width:220px;background:var(--bg-surface);border-right:1px solid var(--border);display:flex;flex-direction:column}
-        .s-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:var(--r-sm);cursor:pointer;font-size:14px;font-weight:500;color:var(--text-secondary);transition:all .15s;margin-bottom:2px}
-        .s-item:hover{background:var(--bg-hover);color:var(--text-primary)}.s-item.active{background:rgba(167,139,250,.1);color:var(--accent-purple);font-weight:600}
-        .stat{padding:16px 18px;border-radius:var(--r-md);border:1px solid var(--border);background:var(--bg-elevated)}
-        .cab-card{display:flex;align-items:center;gap:16px;padding:16px 20px;border-radius:var(--r-md);border:1px solid var(--border);background:var(--bg-surface);margin-bottom:8px;cursor:pointer;transition:all .15s}
-        .cab-card:hover{border-color:var(--border-active);background:var(--bg-elevated)}
-        .cab-card.active{border-color:var(--accent-purple);background:rgba(167,139,250,.04)}
-        .cab-detail{padding:20px;border-radius:var(--r-md);border:1px solid var(--accent-purple);background:rgba(167,139,250,.03);margin-top:8px;margin-bottom:8px}
-        .pill-group{display:flex;background:var(--bg-deep);border-radius:var(--r-md);padding:2px;gap:1px}
-        .pill{padding:4px 10px;border-radius:6px;font-size:11px;font-weight:600;border:none;cursor:pointer;background:transparent;color:var(--text-muted);font-family:var(--font-sans);transition:all .15s}
-        .pill:hover{color:var(--text-secondary)}.pill.on{background:var(--accent-purple);color:#fff}
-        .code-card{display:flex;align-items:center;gap:16px;padding:14px 18px;border-radius:var(--r-md);border:1px solid var(--border);background:var(--bg-surface);margin-bottom:8px}
-        .overlay{position:fixed;inset:0;background:var(--overlay-bg);display:flex;align-items:center;justify-content:center;z-index:100;animation:fadeIn .2s}
         @keyframes fadeIn{from{opacity:0}to{opacity:1}}
-        .modal{background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--r-lg);width:480px;padding:28px;animation:slideUp .3s ease}
         @keyframes slideUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
       `}</style>
 
-      <div className="page">
+      <div className="flex h-screen overflow-hidden bg-slate-50 text-slate-900">
         {/* Sidebar */}
-        <div className="side">
-          <div className="p-5 flex items-center gap-2.5" style={{ borderBottom: "1px solid var(--border)" }}>
+        <div className="w-[220px] min-w-[220px] bg-white border-r border-slate-200 flex flex-col">
+          <div className="p-5 flex items-center gap-2.5 border-b border-slate-200">
             <div
-              className="w-9 h-9 flex items-center justify-center text-base font-extrabold text-white"
-              style={{ borderRadius: 10, background: "var(--accent-purple)" }}
+              className="w-9 h-9 flex items-center justify-center text-base font-extrabold text-white rounded-[10px] bg-violet-500"
             >
               DF
             </div>
             <div>
               <div className="text-[15px] font-extrabold">DosarFonduri</div>
-              <div className="text-[10px] font-semibold uppercase" style={{ color: "var(--accent-purple)", letterSpacing: ".5px" }}>
+              <div className="text-[10px] font-semibold uppercase text-violet-500" style={{ letterSpacing: ".5px" }}>
                 Provider
               </div>
             </div>
           </div>
           <div className="flex-1 p-3">
-            <div className={`s-item ${activeTab === "cabinets" ? "active" : ""}`} onClick={() => setActiveTab("cabinets")}>🏢 Cabinete</div>
-            <div className={`s-item ${activeTab === "codes" ? "active" : ""}`} onClick={() => setActiveTab("codes")}>🔑 Coduri acces</div>
-            <div className={`s-item ${activeTab === "users" ? "active" : ""}`} onClick={() => setActiveTab("users")}>👥 Utilizatori</div>
-            <div className={`s-item ${activeTab === "revenue" ? "active" : ""}`} onClick={() => setActiveTab("revenue")}>💰 Revenue</div>
+            {[
+              { id: "cabinets", icon: "🏢", label: "Cabinete" },
+              { id: "codes", icon: "🔑", label: "Coduri acces" },
+              { id: "users", icon: "👥", label: "Utilizatori" },
+              { id: "revenue", icon: "💰", label: "Revenue" },
+            ].map((item) => (
+              <div
+                key={item.id}
+                className={`flex items-center gap-2.5 py-2.5 px-3 rounded-md cursor-pointer text-sm font-medium transition-all mb-0.5 ${
+                  activeTab === item.id
+                    ? "bg-violet-500/10 text-violet-500 font-semibold"
+                    : "text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                }`}
+                onClick={() => setActiveTab(item.id)}
+              >
+                {item.icon} {item.label}
+              </div>
+            ))}
           </div>
-          <div className="p-3 text-xs" style={{ borderTop: "1px solid var(--border)", color: "var(--text-muted)" }}>
+          <div className="p-3 text-xs border-t border-slate-200 text-slate-400">
             Provider Admin
             <br />
-            <span className="cursor-pointer" style={{ color: "var(--accent-purple)" }} onClick={handleLogout}>
+            <span className="cursor-pointer text-violet-500" onClick={handleLogout}>
               Deconectare
             </span>
           </div>
@@ -345,19 +344,12 @@ export default function ProviderDashboardPage() {
         {/* Main */}
         <div className="flex-1 flex flex-col overflow-hidden">
           {/* Topbar */}
-          <div className="px-6 py-3.5 flex items-center gap-4 flex-shrink-0" style={{ borderBottom: "1px solid var(--border)", background: "var(--bg-surface)" }}>
+          <div className="px-6 py-3.5 flex items-center gap-4 flex-shrink-0 border-b border-slate-200 bg-white">
             <div className="text-xl font-extrabold flex-1">
               {activeTab === "cabinets" ? "Cabinete" : activeTab === "codes" ? "Coduri de acces" : activeTab === "users" ? "Utilizatori platforma" : "Revenue & Metrici"}
             </div>
             <button
-              className="px-4 py-2 text-[13px] font-bold text-white flex items-center gap-1.5 cursor-pointer"
-              style={{
-                borderRadius: "var(--r-md)",
-                border: "none",
-                background: "var(--accent-purple)",
-                fontFamily: "var(--font-sans)",
-                boxShadow: "0 2px 12px rgba(167,139,250,.25)",
-              }}
+              className="px-4 py-2 text-[13px] font-bold text-white flex items-center gap-1.5 cursor-pointer rounded-[10px] border-none bg-violet-500 font-sans shadow-[0_2px_12px_rgba(167,139,250,.25)]"
               onClick={() => { setShowGenerate(true); setGenCode(null); setGenCui(""); setGenCuiRes(null); }}
             >
               🔑 Genereaza cod nou
@@ -365,34 +357,34 @@ export default function ProviderDashboardPage() {
           </div>
 
           {/* Stats bar */}
-          <div className="grid grid-cols-4 gap-3.5 p-5" style={{ borderBottom: "1px solid var(--border)", background: "var(--bg-surface)" }}>
-            <div className="stat">
-              <div className="text-[11px] font-semibold uppercase mb-1.5" style={{ letterSpacing: ".6px", color: "var(--text-muted)" }}>Cabinete active</div>
-              <div className="text-[28px] font-extrabold" style={{ fontFamily: "var(--font-mono)", letterSpacing: "-1px", color: "var(--accent-green)" }}>
+          <div className="grid grid-cols-4 gap-3.5 p-5 border-b border-slate-200 bg-white">
+            <div className="p-4 rounded-[10px] border border-slate-200 bg-slate-50">
+              <div className="text-[11px] font-semibold uppercase mb-1.5 text-slate-400" style={{ letterSpacing: ".6px" }}>Cabinete active</div>
+              <div className="text-[28px] font-extrabold font-mono text-emerald-500" style={{ letterSpacing: "-1px" }}>
                 {revenue?.activeCabinets || 0}
               </div>
-              <div className="text-xs" style={{ color: "var(--text-muted)" }}>din {revenue?.totalCabinets || 0} total</div>
+              <div className="text-xs text-slate-400">din {revenue?.totalCabinets || 0} total</div>
             </div>
-            <div className="stat">
-              <div className="text-[11px] font-semibold uppercase mb-1.5" style={{ letterSpacing: ".6px", color: "var(--text-muted)" }}>MRR</div>
-              <div className="text-[28px] font-extrabold" style={{ fontFamily: "var(--font-mono)", letterSpacing: "-1px", color: "var(--accent-blue)" }}>
+            <div className="p-4 rounded-[10px] border border-slate-200 bg-slate-50">
+              <div className="text-[11px] font-semibold uppercase mb-1.5 text-slate-400" style={{ letterSpacing: ".6px" }}>MRR</div>
+              <div className="text-[28px] font-extrabold font-mono text-blue-600" style={{ letterSpacing: "-1px" }}>
                 {revenue?.mrr || 0}€
               </div>
-              <div className="text-xs" style={{ color: "var(--text-muted)" }}>venit lunar recurent</div>
+              <div className="text-xs text-slate-400">venit lunar recurent</div>
             </div>
-            <div className="stat">
-              <div className="text-[11px] font-semibold uppercase mb-1.5" style={{ letterSpacing: ".6px", color: "var(--text-muted)" }}>Trial</div>
-              <div className="text-[28px] font-extrabold" style={{ fontFamily: "var(--font-mono)", letterSpacing: "-1px", color: "var(--accent-yellow)" }}>
+            <div className="p-4 rounded-[10px] border border-slate-200 bg-slate-50">
+              <div className="text-[11px] font-semibold uppercase mb-1.5 text-slate-400" style={{ letterSpacing: ".6px" }}>Trial</div>
+              <div className="text-[28px] font-extrabold font-mono text-amber-500" style={{ letterSpacing: "-1px" }}>
                 {revenue?.trialCabinets || 0}
               </div>
-              <div className="text-xs" style={{ color: "var(--text-muted)" }}>cabinete in trial</div>
+              <div className="text-xs text-slate-400">cabinete in trial</div>
             </div>
-            <div className="stat">
-              <div className="text-[11px] font-semibold uppercase mb-1.5" style={{ letterSpacing: ".6px", color: "var(--text-muted)" }}>Utilizatori</div>
-              <div className="text-[28px] font-extrabold" style={{ fontFamily: "var(--font-mono)", letterSpacing: "-1px" }}>
+            <div className="p-4 rounded-[10px] border border-slate-200 bg-slate-50">
+              <div className="text-[11px] font-semibold uppercase mb-1.5 text-slate-400" style={{ letterSpacing: ".6px" }}>Utilizatori</div>
+              <div className="text-[28px] font-extrabold font-mono" style={{ letterSpacing: "-1px" }}>
                 {platformUsers.filter(u => u.status === "active").length}
               </div>
-              <div className="text-xs" style={{ color: "var(--text-muted)" }}>activi din {platformUsers.length} total</div>
+              <div className="text-xs text-slate-400">activi din {platformUsers.length} total</div>
             </div>
           </div>
 
@@ -404,27 +396,25 @@ export default function ProviderDashboardPage() {
               <>
                 <div className="flex items-center gap-2.5 mb-4">
                   <input
-                    className="px-3.5 py-2 text-[13px] outline-none"
-                    style={{
-                      width: 260,
-                      borderRadius: "var(--r-md)",
-                      border: "1px solid var(--border)",
-                      background: "var(--bg-deep)",
-                      color: "var(--text-primary)",
-                      fontFamily: "var(--font-sans)",
-                    }}
+                    className="px-3.5 py-2 text-[13px] outline-none w-[260px] rounded-[10px] border border-slate-200 bg-slate-50 text-slate-900 font-sans"
                     placeholder="Cauta cabinet, cod..."
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                   />
-                  <div className="pill-group">
+                  <div className="flex bg-slate-50 rounded-[10px] p-0.5 gap-px">
                     {[
                       { id: "all", label: "Toate" },
                       { id: "active", label: "Active" },
                       { id: "trial", label: "Trial" },
                       { id: "inactive", label: "Inactive" },
                     ].map((f) => (
-                      <button key={f.id} className={`pill ${statusFilter === f.id ? "on" : ""}`} onClick={() => setStatusFilter(f.id)}>
+                      <button
+                        key={f.id}
+                        className={`py-1 px-2.5 rounded-md text-[11px] font-semibold border-none cursor-pointer font-sans transition-all ${
+                          statusFilter === f.id ? "bg-violet-500 text-white" : "bg-transparent text-slate-400 hover:text-slate-500"
+                        }`}
+                        onClick={() => setStatusFilter(f.id)}
+                      >
                         {f.label}
                       </button>
                     ))}
@@ -437,51 +427,55 @@ export default function ProviderDashboardPage() {
                   const trialDays = c.trialEndsAt ? Math.max(0, Math.ceil((new Date(c.trialEndsAt).getTime() - Date.now()) / 86400000)) : 0;
                   return (
                     <div key={c.id}>
-                      <div className={`cab-card ${isActive ? "active" : ""}`} onClick={() => setSelectedCabinet(isActive ? null : c.id)}>
+                      <div
+                        className={`flex items-center gap-4 py-4 px-5 rounded-[10px] border bg-white mb-2 cursor-pointer transition-all ${
+                          isActive ? "border-violet-500 bg-violet-500/[.04]" : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+                        }`}
+                        onClick={() => setSelectedCabinet(isActive ? null : c.id)}
+                      >
                         <div
-                          className="w-10 h-10 flex items-center justify-center text-base font-extrabold text-white flex-shrink-0"
-                          style={{ borderRadius: "var(--r-sm)", background: PLAN_COLORS[c.plan] || "var(--text-muted)", fontFamily: "var(--font-mono)" }}
+                          className={`w-10 h-10 flex items-center justify-center text-base font-extrabold text-white flex-shrink-0 rounded-md font-mono ${PLAN_BG_CLASSES[c.plan] || "bg-slate-400"}`}
                         >
                           {c.plan?.[0]?.toUpperCase() || "?"}
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="text-sm font-bold flex items-center gap-2">
                             {c.name}
-                            <span className="text-[10px] font-bold px-2 py-0.5" style={{ borderRadius: 10, background: st.bg, color: st.color }}>{st.label}</span>
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${st.bgClass} ${st.colorClass}`}>{st.label}</span>
                             {c.status === "trial" && trialDays > 0 && (
-                              <span className="text-[10px] font-bold px-2 py-0.5" style={{ borderRadius: 10, background: "var(--badge-review-bg)", color: "var(--accent-yellow)" }}>
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-500">
                                 {trialDays}z ramase
                               </span>
                             )}
                           </div>
-                          <div className="text-xs" style={{ fontFamily: "var(--font-mono)", color: "var(--text-muted)" }}>{c.code}</div>
-                          <div className="flex gap-2.5 mt-1 text-[11px]" style={{ color: "var(--text-muted)" }}>
+                          <div className="text-xs font-mono text-slate-400">{c.code}</div>
+                          <div className="flex gap-2.5 mt-1 text-[11px] text-slate-400">
                             <span>👥 {c.maxUsers} utilizatori max</span>
                             <span className="capitalize">{c.plan}</span>
                           </div>
                         </div>
                         <div className="text-right flex-shrink-0">
-                          <div className="text-base font-extrabold" style={{ fontFamily: "var(--font-mono)", color: PLAN_COLORS[c.plan] }}>
+                          <div className={`text-base font-extrabold font-mono ${PLAN_COLOR_CLASSES[c.plan] || "text-slate-400"}`}>
                             {PLAN_PRICES[c.plan] || 0}€
                           </div>
-                          <div className="text-[10px]" style={{ color: "var(--text-muted)" }}>/ luna</div>
+                          <div className="text-[10px] text-slate-400">/ luna</div>
                         </div>
                       </div>
 
                       {isActive && (
-                        <div className="cab-detail">
+                        <div className="p-5 rounded-[10px] border border-violet-500 bg-violet-500/[.03] mt-2 mb-2">
                           <div className="text-lg font-extrabold mb-0.5">{c.name}</div>
-                          <div className="text-[13px] mb-3" style={{ fontFamily: "var(--font-mono)", color: "var(--text-secondary)" }}>{c.code}</div>
+                          <div className="text-[13px] mb-3 font-mono text-slate-500">{c.code}</div>
                           <div className="grid grid-cols-4 gap-2.5 mb-4">
                             {[
-                              { label: "Plan", value: c.plan, color: PLAN_COLORS[c.plan] },
+                              { label: "Plan", value: c.plan, colorClass: PLAN_COLOR_CLASSES[c.plan] },
                               { label: "Max utilizatori", value: String(c.maxUsers) },
-                              { label: "Status", value: st.label, color: st.color },
+                              { label: "Status", value: st.label, colorClass: st.colorClass },
                               { label: "Creat", value: new Date(c.createdAt).toLocaleDateString("ro-RO") },
                             ].map((cell, i) => (
-                              <div key={i} className="p-2.5" style={{ background: "var(--bg-deep)", borderRadius: "var(--r-sm)", border: "1px solid var(--border)" }}>
-                                <div className="text-[10px] font-semibold uppercase mb-0.5" style={{ letterSpacing: ".5px", color: "var(--text-muted)" }}>{cell.label}</div>
-                                <div className="text-[13px] font-semibold capitalize" style={{ fontFamily: "var(--font-mono)", color: cell.color }}>
+                              <div key={i} className="p-2.5 bg-slate-50 rounded-md border border-slate-200">
+                                <div className="text-[10px] font-semibold uppercase mb-0.5 text-slate-400" style={{ letterSpacing: ".5px" }}>{cell.label}</div>
+                                <div className={`text-[13px] font-semibold capitalize font-mono ${cell.colorClass || ""}`}>
                                   {cell.value}
                                 </div>
                               </div>
@@ -489,29 +483,25 @@ export default function ProviderDashboardPage() {
                           </div>
                           <div className="flex gap-2">
                             <button
-                              className="px-4 py-2 text-xs font-bold cursor-pointer transition-all"
-                              style={{ borderRadius: "var(--r-sm)", border: "1px solid var(--accent-blue)", background: "rgba(77,139,255,.08)", color: "var(--accent-blue)", fontFamily: "var(--font-sans)" }}
+                              className="px-4 py-2 text-xs font-bold cursor-pointer transition-all rounded-md border border-blue-500 bg-blue-600/[.08] text-blue-600 font-sans"
                               onClick={() => handleAccessCabinet(c.id)}
                             >
                               🔓 Acceseaza cabinet
                             </button>
                             <button
-                              className="px-4 py-2 text-xs font-semibold cursor-pointer transition-all"
-                              style={{ borderRadius: "var(--r-sm)", border: "1px solid var(--border)", background: "transparent", color: "var(--text-secondary)", fontFamily: "var(--font-sans)" }}
+                              className="px-4 py-2 text-xs font-semibold cursor-pointer transition-all rounded-md border border-slate-200 bg-transparent text-slate-500 font-sans"
                               onClick={() => setEditModal({ id: c.id, plan: c.plan, maxUsers: c.maxUsers })}
                             >
                               ✏️ Editeaza plan
                             </button>
                             <button
-                              className="px-4 py-2 text-xs font-semibold cursor-pointer transition-all"
-                              style={{ borderRadius: "var(--r-sm)", border: "1px solid var(--border)", background: "transparent", color: "var(--text-secondary)", fontFamily: "var(--font-sans)" }}
+                              className="px-4 py-2 text-xs font-semibold cursor-pointer transition-all rounded-md border border-slate-200 bg-transparent text-slate-500 font-sans"
                               onClick={() => { setEmailModal({ id: c.id, name: c.name }); setEmailSubject(""); setEmailMessage(""); }}
                             >
                               📧 Trimite email
                             </button>
                             <button
-                              className="px-4 py-2 text-xs font-semibold cursor-pointer transition-all"
-                              style={{ borderRadius: "var(--r-sm)", border: "1px solid rgba(248,113,113,.25)", background: "transparent", color: "var(--accent-red)", fontFamily: "var(--font-sans)" }}
+                              className="px-4 py-2 text-xs font-semibold cursor-pointer transition-all rounded-md border border-red-500/25 bg-transparent text-red-500 font-sans"
                               onClick={() => handleDeactivate(c.id)}
                             >
                               🚫 Dezactiveaza
@@ -524,7 +514,7 @@ export default function ProviderDashboardPage() {
                 })}
 
                 {filtered.length === 0 && (
-                  <div className="text-center py-10" style={{ color: "var(--text-muted)" }}>Niciun cabinet gasit.</div>
+                  <div className="text-center py-10 text-slate-400">Niciun cabinet gasit.</div>
                 )}
               </>
             )}
@@ -532,60 +522,50 @@ export default function ProviderDashboardPage() {
             {/* ═══ CODURI NEFOLOSITE ═══ */}
             {activeTab === "codes" && (
               <>
-                <div className="text-sm mb-4" style={{ color: "var(--text-secondary)" }}>
+                <div className="text-sm mb-4 text-slate-500">
                   Coduri generate dar neactivate inca de niciun cabinet. Poti activa/dezactiva fiecare cod.
                 </div>
                 {codes.map((c) => (
-                  <div className="code-card" key={c.id} style={{ opacity: c.isActive ? 1 : 0.55 }}>
+                  <div className="flex items-center gap-4 py-3.5 px-[18px] rounded-[10px] border border-slate-200 bg-white mb-2" key={c.id} style={{ opacity: c.isActive ? 1 : 0.55 }}>
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
-                        <div className="text-base font-extrabold" style={{ fontFamily: "var(--font-mono)", color: c.isActive ? "var(--accent-purple)" : "var(--text-muted)", letterSpacing: "1px" }}>
+                        <div className={`text-base font-extrabold font-mono ${c.isActive ? "text-violet-500" : "text-slate-400"}`} style={{ letterSpacing: "1px" }}>
                           {c.code}
                         </div>
                         <span
-                          className="text-[10px] font-bold px-2 py-0.5"
-                          style={{
-                            borderRadius: 10,
-                            background: c.isActive ? "rgba(52,211,153,.12)" : "rgba(90,100,120,.12)",
-                            color: c.isActive ? "var(--accent-green)" : "var(--text-muted)",
-                          }}
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                            c.isActive ? "bg-emerald-500/[.12] text-emerald-500" : "bg-slate-400/[.12] text-slate-400"
+                          }`}
                         >
                           {c.isActive ? "Activ" : "Dezactivat"}
                         </span>
                       </div>
                       {c.companyName && (
-                        <div className="text-[13px] font-semibold mt-0.5" style={{ color: "var(--text-primary)" }}>
+                        <div className="text-[13px] font-semibold mt-0.5 text-slate-900">
                           {c.companyName}
-                          {c.cui && <span className="text-xs ml-1.5" style={{ fontFamily: "var(--font-mono)", color: "var(--text-muted)" }}>CUI {c.cui}</span>}
+                          {c.cui && <span className="text-xs ml-1.5 font-mono text-slate-400">CUI {c.cui}</span>}
                         </div>
                       )}
-                      <div className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+                      <div className="text-xs mt-1 text-slate-400">
                         <span className="capitalize">{c.plan}</span> · {c.maxUsers} utilizatori · Trial {c.trialDays}z · Creat: {new Date(c.createdAt).toLocaleDateString("ro-RO")}
                       </div>
                     </div>
                     <button
-                      className="px-3 py-1.5 text-xs font-semibold cursor-pointer transition-all"
-                      style={{
-                        borderRadius: "var(--r-sm)",
-                        border: `1px solid ${c.isActive ? "rgba(248,113,113,.25)" : "rgba(52,211,153,.25)"}`,
-                        background: "transparent",
-                        color: c.isActive ? "var(--accent-red)" : "var(--accent-green)",
-                        fontFamily: "var(--font-sans)",
-                      }}
+                      className={`px-3 py-1.5 text-xs font-semibold cursor-pointer transition-all rounded-md border bg-transparent font-sans ${
+                        c.isActive ? "border-red-500/25 text-red-500" : "border-emerald-500/25 text-emerald-500"
+                      }`}
                       onClick={() => handleToggleCode(c.id)}
                     >
                       {c.isActive ? "Dezactiveaza" : "Activeaza"}
                     </button>
                     <button
-                      className="px-3 py-1.5 text-xs font-semibold cursor-pointer transition-all"
-                      style={{ borderRadius: "var(--r-sm)", border: "1px solid var(--border)", background: "transparent", color: "var(--text-secondary)", fontFamily: "var(--font-sans)" }}
+                      className="px-3 py-1.5 text-xs font-semibold cursor-pointer transition-all rounded-md border border-slate-200 bg-transparent text-slate-500 font-sans"
                       onClick={() => navigator.clipboard?.writeText(c.code)}
                     >
                       📋 Copiaza
                     </button>
                     <button
-                      className="px-3 py-1.5 text-xs font-semibold cursor-pointer transition-all"
-                      style={{ borderRadius: "var(--r-sm)", border: "1px solid rgba(248,113,113,.25)", background: "transparent", color: "var(--accent-red)", fontFamily: "var(--font-sans)" }}
+                      className="px-3 py-1.5 text-xs font-semibold cursor-pointer transition-all rounded-md border border-red-500/25 bg-transparent text-red-500 font-sans"
                       onClick={() => handleDeleteCode(c.id)}
                     >
                       🗑
@@ -593,7 +573,7 @@ export default function ProviderDashboardPage() {
                   </div>
                 ))}
                 {codes.length === 0 && (
-                  <div className="text-center py-10" style={{ color: "var(--text-muted)" }}>Niciun cod nefolosit</div>
+                  <div className="text-center py-10 text-slate-400">Niciun cod nefolosit</div>
                 )}
               </>
             )}
@@ -603,62 +583,54 @@ export default function ProviderDashboardPage() {
               <>
                 <div className="flex items-center gap-2.5 mb-4">
                   <input
-                    className="px-3.5 py-2 text-[13px] outline-none"
-                    style={{
-                      width: 300,
-                      borderRadius: "var(--r-md)",
-                      border: "1px solid var(--border)",
-                      background: "var(--bg-deep)",
-                      color: "var(--text-primary)",
-                      fontFamily: "var(--font-sans)",
-                    }}
+                    className="px-3.5 py-2 text-[13px] outline-none w-[300px] rounded-[10px] border border-slate-200 bg-slate-50 text-slate-900 font-sans"
                     placeholder="Cauta dupa email, nume sau cabinet..."
                     value={userSearch}
                     onChange={(e) => setUserSearch(e.target.value)}
                   />
-                  <div className="text-xs" style={{ color: "var(--text-muted)" }}>
+                  <div className="text-xs text-slate-400">
                     {filteredUsers.length} din {platformUsers.length} utilizatori
                   </div>
                 </div>
 
-                <div style={{ border: "1px solid var(--border)", borderRadius: "var(--r-md)", overflow: "hidden", background: "var(--bg-surface)" }}>
+                <div className="border border-slate-200 rounded-[10px] overflow-hidden bg-white">
                   {/* Table header */}
-                  <div className="grid items-center" style={{ gridTemplateColumns: "1fr 1fr 100px 80px 140px 60px", borderBottom: "1px solid var(--border)" }}>
+                  <div className="grid items-center border-b border-slate-200" style={{ gridTemplateColumns: "1fr 1fr 100px 80px 140px 60px" }}>
                     {["Utilizator", "Cabinet", "Rol", "Status", "Ultima activitate", ""].map((h, i) => (
-                      <div key={i} className="px-4 py-2.5 text-[10px] font-bold uppercase" style={{ letterSpacing: ".5px", color: "var(--text-muted)" }}>{h}</div>
+                      <div key={i} className="px-4 py-2.5 text-[10px] font-bold uppercase text-slate-400" style={{ letterSpacing: ".5px" }}>{h}</div>
                     ))}
                   </div>
 
                   {/* Table rows */}
                   {filteredUsers.map((u) => {
-                    const statusColor = u.status === "active" ? "var(--accent-green)" : u.status === "invited" ? "var(--accent-yellow)" : u.status === "disabled" ? "var(--accent-red)" : "var(--text-muted)";
+                    const statusColorClass = u.status === "active" ? "text-emerald-500" : u.status === "invited" ? "text-amber-500" : u.status === "disabled" ? "text-red-500" : "text-slate-400";
+                    const statusBgClass = u.status === "active" ? "bg-emerald-500/10" : u.status === "invited" ? "bg-amber-500/10" : u.status === "disabled" ? "bg-red-500/10" : "bg-slate-400/10";
                     return (
-                      <div key={u.id} className="grid items-center transition-colors hover:bg-[var(--bg-hover)]" style={{ gridTemplateColumns: "1fr 1fr 100px 80px 140px 60px", borderBottom: "1px solid var(--separator)" }}>
+                      <div key={u.id} className="grid items-center transition-colors hover:bg-slate-100 border-b border-slate-100" style={{ gridTemplateColumns: "1fr 1fr 100px 80px 140px 60px" }}>
                         <div className="px-4 py-2.5">
                           <div className="text-[13px] font-semibold">{u.name}</div>
-                          <div className="text-[11px]" style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>{u.email}</div>
+                          <div className="text-[11px] text-slate-400 font-mono">{u.email}</div>
                         </div>
                         <div className="px-4 py-2.5">
                           {u.cabinetName ? (
                             <>
                               <div className="text-[13px] font-semibold">{u.cabinetName}</div>
-                              <div className="text-[11px]" style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>{u.cabinetCode}</div>
+                              <div className="text-[11px] text-slate-400 font-mono">{u.cabinetCode}</div>
                             </>
                           ) : (
-                            <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>Fara cabinet</span>
+                            <span className="text-[11px] text-slate-400">Fara cabinet</span>
                           )}
                         </div>
-                        <div className="px-4 py-2.5 text-[12px] font-medium capitalize" style={{ color: "var(--text-secondary)" }}>{u.role}</div>
+                        <div className="px-4 py-2.5 text-[12px] font-medium capitalize text-slate-500">{u.role}</div>
                         <div className="px-4 py-2.5">
-                          <span className="text-[10px] font-bold px-2 py-0.5" style={{ borderRadius: 10, background: `${statusColor}18`, color: statusColor }}>{u.status}</span>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${statusBgClass} ${statusColorClass}`}>{u.status}</span>
                         </div>
-                        <div className="px-4 py-2.5 text-[11px]" style={{ color: "var(--text-muted)" }}>
+                        <div className="px-4 py-2.5 text-[11px] text-slate-400">
                           {u.lastActiveAt ? new Date(u.lastActiveAt).toLocaleDateString("ro-RO", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "Niciodata"}
                         </div>
                         <div className="px-4 py-2.5">
                           <button
-                            className="px-2 py-1 text-[11px] font-semibold cursor-pointer transition-all"
-                            style={{ borderRadius: "var(--r-sm)", border: "1px solid rgba(248,113,113,.25)", background: "transparent", color: "var(--accent-red)", fontFamily: "var(--font-sans)" }}
+                            className="px-2 py-1 text-[11px] font-semibold cursor-pointer transition-all rounded-md border border-red-500/25 bg-transparent text-red-500 font-sans"
                             onClick={() => handleDeleteUser(u.id, u.email)}
                             title="Sterge utilizator"
                           >
@@ -670,7 +642,7 @@ export default function ProviderDashboardPage() {
                   })}
 
                   {filteredUsers.length === 0 && (
-                    <div className="text-center py-10" style={{ color: "var(--text-muted)" }}>Niciun utilizator gasit</div>
+                    <div className="text-center py-10 text-slate-400">Niciun utilizator gasit</div>
                   )}
                 </div>
               </>
@@ -679,47 +651,46 @@ export default function ProviderDashboardPage() {
             {/* ═══ REVENUE ═══ */}
             {activeTab === "revenue" && (
               <>
-                <div className="text-sm mb-5" style={{ color: "var(--text-secondary)" }}>Overview financiar pe toate cabinetele.</div>
+                <div className="text-sm mb-5 text-slate-500">Overview financiar pe toate cabinetele.</div>
                 <div className="grid grid-cols-3 gap-3.5 mb-6">
-                  <div className="stat">
-                    <div className="text-[11px] font-semibold uppercase mb-1.5" style={{ letterSpacing: ".6px", color: "var(--text-muted)" }}>MRR (Monthly Recurring Revenue)</div>
-                    <div className="text-[28px] font-extrabold" style={{ fontFamily: "var(--font-mono)", letterSpacing: "-1px", color: "var(--accent-green)" }}>{totalMRR}€</div>
+                  <div className="p-4 rounded-[10px] border border-slate-200 bg-slate-50">
+                    <div className="text-[11px] font-semibold uppercase mb-1.5 text-slate-400" style={{ letterSpacing: ".6px" }}>MRR (Monthly Recurring Revenue)</div>
+                    <div className="text-[28px] font-extrabold font-mono text-emerald-500" style={{ letterSpacing: "-1px" }}>{totalMRR}€</div>
                   </div>
-                  <div className="stat">
-                    <div className="text-[11px] font-semibold uppercase mb-1.5" style={{ letterSpacing: ".6px", color: "var(--text-muted)" }}>Cabinete active</div>
-                    <div className="text-[28px] font-extrabold" style={{ fontFamily: "var(--font-mono)", letterSpacing: "-1px", color: "var(--accent-blue)" }}>
+                  <div className="p-4 rounded-[10px] border border-slate-200 bg-slate-50">
+                    <div className="text-[11px] font-semibold uppercase mb-1.5 text-slate-400" style={{ letterSpacing: ".6px" }}>Cabinete active</div>
+                    <div className="text-[28px] font-extrabold font-mono text-blue-600" style={{ letterSpacing: "-1px" }}>
                       {cabinets.filter((c) => c.status === "active").length}
                     </div>
                   </div>
-                  <div className="stat">
-                    <div className="text-[11px] font-semibold uppercase mb-1.5" style={{ letterSpacing: ".6px", color: "var(--text-muted)" }}>Trial</div>
-                    <div className="text-[28px] font-extrabold" style={{ fontFamily: "var(--font-mono)", letterSpacing: "-1px", color: "var(--accent-yellow)" }}>
+                  <div className="p-4 rounded-[10px] border border-slate-200 bg-slate-50">
+                    <div className="text-[11px] font-semibold uppercase mb-1.5 text-slate-400" style={{ letterSpacing: ".6px" }}>Trial</div>
+                    <div className="text-[28px] font-extrabold font-mono text-amber-500" style={{ letterSpacing: "-1px" }}>
                       {cabinets.filter((c) => c.status === "trial").length}
                     </div>
                   </div>
                 </div>
 
-                <div className="text-[11px] font-bold uppercase mb-2.5" style={{ letterSpacing: ".8px", color: "var(--text-muted)" }}>Revenue per cabinet</div>
-                <div style={{ border: "1px solid var(--border)", borderRadius: "var(--r-md)", overflow: "hidden", background: "var(--bg-surface)" }}>
+                <div className="text-[11px] font-bold uppercase mb-2.5 text-slate-400" style={{ letterSpacing: ".8px" }}>Revenue per cabinet</div>
+                <div className="border border-slate-200 rounded-[10px] overflow-hidden bg-white">
                   <div className="grid gap-0" style={{ gridTemplateColumns: "1fr 100px 80px 100px" }}>
-                    <div className="px-4 py-2.5 text-[10px] font-bold uppercase" style={{ letterSpacing: ".5px", color: "var(--text-muted)", borderBottom: "1px solid var(--border)" }}>Cabinet</div>
-                    <div className="px-4 py-2.5 text-[10px] font-bold uppercase" style={{ letterSpacing: ".5px", color: "var(--text-muted)", borderBottom: "1px solid var(--border)" }}>Plan</div>
-                    <div className="px-4 py-2.5 text-[10px] font-bold uppercase" style={{ letterSpacing: ".5px", color: "var(--text-muted)", borderBottom: "1px solid var(--border)" }}>MRR</div>
-                    <div className="px-4 py-2.5 text-[10px] font-bold uppercase" style={{ letterSpacing: ".5px", color: "var(--text-muted)", borderBottom: "1px solid var(--border)" }}>Status</div>
+                    {["Cabinet", "Plan", "MRR", "Status"].map((h, i) => (
+                      <div key={i} className="px-4 py-2.5 text-[10px] font-bold uppercase text-slate-400 border-b border-slate-200" style={{ letterSpacing: ".5px" }}>{h}</div>
+                    ))}
                   </div>
                   {cabinets.filter((c) => c.status === "active" || c.status === "trial").map((c) => {
                     const mrr = PLAN_PRICES[c.plan] || 0;
                     const st = STATUS_MAP[c.status] || STATUS_MAP.inactive;
                     return (
-                      <div key={c.id} className="grid items-center transition-colors hover:bg-[var(--bg-hover)]" style={{ gridTemplateColumns: "1fr 100px 80px 100px", borderBottom: "1px solid var(--separator)" }}>
+                      <div key={c.id} className="grid items-center transition-colors hover:bg-slate-100 border-b border-slate-100" style={{ gridTemplateColumns: "1fr 100px 80px 100px" }}>
                         <div className="px-4 py-2.5">
                           <div className="text-[13px] font-semibold">{c.name}</div>
-                          <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>{c.code}</div>
+                          <div className="text-[11px] text-slate-400">{c.code}</div>
                         </div>
-                        <div className="px-4 py-2.5 text-[13px] font-semibold capitalize" style={{ color: PLAN_COLORS[c.plan] }}>{c.plan}</div>
-                        <div className="px-4 py-2.5 text-[13px]" style={{ fontFamily: "var(--font-mono)" }}>{mrr}€</div>
+                        <div className={`px-4 py-2.5 text-[13px] font-semibold capitalize ${PLAN_COLOR_CLASSES[c.plan] || ""}`}>{c.plan}</div>
+                        <div className="px-4 py-2.5 text-[13px] font-mono">{mrr}€</div>
                         <div className="px-4 py-2.5">
-                          <span className="text-[10px] font-bold px-2 py-0.5" style={{ borderRadius: 10, background: st.bg, color: st.color }}>{st.label}</span>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${st.bgClass} ${st.colorClass}`}>{st.label}</span>
                         </div>
                       </div>
                     );
@@ -732,34 +703,31 @@ export default function ProviderDashboardPage() {
 
         {/* ═══ GENERATE CODE MODAL ═══ */}
         {showGenerate && (
-          <div className="overlay" onClick={(e) => e.target === e.currentTarget && setShowGenerate(false)}>
-            <div className="modal">
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] animate-[fadeIn_0.2s]" onClick={(e) => e.target === e.currentTarget && setShowGenerate(false)}>
+            <div className="bg-white border border-slate-200 rounded-xl w-[480px] p-7 animate-[slideUp_0.3s_ease]">
               <div className="flex justify-between items-center mb-1">
                 <div className="text-xl font-extrabold">🔑 Genereaza cod cabinet</div>
-                <button className="cursor-pointer text-lg" style={{ background: "none", border: "none", color: "var(--text-muted)" }} onClick={() => setShowGenerate(false)}>✕</button>
+                <button className="cursor-pointer text-lg bg-transparent border-none text-slate-400" onClick={() => setShowGenerate(false)}>✕</button>
               </div>
-              <div className="text-sm mb-5" style={{ color: "var(--text-secondary)" }}>
+              <div className="text-sm mb-5 text-slate-500">
                 Codul va fi unic si poate fi trimis consultantului pentru activare.
               </div>
 
               {!genCode ? (
                 <>
                   <div className="mb-4">
-                    <label className="block text-[11px] font-semibold uppercase mb-1.5" style={{ letterSpacing: ".7px", color: "var(--text-muted)" }}>Plan tarifar</label>
+                    <label className="block text-[11px] font-semibold uppercase mb-1.5 text-slate-400" style={{ letterSpacing: ".7px" }}>Plan tarifar</label>
                     <div className="grid grid-cols-3 gap-2">
                       {(["starter", "professional", "enterprise"] as const).map((p) => (
                         <div
                           key={p}
-                          className="py-3 px-2.5 text-center cursor-pointer transition-all"
-                          style={{
-                            borderRadius: "var(--r-sm)",
-                            border: `2px solid ${genPlan === p ? "var(--accent-purple)" : "var(--border)"}`,
-                            background: genPlan === p ? "rgba(167,139,250,.06)" : "var(--bg-elevated)",
-                          }}
+                          className={`py-3 px-2.5 text-center cursor-pointer transition-all rounded-md border-2 ${
+                            genPlan === p ? "border-violet-500 bg-violet-500/[.06]" : "border-slate-200 bg-slate-50"
+                          }`}
                           onClick={() => setGenPlan(p)}
                         >
-                          <div className="text-[13px] font-bold capitalize" style={{ color: PLAN_COLORS[p] }}>{p}</div>
-                          <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>{PLAN_PRICES[p]}€/luna</div>
+                          <div className={`text-[13px] font-bold capitalize ${PLAN_COLOR_CLASSES[p]}`}>{p}</div>
+                          <div className="text-[11px] text-slate-400">{PLAN_PRICES[p]}€/luna</div>
                         </div>
                       ))}
                     </div>
@@ -767,34 +735,32 @@ export default function ProviderDashboardPage() {
 
                   <div className="flex gap-3 mb-4">
                     <div className="flex-1">
-                      <label className="block text-[11px] font-semibold uppercase mb-1.5" style={{ letterSpacing: ".7px", color: "var(--text-muted)" }}>Max utilizatori</label>
+                      <label className="block text-[11px] font-semibold uppercase mb-1.5 text-slate-400" style={{ letterSpacing: ".7px" }}>Max utilizatori</label>
                       <input
                         type="number"
                         min={1}
                         max={100}
                         value={genMaxUsers}
                         onChange={(e) => setGenMaxUsers(parseInt(e.target.value) || 1)}
-                        className="w-full px-3.5 py-2.5 text-sm text-center outline-none"
-                        style={{ borderRadius: "var(--r-md)", border: "1px solid var(--border)", background: "var(--bg-deep)", color: "var(--text-primary)", fontFamily: "var(--font-mono)" }}
+                        className="w-full px-3.5 py-2.5 text-sm text-center outline-none rounded-[10px] border border-slate-200 bg-slate-50 text-slate-900 font-mono"
                       />
                     </div>
                     <div className="flex-1">
-                      <label className="block text-[11px] font-semibold uppercase mb-1.5" style={{ letterSpacing: ".7px", color: "var(--text-muted)" }}>Perioada trial (zile)</label>
+                      <label className="block text-[11px] font-semibold uppercase mb-1.5 text-slate-400" style={{ letterSpacing: ".7px" }}>Perioada trial (zile)</label>
                       <input
                         type="number"
                         min={0}
                         max={90}
                         value={genTrial}
                         onChange={(e) => setGenTrial(parseInt(e.target.value) || 0)}
-                        className="w-full px-3.5 py-2.5 text-sm text-center outline-none"
-                        style={{ borderRadius: "var(--r-md)", border: "1px solid var(--border)", background: "var(--bg-deep)", color: "var(--text-primary)", fontFamily: "var(--font-mono)" }}
+                        className="w-full px-3.5 py-2.5 text-sm text-center outline-none rounded-[10px] border border-slate-200 bg-slate-50 text-slate-900 font-mono"
                       />
                     </div>
                   </div>
 
                   {/* CUI lookup — tie code to a specific company */}
                   <div className="mb-4">
-                    <label className="block text-[11px] font-semibold uppercase mb-1.5" style={{ letterSpacing: ".7px", color: "var(--text-muted)" }}>
+                    <label className="block text-[11px] font-semibold uppercase mb-1.5 text-slate-400" style={{ letterSpacing: ".7px" }}>
                       Firma destinatara (CUI) — optional
                     </label>
                     <div className="flex gap-2">
@@ -802,41 +768,35 @@ export default function ProviderDashboardPage() {
                         value={genCui}
                         onChange={(e) => { setGenCui(e.target.value); setGenCuiRes(null); }}
                         onKeyDown={(e) => e.key === "Enter" && handleLookupCui()}
-                        className="flex-1 px-3.5 py-2.5 text-sm outline-none"
-                        style={{
-                          borderRadius: "var(--r-md)",
-                          border: `1px solid ${genCuiRes && genCuiRes !== "error" ? "var(--accent-green)" : genCuiRes === "error" ? "var(--accent-red)" : "var(--border)"}`,
-                          background: "var(--bg-deep)",
-                          color: "var(--text-primary)",
-                          fontFamily: "var(--font-mono)",
-                          letterSpacing: "1px",
-                        }}
+                        className={`flex-1 px-3.5 py-2.5 text-sm outline-none rounded-[10px] border bg-slate-50 text-slate-900 font-mono ${
+                          genCuiRes && genCuiRes !== "error" ? "border-emerald-500" : genCuiRes === "error" ? "border-red-500" : "border-slate-200"
+                        }`}
+                        style={{ letterSpacing: "1px" }}
                         placeholder="ex: 19893984"
                       />
                       <button
-                        className="px-4 py-2.5 text-sm font-semibold cursor-pointer"
-                        style={{ borderRadius: "var(--r-md)", border: "1px solid var(--border)", background: "transparent", color: "var(--text-secondary)", fontFamily: "var(--font-sans)" }}
+                        className="px-4 py-2.5 text-sm font-semibold cursor-pointer rounded-[10px] border border-slate-200 bg-transparent text-slate-500 font-sans"
                         onClick={handleLookupCui}
                         disabled={genCuiLoad || genCui.replace(/\D/g, "").length < 6}
                       >
                         {genCuiLoad ? "..." : "Verifica"}
                       </button>
                     </div>
-                    <div className="text-[11px] mt-1" style={{ color: "var(--text-muted)" }}>
+                    <div className="text-[11px] mt-1 text-slate-400">
                       Daca specifici un CUI, codul va putea fi activat doar de firma respectiva.
                     </div>
 
                     {genCuiRes && genCuiRes !== "error" && (
-                      <div className="mt-2 p-3" style={{ borderRadius: "var(--r-md)", border: "1px solid var(--accent-green)", background: "rgba(52,211,153,.04)" }}>
-                        <div className="text-[15px] font-bold" style={{ color: "var(--accent-green)" }}>{genCuiRes.name}</div>
-                        <div className="text-xs mt-1" style={{ color: "var(--text-secondary)" }}>
+                      <div className="mt-2 p-3 rounded-[10px] border border-emerald-500 bg-emerald-500/[.04]">
+                        <div className="text-[15px] font-bold text-emerald-500">{genCuiRes.name}</div>
+                        <div className="text-xs mt-1 text-slate-500">
                           CUI: {genCuiRes.taxCode} · {genCuiRes.county}{genCuiRes.city ? `, ${genCuiRes.city}` : ""}
                           {genCuiRes.nace ? ` · CAEN: ${genCuiRes.nace}` : ""}
                         </div>
-                        <div className="text-xs" style={{ color: "var(--text-muted)" }}>
+                        <div className="text-xs text-slate-400">
                           {genCuiRes.address}
                           {genCuiRes.status && (
-                            <span style={{ color: genCuiRes.status?.toLowerCase().includes("activ") ? "var(--accent-green)" : "var(--accent-red)", fontWeight: 600, marginLeft: 8 }}>
+                            <span className={`font-semibold ml-2 ${genCuiRes.status?.toLowerCase().includes("activ") ? "text-emerald-500" : "text-red-500"}`}>
                               {genCuiRes.status}
                             </span>
                           )}
@@ -845,43 +805,41 @@ export default function ProviderDashboardPage() {
                     )}
 
                     {genCuiRes === "error" && (
-                      <div className="mt-2 p-2.5 text-xs" style={{ borderRadius: "var(--r-md)", border: "1px solid var(--accent-red)", background: "rgba(248,113,113,.04)", color: "var(--accent-red)" }}>
+                      <div className="mt-2 p-2.5 text-xs rounded-[10px] border border-red-500 bg-red-500/[.04] text-red-500">
                         CUI-ul nu a fost gasit. Verifica si incearca din nou.
                       </div>
                     )}
                   </div>
 
                   <div className="flex gap-2.5 justify-end">
-                    <button className="px-5 py-2.5 text-sm font-semibold cursor-pointer" style={{ borderRadius: "var(--r-md)", border: "1px solid var(--border)", background: "transparent", color: "var(--text-secondary)", fontFamily: "var(--font-sans)" }} onClick={() => setShowGenerate(false)}>Anuleaza</button>
-                    <button className="px-5 py-2.5 text-sm font-bold text-white cursor-pointer" style={{ borderRadius: "var(--r-md)", border: "none", background: "var(--accent-purple)", fontFamily: "var(--font-sans)" }} onClick={handleGenerateCode}>🔑 Genereaza cod</button>
+                    <button className="px-5 py-2.5 text-sm font-semibold cursor-pointer rounded-[10px] border border-slate-200 bg-transparent text-slate-500 font-sans" onClick={() => setShowGenerate(false)}>Anuleaza</button>
+                    <button className="px-5 py-2.5 text-sm font-bold text-white cursor-pointer rounded-[10px] border-none bg-violet-500 font-sans" onClick={handleGenerateCode}>🔑 Genereaza cod</button>
                   </div>
                 </>
               ) : (
                 <>
-                  <div className="p-5 mb-4 text-center" style={{ borderRadius: "var(--r-md)", border: "1px solid var(--accent-green)", background: "rgba(52,211,153,.04)" }}>
-                    <div className="text-2xl font-extrabold mb-2" style={{ fontFamily: "var(--font-mono)", color: "var(--accent-purple)", letterSpacing: "2px" }}>
+                  <div className="p-5 mb-4 text-center rounded-[10px] border border-emerald-500 bg-emerald-500/[.04]">
+                    <div className="text-2xl font-extrabold mb-2 font-mono text-violet-500" style={{ letterSpacing: "2px" }}>
                       {genCode}
                     </div>
-                    <div className="text-xs" style={{ color: "var(--text-secondary)" }}>
+                    <div className="text-xs text-slate-500">
                       Plan: <span className="capitalize">{genPlan}</span> · {genMaxUsers} utilizatori · Trial: {genTrial} zile
                     </div>
                     {genCuiRes && genCuiRes !== "error" && (
-                      <div className="text-xs mt-1.5" style={{ color: "var(--accent-green)" }}>
+                      <div className="text-xs mt-1.5 text-emerald-500">
                         Destinat: {genCuiRes.name} (CUI {genCuiRes.taxCode})
                       </div>
                     )}
                   </div>
                   <div className="flex gap-2.5 justify-end">
                     <button
-                      className="px-5 py-2.5 text-sm font-semibold cursor-pointer"
-                      style={{ borderRadius: "var(--r-md)", border: "1px solid var(--border)", background: "transparent", color: "var(--text-secondary)", fontFamily: "var(--font-sans)" }}
+                      className="px-5 py-2.5 text-sm font-semibold cursor-pointer rounded-[10px] border border-slate-200 bg-transparent text-slate-500 font-sans"
                       onClick={() => navigator.clipboard?.writeText(genCode!)}
                     >
                       📋 Copiaza cod
                     </button>
                     <button
-                      className="px-5 py-2.5 text-sm font-bold text-white cursor-pointer"
-                      style={{ borderRadius: "var(--r-md)", border: "none", background: "var(--accent-purple)", fontFamily: "var(--font-sans)" }}
+                      className="px-5 py-2.5 text-sm font-bold text-white cursor-pointer rounded-[10px] border-none bg-violet-500 font-sans"
                       onClick={() => setShowGenerate(false)}
                     >
                       Gata
@@ -894,53 +852,49 @@ export default function ProviderDashboardPage() {
         )}
         {/* ═══ EDIT PLAN MODAL ═══ */}
         {editModal && (
-          <div className="overlay" onClick={(e) => e.target === e.currentTarget && setEditModal(null)}>
-            <div className="modal">
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] animate-[fadeIn_0.2s]" onClick={(e) => e.target === e.currentTarget && setEditModal(null)}>
+            <div className="bg-white border border-slate-200 rounded-xl w-[480px] p-7 animate-[slideUp_0.3s_ease]">
               <div className="flex justify-between items-center mb-1">
                 <div className="text-xl font-extrabold">✏️ Editeaza plan cabinet</div>
-                <button className="cursor-pointer text-lg" style={{ background: "none", border: "none", color: "var(--text-muted)" }} onClick={() => setEditModal(null)}>✕</button>
+                <button className="cursor-pointer text-lg bg-transparent border-none text-slate-400" onClick={() => setEditModal(null)}>✕</button>
               </div>
-              <div className="text-sm mb-5" style={{ color: "var(--text-secondary)" }}>
+              <div className="text-sm mb-5 text-slate-500">
                 Modifică planul tarifar și limita de utilizatori.
               </div>
 
               <div className="mb-4">
-                <label className="block text-[11px] font-semibold uppercase mb-1.5" style={{ letterSpacing: ".7px", color: "var(--text-muted)" }}>Plan tarifar</label>
+                <label className="block text-[11px] font-semibold uppercase mb-1.5 text-slate-400" style={{ letterSpacing: ".7px" }}>Plan tarifar</label>
                 <div className="grid grid-cols-3 gap-2">
                   {(["starter", "professional", "enterprise"] as const).map((p) => (
                     <div
                       key={p}
-                      className="py-3 px-2.5 text-center cursor-pointer transition-all"
-                      style={{
-                        borderRadius: "var(--r-sm)",
-                        border: `2px solid ${editModal.plan === p ? "var(--accent-purple)" : "var(--border)"}`,
-                        background: editModal.plan === p ? "rgba(167,139,250,.06)" : "var(--bg-elevated)",
-                      }}
+                      className={`py-3 px-2.5 text-center cursor-pointer transition-all rounded-md border-2 ${
+                        editModal.plan === p ? "border-violet-500 bg-violet-500/[.06]" : "border-slate-200 bg-slate-50"
+                      }`}
                       onClick={() => setEditModal({ ...editModal, plan: p })}
                     >
-                      <div className="text-[13px] font-bold capitalize" style={{ color: PLAN_COLORS[p] }}>{p}</div>
-                      <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>{PLAN_PRICES[p]}€/luna</div>
+                      <div className={`text-[13px] font-bold capitalize ${PLAN_COLOR_CLASSES[p]}`}>{p}</div>
+                      <div className="text-[11px] text-slate-400">{PLAN_PRICES[p]}€/luna</div>
                     </div>
                   ))}
                 </div>
               </div>
 
               <div className="mb-4">
-                <label className="block text-[11px] font-semibold uppercase mb-1.5" style={{ letterSpacing: ".7px", color: "var(--text-muted)" }}>Max utilizatori</label>
+                <label className="block text-[11px] font-semibold uppercase mb-1.5 text-slate-400" style={{ letterSpacing: ".7px" }}>Max utilizatori</label>
                 <input
                   type="number"
                   min={1}
                   max={100}
                   value={editModal.maxUsers}
                   onChange={(e) => setEditModal({ ...editModal, maxUsers: parseInt(e.target.value) || 1 })}
-                  className="w-full px-3.5 py-2.5 text-sm text-center outline-none"
-                  style={{ borderRadius: "var(--r-md)", border: "1px solid var(--border)", background: "var(--bg-deep)", color: "var(--text-primary)", fontFamily: "var(--font-mono)" }}
+                  className="w-full px-3.5 py-2.5 text-sm text-center outline-none rounded-[10px] border border-slate-200 bg-slate-50 text-slate-900 font-mono"
                 />
               </div>
 
               <div className="flex gap-2.5 justify-end">
-                <button className="px-5 py-2.5 text-sm font-semibold cursor-pointer" style={{ borderRadius: "var(--r-md)", border: "1px solid var(--border)", background: "transparent", color: "var(--text-secondary)", fontFamily: "var(--font-sans)" }} onClick={() => setEditModal(null)}>Anuleaza</button>
-                <button className="px-5 py-2.5 text-sm font-bold text-white cursor-pointer" style={{ borderRadius: "var(--r-md)", border: "none", background: "var(--accent-purple)", fontFamily: "var(--font-sans)" }} onClick={handleEditPlan}>Salveaza</button>
+                <button className="px-5 py-2.5 text-sm font-semibold cursor-pointer rounded-[10px] border border-slate-200 bg-transparent text-slate-500 font-sans" onClick={() => setEditModal(null)}>Anuleaza</button>
+                <button className="px-5 py-2.5 text-sm font-bold text-white cursor-pointer rounded-[10px] border-none bg-violet-500 font-sans" onClick={handleEditPlan}>Salveaza</button>
               </div>
             </div>
           </div>
@@ -948,43 +902,41 @@ export default function ProviderDashboardPage() {
 
         {/* ═══ EMAIL MODAL ═══ */}
         {emailModal && (
-          <div className="overlay" onClick={(e) => e.target === e.currentTarget && setEmailModal(null)}>
-            <div className="modal">
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] animate-[fadeIn_0.2s]" onClick={(e) => e.target === e.currentTarget && setEmailModal(null)}>
+            <div className="bg-white border border-slate-200 rounded-xl w-[480px] p-7 animate-[slideUp_0.3s_ease]">
               <div className="flex justify-between items-center mb-1">
                 <div className="text-xl font-extrabold">📧 Trimite email</div>
-                <button className="cursor-pointer text-lg" style={{ background: "none", border: "none", color: "var(--text-muted)" }} onClick={() => setEmailModal(null)}>✕</button>
+                <button className="cursor-pointer text-lg bg-transparent border-none text-slate-400" onClick={() => setEmailModal(null)}>✕</button>
               </div>
-              <div className="text-sm mb-5" style={{ color: "var(--text-secondary)" }}>
+              <div className="text-sm mb-5 text-slate-500">
                 Trimite un email către toți utilizatorii din <strong>{emailModal.name}</strong>.
               </div>
 
               <div className="mb-3">
-                <label className="block text-[11px] font-semibold uppercase mb-1.5" style={{ letterSpacing: ".7px", color: "var(--text-muted)" }}>Subiect</label>
+                <label className="block text-[11px] font-semibold uppercase mb-1.5 text-slate-400" style={{ letterSpacing: ".7px" }}>Subiect</label>
                 <input
                   value={emailSubject}
                   onChange={(e) => setEmailSubject(e.target.value)}
-                  className="w-full px-3.5 py-2.5 text-sm outline-none"
-                  style={{ borderRadius: "var(--r-md)", border: "1px solid var(--border)", background: "var(--bg-deep)", color: "var(--text-primary)", fontFamily: "var(--font-sans)" }}
+                  className="w-full px-3.5 py-2.5 text-sm outline-none rounded-[10px] border border-slate-200 bg-slate-50 text-slate-900 font-sans"
                   placeholder="Subiect email..."
                 />
               </div>
 
               <div className="mb-4">
-                <label className="block text-[11px] font-semibold uppercase mb-1.5" style={{ letterSpacing: ".7px", color: "var(--text-muted)" }}>Mesaj</label>
+                <label className="block text-[11px] font-semibold uppercase mb-1.5 text-slate-400" style={{ letterSpacing: ".7px" }}>Mesaj</label>
                 <textarea
                   value={emailMessage}
                   onChange={(e) => setEmailMessage(e.target.value)}
-                  className="w-full px-3.5 py-2.5 text-sm outline-none"
-                  style={{ borderRadius: "var(--r-md)", border: "1px solid var(--border)", background: "var(--bg-deep)", color: "var(--text-primary)", fontFamily: "var(--font-sans)", minHeight: 120, resize: "vertical" }}
+                  className="w-full px-3.5 py-2.5 text-sm outline-none rounded-[10px] border border-slate-200 bg-slate-50 text-slate-900 font-sans min-h-[120px] resize-y"
                   placeholder="Scrie mesajul..."
                 />
               </div>
 
               <div className="flex gap-2.5 justify-end">
-                <button className="px-5 py-2.5 text-sm font-semibold cursor-pointer" style={{ borderRadius: "var(--r-md)", border: "1px solid var(--border)", background: "transparent", color: "var(--text-secondary)", fontFamily: "var(--font-sans)" }} onClick={() => setEmailModal(null)}>Anuleaza</button>
+                <button className="px-5 py-2.5 text-sm font-semibold cursor-pointer rounded-[10px] border border-slate-200 bg-transparent text-slate-500 font-sans" onClick={() => setEmailModal(null)}>Anuleaza</button>
                 <button
-                  className="px-5 py-2.5 text-sm font-bold text-white cursor-pointer"
-                  style={{ borderRadius: "var(--r-md)", border: "none", background: "var(--accent-blue)", fontFamily: "var(--font-sans)", opacity: emailSending ? 0.5 : 1 }}
+                  className="px-5 py-2.5 text-sm font-bold text-white cursor-pointer rounded-[10px] border-none bg-blue-600 font-sans"
+                  style={{ opacity: emailSending ? 0.5 : 1 }}
                   onClick={handleSendEmail}
                   disabled={emailSending || !emailSubject.trim() || !emailMessage.trim()}
                 >

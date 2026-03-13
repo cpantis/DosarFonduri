@@ -11,17 +11,17 @@ export function ProgressBar({ value, max, color }: ProgressBarProps) {
   const barColor =
     color ||
     (pct === 100
-      ? "var(--accent-green)"
+      ? "#34d399"
       : pct > 50
-      ? "var(--accent-blue)"
+      ? "#4d8bff"
       : pct > 0
-      ? "var(--accent-yellow)"
-      : "var(--accent-red)");
+      ? "#fbbf24"
+      : "#f87171");
 
   return (
     <div>
       <div
-        className="w-full overflow-hidden"
+        className="w-full overflow-hidden bg-slate-50"
         role="progressbar"
         aria-valuenow={pct}
         aria-valuemin={0}
@@ -30,7 +30,6 @@ export function ProgressBar({ value, max, color }: ProgressBarProps) {
         style={{
           height: "4px",
           borderRadius: "2px",
-          background: "var(--bg-deep)",
         }}
       >
         <div
@@ -43,8 +42,7 @@ export function ProgressBar({ value, max, color }: ProgressBarProps) {
         />
       </div>
       <div
-        className="text-[11px] font-semibold mt-0.5"
-        style={{ fontFamily: "var(--font-mono)", color: "var(--text-secondary)" }}
+        className="text-[11px] font-semibold mt-0.5 font-mono text-slate-500"
       >
         {value}/{max}
       </div>

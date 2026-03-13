@@ -1,6 +1,6 @@
 :root {
   /* Shared */
-  --font-sans: 'DM Sans', system-ui, sans-serif;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
   --r-sm: 6px;
   --r-md: 10px;
@@ -69,7 +69,7 @@
   --shadow: 0 2px 8px rgba(0,0,0,.08);
   --overlay-bg: rgba(0,0,0,.4);
   --spinner-track: rgba(0,0,0,.15);
-  --spinner-head: var(--accent-blue);
+  --spinner-head: #2563eb;
   /* Sidebar */
   --sidebar-bg: #0F172A;
   --sidebar-hover: rgba(0,0,0,.06);
@@ -96,5 +96,5 @@
 /* Scrollbar */
 ::-webkit-scrollbar { width: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--border-active); }
+::-webkit-scrollbar-thumb { background: #d8dce5; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #b0b8c8; }

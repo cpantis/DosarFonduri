@@ -34,7 +34,6 @@ export default function ProviderLoginPage() {
           display: flex;
           align-items: center;
           justify-content: center;
-          background: var(--bg-deep);
           position: relative;
           overflow: hidden;
         }
@@ -61,9 +60,6 @@ export default function ProviderLoginPage() {
         .prov-login-card {
           width: 420px;
           padding: 40px;
-          background: var(--bg-surface);
-          border: 1px solid var(--border);
-          border-radius: var(--r-lg);
           position: relative;
           z-index: 1;
           box-shadow: 0 8px 40px rgba(0,0,0,.2);
@@ -71,37 +67,22 @@ export default function ProviderLoginPage() {
         .prov-login-input {
           width: 100%;
           padding: 12px 16px;
-          border-radius: var(--r-md);
-          border: 1px solid var(--border);
-          background: var(--bg-deep);
-          color: var(--text-primary);
           font-size: 14px;
-          font-family: var(--font-sans);
           outline: none;
           transition: border-color .15s, box-shadow .15s;
         }
         .prov-login-input:focus {
-          border-color: var(--accent-purple);
+          border-color: #a78bfa;
           box-shadow: 0 0 0 3px rgba(167,139,250,.12);
-        }
-        .prov-login-input::placeholder {
-          color: var(--text-muted);
-        }
-        .prov-login-input[type="password"] {
-          font-family: var(--font-mono);
-          letter-spacing: 2px;
         }
         .prov-login-btn {
           width: 100%;
           padding: 13px;
-          border-radius: var(--r-md);
           border: none;
-          background: var(--accent-purple);
           color: #fff;
           font-size: 15px;
           font-weight: 700;
           cursor: pointer;
-          font-family: var(--font-sans);
           transition: all .15s;
           display: flex;
           align-items: center;
@@ -119,27 +100,25 @@ export default function ProviderLoginPage() {
         }
       `}</style>
 
-      <div className="prov-login-bg">
-        <div className="prov-login-card">
+      <div className="prov-login-bg bg-slate-50">
+        <div className="prov-login-card bg-white border border-slate-200 rounded-xl">
           {/* Logo */}
           <div className="flex items-center gap-3 mb-8">
             <div
-              className="w-11 h-11 flex items-center justify-center text-lg font-extrabold text-white"
+              className="w-11 h-11 flex items-center justify-center text-lg font-extrabold text-white rounded-xl bg-violet-500 shadow-[0_4px_20px_rgba(167,139,250,.3)]"
               style={{
-                borderRadius: 12,
-                background: "linear-gradient(135deg, var(--accent-purple) 0%, #8b5cf6 100%)",
-                boxShadow: "0 4px 20px rgba(167,139,250,.3)",
+                background: "linear-gradient(135deg, #a78bfa 0%, #8b5cf6 100%)",
               }}
             >
               DF
             </div>
             <div>
-              <div className="text-lg font-extrabold" style={{ color: "var(--text-primary)" }}>
+              <div className="text-lg font-extrabold text-slate-900">
                 DosarFonduri
               </div>
               <div
-                className="text-[11px] font-semibold uppercase"
-                style={{ color: "var(--accent-purple)", letterSpacing: "1px" }}
+                className="text-[11px] font-semibold uppercase text-violet-500"
+                style={{ letterSpacing: "1px" }}
               >
                 Provider Dashboard
               </div>
@@ -147,19 +126,16 @@ export default function ProviderLoginPage() {
           </div>
 
           {/* Subtitle */}
-          <div className="text-sm mb-6" style={{ color: "var(--text-secondary)" }}>
+          <div className="text-sm mb-6 text-slate-500">
             Autentificare in panoul de administrare a cabinetelor.
           </div>
 
           {/* Error */}
           {error && (
             <div
-              className="p-3 mb-4 text-sm font-medium"
+              className="p-3 mb-4 text-sm font-medium rounded-md border border-red-500 text-red-500"
               style={{
-                borderRadius: "var(--r-sm)",
-                border: "1px solid var(--accent-red)",
                 background: "rgba(248,113,113,.06)",
-                color: "var(--accent-red)",
               }}
             >
               {error}
@@ -169,8 +145,8 @@ export default function ProviderLoginPage() {
           {/* Email */}
           <div className="mb-4">
             <label
-              className="block text-[11px] font-semibold uppercase mb-1.5"
-              style={{ letterSpacing: ".7px", color: "var(--text-muted)" }}
+              className="block text-[11px] font-semibold uppercase mb-1.5 text-slate-400"
+              style={{ letterSpacing: ".7px" }}
             >
               Email
             </label>
@@ -179,7 +155,7 @@ export default function ProviderLoginPage() {
               placeholder="admin@dosarfonduri.ro"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="prov-login-input"
+              className="prov-login-input rounded-[10px] border border-slate-200 bg-slate-50 text-slate-900 font-sans placeholder:text-slate-400"
               autoFocus
             />
           </div>
@@ -187,8 +163,8 @@ export default function ProviderLoginPage() {
           {/* Password */}
           <div className="mb-6">
             <label
-              className="block text-[11px] font-semibold uppercase mb-1.5"
-              style={{ letterSpacing: ".7px", color: "var(--text-muted)" }}
+              className="block text-[11px] font-semibold uppercase mb-1.5 text-slate-400"
+              style={{ letterSpacing: ".7px" }}
             >
               Parola
             </label>
@@ -198,7 +174,7 @@ export default function ProviderLoginPage() {
               value={pw}
               onChange={(e) => setPw(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && go()}
-              className="prov-login-input"
+              className="prov-login-input rounded-[10px] border border-slate-200 bg-slate-50 text-slate-900 font-mono tracking-widest placeholder:text-slate-400"
             />
           </div>
 
@@ -206,13 +182,13 @@ export default function ProviderLoginPage() {
           <button
             onClick={go}
             disabled={busy || !email || !pw}
-            className="prov-login-btn"
+            className="prov-login-btn rounded-[10px] bg-violet-500 font-sans"
           >
             {busy ? <Spinner light /> : "Autentificare Provider"}
           </button>
 
           {/* Footer */}
-          <div className="text-center mt-5 text-xs" style={{ color: "var(--text-muted)" }}>
+          <div className="text-center mt-5 text-xs text-slate-400">
             DosarFonduri &copy; {new Date().getFullYear()} &middot; Provider Portal
           </div>
         </div>

@@ -69,7 +69,7 @@ export function SplitPane({
         style={{
           left: dragging ? "2px" : "3px",
           width: dragging ? "3px" : "1px",
-          background: dragging ? "var(--accent-blue)" : "var(--border)",
+          background: dragging ? "#4d8bff" : "#e0e4ea",
           boxShadow: dragging ? "0 0 4px rgba(77,139,255,.3)" : undefined,
         }}
       />

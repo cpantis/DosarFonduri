@@ -644,7 +644,7 @@ export const cabinetCodes = pgTable("cabinet_codes", {
   companyName: varchar("company_name", { length: 500 }),
   organizationId: uuid("organization_id").references(() => organizations.id),
   activatedAt: timestamp("activated_at"),
-  expiresAt: timestamp("expires_at").notNull(),
+  isActive: boolean("is_active").notNull().default(true),
   createdBy: uuid("created_by").references(() => providerUsers.id).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

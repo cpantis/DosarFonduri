@@ -274,7 +274,7 @@ async function getFromAddress(organizationId: string): Promise<string> {
   const config = await db.query.orgConfig.findFirst({
     where: eq(orgConfig.organizationId, organizationId),
   });
-  return config?.emailFrom || process.env.RESEND_FROM || "notificari@dosarfonduri.ro";
+  return config?.emailFrom || process.env.SENDER_EMAIL || "notificari@dosarfonduri.ro";
 }
 
 export async function sendEmail(params: EmailParams) {

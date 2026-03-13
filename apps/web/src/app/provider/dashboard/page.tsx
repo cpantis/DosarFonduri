@@ -49,8 +49,22 @@ interface UnusedCode {
   trialDays: number;
   cui: string | null;
   companyName: string | null;
-  expiresAt: string;
+  isActive: boolean;
   createdAt: string;
+}
+
+interface PlatformUser {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
+  status: string;
+  createdAt: string;
+  lastActiveAt: string | null;
+  organizationId: string | null;
+  cabinetName: string | null;
+  cabinetCode: string | null;
+  cabinetPlan: string | null;
 }
 
 interface Revenue {
@@ -76,6 +90,8 @@ export default function ProviderDashboardPage() {
   const [cabinets, setCabinets] = useState<Cabinet[]>([]);
   const [codes, setCodes] = useState<UnusedCode[]>([]);
   const [revenue, setRevenue] = useState<Revenue | null>(null);
+  const [platformUsers, setPlatformUsers] = useState<PlatformUser[]>([]);
+  const [userSearch, setUserSearch] = useState("");
   const [selectedCabinet, setSelectedCabinet] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -99,14 +115,16 @@ export default function ProviderDashboardPage() {
 
   const loadData = useCallback(async () => {
     try {
-      const [cabs, unusedCodes, rev] = await Promise.all([
+      const [cabs, unusedCodes, rev, usrs] = await Promise.all([
         providerGet("/api/provider/cabinets"),
         providerGet("/api/provider/codes/unused"),
         providerGet("/api/provider/revenue"),
+        providerGet("/api/provider/users"),
       ]);
       setCabinets(cabs);
       setCodes(unusedCodes);
       setRevenue(rev);
+      setPlatformUsers(usrs);
     } catch (err: any) {
       if (err.message.includes("Unauthorized") || err.message.includes("Invalid token")) {
         router.push("/provider/login");
@@ -226,6 +244,31 @@ export default function ProviderDashboardPage() {
     }
   };
 
+  const handleToggleCode = async (id: string) => {
+    try {
+      const updated = await providerPost(`/api/provider/codes/${id}/toggle`, {});
+      setCodes((prev) => prev.map((c) => c.id === id ? { ...c, isActive: updated.isActive } : c));
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const handleDeleteUser = async (id: string, email: string) => {
+    if (!confirm(`Sigur vrei sa stergi utilizatorul ${email}? Aceasta actiune este ireversibila.`)) return;
+    try {
+      await providerDelete(`/api/provider/users/${id}`);
+      setPlatformUsers((prev) => prev.filter((u) => u.id !== id));
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const filteredUsers = platformUsers.filter((u) => {
+    if (!userSearch) return true;
+    const q = userSearch.toLowerCase();
+    return u.email.toLowerCase().includes(q) || u.name.toLowerCase().includes(q) || (u.cabinetName || "").toLowerCase().includes(q);
+  });
+
   const filtered = cabinets.filter((c) => {
     if (statusFilter !== "all" && c.status !== statusFilter) return false;
     if (search) {
@@ -286,7 +329,8 @@ export default function ProviderDashboardPage() {
           </div>
           <div className="flex-1 p-3">
             <div className={`s-item ${activeTab === "cabinets" ? "active" : ""}`} onClick={() => setActiveTab("cabinets")}>🏢 Cabinete</div>
-            <div className={`s-item ${activeTab === "codes" ? "active" : ""}`} onClick={() => setActiveTab("codes")}>🔑 Coduri nefolosite</div>
+            <div className={`s-item ${activeTab === "codes" ? "active" : ""}`} onClick={() => setActiveTab("codes")}>🔑 Coduri acces</div>
+            <div className={`s-item ${activeTab === "users" ? "active" : ""}`} onClick={() => setActiveTab("users")}>👥 Utilizatori</div>
             <div className={`s-item ${activeTab === "revenue" ? "active" : ""}`} onClick={() => setActiveTab("revenue")}>💰 Revenue</div>
           </div>
           <div className="p-3 text-xs" style={{ borderTop: "1px solid var(--border)", color: "var(--text-muted)" }}>
@@ -303,7 +347,7 @@ export default function ProviderDashboardPage() {
           {/* Topbar */}
           <div className="px-6 py-3.5 flex items-center gap-4 flex-shrink-0" style={{ borderBottom: "1px solid var(--border)", background: "var(--bg-surface)" }}>
             <div className="text-xl font-extrabold flex-1">
-              {activeTab === "cabinets" ? "Cabinete" : activeTab === "codes" ? "Coduri de acces" : "Revenue & Metrici"}
+              {activeTab === "cabinets" ? "Cabinete" : activeTab === "codes" ? "Coduri de acces" : activeTab === "users" ? "Utilizatori platforma" : "Revenue & Metrici"}
             </div>
             <button
               className="px-4 py-2 text-[13px] font-bold text-white flex items-center gap-1.5 cursor-pointer"
@@ -344,11 +388,11 @@ export default function ProviderDashboardPage() {
               <div className="text-xs" style={{ color: "var(--text-muted)" }}>cabinete in trial</div>
             </div>
             <div className="stat">
-              <div className="text-[11px] font-semibold uppercase mb-1.5" style={{ letterSpacing: ".6px", color: "var(--text-muted)" }}>Coduri nefolosite</div>
+              <div className="text-[11px] font-semibold uppercase mb-1.5" style={{ letterSpacing: ".6px", color: "var(--text-muted)" }}>Utilizatori</div>
               <div className="text-[28px] font-extrabold" style={{ fontFamily: "var(--font-mono)", letterSpacing: "-1px" }}>
-                {codes.length}
+                {platformUsers.filter(u => u.status === "active").length}
               </div>
-              <div className="text-xs" style={{ color: "var(--text-muted)" }}>disponibile</div>
+              <div className="text-xs" style={{ color: "var(--text-muted)" }}>activi din {platformUsers.length} total</div>
             </div>
           </div>
 
@@ -489,13 +533,25 @@ export default function ProviderDashboardPage() {
             {activeTab === "codes" && (
               <>
                 <div className="text-sm mb-4" style={{ color: "var(--text-secondary)" }}>
-                  Coduri generate dar neactivate inca de niciun cabinet.
+                  Coduri generate dar neactivate inca de niciun cabinet. Poti activa/dezactiva fiecare cod.
                 </div>
                 {codes.map((c) => (
-                  <div className="code-card" key={c.id}>
+                  <div className="code-card" key={c.id} style={{ opacity: c.isActive ? 1 : 0.55 }}>
                     <div className="flex-1">
-                      <div className="text-base font-extrabold" style={{ fontFamily: "var(--font-mono)", color: "var(--accent-purple)", letterSpacing: "1px" }}>
-                        {c.code}
+                      <div className="flex items-center gap-2">
+                        <div className="text-base font-extrabold" style={{ fontFamily: "var(--font-mono)", color: c.isActive ? "var(--accent-purple)" : "var(--text-muted)", letterSpacing: "1px" }}>
+                          {c.code}
+                        </div>
+                        <span
+                          className="text-[10px] font-bold px-2 py-0.5"
+                          style={{
+                            borderRadius: 10,
+                            background: c.isActive ? "rgba(52,211,153,.12)" : "rgba(90,100,120,.12)",
+                            color: c.isActive ? "var(--accent-green)" : "var(--text-muted)",
+                          }}
+                        >
+                          {c.isActive ? "Activ" : "Dezactivat"}
+                        </span>
                       </div>
                       {c.companyName && (
                         <div className="text-[13px] font-semibold mt-0.5" style={{ color: "var(--text-primary)" }}>
@@ -504,12 +560,22 @@ export default function ProviderDashboardPage() {
                         </div>
                       )}
                       <div className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
-                        <span className="capitalize">{c.plan}</span> · {c.maxUsers} utilizatori · Trial {c.trialDays}z
-                      </div>
-                      <div className="text-xs" style={{ color: "var(--text-muted)" }}>
-                        Creat: {new Date(c.createdAt).toLocaleDateString("ro-RO")} · Expira: {new Date(c.expiresAt).toLocaleDateString("ro-RO")}
+                        <span className="capitalize">{c.plan}</span> · {c.maxUsers} utilizatori · Trial {c.trialDays}z · Creat: {new Date(c.createdAt).toLocaleDateString("ro-RO")}
                       </div>
                     </div>
+                    <button
+                      className="px-3 py-1.5 text-xs font-semibold cursor-pointer transition-all"
+                      style={{
+                        borderRadius: "var(--r-sm)",
+                        border: `1px solid ${c.isActive ? "rgba(248,113,113,.25)" : "rgba(52,211,153,.25)"}`,
+                        background: "transparent",
+                        color: c.isActive ? "var(--accent-red)" : "var(--accent-green)",
+                        fontFamily: "var(--font-sans)",
+                      }}
+                      onClick={() => handleToggleCode(c.id)}
+                    >
+                      {c.isActive ? "Dezactiveaza" : "Activeaza"}
+                    </button>
                     <button
                       className="px-3 py-1.5 text-xs font-semibold cursor-pointer transition-all"
                       style={{ borderRadius: "var(--r-sm)", border: "1px solid var(--border)", background: "transparent", color: "var(--text-secondary)", fontFamily: "var(--font-sans)" }}
@@ -529,6 +595,84 @@ export default function ProviderDashboardPage() {
                 {codes.length === 0 && (
                   <div className="text-center py-10" style={{ color: "var(--text-muted)" }}>Niciun cod nefolosit</div>
                 )}
+              </>
+            )}
+
+            {/* ═══ UTILIZATORI ═══ */}
+            {activeTab === "users" && (
+              <>
+                <div className="flex items-center gap-2.5 mb-4">
+                  <input
+                    className="px-3.5 py-2 text-[13px] outline-none"
+                    style={{
+                      width: 300,
+                      borderRadius: "var(--r-md)",
+                      border: "1px solid var(--border)",
+                      background: "var(--bg-deep)",
+                      color: "var(--text-primary)",
+                      fontFamily: "var(--font-sans)",
+                    }}
+                    placeholder="Cauta dupa email, nume sau cabinet..."
+                    value={userSearch}
+                    onChange={(e) => setUserSearch(e.target.value)}
+                  />
+                  <div className="text-xs" style={{ color: "var(--text-muted)" }}>
+                    {filteredUsers.length} din {platformUsers.length} utilizatori
+                  </div>
+                </div>
+
+                <div style={{ border: "1px solid var(--border)", borderRadius: "var(--r-md)", overflow: "hidden", background: "var(--bg-surface)" }}>
+                  {/* Table header */}
+                  <div className="grid items-center" style={{ gridTemplateColumns: "1fr 1fr 100px 80px 140px 60px", borderBottom: "1px solid var(--border)" }}>
+                    {["Utilizator", "Cabinet", "Rol", "Status", "Ultima activitate", ""].map((h, i) => (
+                      <div key={i} className="px-4 py-2.5 text-[10px] font-bold uppercase" style={{ letterSpacing: ".5px", color: "var(--text-muted)" }}>{h}</div>
+                    ))}
+                  </div>
+
+                  {/* Table rows */}
+                  {filteredUsers.map((u) => {
+                    const statusColor = u.status === "active" ? "var(--accent-green)" : u.status === "invited" ? "var(--accent-yellow)" : u.status === "disabled" ? "var(--accent-red)" : "var(--text-muted)";
+                    return (
+                      <div key={u.id} className="grid items-center transition-colors hover:bg-[var(--bg-hover)]" style={{ gridTemplateColumns: "1fr 1fr 100px 80px 140px 60px", borderBottom: "1px solid var(--separator)" }}>
+                        <div className="px-4 py-2.5">
+                          <div className="text-[13px] font-semibold">{u.name}</div>
+                          <div className="text-[11px]" style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>{u.email}</div>
+                        </div>
+                        <div className="px-4 py-2.5">
+                          {u.cabinetName ? (
+                            <>
+                              <div className="text-[13px] font-semibold">{u.cabinetName}</div>
+                              <div className="text-[11px]" style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>{u.cabinetCode}</div>
+                            </>
+                          ) : (
+                            <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>Fara cabinet</span>
+                          )}
+                        </div>
+                        <div className="px-4 py-2.5 text-[12px] font-medium capitalize" style={{ color: "var(--text-secondary)" }}>{u.role}</div>
+                        <div className="px-4 py-2.5">
+                          <span className="text-[10px] font-bold px-2 py-0.5" style={{ borderRadius: 10, background: `${statusColor}18`, color: statusColor }}>{u.status}</span>
+                        </div>
+                        <div className="px-4 py-2.5 text-[11px]" style={{ color: "var(--text-muted)" }}>
+                          {u.lastActiveAt ? new Date(u.lastActiveAt).toLocaleDateString("ro-RO", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "Niciodata"}
+                        </div>
+                        <div className="px-4 py-2.5">
+                          <button
+                            className="px-2 py-1 text-[11px] font-semibold cursor-pointer transition-all"
+                            style={{ borderRadius: "var(--r-sm)", border: "1px solid rgba(248,113,113,.25)", background: "transparent", color: "var(--accent-red)", fontFamily: "var(--font-sans)" }}
+                            onClick={() => handleDeleteUser(u.id, u.email)}
+                            title="Sterge utilizator"
+                          >
+                            🗑
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {filteredUsers.length === 0 && (
+                    <div className="text-center py-10" style={{ color: "var(--text-muted)" }}>Niciun utilizator gasit</div>
+                  )}
+                </div>
               </>
             )}
 

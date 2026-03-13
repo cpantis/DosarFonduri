@@ -750,7 +750,7 @@ function SignupWizard({ onGo }: { onGo: () => void }) {
 
           {codeRes === "error" && (
             <div className="cui-err">
-              Cod invalid sau expirat. Verifica si incearca din nou.
+              Cod invalid, dezactivat sau deja folosit. Verifica si incearca din nou.
             </div>
           )}
 

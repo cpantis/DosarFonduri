@@ -71,18 +71,21 @@ providerRoutes.post("/codes", providerAuth, async (c) => {
       trialDays: body.trialDays,
       cui: cuiClean,
       companyName,
-      expiresAt: new Date(Date.now() + 90 * 86400000),
+      isActive: true,
       createdBy: c.get("providerId"),
     }).returning();
     return c.json(created);
   } catch (insertErr: any) {
     // If the error is about missing columns, auto-add them and retry
-    if (insertErr.message?.includes("cui") || insertErr.message?.includes("company_name") || insertErr.message?.includes("column")) {
-      console.log("[POST /codes] CUI columns missing, running ALTER TABLE...");
+    if (insertErr.message?.includes("cui") || insertErr.message?.includes("company_name") || insertErr.message?.includes("is_active") || insertErr.message?.includes("column")) {
+      console.log("[POST /codes] Missing columns detected, running ALTER TABLE...");
       try {
         await db.execute(sql`ALTER TABLE "cabinet_codes" ADD COLUMN IF NOT EXISTS "cui" varchar(20)`);
         await db.execute(sql`ALTER TABLE "cabinet_codes" ADD COLUMN IF NOT EXISTS "company_name" varchar(500)`);
-        console.log("[POST /codes] Columns added successfully, retrying insert...");
+        await db.execute(sql`ALTER TABLE "cabinet_codes" ADD COLUMN IF NOT EXISTS "is_active" boolean NOT NULL DEFAULT true`);
+        // Drop expires_at if it exists (migrating from old schema)
+        await db.execute(sql`ALTER TABLE "cabinet_codes" DROP COLUMN IF EXISTS "expires_at"`);
+        console.log("[POST /codes] Columns migrated successfully, retrying insert...");
       } catch (alterErr: any) {
         console.warn("[POST /codes] ALTER TABLE warning:", alterErr.message);
       }
@@ -94,7 +97,7 @@ providerRoutes.post("/codes", providerAuth, async (c) => {
         trialDays: body.trialDays,
         cui: cuiClean,
         companyName,
-        expiresAt: new Date(Date.now() + 90 * 86400000),
+        isActive: true,
         createdBy: c.get("providerId"),
       }).returning();
       return c.json(created);
@@ -105,10 +108,22 @@ providerRoutes.post("/codes", providerAuth, async (c) => {
 
 // List unused codes
 providerRoutes.get("/codes/unused", providerAuth, async (c) => {
-  const codes = await db.query.cabinetCodes.findMany({
-    where: isNull(cabinetCodes.organizationId),
-  });
-  return c.json(codes);
+  try {
+    const codes = await db.query.cabinetCodes.findMany({
+      where: isNull(cabinetCodes.organizationId),
+    });
+    return c.json(codes);
+  } catch (err: any) {
+    // Auto-migrate: add is_active column if missing
+    if (err.message?.includes("is_active") || err.message?.includes("column")) {
+      await db.execute(sql`ALTER TABLE "cabinet_codes" ADD COLUMN IF NOT EXISTS "is_active" boolean NOT NULL DEFAULT true`);
+      const codes = await db.query.cabinetCodes.findMany({
+        where: isNull(cabinetCodes.organizationId),
+      });
+      return c.json(codes);
+    }
+    throw err;
+  }
 });
 
 // Delete code
@@ -219,7 +234,7 @@ providerRoutes.post("/cabinets/:id/email", providerAuth, async (c) => {
   }
 
   const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.RESEND_FROM || "notificari@dosarfonduri.ro";
+  const from = process.env.SENDER_EMAIL || "notificari@dosarfonduri.ro";
 
   if (!apiKey) {
     return c.json({ error: "RESEND_API_KEY nu este configurat" }, 500);
@@ -248,6 +263,62 @@ providerRoutes.post("/cabinets/:id/email", providerAuth, async (c) => {
   }
 
   return c.json({ sent, total: orgUsers.length });
+});
+
+// ─── TOGGLE CODE ACTIVE/INACTIVE ─────────────────────────
+providerRoutes.post("/codes/:id/toggle", providerAuth, async (c) => {
+  const id = c.req.param("id");
+  const code = await db.query.cabinetCodes.findFirst({
+    where: eq(cabinetCodes.id, id),
+  });
+  if (!code) return c.json({ error: "Cod negăsit" }, 404);
+  if (code.organizationId) return c.json({ error: "Codul este deja activat de un cabinet" }, 400);
+
+  const [updated] = await db
+    .update(cabinetCodes)
+    .set({ isActive: !code.isActive })
+    .where(eq(cabinetCodes.id, id))
+    .returning();
+
+  return c.json(updated);
+});
+
+// ─── LIST ALL PLATFORM USERS ─────────────────────────
+providerRoutes.get("/users", providerAuth, async (c) => {
+  const allUsers = await db.query.users.findMany({
+    orderBy: (u, { desc }) => [desc(u.createdAt)],
+  });
+
+  // Batch-load organizations for all users
+  const orgIds = [...new Set(allUsers.filter(u => u.organizationId).map(u => u.organizationId!))];
+  const orgs = orgIds.length > 0
+    ? await db.query.organizations.findMany()
+    : [];
+  const orgMap = new Map(orgs.map(o => [o.id, o]));
+
+  return c.json(allUsers.map(u => ({
+    id: u.id,
+    email: u.email,
+    name: u.name,
+    role: u.role,
+    status: u.status,
+    createdAt: u.createdAt,
+    lastActiveAt: u.lastActiveAt,
+    organizationId: u.organizationId,
+    cabinetName: u.organizationId ? orgMap.get(u.organizationId)?.name || null : null,
+    cabinetCode: u.organizationId ? orgMap.get(u.organizationId)?.code || null : null,
+    cabinetPlan: u.organizationId ? orgMap.get(u.organizationId)?.plan || null : null,
+  })));
+});
+
+// ─── DELETE USER ─────────────────────────
+providerRoutes.delete("/users/:id", providerAuth, async (c) => {
+  const id = c.req.param("id");
+  const user = await db.query.users.findFirst({ where: eq(users.id, id) });
+  if (!user) return c.json({ error: "Utilizator negăsit" }, 404);
+
+  await db.delete(users).where(eq(users.id, id));
+  return c.json({ ok: true, deletedEmail: user.email });
 });
 
 // Revenue stats

@@ -10,6 +10,12 @@ import { lookupCUI_ListaFirme } from "../services/listafirme";
 
 export const authRoutes = new Hono<AppEnv>();
 
+/** Strip sensitive fields before sending user to client */
+function sanitizeUser(user: Record<string, any>) {
+  const { passwordHash, ...safe } = user;
+  return safe;
+}
+
 // --- SIGNUP ---
 const signupSchema = z.object({
   name: z.string().min(2),
@@ -44,7 +50,7 @@ authRoutes.post("/signup", async (c) => {
     }).where(eq(users.id, preRegistered.id));
 
     const token = await sign({ sub: preRegistered.id, exp: Math.floor(Date.now() / 1000) + 7 * 86400 }, process.env.JWT_SECRET!, "HS256");
-    return c.json({ token, user: { ...preRegistered, name: body.name, status: "active" }, hasOrganization: true });
+    return c.json({ token, user: sanitizeUser({ ...preRegistered, name: body.name, status: "active" }), hasOrganization: true });
   }
 
   if (body.cabinetCode) {
@@ -133,7 +139,7 @@ authRoutes.post("/signup", async (c) => {
     }).where(eq(cabinetCodes.id, code.id));
 
     const token = await sign({ sub: user.id, exp: Math.floor(Date.now() / 1000) + 7 * 86400 }, process.env.JWT_SECRET!, "HS256");
-    return c.json({ token, user, organization: org, hasOrganization: true });
+    return c.json({ token, user: sanitizeUser(user), organization: org, hasOrganization: true });
   }
 
   // Flow: signup without code -> pending
@@ -145,7 +151,7 @@ authRoutes.post("/signup", async (c) => {
   }).returning();
 
   const token = await sign({ sub: user.id, exp: Math.floor(Date.now() / 1000) + 7 * 86400 }, process.env.JWT_SECRET!, "HS256");
-  return c.json({ token, user, hasOrganization: false });
+  return c.json({ token, user: sanitizeUser(user), hasOrganization: false });
 });
 
 // --- LOGIN ---
@@ -194,7 +200,7 @@ authRoutes.get("/me", async (c) => {
       });
     }
 
-    return c.json({ user, organization: org });
+    return c.json({ user: sanitizeUser(user), organization: org });
   } catch {
     return c.json({ error: "Invalid token" }, 401);
   }

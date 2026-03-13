@@ -20,6 +20,7 @@ import { referenceTableRoutes } from "./routes/reference-tables";
 import { authMiddleware } from "./middleware/auth";
 import { auditMiddleware } from "./middleware/audit";
 import { errorHandler } from "./middleware/errorHandler";
+import { rateLimit } from "./middleware/rateLimit";
 import { createSSEStream } from "./lib/sse";
 
 // ─── Startup checks ─────────────────────────────────────
@@ -56,6 +57,10 @@ app.use("*", cors({
   })(),
   credentials: true,
 }));
+
+// Rate limiting on public auth routes (brute-force protection)
+app.use("/api/auth/*", rateLimit({ windowMs: 60_000, max: 20, keyPrefix: "rl:auth" }));
+app.use("/api/provider/*", rateLimit({ windowMs: 60_000, max: 15, keyPrefix: "rl:provider" }));
 
 // Public routes
 app.route("/api/auth", authRoutes);

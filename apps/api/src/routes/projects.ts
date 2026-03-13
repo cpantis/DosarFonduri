@@ -1,5 +1,6 @@
 import type { AppEnv } from "../types/hono";
 import { Hono } from "hono";
+import { verify } from "hono/jwt";
 import { z } from "zod";
 import { db } from "../db";
 import {
@@ -781,6 +782,50 @@ projectRoutes.post("/:id/lock/heartbeat", async (c) => {
     .where(eq(projects.id, id)).returning();
 
   return c.json({ lockedAt: updated.lockedAt });
+});
+
+// ─── LOCK: RELEASE VIA SENDBEACON (POST with token in body) ───
+// sendBeacon can only POST and cannot set Authorization headers,
+// so the token is passed in the JSON body instead.
+projectRoutes.post("/:id/lock/release", async (c) => {
+  const id = c.req.param("id");
+
+  // Try auth from middleware first (normal authenticated request)
+  let userId: string | null = null;
+  try {
+    const auth = c.get("auth") as AuthContext;
+    userId = auth.userId;
+  } catch {
+    // sendBeacon may not have gone through auth middleware properly
+  }
+
+  // Fallback: parse token from request body (sendBeacon path)
+  if (!userId) {
+    try {
+      const body = await c.req.json();
+      if (body.token) {
+        const payload = await verify(body.token, process.env.JWT_SECRET!, "HS256");
+        userId = payload.sub as string;
+      }
+    } catch {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+  }
+
+  if (!userId) return c.json({ error: "Unauthorized" }, 401);
+
+  const project = await db.query.projects.findFirst({
+    where: eq(projects.id, id),
+    columns: { id: true, lockedBy: true },
+  });
+  if (!project) return c.json({ error: "Not found" }, 404);
+
+  if (project.lockedBy !== userId) {
+    return c.json({ error: "Lock not owned by you" }, 403);
+  }
+
+  await db.update(projects).set({ lockedBy: null, lockedAt: null }).where(eq(projects.id, id));
+  return c.json({ ok: true });
 });
 
 // ─── LOCK: STATUS CHECK ───

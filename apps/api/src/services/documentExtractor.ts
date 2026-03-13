@@ -265,7 +265,19 @@ ${chunkText.slice(0, 60000)}`,
   try {
     parsed = JSON.parse(cleaned);
   } catch {
-    parsed = { fields: [], structured: {} };
+    // Regex fallback: try to extract JSON from response
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      try { parsed = JSON.parse(jsonMatch[0]); } catch { parsed = { fields: [], structured: {} }; }
+    } else {
+      parsed = { fields: [], structured: {} };
+    }
+    if (!parsed.fields?.length) {
+      console.error(
+        `[processChunk] JSON parse failed for chunk ${chunkIndex} (pages ${pageRange[0]}-${pageRange[1]}, type "${documentType}"). ` +
+        `Response length: ${text.length}, first 300 chars: "${text.slice(0, 300)}"`,
+      );
+    }
   }
 
   const fields = parsed.fields || [];
@@ -366,7 +378,24 @@ ${fullText.slice(0, 80000)}`,
 
   const cleaned = resultText.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
   let parsed: { fields?: ExtractionField[]; structured?: Record<string, any> };
-  try { parsed = JSON.parse(cleaned); } catch { parsed = { fields: [], structured: {} }; }
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch {
+    // Regex fallback
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      try { parsed = JSON.parse(jsonMatch[0]); } catch { parsed = { fields: [], structured: {} }; }
+    } else {
+      parsed = { fields: [], structured: {} };
+    }
+    if (!parsed.fields?.length) {
+      console.error(
+        `[analyzeWithET] JSON parse failed for document type "${documentType}". ` +
+        `Response length: ${resultText.length}, first 300 chars: "${resultText.slice(0, 300)}". ` +
+        `Reasoning length: ${reasoning.length}`,
+      );
+    }
+  }
 
   const result = { fields: parsed.fields || [], structured: parsed.structured || {}, reasoning };
   const elapsed = Date.now() - startMs;

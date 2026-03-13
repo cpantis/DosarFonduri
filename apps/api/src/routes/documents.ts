@@ -5,7 +5,7 @@ import { createHash } from "crypto";
 import { db } from "../db";
 import { documentFolders, documents, files, templateElements } from "../db/schema";
 import { eq, and, isNull } from "drizzle-orm";
-import { uploadFile, getFileUrl, deleteFile, createPresignedUploadUrl, verifyFileUploaded } from "../services/storage";
+import { uploadFile, getFileUrl, deleteFile, createPresignedUploadUrl, verifyFileUploaded, isLocalStorage } from "../services/storage";
 import { AuthContext } from "../middleware/auth";
 import { processGuideQueue, processTemplateQueue, processReferenceDataQueue, processClientDocQueue, JOB_PRIORITY } from "../lib/queue";
 import { publishUploadEvent } from "../lib/sse";
@@ -282,10 +282,13 @@ documentRoutes.post("/documents/:id/confirm-upload", async (c) => {
   });
   if (!doc) return c.json({ error: "Document not found" }, 404);
 
-  // Verify the file actually exists in R2
-  const { exists, size } = await verifyFileUploaded(
-    (await db.query.files.findFirst({ where: eq(files.id, doc.fileId) }))!.storageKey
-  );
+  // Verify the file actually exists in storage
+  const fileRecord = await db.query.files.findFirst({ where: eq(files.id, doc.fileId) });
+  if (!fileRecord) {
+    return c.json({ error: "Înregistrarea fișierului lipsește din baza de date." }, 400);
+  }
+
+  const { exists, size } = await verifyFileUploaded(fileRecord.storageKey);
 
   if (!exists) {
     return c.json({ error: "Fișierul nu a fost găsit în storage. Reîncearcă upload-ul." }, 400);
@@ -324,6 +327,35 @@ documentRoutes.post("/documents/:id/confirm-upload", async (c) => {
   }).catch(() => {});
 
   return c.json({ ok: true, document_id: doc.id, actual_size: size });
+});
+
+// --- LOCAL UPLOAD (dev fallback when S3 is not configured) ---
+// Handles the PUT request from the frontend when presigned URL points to local API
+documentRoutes.put("/local-upload/:fileId", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  if (!auth.organizationId) return c.json({ error: "No organization" }, 403);
+  if (!isLocalStorage) return c.json({ error: "Local upload not available in S3 mode" }, 400);
+
+  const fileId = c.req.param("fileId");
+  const fileRecord = await db.query.files.findFirst({
+    where: and(eq(files.id, fileId), eq(files.organizationId, auth.organizationId)),
+  });
+  if (!fileRecord) return c.json({ error: "File record not found" }, 404);
+
+  // Read the raw body as buffer
+  const buffer = Buffer.from(await c.req.arrayBuffer());
+
+  // Write to local filesystem at the storage key path
+  const { existsSync, mkdirSync, writeFileSync } = await import("fs");
+  const { join, dirname } = await import("path");
+  const fullPath = join(process.cwd(), "uploads", fileRecord.storageKey);
+  mkdirSync(dirname(fullPath), { recursive: true });
+  writeFileSync(fullPath, buffer);
+
+  // Update actual file size
+  await db.update(files).set({ size: buffer.length }).where(eq(files.id, fileId));
+
+  return c.json({ ok: true, size: buffer.length });
 });
 
 // --- UPLOAD DOCUMENT (legacy — buffers through Node, still works for small files) ---

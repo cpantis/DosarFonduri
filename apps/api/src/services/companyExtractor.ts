@@ -53,11 +53,7 @@ export interface ExtractedCompanyData {
   sediiSecundare?: Array<{ denumire: string; adresa: string }>;
 }
 
-export async function extractCompanyFromDocument(pdfText: string): Promise<ExtractedCompanyData | null> {
-  const response = await anthropic.messages.create({
-    model: "claude-sonnet-4-20250514",
-    max_tokens: 8000,
-    system: `Ești expert în documente juridice românești. Primești textul unui PDF care poate conține MULTIPLE documente:
+const COMPANY_SYSTEM_PROMPT = `Ești expert în documente juridice românești. Primești textul unui PDF care poate conține MULTIPLE documente:
 - Certificat de înregistrare
 - Certificat de înregistrare în scopuri de TVA
 - Certificat de mențiuni
@@ -81,10 +77,9 @@ MAPARE FORME JURIDICE (text → cod):
 
 STARE FIRMĂ:
 - "funcțiune" → "functiune"
-- "radiată" / "dizolvată" → "radiata"`,
-    messages: [{
-      role: "user",
-      content: `Extrage datele firmei din acest document PDF.
+- "radiată" / "dizolvată" → "radiata"`;
+
+const COMPANY_USER_PROMPT = (pdfText: string) => `Extrage datele firmei din acest document PDF.
 
 Returnează JSON cu structura:
 {
@@ -122,19 +117,77 @@ Returnează JSON cu structura:
 }
 
 TEXT DOCUMENT:
-${pdfText.slice(0, 80000)}`
-    }],
-  });
+${pdfText.slice(0, 80000)}`;
 
-  const text = response.content[0].type === "text" ? response.content[0].text : "";
-  const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+/**
+ * Try to extract valid JSON from a raw AI response text.
+ * Handles: backtick wrappers, leading/trailing text around JSON, nested objects.
+ */
+function tryParseJSON(raw: string): any | null {
+  // Step 1: Clean backtick wrappers
+  let cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
 
-  try {
-    const data = JSON.parse(cleaned);
-    if (!data.cui || !data.denumire) return null;
-    return data;
-  } catch {
-    console.error("Failed to parse company extraction JSON");
-    return null;
+  // Step 2: Direct parse
+  try { return JSON.parse(cleaned); } catch { /* continue */ }
+
+  // Step 3: Regex — find outermost { ... }
+  const match = cleaned.match(/\{[\s\S]*\}/);
+  if (match) {
+    try { return JSON.parse(match[0]); } catch { /* continue */ }
   }
+
+  return null;
+}
+
+export async function extractCompanyFromDocument(pdfText: string): Promise<ExtractedCompanyData | null> {
+  const textSample = pdfText.slice(0, 200);
+  const MAX_ATTEMPTS = 2;
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const isRetry = attempt > 1;
+
+    const response = await anthropic.messages.create({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 8000,
+      system: isRetry
+        ? COMPANY_SYSTEM_PROMPT + "\n\nATENȚIE: Răspunsul tău anterior NU a fost JSON valid. Returnează EXCLUSIV un obiect JSON valid. Nimic altceva — niciun text înainte sau după JSON."
+        : COMPANY_SYSTEM_PROMPT,
+      messages: [{
+        role: "user",
+        content: COMPANY_USER_PROMPT(pdfText),
+      }],
+    });
+
+    const responseText = response.content[0].type === "text" ? response.content[0].text : "";
+    const data = tryParseJSON(responseText);
+
+    if (data) {
+      // Accept partial data — don't throw away 48 fields because CUI is missing
+      if (!data.cui && !data.denumire) {
+        console.warn(
+          `[companyExtractor] Attempt ${attempt}: JSON valid but no cui/denumire found. ` +
+          `Keys present: [${Object.keys(data).join(", ")}]. Text sample: "${textSample}"`,
+        );
+        if (attempt < MAX_ATTEMPTS) continue; // retry might yield better results
+        // On last attempt, return partial data if it has ANY useful fields
+        const hasAnyData = Object.keys(data).length > 2;
+        if (hasAnyData) {
+          console.warn(`[companyExtractor] Returning partial data (${Object.keys(data).length} keys) despite missing cui/denumire`);
+          return data;
+        }
+        return null;
+      }
+      return data;
+    }
+
+    // JSON parse failed
+    console.error(
+      `[companyExtractor] Attempt ${attempt}/${MAX_ATTEMPTS}: JSON parse failed. ` +
+      `Response length: ${responseText.length}, first 300 chars: "${responseText.slice(0, 300)}". ` +
+      `Input text sample: "${textSample}"`,
+    );
+  }
+
+  console.error(`[companyExtractor] All ${MAX_ATTEMPTS} attempts failed to produce valid JSON.`);
+  return null;
 }

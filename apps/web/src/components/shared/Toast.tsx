@@ -57,9 +57,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {children}
       <div className="fixed bottom-4 right-4 z-[200] flex flex-col gap-2" role="status" aria-live="polite">
         {toasts.map(t => (
-          <div key={t.id} className={`px-4 py-3 rounded-lg border shadow-lg text-sm font-medium bg-white text-slate-900 ${borderClasses[t.type]}`}
+          <div key={t.id} className="px-4 py-3 rounded-lg text-sm font-medium"
             style={{
+              background: "var(--bg-surface)",
+              color: "var(--text-primary)",
+              border: `1px solid var(--border)`,
               borderLeft: `3px solid ${colors[t.type]}`,
+              boxShadow: "var(--shadow-lg)",
               animation: t.dismissing ? "slideDown .2s ease-in forwards" : "slideUp .2s ease-out",
             }}>
             {t.message}

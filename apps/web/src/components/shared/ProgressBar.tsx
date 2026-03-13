@@ -21,7 +21,7 @@ export function ProgressBar({ value, max, color }: ProgressBarProps) {
   return (
     <div>
       <div
-        className="w-full overflow-hidden bg-slate-50"
+        className="w-full overflow-hidden"
         role="progressbar"
         aria-valuenow={pct}
         aria-valuemin={0}
@@ -30,6 +30,7 @@ export function ProgressBar({ value, max, color }: ProgressBarProps) {
         style={{
           height: "4px",
           borderRadius: "2px",
+          background: "var(--bg-elevated)",
         }}
       >
         <div
@@ -42,7 +43,8 @@ export function ProgressBar({ value, max, color }: ProgressBarProps) {
         />
       </div>
       <div
-        className="text-[11px] font-semibold mt-0.5 font-mono text-slate-500"
+        className="text-[11px] font-semibold mt-0.5 font-mono"
+        style={{ color: "var(--text-secondary)" }}
       >
         {value}/{max}
       </div>

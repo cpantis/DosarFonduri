@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import { getFileBuffer } from "../services/storage";
 import { logAIUsage } from "../services/aiUsage";
 import { publishEvent } from "../lib/sse";
+import { autoMapTemplatePlaceholders } from "../services/elementDefinitionService";
 
 const anthropic = new Anthropic();
 
@@ -242,6 +243,17 @@ export const processTemplateWorker = new Worker<ProcessTemplatePayload>(
         await db.insert(templateElements).values(uniqueElements);
       }
 
+      // Auto-map template placeholders to element_definitions (if any exist)
+      let mappedCount = 0;
+      if (uniqueElements.length > 0) {
+        try {
+          mappedCount = await autoMapTemplatePlaceholders(documentId, organizationId);
+          console.log(`[processTemplate] Auto-mapped ${mappedCount}/${uniqueElements.length} placeholders to element_definitions`);
+        } catch (err) {
+          console.error(`[processTemplate] Auto-map failed for ${documentId}:`, err);
+        }
+      }
+
       const maxPage = uniqueElements.length > 0
         ? Math.max(...uniqueElements.map(e => e.pageNum), 1)
         : 1;
@@ -270,7 +282,8 @@ export const processTemplateWorker = new Worker<ProcessTemplatePayload>(
         status: "processed",
         processingType: "template",
         elementsCount: uniqueElements.length,
-        message: `Template procesat "${doc.name}". ${uniqueElements.length} câmpuri detectate.`,
+        mappedToDefinitions: mappedCount,
+        message: `Template procesat "${doc.name}". ${uniqueElements.length} câmpuri detectate, ${mappedCount} mapate la definiții.`,
       }).catch(() => {});
 
     } catch (error) {

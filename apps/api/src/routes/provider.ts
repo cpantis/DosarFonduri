@@ -45,13 +45,16 @@ providerRoutes.get("/cabinets", providerAuth, async (c) => {
 
 // Generate code — optionally tied to a specific CUI (handshake)
 providerRoutes.post("/codes", providerAuth, async (c) => {
+  const raw = await c.req.json();
+  console.log("[POST /codes] raw body:", JSON.stringify(raw));
+
   const body = z.object({
     plan: z.enum(["starter", "professional", "enterprise"]),
-    maxUsers: z.number().min(1).max(100),
-    trialDays: z.number().min(0).max(90),
-    cui: z.string().optional(),
-    companyName: z.string().optional(),
-  }).parse(await c.req.json());
+    maxUsers: z.coerce.number().min(1).max(100),
+    trialDays: z.coerce.number().min(0).max(90),
+    cui: z.union([z.string(), z.number()]).transform(v => v != null ? String(v) : undefined).optional().nullable(),
+    companyName: z.string().max(500).optional().nullable(),
+  }).parse(raw);
 
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
   const rand = Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");

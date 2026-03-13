@@ -3,7 +3,7 @@ import { sign, verify } from "hono/jwt";
 import { z } from "zod";
 import { db } from "../db";
 import { users, organizations, cabinetCodes } from "../db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import type { AppEnv } from "../types/hono";
 import { lookupCUI_ListaFirme } from "../services/listafirme";
@@ -69,20 +69,33 @@ authRoutes.post("/signup", async (c) => {
     const orgName = code.companyName || body.companyName || (body.name + " Cabinet");
 
     let org: any;
+    const orgValues = {
+      name: orgName,
+      code: code.code,
+      plan: code.plan,
+      maxUsers: code.maxUsers,
+      trialEndsAt: new Date(Date.now() + code.trialDays * 86400000),
+      status: (code.trialDays > 0 ? "trial" : "active") as "trial" | "active",
+    };
     try {
-      const [created] = await db.insert(organizations).values({
-        name: orgName,
-        code: code.code,
-        plan: code.plan,
-        maxUsers: code.maxUsers,
-        trialEndsAt: new Date(Date.now() + code.trialDays * 86400000),
-        status: code.trialDays > 0 ? "trial" : "active",
-      }).returning();
+      const [created] = await db.insert(organizations).values(orgValues).returning();
       org = created;
     } catch (orgErr: any) {
       console.error("[signup] Org insert failed:", orgErr.message);
-      // Check if org already exists with this code (partial previous signup)
-      if (orgErr.message?.includes("unique") || orgErr.message?.includes("duplicate")) {
+      // Auto-add missing columns from schema that haven't been migrated yet
+      if (orgErr.message?.includes("does not exist") && orgErr.message?.includes("column")) {
+        console.log("[signup] Missing column detected, adding cabinet_document_style...");
+        try {
+          await db.execute(sql`ALTER TABLE "organizations" ADD COLUMN IF NOT EXISTS "cabinet_document_style" jsonb`);
+        } catch { /* ignore if already exists */ }
+        // Retry insert
+        try {
+          const [created] = await db.insert(organizations).values(orgValues).returning();
+          org = created;
+        } catch (retryErr: any) {
+          return c.json({ error: `Eroare la crearea cabinetului: ${retryErr.message}` }, 500);
+        }
+      } else if (orgErr.message?.includes("unique") || orgErr.message?.includes("duplicate")) {
         const existingOrg = await db.query.organizations.findFirst({
           where: eq(organizations.code, code.code),
         });

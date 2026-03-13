@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { processGuideWorker } from "./processGuide";
 import { processTemplateWorker } from "./processTemplate";
 import { processReferenceDataWorker } from "./processReferenceData";

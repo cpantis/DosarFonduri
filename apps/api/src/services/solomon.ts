@@ -1286,16 +1286,36 @@ export async function processSolomonMessage(params: {
           for (const el of extractedElements) {
             const tmplEl = keyToTmplEl.get(el.key);
             if (tmplEl) {
-              await db.update(projectElements).set({
-                value: el.value,
-                source: "solomon",
-                updatedAt: new Date(),
-              }).where(
-                and(
+              // Upsert: update existing or create new project_element
+              const existing = await db.query.projectElements.findFirst({
+                where: and(
                   eq(projectElements.projectId, projectId),
                   eq(projectElements.templateElementId, tmplEl.id),
-                )
-              );
+                ),
+              });
+
+              if (existing) {
+                // Don't overwrite consultant_manual or document_extracted confirmed values
+                if (existing.confirmed && (existing.source === "consultant_manual" || existing.source === "document_extracted")) {
+                  console.log(`[solomon] Skipping confirmed element ${el.key} (source: ${existing.source})`);
+                } else {
+                  await db.update(projectElements).set({
+                    value: el.value,
+                    source: "solomon_chat",
+                    updatedAt: new Date(),
+                  }).where(eq(projectElements.id, existing.id));
+                }
+              } else {
+                // Create new project_element if none exists
+                await db.insert(projectElements).values({
+                  projectId,
+                  templateElementId: tmplEl.id,
+                  value: el.value,
+                  source: "solomon_chat",
+                  confirmed: false,
+                  validationStatus: "pending",
+                });
+              }
             }
           }
 

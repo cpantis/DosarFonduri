@@ -174,11 +174,11 @@ describe("saveExtractedFieldsToProjectElements logic", () => {
   });
 
   it("should identify conflict when existing source is solomon or manual", () => {
-    const existingSources = ["solomon", "manual", "onrc"];
+    const existingSources = ["solomon", "solomon_chat", "manual", "consultant_manual", "onrc"];
     const nonOverwriteSources = existingSources.filter(
       s => s !== "document_extracted" && s !== "calculated" && s !== "ghid",
     );
-    expect(nonOverwriteSources).toEqual(["solomon", "manual", "onrc"]);
+    expect(nonOverwriteSources).toEqual(["solomon", "solomon_chat", "manual", "consultant_manual", "onrc"]);
   });
 
   it("should allow overwrite when existing source is document_extracted, calculated, or ghid", () => {

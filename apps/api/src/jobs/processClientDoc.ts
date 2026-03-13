@@ -3,7 +3,7 @@ import { db } from "../db";
 import {
   documents, projects, projectElements, templateElements,
   documentFolders, elementAuditLog, projectEligibility,
-  extractionCache,
+  extractionCache, elementDefinitions,
 } from "../db/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { createHash } from "crypto";
@@ -15,6 +15,7 @@ import { validateElement, logElementChange } from "../services/elementValidation
 import { checkEligibility } from "../services/eligibility";
 import { computeProjectScores } from "../services/scoring";
 import type { ExtractionResult } from "../services/extractionTypes";
+import { resolveFieldKeys, getExtractorVocabulary } from "../services/elementDefinitionService";
 
 // Extractors
 import { extractCompanyFromDocument } from "../services/companyExtractor";
@@ -264,7 +265,7 @@ function detectCompoundDocument(text: string): SubDocument[] | null {
  * generic AI extractor for any unrecognized type — so new document
  * types work immediately without code changes.
  */
-async function runExtractor(documentType: string, text: string): Promise<ExtractionResult | null> {
+async function runExtractor(documentType: string, text: string, vocabulary?: string[]): Promise<ExtractionResult | null> {
   const start = Date.now();
 
   switch (documentType) {
@@ -303,12 +304,12 @@ async function runExtractor(documentType: string, text: string): Promise<Extract
       if (documentType.endsWith("_template")) {
         if (isFilledTemplate(text)) {
           console.log(`[runExtractor] "${documentType}" appears to be a filled-in document, extracting with generic`);
-          return extractGeneric(text, documentType.replace("_template", "_filled"));
+          return extractGeneric(text, documentType.replace("_template", "_filled"), vocabulary);
         }
         return null;
       }
       console.log(`[runExtractor] No dedicated extractor for "${documentType}", using generic AI extractor`);
-      return extractGeneric(text, documentType);
+      return extractGeneric(text, documentType, vocabulary);
   }
 }
 
@@ -501,6 +502,12 @@ async function findTemplateElementByKey(
 /**
  * Save extracted fields from document processing into project_elements.
  *
+ * Resolution strategy (element_definitions as primary anchor):
+ * 1. Batch-resolve all field keys against element_definitions (exact → normalized → fuzzy)
+ * 2. For resolved keys: use elementDefId as anchor; also set templateElementId if available
+ * 3. For unresolved keys: fall back to templateElements lookup (backward compat)
+ * 4. Fields with no anchor at all are logged but not silently dropped
+ *
  * Conflict resolution:
  * - No existing element → create with source 'document_extracted'
  * - Existing with source 'document_extracted' → update (newer doc wins), audit old value
@@ -519,8 +526,15 @@ async function saveExtractedFieldsToProjectElements(
     return null;
   }
 
+  // Batch-resolve field keys against element_definitions
+  const validFieldKeys = extractionResult.extracted_fields
+    .filter(f => !f.field_key.startsWith("_") && f.field_value != null)
+    .map(f => f.field_key);
+  const resolvedKeys = await resolveFieldKeys(validFieldKeys, organizationId);
+
   const modifiedElementIds: string[] = [];
   let updatedCount = 0;
+  let unmatchedCount = 0;
 
   for (const field of extractionResult.extracted_fields) {
     // Skip internal/raw fields (prefixed with _)
@@ -529,15 +543,28 @@ async function saveExtractedFieldsToProjectElements(
     // Skip null/undefined values
     if (field.field_value == null) continue;
 
-    // Find matching template element
+    // Resolve anchor: element_definition (primary) or template_element (fallback)
+    const elemDefMatch = resolvedKeys.get(field.field_key);
+    let elementDefId: string | null = elemDefMatch?.id ?? null;
+    let templateElementId: string | null = null;
+
+    // Also try to find matching template element (for backward compat)
     const tmplEl = await findTemplateElementByKey(
-      field.field_key,
+      elemDefMatch?.elementKey ?? field.field_key,
       organizationId,
       project.folderId,
     );
+    if (tmplEl) {
+      templateElementId = tmplEl.id;
+    }
 
-    if (!tmplEl) {
-      // No template element definition for this key — skip silently
+    // If no anchor at all, log and skip
+    if (!elementDefId && !templateElementId) {
+      unmatchedCount++;
+      console.log(
+        `[saveExtracted] No element_definition or template_element for key "${field.field_key}" — field dropped. ` +
+        `Value: "${String(field.field_value).slice(0, 100)}"`,
+      );
       continue;
     }
 
@@ -546,19 +573,31 @@ async function saveExtractedFieldsToProjectElements(
       ? JSON.stringify(field.field_value)
       : String(field.field_value);
 
-    // Check for existing project element
-    const existing = await db.query.projectElements.findFirst({
-      where: and(
-        eq(projectElements.projectId, project.id),
-        eq(projectElements.templateElementId, tmplEl.id),
-      ),
-    });
+    // Check for existing project element (by elementDefId or templateElementId)
+    let existing = null;
+    if (elementDefId) {
+      existing = await db.query.projectElements.findFirst({
+        where: and(
+          eq(projectElements.projectId, project.id),
+          eq(projectElements.elementDefId, elementDefId),
+        ),
+      });
+    }
+    if (!existing && templateElementId) {
+      existing = await db.query.projectElements.findFirst({
+        where: and(
+          eq(projectElements.projectId, project.id),
+          eq(projectElements.templateElementId, templateElementId),
+        ),
+      });
+    }
 
     if (!existing) {
       // CREATE new project element
       const [created] = await db.insert(projectElements).values({
         projectId: project.id,
-        templateElementId: tmplEl.id,
+        templateElementId,
+        elementDefId,
         value: stringValue,
         source: "document_extracted",
         sourceDocumentId: documentId,
@@ -587,15 +626,17 @@ async function saveExtractedFieldsToProjectElements(
         validationStatus: "pending",
         confirmed: false,
         confirmedBy: null,
+        // Backfill elementDefId if we now have it but didn't before
+        ...(elementDefId && !existing.elementDefId ? { elementDefId } : {}),
       }).where(eq(projectElements.id, existing.id));
 
       modifiedElementIds.push(existing.id);
       updatedCount++;
     } else {
       // CONFLICT — existing value from solomon/manual/onrc — do NOT overwrite
-      // Log the conflict for consultant review
+      const keyLabel = elemDefMatch?.elementKey ?? tmplEl?.key ?? field.field_key;
       console.log(
-        `[saveExtracted] Conflict: element ${tmplEl.key} (project ${project.id}) ` +
+        `[saveExtracted] Conflict: element ${keyLabel} (project ${project.id}) ` +
         `has source '${existing.source}', extracted value skipped. ` +
         `Existing: "${existing.value}", Extracted: "${stringValue}"`,
       );
@@ -611,6 +652,10 @@ async function saveExtractedFieldsToProjectElements(
         changeSource: "document_extracted",
       });
     }
+  }
+
+  if (unmatchedCount > 0) {
+    console.log(`[saveExtracted] ${unmatchedCount} extracted fields had no matching element_definition or template_element`);
   }
 
   // Validate modified elements
@@ -728,6 +773,17 @@ export const processClientDocWorker = new Worker<ProcessClientDocPayload>(
       let cacheHit = false;
       const contentHash = getContentHash(text);
 
+      // Load vocabulary from element_definitions for vocabulary-guided extraction
+      let vocab: string[] | undefined;
+      try {
+        const vocabData = await getExtractorVocabulary(organizationId);
+        if (vocabData.keys.length > 0) {
+          vocab = vocabData.keys;
+        }
+      } catch {
+        // No element_definitions yet — vocabulary will be undefined (no constraint)
+      }
+
       // Notify frontend that extraction is starting
       publishExtractionStarted(organizationId, {
         documentId,
@@ -771,7 +827,7 @@ export const processClientDocWorker = new Worker<ProcessClientDocPayload>(
                 `suggested="${sub.suggestedType}", classified="${subType}"`,
               );
 
-              const subResult = await runExtractor(subType, sub.text);
+              const subResult = await runExtractor(subType, sub.text, vocab);
               if (subResult) {
                 // Prefix field keys with sub-doc type to avoid collisions
                 for (const field of subResult.extracted_fields) {
@@ -794,7 +850,7 @@ export const processClientDocWorker = new Worker<ProcessClientDocPayload>(
             }
           } else {
             // Single document — normal extraction
-            extractionResult = await runExtractor(classification.documentType, text);
+            extractionResult = await runExtractor(classification.documentType, text, vocab);
           }
 
           await job.updateProgress(80);

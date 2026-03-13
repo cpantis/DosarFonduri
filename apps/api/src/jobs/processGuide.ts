@@ -1,13 +1,14 @@
 import { Worker, Job } from "bullmq";
 import Anthropic from "@anthropic-ai/sdk";
 import { db } from "../db";
-import { documents, rules, orgConfig, scoringCriteria, templateElements, elementRuleLinks, ruleReferenceLinks, guideReferenceTables } from "../db/schema";
+import { documents, rules, orgConfig, scoringCriteria, templateElements, elementRuleLinks, ruleReferenceLinks, guideReferenceTables, elementDefinitions } from "../db/schema";
 import { eq, and, ilike } from "drizzle-orm";
 import { getFileBuffer } from "../services/storage";
 import { extractTextFromPDF, extractTextFromDOCX, extractTextFromXLSX } from "../services/ocr";
 import { logAIUsage } from "../services/aiUsage";
 import { publishEvent, publishJobProgress } from "../lib/sse";
 import { redis, isRedisReady } from "../lib/redis";
+import { extractElementDefinitionsFromGuide, autoMapTemplatePlaceholders } from "../services/elementDefinitionService";
 
 const anthropic = new Anthropic();
 
@@ -943,6 +944,34 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
       }).catch(() => {});
       const linkResult = await autoLinkRulesAndReferences(documentId, organizationId);
 
+      // Phase 5: Extract element definitions from guide (progress 95-98)
+      await job.updateProgress(95);
+      publishJobProgress(organizationId, {
+        jobId: job.id || "",
+        jobType: "ghid",
+        documentId,
+        documentName: doc.name,
+        progress: 95,
+        status: "processing",
+        message: `Extragere definiții elemente din "${doc.name}"...`,
+      }).catch(() => {});
+      const elementDefsCount = await extractElementDefinitionsFromGuide(text, documentId, organizationId);
+
+      // Phase 6: Auto-map existing template placeholders to element_definitions (progress 98-99)
+      let templateMappings = 0;
+      if (elementDefsCount > 0) {
+        // Find template documents in this organization and auto-map their placeholders
+        const templateDocs = await db.query.documents.findMany({
+          where: and(
+            eq(documents.organizationId, organizationId),
+            ilike(documents.documentType, "%template%"),
+          ),
+        });
+        for (const tDoc of templateDocs) {
+          templateMappings += await autoMapTemplatePlaceholders(tDoc.id, organizationId);
+        }
+      }
+
       const pageCount = (text.match(/--- Pagina/g) || []).length;
       await db.update(documents).set({
         status: "processed",
@@ -961,7 +990,9 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         pageCount,
         elementLinks: linkResult.elementLinks,
         referenceLinks: linkResult.referenceLinks,
-        message: `Ghid procesat "${doc.name}". ${pageCount} pagini, reguli extrase. ${linkResult.elementLinks + linkResult.referenceLinks} link-uri create.`,
+        elementDefinitions: elementDefsCount,
+        templateMappings,
+        message: `Ghid procesat "${doc.name}". ${pageCount} pagini, reguli extrase. ${linkResult.elementLinks + linkResult.referenceLinks} link-uri create. ${elementDefsCount} definiții elemente. ${templateMappings} mapări template.`,
       }).catch(() => {});
     } catch (error) {
       console.error(`Process guide error (attempt ${job.attemptsMade + 1}/${job.opts.attempts || 3}):`, error);

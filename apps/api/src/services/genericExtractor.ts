@@ -59,28 +59,60 @@ ${text.slice(0, 40000)}`,
     }],
   });
 
-  const responseText = response.content[0].type === "text" ? response.content[0].text : "";
-  const cleaned = responseText.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-
   const fields: ExtractionResult["extracted_fields"] = [];
+  const textSample = text.slice(0, 200);
+  const MAX_ATTEMPTS = 2;
 
-  try {
-    const data = JSON.parse(cleaned);
-    const extractedFields = Array.isArray(data.fields) ? data.fields : [];
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const currentResponse = attempt === 1
+      ? response
+      : await anthropic.messages.create({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 4000,
+          system: `Ești expert în documente oficiale românești. Returnează EXCLUSIV un JSON valid cu structura {"fields": [...]}. Fără backticks, fără explicații.${vocabSection}`,
+          messages: [{
+            role: "user",
+            content: `Extrage datele structurate din acest document "${documentType}". Returnează {"fields": [{"key": "...", "value": "...", "page": N}]}.\n\nTEXT:\n${text.slice(0, 40000)}`,
+          }],
+        });
 
-    for (const f of extractedFields) {
-      if (!f.key || f.value == null) continue;
+    const responseText = currentResponse.content[0].type === "text" ? currentResponse.content[0].text : "";
+    const cleaned = responseText.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
 
-      fields.push({
-        field_key: String(f.key).replace(/[^a-z0-9_]/g, "_").slice(0, 100),
-        field_value: f.value,
-        confidence: vocabulary && vocabulary.length > 0 ? 0.80 : 0.75, // higher confidence when vocabulary-guided
-        source_page: typeof f.page === "number" ? f.page : null,
-        extraction_method: "ai_sonnet",
-      });
+    // Try direct parse, then regex fallback
+    let data: any = null;
+    try { data = JSON.parse(cleaned); } catch { /* continue */ }
+    if (!data) {
+      const match = cleaned.match(/\{[\s\S]*\}/);
+      if (match) { try { data = JSON.parse(match[0]); } catch { /* continue */ } }
     }
-  } catch {
-    console.error(`[genericExtractor] Failed to parse JSON for ${documentType}`);
+
+    if (data) {
+      const extractedFields = Array.isArray(data.fields) ? data.fields : [];
+
+      for (const f of extractedFields) {
+        if (!f.key || f.value == null) continue;
+
+        fields.push({
+          field_key: String(f.key).replace(/[^a-z0-9_]/g, "_").slice(0, 100),
+          field_value: f.value,
+          confidence: vocabulary && vocabulary.length > 0 ? 0.80 : 0.75,
+          source_page: typeof f.page === "number" ? f.page : null,
+          extraction_method: "ai_sonnet",
+        });
+      }
+      break; // success
+    }
+
+    console.error(
+      `[genericExtractor] Attempt ${attempt}/${MAX_ATTEMPTS}: JSON parse failed for "${documentType}". ` +
+      `Response length: ${responseText.length}, first 300 chars: "${responseText.slice(0, 300)}". ` +
+      `Input text sample: "${textSample}"`,
+    );
+  }
+
+  if (fields.length === 0) {
+    console.error(`[genericExtractor] All attempts produced 0 fields for "${documentType}". Text sample: "${textSample}"`);
   }
 
   return {

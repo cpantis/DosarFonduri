@@ -1645,16 +1645,16 @@ export default function ProjectViewPage() {
         .elem-search{padding:7px 14px;border-radius:8px;border:1px solid rgba(226,232,240,.8);background:#f0f2f5;color:#0f172a;font-size:13px;font-family:'Inter',system-ui,sans-serif;outline:none;width:180px;transition:all .15s cubic-bezier(.4,0,.2,1)}
         .elem-search:focus{border-color:#2563eb}.elem-search::placeholder{color:#94a3b8}
         .fp-group{display:flex;background:#f0f2f5;border-radius:10px;padding:3px;gap:2px}
-        .fp{padding:5px 14px;border-radius:7px;font-size:12px;font-weight:600;border:none;cursor:pointer;background:transparent;color:#64748b;font-family:'Inter',system-ui,sans-serif;transition:all .15s;white-space:nowrap}
-        .fp:hover{color:#0f172a}.fp.on{background:#4d8bff;color:#ffffff;box-shadow:0 1px 3px rgba(37,99,235,.3)}
+        .fp{padding:5px 14px;border-radius:7px;font-size:12px;font-weight:600;border:none;cursor:pointer;background:transparent;color:#64748b;font-family:'Inter',system-ui,sans-serif;transition:all .15s cubic-bezier(.4,0,.2,1);white-space:nowrap}
+        .fp:hover{color:#0f172a}.fp.on{background:#2563eb;color:#ffffff;box-shadow:0 1px 3px rgba(37,99,235,.3)}
         .fp.on-green{background:#34d399;color:#ffffff}
         .fp.on-yellow{background:#fbbf24;color:#ffffff}
         .fp.on-red{background:#f87171;color:#ffffff}
         .fp.on-orange{background:#fb923c;color:#ffffff}
         .fp-count{font-size:10px;opacity:.7;margin-left:2px}
-        .fp-sub-group{display:flex;align-items:center;gap:4px;margin-left:4px;padding-left:8px;border-left:1px solid #e2e8f0}
+        .fp-sub-group{display:flex;align-items:center;gap:4px;margin-left:4px;padding-left:8px;border-left:1px solid rgba(226,232,240,.8)}
         .fp-sub-label{font-size:11px;color:#94a3b8;font-weight:600;white-space:nowrap}
-        .fp-sub{padding:3px 10px;border-radius:5px;font-size:11px;font-weight:600;border:1px solid #e2e8f0;cursor:pointer;background:transparent;color:#64748b;font-family:'Inter',system-ui,sans-serif;transition:all .15s;white-space:nowrap}
+        .fp-sub{padding:3px 10px;border-radius:5px;font-size:11px;font-weight:600;border:1px solid rgba(226,232,240,.8);cursor:pointer;background:transparent;color:#64748b;font-family:'Inter',system-ui,sans-serif;transition:all .15s cubic-bezier(.4,0,.2,1);white-space:nowrap}
         .fp-sub:hover{border-color:#fb923c;color:#fb923c}
         .fp-sub.active{background:rgba(251,146,60,.12);border-color:#fb923c;color:#fb923c}
         .elemente-filter-bar{flex-wrap:wrap}

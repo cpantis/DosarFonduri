@@ -525,7 +525,7 @@ export async function checkCrossDocumentConsistency(
   if (nonEmpty.length === 0) return { consistent: true, conflicts: [] };
 
   // Batch load all referenced templateElements in one query
-  const tmplElIds = [...new Set(nonEmpty.map(pe => pe.templateElementId))];
+  const tmplElIds = [...new Set(nonEmpty.map(pe => pe.templateElementId).filter((id): id is string => id != null))];
   const allTmplEls = tmplElIds.length > 0
     ? await db.query.templateElements.findMany({
         where: inArray(templateElements.id, tmplElIds),
@@ -546,6 +546,7 @@ export async function checkCrossDocumentConsistency(
   const keyToValues = new Map<string, Array<{ templateName: string; value: string; label: string }>>();
 
   for (const pel of nonEmpty) {
+    if (!pel.templateElementId) continue;
     const tmplEl = tmplElMap.get(pel.templateElementId);
     if (!tmplEl) continue;
 
@@ -592,6 +593,7 @@ export async function computeCalculatedFields(
   // Build key→value lookup
   const values = new Map<string, string>();
   for (const pe of projectEls) {
+    if (!pe.templateElementId) continue;
     const te = tmplMap.get(pe.templateElementId);
     if (te && pe.value) values.set(te.key, pe.value);
   }
@@ -743,7 +745,7 @@ export async function generateAllDocuments(params: {
           where: eq(projectElements.projectId, projectId),
         });
 
-        const tmplElIds = [...new Set(projectEls.map(pe => pe.templateElementId))];
+        const tmplElIds = [...new Set(projectEls.map(pe => pe.templateElementId).filter((id): id is string => id != null))];
         const allTmplEls = tmplElIds.length > 0
           ? await db.query.templateElements.findMany({
               where: inArray(templateElements.id, tmplElIds),

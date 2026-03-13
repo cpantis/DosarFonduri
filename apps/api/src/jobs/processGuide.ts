@@ -2,7 +2,7 @@ import { Worker, Job } from "bullmq";
 import Anthropic from "@anthropic-ai/sdk";
 import { db } from "../db";
 import { documents, rules, orgConfig, scoringCriteria, templateElements, elementRuleLinks, ruleReferenceLinks, guideReferenceTables, elementDefinitions } from "../db/schema";
-import { eq, and, ilike } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { getFileBuffer } from "../services/storage";
 import { extractTextFromPDF, extractTextFromDOCX, extractTextFromXLSX } from "../services/ocr";
 import { logAIUsage } from "../services/aiUsage";
@@ -964,7 +964,10 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         const templateDocs = await db.query.documents.findMany({
           where: and(
             eq(documents.organizationId, organizationId),
-            ilike(documents.documentType, "%template%"),
+            inArray(documents.documentTypeClass, [
+              "memoriu_template", "cerere_finantare_template",
+              "anexa_b_template", "anexa_c_template",
+            ]),
           ),
         });
         for (const tDoc of templateDocs) {

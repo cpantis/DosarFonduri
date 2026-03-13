@@ -340,7 +340,7 @@ export async function extractElementDefinitionsFromGuide(
 
   await logAIUsage({
     organizationId,
-    agent: "ghid_elements",
+    agent: "ghid_rules",
     model: "claude-sonnet-4-20250514",
     tokensInput: response.usage.input_tokens,
     tokensOutput: response.usage.output_tokens,

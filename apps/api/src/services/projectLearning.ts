@@ -114,9 +114,9 @@ export async function getApprovedProjectLearnings(
   });
 
   const currentElementsEnriched = await Promise.all(currentElements.map(async (el) => {
-    const templateEl = await db.query.templateElements.findFirst({
+    const templateEl = el.templateElementId ? await db.query.templateElements.findFirst({
       where: eq(templateElements.id, el.templateElementId),
-    });
+    }) : null;
     return { ...el, templateElement: templateEl };
   }));
 

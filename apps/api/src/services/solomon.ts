@@ -123,6 +123,7 @@ async function detectProgramContext(projectId: string, organizationId: string, p
   });
   const templateDocIds = new Set<string>();
   for (const pe of projectEls.slice(0, 5)) {
+    if (!pe.templateElementId) continue;
     const te = await db.query.templateElements.findFirst({
       where: eq(templateElements.id, pe.templateElementId),
     });
@@ -196,6 +197,7 @@ async function buildSystemPrompt(projectId: string, organizationId: string): Pro
   const emptyElements = elements
     .filter(e => !e.value || e.value.trim() === "")
     .map(e => {
+      if (!e.templateElementId) return null;
       const te = tmplMap.get(e.templateElementId);
       return te ? `- ${te.label} (key: ${te.key}, tip: ${te.fieldType})` : null;
     })
@@ -204,6 +206,7 @@ async function buildSystemPrompt(projectId: string, organizationId: string): Pro
   const filledElements = elements
     .filter(e => e.value && e.value.trim() !== "")
     .map(e => {
+      if (!e.templateElementId) return null;
       const te = tmplMap.get(e.templateElementId);
       return te ? `- ${te.label}: ${e.value} [${e.confirmed ? "✓ confirmat" : "neconfirmat"}]` : null;
     })
@@ -780,7 +783,7 @@ ${await (async () => {
     where: eq(elementRuleLinks.templateElementId, tmplElements[0]?.id || ""),
   });
   // Actually load all links for all template elements in this org
-  const orgElemLinks: Array<{ templateElementId: string; ruleId: string }> = [];
+  const orgElemLinks: Array<{ templateElementId: string | null; ruleId: string }> = [];
   for (const te of tmplElements) {
     const links = await db.query.elementRuleLinks.findMany({
       where: eq(elementRuleLinks.templateElementId, te.id),
@@ -793,11 +796,13 @@ ${await (async () => {
   // Group by element
   const linksByElement = new Map<string, string[]>();
   for (const link of orgElemLinks) {
-    const existing = linksByElement.get(link.templateElementId) || [];
+    if (!link.templateElementId) continue;
+    const teId = link.templateElementId;
+    const existing = linksByElement.get(teId) || [];
     const rule = rulesMap.get(link.ruleId);
     if (rule) {
       existing.push(rule.description);
-      linksByElement.set(link.templateElementId, existing);
+      linksByElement.set(teId, existing);
     }
   }
 

@@ -43,12 +43,14 @@ providerRoutes.get("/cabinets", providerAuth, async (c) => {
   return c.json(cabinets);
 });
 
-// Generate code
+// Generate code — optionally tied to a specific CUI (handshake)
 providerRoutes.post("/codes", providerAuth, async (c) => {
   const body = z.object({
     plan: z.enum(["starter", "professional", "enterprise"]),
     maxUsers: z.number().min(1).max(100),
     trialDays: z.number().min(0).max(90),
+    cui: z.string().optional(),
+    companyName: z.string().optional(),
   }).parse(await c.req.json());
 
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -60,6 +62,8 @@ providerRoutes.post("/codes", providerAuth, async (c) => {
     plan: body.plan,
     maxUsers: body.maxUsers,
     trialDays: body.trialDays,
+    cui: body.cui?.replace(/\D/g, "") || null,
+    companyName: body.companyName || null,
     expiresAt: new Date(Date.now() + 90 * 86400000),
     createdBy: c.get("providerId"),
   }).returning();

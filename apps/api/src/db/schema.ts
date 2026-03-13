@@ -638,6 +638,8 @@ export const cabinetCodes = pgTable("cabinet_codes", {
   plan: planEnum("plan").notNull(),
   maxUsers: integer("max_users").notNull().default(1),
   trialDays: integer("trial_days").notNull().default(30),
+  cui: varchar("cui", { length: 20 }),
+  companyName: varchar("company_name", { length: 500 }),
   organizationId: uuid("organization_id").references(() => organizations.id),
   activatedAt: timestamp("activated_at"),
   expiresAt: timestamp("expires_at").notNull(),

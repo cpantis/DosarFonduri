@@ -13,7 +13,6 @@ export function removeToken(): void {
   localStorage.removeItem("df-token");
 }
 
-export function getStoredTheme(): "dark" | "light" {
-  if (typeof window === "undefined") return "dark";
-  return (localStorage.getItem("df-theme") as "dark" | "light") || "dark";
+export function getStoredTheme(): "light" {
+  return "light";
 }

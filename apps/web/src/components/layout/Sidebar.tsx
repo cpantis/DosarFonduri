@@ -22,11 +22,11 @@ function NavItem({ item, active }: { item: { href: string; icon: string; label: 
       href={item.href}
       className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] transition-all no-underline group relative ${
         active
-          ? "bg-white/10 text-white font-medium"
-          : "text-slate-400 hover:bg-white/[0.06] hover:text-slate-200"
+          ? "bg-blue-50 text-blue-600 font-semibold"
+          : "text-slate-500 hover:bg-slate-100 hover:text-slate-900"
       }`}
     >
-      {active && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-4 bg-blue-400 rounded-r-full" />}
+      {active && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-4 bg-blue-600 rounded-r-full" />}
       <span className="text-[15px] w-5 text-center shrink-0">{item.icon}</span>
       <span>{item.label}</span>
     </Link>
@@ -35,7 +35,7 @@ function NavItem({ item, active }: { item: { href: string; icon: string; label: 
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="text-[10px] uppercase tracking-[0.14em] text-slate-500 font-medium px-3 mt-6 mb-1.5 first:mt-0">{children}</div>
+    <div className="text-[10px] uppercase tracking-[0.14em] text-slate-400 font-semibold px-3 mt-6 mb-1.5 first:mt-0">{children}</div>
   );
 }
 
@@ -52,23 +52,23 @@ export function Sidebar() {
   const initials = cabinetName.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
 
   return (
-    <div className="w-[248px] min-h-screen bg-slate-900 flex flex-col shrink-0 border-r border-slate-800">
+    <div className="w-[248px] min-h-screen bg-white flex flex-col shrink-0 border-r border-slate-200/80">
       {/* Logo */}
       <div className="px-5 pt-5 pb-3">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white text-[11px] font-bold shadow-lg shadow-blue-600/20">DF</div>
-          <span className="text-white font-semibold text-[15px] tracking-tight">DosarFonduri</span>
+          <span className="text-slate-900 font-semibold text-[15px] tracking-tight">DosarFonduri</span>
         </div>
       </div>
 
       {/* Cabinet card */}
       <div className="px-4 pb-3">
-        <div className="bg-white/[0.06] rounded-lg p-3 border border-white/[0.06]">
+        <div className="bg-slate-50 rounded-lg p-3 border border-slate-200/80">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-slate-700 flex items-center justify-center text-[11px] font-bold text-slate-300">{initials}</div>
+            <div className="w-8 h-8 rounded-lg bg-blue-600/10 flex items-center justify-center text-[11px] font-bold text-blue-600">{initials}</div>
             <div className="min-w-0">
-              <div className="text-[10px] uppercase tracking-[0.14em] text-slate-500 mb-0.5">Cabinet activ</div>
-              <div className="text-white text-[13px] font-medium leading-snug truncate">{cabinetName}</div>
+              <div className="text-[10px] uppercase tracking-[0.14em] text-slate-400 mb-0.5">Cabinet activ</div>
+              <div className="text-slate-900 text-[13px] font-medium leading-snug truncate">{cabinetName}</div>
             </div>
           </div>
         </div>
@@ -100,14 +100,14 @@ export function Sidebar() {
 
       {/* User footer */}
       {user && (
-        <div className="px-4 py-3 border-t border-white/[0.06]">
+        <div className="px-4 py-3 border-t border-slate-200/80">
           <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-full bg-blue-600/20 flex items-center justify-center text-[10px] font-bold text-blue-400">
+            <div className="w-7 h-7 rounded-full bg-blue-600/10 flex items-center justify-center text-[10px] font-bold text-blue-600">
               {(user.name || user.email || "U").charAt(0).toUpperCase()}
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-[12px] text-slate-300 font-medium truncate">{user.name || user.email}</div>
-              <div className="text-[10px] text-slate-500 capitalize">{user.role || "consultant"}</div>
+              <div className="text-[12px] text-slate-700 font-medium truncate">{user.name || user.email}</div>
+              <div className="text-[10px] text-slate-400 capitalize">{user.role || "consultant"}</div>
             </div>
           </div>
         </div>

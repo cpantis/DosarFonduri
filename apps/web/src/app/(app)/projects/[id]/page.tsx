@@ -1368,9 +1368,9 @@ export default function ProjectViewPage() {
   return (
     <>
       <style>{`
-        .lock-banner{display:flex;align-items:center;gap:10px;padding:10px 20px;background:rgba(251,191,36,.12);border-bottom:1px solid rgba(251,191,36,.3);font-size:13px;color:#fbbf24;font-family:'Inter',system-ui,sans-serif}
+        .lock-banner{display:flex;align-items:center;gap:10px;padding:10px 24px;background:#fffbeb;border-bottom:1px solid #fcd34d;font-size:13px;color:#92400e;font-family:'Inter',system-ui,sans-serif}
         .lock-banner .lb-icon{font-size:18px}
-        .lock-banner .lb-name{font-weight:700;color:#fbbf24}
+        .lock-banner .lb-name{font-weight:700;color:#92400e}
         .lock-banner .lb-time{font-size:11px;color:#94a3b8;margin-left:auto;font-family:'JetBrains Mono',monospace}
         .pv-container{display:flex;height:100%;overflow:hidden;background:#f1f5f9}
 
@@ -1460,9 +1460,9 @@ export default function ProjectViewPage() {
         .ghid-split{display:flex;flex:1;overflow:hidden}
         .rules-panel{width:400px;min-width:400px;display:flex;flex-direction:column;border-right:1px solid #e2e8f0}
         .rule-category-filters{display:flex;flex-wrap:wrap;gap:6px;padding:12px 16px;border-bottom:1px solid #e2e8f0;background:#ffffff}
-        .rcf-chip{padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid #e2e8f0;background:#f8f9fb;color:#64748b;font-family:'Inter',system-ui,sans-serif;transition:all .15s;display:inline-flex;align-items:center;gap:4px}
-        .rcf-chip:hover{border-color:#cbd5e1;color:#1a1e28}
-        .rcf-chip.active{border-color:#2563eb;background:rgba(77,139,255,.1);color:#2563eb}
+        .rcf-chip{padding:4px 12px;border-radius:20px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid #e2e8f0;background:#ffffff;color:#64748b;font-family:'Inter',system-ui,sans-serif;transition:all .15s;display:inline-flex;align-items:center;gap:4px}
+        .rcf-chip:hover{border-color:#cbd5e1;color:#0f172a;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+        .rcf-chip.active{border-color:#3b82f6;background:#eff6ff;color:#2563eb}
         .rcf-count{font-size:10px;font-family:'JetBrains Mono',monospace;opacity:.7}
         .rules-scroll{flex:1;overflow-y:auto;padding:12px 16px}
         .rule-card{padding:12px 14px;border-radius:8px;border:1px solid #e2e8f0;margin-bottom:8px;cursor:pointer;transition:all .2s;background:#ffffff}
@@ -1532,8 +1532,8 @@ export default function ProjectViewPage() {
         .anexe-list{overflow-y:auto;border-right:1px solid #e2e8f0;padding:16px}
         .anexe-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;text-align:center;color:#64748b}
         .anexe-card{padding:12px;border:1px solid #e2e8f0;border-radius:10px;cursor:pointer;transition:all .15s;margin-bottom:8px;background:#ffffff}
-        .anexe-card:hover{border-color:#cbd5e1;background:#eef0f4}
-        .anexe-card.active{border-color:#2563eb;background:rgba(77,139,255,.04);box-shadow:0 0 0 1px rgba(77,139,255,.15)}
+        .anexe-card:hover{border-color:#cbd5e1;box-shadow:0 1px 3px rgba(0,0,0,.05)}
+        .anexe-card.active{border-color:#3b82f6;background:rgba(59,130,246,.02);box-shadow:0 0 0 1px rgba(59,130,246,.12)}
         .anexe-card-top{display:flex;align-items:center;gap:8px;margin-bottom:6px}
         .anexe-type-badge{font-size:9px;font-weight:700;padding:2px 8px;border-radius:8px;text-transform:uppercase;letter-spacing:.5px}
         .anexe-type-badge.lookup{color:#2563eb;background:rgba(77,139,255,.12)}
@@ -1572,7 +1572,7 @@ export default function ProjectViewPage() {
         .ed-constraint-role.constraint{color:#dc2626;background:#fef2f2;border-color:#fecaca}
         .ed-constraint-rule{font-size:12px;color:#1a1e28;line-height:1.4}
         .ed-constraint-refs{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
-        .ed-constraint-ref{font-size:10px;color:#8b5cf6;background:rgba(167,139,250,.08);padding:2px 8px;border-radius:6px;border:1px solid rgba(167,139,250,.2)}
+        .ed-constraint-ref{font-size:10px;color:#7c3aed;background:#f5f3ff;padding:2px 8px;border-radius:6px;border:1px solid #ddd6fe}
 
         /* Solomon validation card */
         .solomon-validation-card{margin-top:8px;padding:10px 12px;border-radius:10px;border:1px solid #e2e8f0;background:#f8f9fb}
@@ -1587,8 +1587,8 @@ export default function ProjectViewPage() {
         .svc-text{color:#1a1e28;line-height:1.4}
         .svc-ref{font-size:10px;color:#8b5cf6;margin-top:2px}
 
-        .pdf-viewer{flex:1;background:#f0f2f5;display:flex;align-items:center;justify-content:center;position:relative}
-        .pdf-page-mock{width:480px;background:#fff;border-radius:4px;box-shadow:0 4px 24px rgba(0,0,0,.4);padding:48px 40px;min-height:620px;color:#1a1a2e;position:relative}
+        .pdf-viewer{flex:1;background:#f1f5f9;display:flex;align-items:center;justify-content:center;position:relative}
+        .pdf-page-mock{width:480px;background:#fff;border-radius:4px;box-shadow:0 4px 24px rgba(0,0,0,.08);padding:48px 40px;min-height:620px;color:#1a1a2e;position:relative}
         .pdf-page-mock h3{font-size:16px;font-weight:700;margin-bottom:16px;color:#1a1a2e}
         .pdf-text-line{height:10px;background:#d4d8e0;border-radius:2px;margin:8px 0}
         .pdf-page-num{position:absolute;bottom:16px;right:24px;font-size:12px;color:#888;font-family:'JetBrains Mono',monospace}
@@ -1676,8 +1676,9 @@ export default function ProjectViewPage() {
         .check-cat-count{font-size:11px;color:#94a3b8;font-family:'JetBrains Mono',monospace}
         .check-item{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:6px;margin-bottom:4px;transition:background .12s}
         .check-item:hover{background:#eef0f4}
-        .check-box{width:18px;height:18px;border-radius:4px;border:2px solid #e2e8f0;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s;flex-shrink:0;font-size:11px}
-        .check-box.done{border-color:#10b981;background:#10b981;color:#fff}
+        .check-box{width:18px;height:18px;border-radius:5px;border:2px solid #cbd5e1;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s;flex-shrink:0;font-size:11px}
+        .check-box:hover{border-color:#94a3b8}
+        .check-box.done{border-color:#059669;background:#059669;color:#fff}
         .check-name{font-size:13px;font-weight:500;flex:1}
         .check-name.done-text{text-decoration:line-through;color:#94a3b8}
         .check-source-badge{font-size:9px;font-weight:700;text-transform:uppercase;padding:2px 6px;border-radius:3px;letter-spacing:.5px}
@@ -1782,10 +1783,10 @@ export default function ProjectViewPage() {
         .sep-header{padding:14px 16px;border-bottom:1px solid #e2e8f0;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#94a3b8;display:flex;align-items:center;gap:8px}
         .sep-count{font-size:10px;padding:1px 6px;border-radius:8px;background:rgba(77,139,255,.12);color:#2563eb;font-family:'JetBrains Mono',monospace}
         .sep-scroll{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:8px}
-        .sep-card{padding:12px 14px;border-radius:6px;border:1px solid #e2e8f0;background:#f8f9fb;transition:all .15s}
-        .sep-card:hover{border-color:#cbd5e1}
-        .sep-card.is-confirmed{border-left:3px solid #10b981}
-        .sep-card.is-proposed{border-left:3px solid #f59e0b}
+        .sep-card{padding:12px 14px;border-radius:8px;border:1px solid #e2e8f0;background:#f8fafc;transition:all .15s}
+        .sep-card:hover{border-color:#cbd5e1;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+        .sep-card.is-confirmed{border-left:3px solid #059669}
+        .sep-card.is-proposed{border-left:3px solid #d97706}
         .sep-card-label{font-size:13px;font-weight:700;color:#1a1e28;margin-bottom:3px}
         .sep-card-value{font-size:14px;font-weight:600;color:#f59e0b;font-family:'JetBrains Mono',monospace;margin-bottom:6px;word-break:break-word}
         .sep-card.is-confirmed .sep-card-value{color:#10b981}
@@ -1833,8 +1834,8 @@ export default function ProjectViewPage() {
         .nav-stats{display:flex;align-items:center;gap:6px;margin-left:auto;white-space:nowrap}
         .nav-stat-filled{font-size:12px;font-weight:600;color:#64748b;font-family:'JetBrains Mono',monospace}
         .nav-stat-pct{font-size:14px;font-weight:800;font-family:'JetBrains Mono',monospace}
-        .download-btn{display:flex;align-items:center;gap:6px;padding:6px 14px;border-radius:6px;border:none;background:#10b981;color:#0a0c10;font-size:12px;font-weight:700;cursor:pointer;font-family:'Inter',system-ui,sans-serif;transition:all .15s;white-space:nowrap}
-        .download-btn:hover{background:#4ae3a9}
+        .download-btn{display:flex;align-items:center;gap:6px;padding:6px 14px;border-radius:8px;border:none;background:#059669;color:#ffffff;font-size:12px;font-weight:700;cursor:pointer;font-family:'Inter',system-ui,sans-serif;transition:all .15s;white-space:nowrap;box-shadow:0 1px 3px rgba(5,150,105,.3)}
+        .download-btn:hover{background:#047857;box-shadow:0 2px 6px rgba(5,150,105,.4)}
         .neemia-preview-area{flex:1;display:flex;overflow:hidden}
 
         /* Document page preview — pixel-perfect document */
@@ -1986,7 +1987,7 @@ export default function ProjectViewPage() {
         /* ═══ RESPONSIVE ═══ */
         @media(max-width:1024px){
           .pv-container{flex-direction:column}
-          .tree-sidebar{width:100%!important;min-width:100%!important;max-height:200px;border-right:none;border-bottom:1px solid #e2e8f0;flex-direction:row;overflow-x:auto}
+          .tree-sidebar{width:100%!important;min-width:100%!important;max-height:200px;border-right:none;border-bottom:1px solid #334155;flex-direction:row;overflow-x:auto}
           .tree-header{min-width:220px;padding:12px 16px}
           .tree-nav{display:flex;flex-direction:row;gap:4px;padding:8px;overflow-x:auto;flex-wrap:nowrap;min-width:0}
           .tree-branch{min-width:max-content}
@@ -2112,15 +2113,21 @@ export default function ProjectViewPage() {
         {/* MAIN CONTENT */}
         <div className="main-content">
           <div className="content-header">
-            <h1>
-              {activeLeaf === "sumar" && <><span>&#128203;</span> Sumar proiect</>}
-              {activeLeaf === "eligibilitate" && <><span>&#128737;</span> Eligibilitate</>}
-              {activeLeaf === "ghid" && <><span>&#128214;</span> Ghid Finanțare</>}
-              {activeLeaf === "solomon" && <><span>&#129302;</span> Solomon</>}
-              {activeLeaf === "elemente" && <><span>&#128202;</span> Elemente proiect</>}
-              {activeLeaf === "checklist" && <><span>&#128203;</span> Checklist documente</>}
-              {activeLeaf === "neemia" && <><span>&#128196;</span> Neemia</>}
-            </h1>
+            <div>
+              <h1>
+                {activeLeaf === "sumar" && <><span>&#128203;</span> Sumar proiect</>}
+                {activeLeaf === "eligibilitate" && <><span>&#128737;</span> Eligibilitate</>}
+                {activeLeaf === "ghid" && <><span>&#128214;</span> Ghid Finanțare</>}
+                {activeLeaf === "solomon" && <><span>&#129302;</span> Solomon</>}
+                {activeLeaf === "elemente" && <><span>&#128202;</span> Elemente proiect</>}
+                {activeLeaf === "checklist" && <><span>&#128203;</span> Checklist documente</>}
+                {activeLeaf === "neemia" && <><span>&#128196;</span> Neemia</>}
+                <span className="status-badge" style={{ background: (STATUS_MAP[projectStatus] || STATUS_MAP.draft).bg, color: (STATUS_MAP[projectStatus] || STATUS_MAP.draft).color, fontSize: 11, marginLeft: 4 }}>
+                  {(STATUS_MAP[projectStatus] || STATUS_MAP.draft).label}
+                </span>
+              </h1>
+              <div className="header-subtitle">{projectFirma} &middot; CUI {projectCui}{projectPath.length > 0 && <> &middot; {projectPath[projectPath.length - 1]?.label}</>}</div>
+            </div>
           </div>
 
           <div className="content-body">
@@ -2636,7 +2643,7 @@ export default function ProjectViewPage() {
 
                   <div className="elemente-scroll">
                     {filteredElements.map(el => (
-                      <div className={`elem-card ${selectedElement === el.id ? "active" : ""}`} key={el.id} onClick={() => setSelectedElement(el.id)}>
+                      <div className={`elem-card ${selectedElement === el.id ? "active" : el.status === "propus_ai" ? "warning" : el.status === "gol" ? "pending" : ""}`} key={el.id} onClick={() => setSelectedElement(el.id)}>
                         <div className="ec-top">
                           <span className="ec-key">{el.key}</span>
                           <span className={`ec-status ${el.status}`}>
@@ -2648,7 +2655,7 @@ export default function ProjectViewPage() {
                         </div>
                         <div className="ec-label">{el.label}</div>
                         <div className={`ec-value ${!el.value ? "missing" : ""}`}>
-                          {el.value || "— necompletat —"}
+                          {el.value || "Necompletat \u2014 Solomon va solicita"}
                         </div>
                         {el.sourceLabel && (
                           <div className="ec-source">

@@ -86,6 +86,13 @@ export default function CompanyDetailPage() {
   const [onrcUploading, setOnrcUploading] = useState(false);
   const onrcFileRef = useRef<HTMLInputElement>(null);
 
+  // Bilant ANAF upload
+  const [showBilantUpload, setShowBilantUpload] = useState(false);
+  const [bilantUploading, setBilantUploading] = useState(false);
+  const [bilantYear, setBilantYear] = useState(new Date().getFullYear() - 1);
+  const bilantFileRef = useRef<HTMLInputElement>(null);
+  const [selectedBilantYear, setSelectedBilantYear] = useState<number | null>(null);
+
   const fetchDetail = useCallback(async () => {
     try {
       setLoading(true);
@@ -135,6 +142,28 @@ export default function CompanyDetailPage() {
       await fetchDetail();
     } catch (err: any) {
       alert("Eroare la sincronizare: " + (err.message || "Eroare necunoscuta"));
+    }
+  };
+
+  const handleBilantUpload = async () => {
+    if (!bilantFileRef.current?.files?.[0]) return;
+    setBilantUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", bilantFileRef.current.files[0]);
+      formData.append("year", String(bilantYear));
+      await api<any>(`/api/companies/${id}/upload-bilant`, {
+        method: "POST",
+        body: formData,
+        timeout: 120_000,
+      });
+      await fetchDetail();
+      setShowBilantUpload(false);
+      bilantFileRef.current.value = "";
+    } catch (err: any) {
+      alert("Eroare la upload bilant: " + (err.message || "Eroare necunoscuta"));
+    } finally {
+      setBilantUploading(false);
     }
   };
 
@@ -288,6 +317,7 @@ export default function CompanyDetailPage() {
               <div className="cd-actions">
                 <button className="cd-act" onClick={handleSyncOnrc}>Actualizare CUI</button>
                 <button className="cd-act" onClick={() => setShowOnrcUpload(true)}>Upload ONRC</button>
+                <button className="cd-act" onClick={() => setShowBilantUpload(true)}>Upload Bilant</button>
                 <button className="cd-act danger" onClick={handleDelete}>Sterge</button>
               </div>
             </div>
@@ -459,12 +489,98 @@ export default function CompanyDetailPage() {
             </>)}
 
             {/* FIN. ANAF */}
-            {activeTab === "Fin. ANAF" && (
-              <div className="cd-empty">
-                <div className="cd-empty-icon">&#128202;</div>
-                <div className="cd-empty-text">Niciun bilant incarcat.<br />Uploadeaza un bilant PDF pentru a extrage datele automat.</div>
-              </div>
-            )}
+            {activeTab === "Fin. ANAF" && (() => {
+              const anafData = sel.situatiiFinanciare.filter((s: any) => s.source === "anaf_upload");
+              const anafYears = anafData.map((s: any) => s.an).sort((a: number, b: number) => b - a);
+              const viewYear = selectedBilantYear ?? anafYears[0] ?? null;
+              const raw = (detail?.financials || []).find((f: any) => f.source === "anaf_upload" && f.year === viewYear);
+              const f10 = raw?.f10;
+              const f20 = raw?.f20;
+              const f30 = raw?.f30;
+
+              return anafData.length > 0 ? (<>
+                {/* Header with year selector + upload button */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <div className="cd-stitle" style={{ margin: 0 }}>Bilant ANAF</div>
+                    {anafYears.length > 1 && (
+                      <select
+                        value={viewYear ?? ""}
+                        onChange={e => setSelectedBilantYear(Number(e.target.value))}
+                        style={{ padding: "5px 10px", borderRadius: "var(--r-sm)", border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-primary)", fontSize: 13, fontFamily: "var(--font-mono)" }}
+                      >
+                        {anafYears.map((y: number) => <option key={y} value={y}>{y}</option>)}
+                      </select>
+                    )}
+                    {anafYears.length === 1 && <span style={{ fontSize: 14, fontFamily: "var(--font-mono)", color: "var(--text-secondary)" }}>{viewYear}</span>}
+                  </div>
+                  <button className="cd-act" onClick={() => setShowBilantUpload(true)}>Upload bilant</button>
+                </div>
+
+                {/* Summary table all years */}
+                <table className="cd-fin-table" style={{ marginBottom: 24 }}>
+                  <thead><tr>
+                    <th>An</th><th>Cifra afaceri</th><th>Profit net</th><th>Rezultat exploatare</th><th>Angajati</th>
+                    {isSOC(sel.forma) && <th>Capitaluri proprii</th>}
+                  </tr></thead>
+                  <tbody>{anafData.map((s: any, i: number) => (
+                    <tr key={i} style={{ cursor: "pointer", background: s.an === viewYear ? "rgba(77,139,255,.05)" : undefined }} onClick={() => setSelectedBilantYear(s.an)}>
+                      <td style={{ fontWeight: s.an === viewYear ? 700 : 400 }}>{s.an}</td>
+                      <td>{fmtNum(s.cifraAfaceri)}</td>
+                      <td className={(s.profitNet ?? 0) >= 0 ? "green" : "red"}>{fmtNum(s.profitNet)}</td>
+                      <td>{fmtNum(raw?.f20?.rezultatExploatare)}</td>
+                      <td>{s.angajati ?? "\u2014"}</td>
+                      {isSOC(sel.forma) && <td>{fmtNum(s.capitaluriProprii)}</td>}
+                    </tr>
+                  ))}</tbody>
+                </table>
+
+                {/* Detailed data for selected year */}
+                {f20 && (<>
+                  <div className="cd-stitle">Cont profit si pierderi ({viewYear})</div>
+                  <div className="cd-grid c2" style={{ marginBottom: 20 }}>
+                    <div className="cd-card"><div className="cd-label">Cifra afaceri neta</div><div className="cd-val mono">{fmtNum(f20.cifraAfaceriNeta)}</div></div>
+                    <div className="cd-card"><div className="cd-label">Venituri exploatare</div><div className="cd-val mono">{fmtNum(f20.venituriExploatare)}</div></div>
+                    <div className="cd-card"><div className="cd-label">Cheltuieli exploatare</div><div className="cd-val mono">{fmtNum(f20.cheltuieliExploatare)}</div></div>
+                    <div className="cd-card"><div className="cd-label">Rezultat exploatare</div><div className={`cd-val mono ${(f20.rezultatExploatare ?? 0) >= 0 ? "green" : "red"}`}>{fmtNum(f20.rezultatExploatare)}</div></div>
+                    <div className="cd-card"><div className="cd-label">Venituri financiare</div><div className="cd-val mono">{fmtNum(f20.venituriFinanciare)}</div></div>
+                    <div className="cd-card"><div className="cd-label">Cheltuieli financiare</div><div className="cd-val mono">{fmtNum(f20.cheltuieliFinanciare)}</div></div>
+                    <div className="cd-card"><div className="cd-label">Rezultat brut</div><div className={`cd-val mono ${(f20.rezultatBrut ?? 0) >= 0 ? "green" : "red"}`}>{fmtNum(f20.rezultatBrut)}</div></div>
+                    <div className="cd-card"><div className="cd-label">Rezultat net</div><div className={`cd-val mono ${(f20.profitNet ?? 0) >= 0 ? "green" : "red"}`}>{fmtNum(f20.profitNet)}</div></div>
+                  </div>
+                </>)}
+
+                {f10 && (<>
+                  <div className="cd-stitle">Bilant ({viewYear})</div>
+                  <div className="cd-grid c2" style={{ marginBottom: 20 }}>
+                    <div className="cd-card"><div className="cd-label">Active imobilizate</div><div className="cd-val mono">{fmtNum(f10.activeImobilizate)}</div></div>
+                    <div className="cd-card"><div className="cd-label">Active circulante</div><div className="cd-val mono">{fmtNum(f10.activeCirculante)}</div></div>
+                    <div className="cd-card"><div className="cd-label">Stocuri</div><div className="cd-val mono">{fmtNum(f10.stocuri)}</div></div>
+                    <div className="cd-card"><div className="cd-label">Creante</div><div className="cd-val mono">{fmtNum(f10.creante)}</div></div>
+                    <div className="cd-card"><div className="cd-label">Casa si conturi</div><div className="cd-val mono">{fmtNum(f10.casaSiConturi)}</div></div>
+                    <div className="cd-card"><div className="cd-label">Datorii sub 1 an</div><div className="cd-val mono">{fmtNum(f10.datoriiSub1An)}</div></div>
+                    <div className="cd-card"><div className="cd-label">Datorii peste 1 an</div><div className="cd-val mono">{fmtNum(f10.datoriiPeste1An)}</div></div>
+                    <div className="cd-card"><div className="cd-label">Capitaluri proprii</div><div className={`cd-val mono ${(f10.capitaluriProprii ?? 0) >= 0 ? "green" : "red"}`}>{fmtNum(f10.capitaluriProprii)}</div></div>
+                  </div>
+                </>)}
+
+                {f30 && (f30.numarMediuSalariati || f30.numarSalariati31Dec) && (<>
+                  <div className="cd-stitle">Date informative ({viewYear})</div>
+                  <div className="cd-grid c2">
+                    {f30.numarMediuSalariati != null && <div className="cd-card"><div className="cd-label">Nr. mediu salariati</div><div className="cd-val mono">{f30.numarMediuSalariati}</div></div>}
+                    {f30.numarSalariati31Dec != null && <div className="cd-card"><div className="cd-label">Nr. salariati la 31 dec</div><div className="cd-val mono">{f30.numarSalariati31Dec}</div></div>}
+                  </div>
+                </>)}
+
+                <div style={{ marginTop: 14, fontSize: 12, color: "var(--text-muted)" }}>Sursa: Bilant ANAF uploadat</div>
+              </>) : (
+                <div className="cd-empty">
+                  <div className="cd-empty-icon">&#128202;</div>
+                  <div className="cd-empty-text">Niciun bilant ANAF incarcat.</div>
+                  <button className="cd-btn-p" style={{ marginTop: 12 }} onClick={() => setShowBilantUpload(true)}>Upload bilant ANAF</button>
+                </div>
+              );
+            })()}
 
             {/* JURIDIC */}
             {activeTab === "Juridic" && (<>
@@ -503,6 +619,42 @@ export default function CompanyDetailPage() {
               <button className="cd-btn-s" onClick={() => setShowOnrcUpload(false)}>Anuleaza</button>
               <button className="cd-btn-p" disabled={onrcUploading} onClick={handleOnrcUpload}>
                 {onrcUploading ? <span className="cd-spinner" /> : "Actualizeaza datele"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* BILANT ANAF UPLOAD MODAL */}
+      {showBilantUpload && (
+        <div className="cd-overlay" onClick={e => { if (e.target === e.currentTarget) setShowBilantUpload(false); }}>
+          <div className="cd-modal">
+            <div className="cd-modal-title">Upload bilant ANAF<button className="cd-modal-close" onClick={() => setShowBilantUpload(false)}>&times;</button></div>
+            <div style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 18, lineHeight: 1.6 }}>
+              Incarca un bilant ANAF (PDF descarcat din SPV). Se accepta Formularul 10 (bilant), Formularul 20 (cont profit/pierderi), Formularul 30/40. Datele financiare se extrag automat.
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: "block", fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".5px", color: "var(--text-muted)", marginBottom: 6 }}>An fiscal</label>
+              <select
+                value={bilantYear}
+                onChange={e => setBilantYear(Number(e.target.value))}
+                style={{ padding: "10px 14px", borderRadius: "var(--r-md)", border: "1px solid var(--border)", background: "var(--bg-deep)", color: "var(--text-primary)", fontSize: 14, fontFamily: "var(--font-mono)", width: 140 }}
+              >
+                {Array.from({ length: 6 }, (_, i) => new Date().getFullYear() - 1 - i).map(y => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+            </div>
+            <input type="file" ref={bilantFileRef} accept=".pdf" style={{ display: "none" }} onChange={() => {}} />
+            <div className="cd-upload-zone" onClick={() => bilantFileRef.current?.click()} style={{ marginBottom: 18 }}>
+              <div className="uz-icon">{bilantFileRef.current?.files?.[0] ? "\u2705" : "\u{1F4CA}"}</div>
+              <div className="uz-title">{bilantFileRef.current?.files?.[0]?.name || "Bilant ANAF (PDF)"}</div>
+              <div className="uz-sub">Click pentru a selecta fisierul</div>
+            </div>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button className="cd-btn-s" onClick={() => setShowBilantUpload(false)}>Anuleaza</button>
+              <button className="cd-btn-p" disabled={bilantUploading} onClick={handleBilantUpload}>
+                {bilantUploading ? <span className="cd-spinner" /> : "Extrage date financiare"}
               </button>
             </div>
           </div>

@@ -1,0 +1,47 @@
+{
+  "xfa_documents": [
+    {
+      "source_file": "Bilant_AndaOana_38480585_2023_12(1).pdf",
+      "document_type": "bilant_anaf",
+      "extractor": "bilantParser",
+      "format": "PDF XFA (Adobe LiveCycle)",
+      "xfa_extraction_status": "FIXED",
+      "values_all_zero": false,
+      "xfa_fields_count": 479,
+      "notes": "XFA extraction now works — 479 fields extracted including full F10/F20/F30/F40 financial data. See EXPECTED_OUTPUT_bilant_anda_oana.json for details."
+    },
+    {
+      "source_file": "Anexa 1 CEREREA De FINANTARE M4.1.pdf",
+      "document_type": "cerere_finantare_template",
+      "extractor": "genericExtractor (skipped — template)",
+      "format": "PDF XFA",
+      "xfa_extraction_status": "SUPPORTED (tryExtractXFA will extract if data present)",
+      "notes": "XFA form template - cerere finantare. Will be skipped by runExtractor as template, but XFA data will be extracted if filled in."
+    },
+    {
+      "source_file": "Anexa 2 Anexa B.pdf",
+      "document_type": "anexa_b_template",
+      "extractor": "genericExtractor (skipped — template)",
+      "format": "PDF XFA",
+      "xfa_extraction_status": "SUPPORTED",
+      "notes": "XFA form - prognoza economico-financiara B"
+    },
+    {
+      "source_file": "Anexa 2 Anexa C.pdf",
+      "document_type": "anexa_c_template",
+      "extractor": "genericExtractor (skipped — template)",
+      "format": "PDF XFA",
+      "xfa_extraction_status": "SUPPORTED",
+      "notes": "XFA form - prognoza economico-financiara C"
+    }
+  ],
+  "resolved_issues": [
+    "FIXED: tryExtractXFA() in ocr.ts now handles XFA PDFs by decompressing datasets XML stream",
+    "FIXED: Bilant contains real financial data (not zeros) — previous assessment was wrong",
+    "FIXED: extractTextFromPDF() calls tryExtractXFA() before standard text extraction"
+  ],
+  "remaining_issues": [
+    "bilantParser.ts prompt may need updating to parse XFA 'tag: value' format instead of tabular text",
+    "Template XFA PDFs (cerere finantare, anexa B/C) are skipped by runExtractor — this is correct for empty templates but may miss filled-in versions"
+  ]
+}

@@ -1,0 +1,105 @@
+{
+  "source_file": "Certificat constatator ANDA OANA AGRO FERMA SRL din 21.06.2024.pdf",
+  "document_type": "certificat_constatator",
+  "extractor": "companyExtractor",
+  "format": "PDF text nativ",
+  "pages": 15,
+  "expected_fields": {
+    "denumire": "ANDA OANA AGRO FERMA S.R.L.",
+    "cui": "38480585",
+    "regCom": "J2/1981/2017",
+    "euid": "ROONRC.J2/1981/2017",
+    "formaJuridica": "Societate cu răspundere limitată",
+    "adresa": "Sat Călugăreni, Comuna Felnac, Nr. 87, Judeţul Arad",
+    "localitate": "Călugăreni",
+    "judet": "Arad",
+    "telefon": "0722226110",
+    "stare": "Funcțiune",
+    "durata": "Nedeterminată",
+    "anInfiintare": 2017,
+    "capitalSocial": 300,
+    "moneda": "LEI",
+    "partiSociale": 30,
+    "naturaCapital": {
+      "privatAutohton": 100,
+      "privatStrain": 0,
+      "stat": 0
+    },
+    "asociati": [
+      {
+        "type": "PF",
+        "name": "HODOȘAN DEIANA-ADINA",
+        "role": "Asociat",
+        "citizenship": "Română",
+        "contribution": 100,
+        "shares": 10,
+        "pctBenefits": 33.333333,
+        "pctLosses": 33.333333
+      },
+      {
+        "type": "PF",
+        "name": "CHIȘ-POPOVICI OANA-ANDA",
+        "role": "Asociat",
+        "citizenship": "Română",
+        "contribution": 200,
+        "shares": 20,
+        "pctBenefits": 66.666667,
+        "pctLosses": 66.666667
+      }
+    ],
+    "administratori": [
+      {
+        "name": "CHIȘ-POPOVICI OANA-ANDA",
+        "role": "Administrator",
+        "powers": "Conform Act Constitutiv",
+        "mandateDuration": "31.12.2100"
+      }
+    ],
+    "caenPrincipal": "0111",
+    "caenSecundare": ["0112", "0113", "0114", "0115", "0116", "0119", "0121", "0122", "0123", "0124", "0125", "0126", "0127", "0128", "0129"],
+    "financials": [
+      {
+        "year": 2021,
+        "cifraAfaceri": 1036522,
+        "profitBrut": 630444,
+        "profitNet": 624987,
+        "angajati": 1,
+        "activeImobilizate": 4218
+      },
+      {
+        "year": 2022,
+        "cifraAfaceri": 1461655,
+        "profitBrut": 864116,
+        "profitNet": 855647,
+        "angajati": 1,
+        "activeImobilizate": 281649
+      },
+      {
+        "year": 2023,
+        "cifraAfaceri": 1913806,
+        "profitBrut": 69223,
+        "profitNet": 54340,
+        "angajati": 1,
+        "activeImobilizate": 813083
+      }
+    ]
+  },
+  "adapted_fields_processClientDoc": {
+    "denumire": "ANDA OANA AGRO FERMA S.R.L.",
+    "cui": "38480585",
+    "regCom": "J2/1981/2017",
+    "formaJuridica": "Societate cu răspundere limitată",
+    "caenPrincipal": "0111",
+    "caenSecundare": "0112,0113,0114,...",
+    "adresa": "Sat Călugăreni, Comuna Felnac, Nr. 87, Judeţul Arad",
+    "localitate": "Călugăreni",
+    "judet": "Arad",
+    "stare": "Funcțiune",
+    "capitalSocial": 300,
+    "anInfiintare": 2017,
+    "asociati": "[{name, role, shares, pct}...]",
+    "administratori": "[{name, role, powers}...]",
+    "financials": "[{year, cifraAfaceri, profitNet, ...}...]"
+  },
+  "notes": "Document with 474 CAEN secundare codes - only first 15 listed above. Full list should be extracted."
+}

@@ -1,0 +1,50 @@
+{
+  "source_file": "2024-RO009842533.pdf",
+  "document_type": "other (cerere_plata_APIA - no dedicated extractor)",
+  "extractor": "genericExtractor",
+  "format": "PDF text nativ",
+  "pages": 12,
+  "expected_fields": {
+    "denumire": "ANDA OANA AGRO FERMA SRL",
+    "cui": "38480585",
+    "administrator": "POPOVICI OANA-ANDA",
+    "cnp_administrator": "2970125020095",
+    "applicant_id": "RO009842533",
+    "request_date": "01.06.2024",
+    "county": "ARAD",
+    "locality": "FELNAC",
+    "commune": "FELNAC",
+    "settlement": "CĂLUGĂRENI",
+    "postal_code": "317127",
+    "phone": "0752863865",
+    "email": "deianda.pane@gmail.com",
+    "caen": "0111",
+    "bank": "Banca Transilvania S.A.",
+    "branch": "ARAD",
+    "iban": "RO94BTRLRONCRT0622989001",
+    "total_agricultural_area_ha": 270.70,
+    "total_support_area_ha": 270.70,
+    "irrigation": false,
+    "main_crops": {
+      "wheat": 103.84,
+      "corn": 77.83,
+      "sunflower": 19.46,
+      "rapeseed": 13.29,
+      "barley": 22.43,
+      "lucerne": 4.31,
+      "sorghum": 5.22,
+      "soy": 2.50,
+      "uncultivated": 2.85
+    },
+    "gaec_compliance": {
+      "arable_land_ha": 270.70,
+      "unproductive_fallow_ha": 2.85,
+      "unproductive_pct": 1.05,
+      "secondary_nfix_ha": 9.71,
+      "total_gaec_pct": 4.64,
+      "compliant": true
+    },
+    "support_programs": ["PD-01", "PD-04", "PD-09", "ANT-1", "DR-10"]
+  },
+  "notes": "APIA payment request - no dedicated extractor, falls to genericExtractor"
+}

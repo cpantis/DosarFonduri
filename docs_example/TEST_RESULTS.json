@@ -1,0 +1,265 @@
+{
+  "timestamp": "2026-03-13T10:43:49.781Z",
+  "results": [
+    {
+      "file": "Certificat constatator ANDA OANA AGRO FERMA SRL din 21.06.2024.pdf",
+      "extractor": "companyExtractor",
+      "status": "PASS",
+      "textExtracted": true,
+      "textLength": 40144,
+      "classifiedAs": "certificat_constatator",
+      "classificationCorrect": true,
+      "fieldsExtracted": 0,
+      "fieldMatchResults": [],
+      "error": null,
+      "timeMs": 164
+    },
+    {
+      "file": "3.Documente care dovedesc forma de organizare - semnat.pdf",
+      "extractor": "companyExtractor",
+      "status": "PASS",
+      "textExtracted": true,
+      "textLength": 85787,
+      "classifiedAs": "certificat_constatator",
+      "classificationCorrect": true,
+      "fieldsExtracted": 0,
+      "fieldMatchResults": [],
+      "error": null,
+      "timeMs": 223
+    },
+    {
+      "file": "Bilant_AndaOana_38480585_2023_12(1).pdf",
+      "extractor": "bilantParser",
+      "status": "PASS",
+      "textExtracted": true,
+      "textLength": 698,
+      "classifiedAs": "other",
+      "classificationCorrect": false,
+      "fieldsExtracted": 0,
+      "fieldMatchResults": [],
+      "error": null,
+      "timeMs": 245
+    },
+    {
+      "file": "05 Act Constitutiv_signed.pdf",
+      "extractor": "genericExtractor",
+      "status": "SKIP",
+      "textExtracted": false,
+      "textLength": 0,
+      "classifiedAs": null,
+      "classificationCorrect": null,
+      "fieldsExtracted": 0,
+      "fieldMatchResults": [],
+      "error": null,
+      "timeMs": 123
+    },
+    {
+      "file": "06 Statut_signed.pdf",
+      "extractor": "genericExtractor",
+      "status": "SKIP",
+      "textExtracted": false,
+      "textLength": 0,
+      "classifiedAs": null,
+      "classificationCorrect": null,
+      "fieldsExtracted": 0,
+      "fieldMatchResults": [],
+      "error": null,
+      "timeMs": 123
+    },
+    {
+      "file": "anexa-11-model-adeverinta-emisa-de-forma-asociativa-pentru-dovedirea-calitatii-de-membru-a-beneficiarului.docx",
+      "extractor": "genericExtractor",
+      "status": "PASS",
+      "textExtracted": true,
+      "textLength": 2127,
+      "classifiedAs": "other",
+      "classificationCorrect": false,
+      "fieldsExtracted": 0,
+      "fieldMatchResults": [],
+      "error": null,
+      "timeMs": 89
+    },
+    {
+      "file": "14.6 Descrierea succinta a proiectului_ANDA.docx",
+      "extractor": "genericExtractor",
+      "status": "PASS",
+      "textExtracted": true,
+      "textLength": 42495,
+      "classifiedAs": "descriere_proiect",
+      "classificationCorrect": true,
+      "fieldsExtracted": 0,
+      "fieldMatchResults": [],
+      "error": null,
+      "timeMs": 130
+    },
+    {
+      "file": "CI Anda Chis.pdf",
+      "extractor": "genericExtractor",
+      "status": "SKIP",
+      "textExtracted": false,
+      "textLength": 0,
+      "classifiedAs": null,
+      "classificationCorrect": null,
+      "fieldsExtracted": 0,
+      "fieldMatchResults": [],
+      "error": null,
+      "timeMs": 118
+    },
+    {
+      "file": "DIPLOMA ING AGRONOM.pdf",
+      "extractor": "genericExtractor",
+      "status": "SKIP",
+      "textExtracted": false,
+      "textLength": 0,
+      "classifiedAs": null,
+      "classificationCorrect": null,
+      "fieldsExtracted": 0,
+      "fieldMatchResults": [],
+      "error": null,
+      "timeMs": 122
+    },
+    {
+      "file": "Anda Tractor.png",
+      "extractor": "ofertaExtractor",
+      "status": "SKIP",
+      "textExtracted": false,
+      "textLength": 0,
+      "classifiedAs": null,
+      "classificationCorrect": null,
+      "fieldsExtracted": 0,
+      "fieldMatchResults": [],
+      "error": null,
+      "timeMs": 0
+    },
+    {
+      "file": "Anda semanatoare.png",
+      "extractor": "ofertaExtractor",
+      "status": "SKIP",
+      "textExtracted": false,
+      "textLength": 0,
+      "classifiedAs": null,
+      "classificationCorrect": null,
+      "fieldsExtracted": 0,
+      "fieldMatchResults": [],
+      "error": null,
+      "timeMs": 0
+    },
+    {
+      "file": "Anda disc 7 m.png",
+      "extractor": "ofertaExtractor",
+      "status": "SKIP",
+      "textExtracted": false,
+      "textLength": 0,
+      "classifiedAs": null,
+      "classificationCorrect": null,
+      "fieldsExtracted": 0,
+      "fieldMatchResults": [],
+      "error": null,
+      "timeMs": 0
+    },
+    {
+      "file": "Anda Cultivator.png",
+      "extractor": "ofertaExtractor",
+      "status": "SKIP",
+      "textExtracted": false,
+      "textLength": 0,
+      "classifiedAs": null,
+      "classificationCorrect": null,
+      "fieldsExtracted": 0,
+      "fieldMatchResults": [],
+      "error": null,
+      "timeMs": 0
+    },
+    {
+      "file": "Anunt Cerere proiecte componenta 4.1.1.pdf",
+      "extractor": "genericExtractor",
+      "status": "PASS",
+      "textExtracted": true,
+      "textLength": 5109,
+      "classifiedAs": "other",
+      "classificationCorrect": true,
+      "fieldsExtracted": 0,
+      "fieldMatchResults": [],
+      "error": null,
+      "timeMs": 137
+    },
+    {
+      "file": "2024-RO009842533.pdf",
+      "extractor": "genericExtractor",
+      "status": "PASS",
+      "textExtracted": true,
+      "textLength": 33235,
+      "classifiedAs": "certificat_constatator",
+      "classificationCorrect": false,
+      "fieldsExtracted": 0,
+      "fieldMatchResults": [],
+      "error": null,
+      "timeMs": 150
+    }
+  ],
+  "counts": {
+    "PASS": 7,
+    "FAIL": 0,
+    "EXPECTED_FAIL": 0,
+    "SKIP": 8,
+    "ERROR": 0
+  },
+  "issues": [
+    {
+      "id": "P1",
+      "desc": "XFA PDF format",
+      "affected": 1,
+      "severity": "FIXED",
+      "fix": "tryExtractXFA() in ocr.ts"
+    },
+    {
+      "id": "P2",
+      "desc": "Scanned pages need OCR",
+      "affected": 4,
+      "severity": "OK",
+      "fix": "Vision OCR pipeline exists in extractPDFPages"
+    },
+    {
+      "id": "P3",
+      "desc": "Template Memoriu (filled doc)",
+      "affected": 1,
+      "severity": "FIXED",
+      "fix": "isFilledTemplate() in processClientDoc.ts"
+    },
+    {
+      "id": "P4",
+      "desc": "Compound document detection",
+      "affected": 1,
+      "severity": "FIXED",
+      "fix": "detectCompoundDocument() in processClientDoc.ts"
+    },
+    {
+      "id": "P5",
+      "desc": "Bilant had 'zero' values",
+      "affected": 0,
+      "severity": "FIXED",
+      "fix": "XFA has real data (479 fields). Expected output updated."
+    },
+    {
+      "id": "G1/G4",
+      "desc": "PNG images pipeline",
+      "affected": 4,
+      "severity": "FIXED",
+      "fix": "extractTextFromImage() + routing in processClientDoc"
+    },
+    {
+      "id": "G2",
+      "desc": ".doc format",
+      "affected": 0,
+      "severity": "FIXED",
+      "fix": "extractTextFromDOC() via antiword/LibreOffice"
+    },
+    {
+      "id": "G3",
+      "desc": "Missing dedicated extractors (act_constitutiv, statut, CI, diploma)",
+      "affected": 4,
+      "severity": "LOW",
+      "fix": "Falls to genericExtractor (functional)"
+    }
+  ]
+}

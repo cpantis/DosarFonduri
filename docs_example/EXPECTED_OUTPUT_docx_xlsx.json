@@ -1,0 +1,121 @@
+{
+  "docx_xlsx_documents": [
+    {
+      "source_file": "Anexa 3 Corelarea Puterii Masinii...03.06.docx",
+      "document_type": "guide_annex_table",
+      "extractor": "genericExtractor",
+      "format": "DOCX",
+      "expected_content": {
+        "tables": 4,
+        "table_types": [
+          "Tractor clasic (ha → CP mapping)",
+          "Combina (ha → CP mapping)",
+          "Pomicultura (ha → CP mapping)",
+          "Legumicultura (ha → CP mapping)"
+        ],
+        "purpose": "Corelarea suprafetei (ha) cu puterea motorului (CP) pentru utilaje agricole"
+      },
+      "notes": "Duplicate exists: anexa-3_corelarea-puterii...0306.docx"
+    },
+    {
+      "source_file": "annexa-3_corelarea-puterii...0306.docx",
+      "document_type": "guide_annex_table",
+      "extractor": "genericExtractor",
+      "format": "DOCX",
+      "notes": "Duplicate/variant of Anexa 3"
+    },
+    {
+      "source_file": "Anexa 4 Lista UAT ANC.xlsx",
+      "document_type": "guide_annex_table",
+      "extractor": "genericExtractor",
+      "format": "XLSX",
+      "expected_content": {
+        "rows": 3188,
+        "columns": ["UAT", "Clasificare ANC"],
+        "classifications": ["ZM", "SEMN", "SPEC", "NON_ANC"],
+        "purpose": "Lista UAT cu clasificare zone defavorizate (ANC)"
+      }
+    },
+    {
+      "source_file": "annexa-10-instructiuni...doc",
+      "document_type": "guide_annex_form",
+      "extractor": "genericExtractor",
+      "format": "DOC",
+      "expected_content": {
+        "purpose": "Instructiuni evitare conditii artificiale"
+      }
+    },
+    {
+      "source_file": "annexa-11-model-adeverinta...docx",
+      "document_type": "adeverinta",
+      "extractor": "genericExtractor",
+      "format": "DOCX",
+      "expected_content": {
+        "purpose": "Model adeverinta forma asociativa"
+      }
+    },
+    {
+      "source_file": "Template Memoriu.docx",
+      "document_type": "memoriu_template",
+      "extractor": "genericExtractor",
+      "format": "DOCX",
+      "expected_fields": {
+        "equipment_list": ["Cultivator", "Disc scurt", "Semanatoare precizie", "Tractor"],
+        "investment_type": "Achizitie utilaje agricole",
+        "submeasure": "4.1",
+        "beneficiary": "ANDA OANA AGRO FERMA SRL"
+      },
+      "critical_issues": [
+        "This is NOT a template - it is a COMPLETED memoriu for ANDA OANA",
+        "Contains NO {{placeholders}} or markers",
+        "templateParser will find 0 fields to extract"
+      ]
+    },
+    {
+      "source_file": "4.0. Anexa 3 - Memoriu justificativ.doc",
+      "document_type": "memoriu_template",
+      "extractor": "genericExtractor",
+      "format": "DOC",
+      "notes": "Alt model memoriu justificativ"
+    },
+    {
+      "source_file": "e-1-2-fisa-de-evaluare-generala-sm-41.docx",
+      "document_type": "guide_annex_form",
+      "extractor": "genericExtractor",
+      "format": "DOCX",
+      "expected_content": {
+        "tables": 65,
+        "scoring_grids": 3,
+        "grid_1": { "name": "Grid I - General", "max_points": 100 },
+        "grid_2": { "name": "Grid II - Sfecla zahar", "max_points": 100 },
+        "grid_3": { "name": "Grid III - Forme asociative", "max_points": 100 }
+      }
+    },
+    {
+      "source_file": "14.6 Descrierea succinta a proiectului_ANDA.docx",
+      "document_type": "descriere_proiect",
+      "extractor": "genericExtractor",
+      "format": "DOCX",
+      "expected_fields": {
+        "beneficiary": "ANDA OANA AGRO FERMA SRL",
+        "project_type": "Achizitie utilaje agricole modernizare",
+        "equipment": ["Tractor", "Semanatoare", "Cultivator", "Disc"]
+      }
+    },
+    {
+      "source_file": "ghidul-solicitantului-sm-41-componenta-411-final.pdf",
+      "document_type": "guide",
+      "extractor": "N/A (guide is parsed for rules, not extracted)",
+      "format": "PDF text nativ",
+      "pages": 62,
+      "expected_content": {
+        "submeasure": "4.1 componenta 4.1.1",
+        "session": 2024,
+        "eligibility_criteria": "multiple",
+        "scoring_grids": 3,
+        "total_budget": "310,515,188 EUR"
+      },
+      "notes": "Guide is processed by guideParser for rules extraction, not by document extractors"
+    }
+  ]
+}

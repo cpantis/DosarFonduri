@@ -2,11 +2,75 @@ import { db } from "../db";
 import {
   projects, projectElements, projectDocuments,
   templateElements, documents, orgConfig, companies,
-  organizations,
+  organizations, templatePlaceholderMapping, elementDefinitions,
 } from "../db/schema";
 import { eq, and, inArray } from "drizzle-orm";
 import { getFileBuffer, uploadFile } from "./storage";
 import crypto from "crypto";
+
+/**
+ * Build key→value map for template filling.
+ * Uses template_placeholder_mapping → elementDefId → projectElements as primary path,
+ * falls back to templateElements → templateElementId → projectElements.
+ */
+async function buildElementsMap(
+  templateDocumentId: string,
+  projectId: string,
+  projectEls: Array<{ templateElementId: string | null; elementDefId: string | null; value: string | null; confirmed: boolean; source: string | null }>,
+): Promise<{ elementsMap: Record<string, string>; filledCount: number; missingCount: number; missingKeys: string[] }> {
+  const elementsMap: Record<string, string> = {};
+  let filledCount = 0;
+  let missingCount = 0;
+  const missingKeys: string[] = [];
+  const resolvedPlaceholders = new Set<string>();
+
+  // Path 1: template_placeholder_mapping → elementDefId → projectElements
+  const mappings = await db.query.templatePlaceholderMapping.findMany({
+    where: eq(templatePlaceholderMapping.templateDocumentId, templateDocumentId),
+  });
+
+  if (mappings.length > 0) {
+    for (const mapping of mappings) {
+      const projEl = projectEls.find(pe => pe.elementDefId === mapping.elementDefId);
+      if (projEl?.value && projEl.value.trim() !== "") {
+        elementsMap[mapping.placeholderKey] = projEl.value;
+        filledCount++;
+        resolvedPlaceholders.add(mapping.placeholderKey);
+      } else {
+        // Try to get a display name for the missing key
+        const elemDef = await db.query.elementDefinitions.findFirst({
+          where: eq(elementDefinitions.id, mapping.elementDefId),
+        });
+        missingCount++;
+        missingKeys.push(elemDef?.displayName || mapping.placeholderKey);
+        resolvedPlaceholders.add(mapping.placeholderKey);
+      }
+    }
+  }
+
+  // Path 2 (fallback): templateElements → templateElementId → projectElements
+  const templateEls = await db.query.templateElements.findMany({
+    where: eq(templateElements.documentId, templateDocumentId),
+  });
+
+  for (const tmplEl of templateEls) {
+    if (resolvedPlaceholders.has(tmplEl.key)) continue; // Already resolved via mapping
+
+    const projEl = projectEls.find(pe =>
+      (pe.templateElementId === tmplEl.id) ||
+      (pe.elementDefId && !pe.templateElementId && false) // elementDefId-only handled above
+    );
+    if (projEl?.value && projEl.value.trim() !== "") {
+      elementsMap[tmplEl.key] = projEl.value;
+      filledCount++;
+    } else {
+      missingCount++;
+      missingKeys.push(tmplEl.label);
+    }
+  }
+
+  return { elementsMap, filledCount, missingCount, missingKeys };
+}
 
 function safeTmpPath(prefix: string, ext: string): string {
   const os = require("os");
@@ -263,30 +327,14 @@ export async function generateDocument(params: GenerateDocParams): Promise<Reada
 
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "status", message: "Se verifică elementele..." })}\n\n`));
 
-        const templateEls = await db.query.templateElements.findMany({
-          where: eq(templateElements.documentId, templateDocumentId),
-        });
-
         const projectEls = await db.query.projectElements.findMany({
           where: eq(projectElements.projectId, projectId),
         });
 
-        // Build key → value map
-        const elementsMap: Record<string, string> = {};
-        let filledCount = 0;
-        let missingCount = 0;
-        const missingKeys: string[] = [];
-
-        for (const tmplEl of templateEls) {
-          const projEl = projectEls.find(pe => pe.templateElementId === tmplEl.id);
-          if (projEl?.value && projEl.value.trim() !== "") {
-            elementsMap[tmplEl.key] = projEl.value;
-            filledCount++;
-          } else {
-            missingCount++;
-            missingKeys.push(tmplEl.label);
-          }
-        }
+        // Build key → value map using template_placeholder_mapping + templateElements fallback
+        const { elementsMap, filledCount, missingCount, missingKeys } = await buildElementsMap(
+          templateDocumentId, projectId, projectEls,
+        );
 
         // Inject project metadata as additional element values (Solomon-collected data)
         if (project?.programFinantare) elementsMap["program_finantare"] = project.programFinantare;
@@ -436,19 +484,13 @@ export async function validateBeforeGenerate(
     warnings.push(`${unvalidatedTemplate.length} elemente din template nu sunt validate de consultant`);
   }
 
-  // Check missing values — distinguish between critical and optional
-  const missingLabels: string[] = [];
-  let filledCount = 0;
+  // Use buildElementsMap for accurate fill/missing counts (uses template_placeholder_mapping + fallback)
+  const { filledCount, missingCount: _mc, missingKeys: missingLabels } = await buildElementsMap(
+    templateDocumentId, projectId, projectEls,
+  );
   let confirmedCount = 0;
-
-  for (const tmplEl of templateEls) {
-    const projEl = projectEls.find(pe => pe.templateElementId === tmplEl.id);
-    if (!projEl?.value || projEl.value.trim() === "") {
-      missingLabels.push(tmplEl.label);
-    } else {
-      filledCount++;
-      if (projEl.confirmed) confirmedCount++;
-    }
+  for (const pe of projectEls) {
+    if (pe.value && pe.value.trim() !== "" && pe.confirmed) confirmedCount++;
   }
 
   if (missingLabels.length > 0) {
@@ -524,6 +566,15 @@ export async function checkCrossDocumentConsistency(
   const nonEmpty = projectEls.filter(pel => pel.value && pel.value.trim() !== "");
   if (nonEmpty.length === 0) return { consistent: true, conflicts: [] };
 
+  // Batch load element_definitions for elementDefId resolution
+  const elemDefIds = [...new Set(nonEmpty.map(pe => pe.elementDefId).filter((id): id is string => id != null))];
+  const allElemDefs = elemDefIds.length > 0
+    ? await db.query.elementDefinitions.findMany({
+        where: inArray(elementDefinitions.id, elemDefIds),
+      })
+    : [];
+  const elemDefMap = new Map(allElemDefs.map(ed => [ed.id, ed]));
+
   // Batch load all referenced templateElements in one query
   const tmplElIds = [...new Set(nonEmpty.map(pe => pe.templateElementId).filter((id): id is string => id != null))];
   const allTmplEls = tmplElIds.length > 0
@@ -542,19 +593,35 @@ export async function checkCrossDocumentConsistency(
     : [];
   const docMap = new Map(allDocs.map(d => [d.id, d]));
 
-  // Group by templateElement key
+  // Group by element key (resolved from elementDefId or templateElementId)
   const keyToValues = new Map<string, Array<{ templateName: string; value: string; label: string }>>();
 
   for (const pel of nonEmpty) {
-    if (!pel.templateElementId) continue;
-    const tmplEl = tmplElMap.get(pel.templateElementId);
-    if (!tmplEl) continue;
+    let key: string | null = null;
+    let label: string = "Necunoscut";
+    let templateName: string = "Necunoscut";
 
-    const doc = docMap.get(tmplEl.documentId);
-    const entry = { templateName: doc?.name || "Necunoscut", value: pel.value!, label: tmplEl.label };
-    const existing = keyToValues.get(tmplEl.key) || [];
+    // Resolve via elementDefId (primary)
+    if (pel.elementDefId) {
+      const ed = elemDefMap.get(pel.elementDefId);
+      if (ed) { key = ed.elementKey; label = ed.displayName; }
+    }
+    // Fallback: templateElementId
+    if (!key && pel.templateElementId) {
+      const tmplEl = tmplElMap.get(pel.templateElementId);
+      if (tmplEl) {
+        key = tmplEl.key;
+        label = tmplEl.label;
+        const doc = docMap.get(tmplEl.documentId);
+        templateName = doc?.name || "Necunoscut";
+      }
+    }
+    if (!key) continue;
+
+    const entry = { templateName, value: pel.value!, label };
+    const existing = keyToValues.get(key) || [];
     existing.push(entry);
-    keyToValues.set(tmplEl.key, existing);
+    keyToValues.set(key, existing);
   }
 
   // Find conflicts: same key, different values across templates
@@ -585,17 +652,31 @@ export async function computeCalculatedFields(
     where: eq(projectElements.projectId, projectId),
   });
 
+  // Load element_definitions for elementDefId → key resolution
+  const elemDefs = await db.query.elementDefinitions.findMany({
+    where: eq(elementDefinitions.organizationId, organizationId),
+  });
+  const elemDefMap = new Map(elemDefs.map(ed => [ed.id, ed]));
+
   const tmplEls = await db.query.templateElements.findMany({
     where: eq(templateElements.organizationId, organizationId),
   });
   const tmplMap = new Map(tmplEls.map(t => [t.id, t]));
 
-  // Build key→value lookup
+  // Build key→value lookup using elementDefId (primary) + templateElementId (fallback)
   const values = new Map<string, string>();
   for (const pe of projectEls) {
-    if (!pe.templateElementId) continue;
-    const te = tmplMap.get(pe.templateElementId);
-    if (te && pe.value) values.set(te.key, pe.value);
+    if (!pe.value) continue;
+    // Try elementDefId first
+    if (pe.elementDefId) {
+      const ed = elemDefMap.get(pe.elementDefId);
+      if (ed) { values.set(ed.elementKey, pe.value); continue; }
+    }
+    // Fallback: templateElementId
+    if (pe.templateElementId) {
+      const te = tmplMap.get(pe.templateElementId);
+      if (te) values.set(te.key, pe.value);
+    }
   }
 
   const getNum = (key: string): number | null => {
@@ -676,18 +757,19 @@ export async function computeCalculatedFields(
 
       // Auto-update in project if key exists and field is empty or source is "calculated"
       // IMPORTANT: calculated fields are saved as unconfirmed — consultant must review & confirm
+      // Try elementDefId first, then templateElementId
+      const elemDef = elemDefs.find(ed => ed.elementKey === calc.targetKey);
       const tmplEl = tmplEls.find(t => t.key === calc.targetKey);
-      if (tmplEl) {
-        const projEl = projectEls.find(pe => pe.templateElementId === tmplEl.id);
-        if (projEl && (!projEl.value || projEl.source === "calculated")) {
-          await db.update(projectElements).set({
-            value: result,
-            source: "calculated",
-            confirmed: false,
-            confirmedBy: null,
-            updatedAt: new Date(),
-          }).where(eq(projectElements.id, projEl.id));
-        }
+      let projEl = elemDef ? projectEls.find(pe => pe.elementDefId === elemDef.id) : null;
+      if (!projEl && tmplEl) projEl = projectEls.find(pe => pe.templateElementId === tmplEl.id);
+      if (projEl && (!projEl.value || projEl.source === "calculated")) {
+        await db.update(projectElements).set({
+          value: result,
+          source: "calculated",
+          confirmed: false,
+          confirmedBy: null,
+          updatedAt: new Date(),
+        }).where(eq(projectElements.id, projEl.id));
       }
     }
   }
@@ -779,22 +861,10 @@ export async function generateAllDocuments(params: {
           })}\n\n`));
 
           try {
-            // Build elements map for this specific template
-            const docTemplateEls = allTmplEls.filter(te => te.documentId === doc.id);
-
-            const elementsMap: Record<string, string> = {};
-            let filledCount = 0;
-            let missingCount = 0;
-
-            for (const tmplEl of docTemplateEls) {
-              const projEl = projectEls.find(pe => pe.templateElementId === tmplEl.id);
-              if (projEl?.value && projEl.value.trim() !== "") {
-                elementsMap[tmplEl.key] = projEl.value;
-                filledCount++;
-              } else {
-                missingCount++;
-              }
-            }
+            // Build elements map using template_placeholder_mapping + templateElements fallback
+            const { elementsMap, filledCount, missingCount } = await buildElementsMap(
+              doc.id, projectId, projectEls,
+            );
 
             // Download and fill
             const { buffer: templateBuffer, name: templateName } = await getFileBuffer(doc.fileId);

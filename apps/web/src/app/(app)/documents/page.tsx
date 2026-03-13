@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { SplitPane } from "@/components/layout/SplitPane";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { UploadModal } from "@/components/shared/UploadModal";
 import { apiGet, apiPost, apiPut, apiDelete, api } from "@/lib/api";
 
 /* ══════════════════════════════════════════
@@ -236,16 +237,8 @@ const SESIUNE_LEAVES: Array<{ type: TreeNode["type"]; name: string }> = [
   { type: "clienti_finali", name: "Clienti Finali" },
 ];
 
-/* Map folder type to processing type for uploads */
-const FOLDER_TO_PROCESSING: Record<string, string> = {
-  ghiduri: "ghid",
-  templateuri: "template",
-  clienti_prospecti: "client_doc",
-  clienti_finali: "client_doc",
-};
-
-/** Files above this size use presigned URL (direct browser → R2) to avoid Node memory pressure */
-const PRESIGNED_THRESHOLD = 10 * 1024 * 1024; // 10 MB
+/* Folder types that are leaf nodes but can't have manual uploads */
+const CLIENT_FOLDER_TYPES = new Set(["clienti_prospecti", "clienti_finali"]);
 
 /* ══════════════════════════════════════════
    SKELETON COMPONENTS
@@ -298,14 +291,6 @@ export default function DocumentsPage() {
   const [renameVal, setRenameVal] = useState("");
   const [docs, setDocs] = useState<DocItem[]>([]);
   const [docsLoading, setDocsLoading] = useState(false);
-  const [uploadFiles, setUploadFiles] = useState<File[]>([]);
-  const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
-  const [uploadWarnings, setUploadWarnings] = useState<string[]>([]);
-  const [ghidSubType, setGhidSubType] = useState<"ghid" | "reference_data">("ghid");
-  const [dragOver, setDragOver] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
   // Fetch folder tree on mount
@@ -500,134 +485,6 @@ export default function DocumentsPage() {
     }
   }, [selectedFolder, fetchDocs]);
 
-  const handleUpload = useCallback(async () => {
-    if (uploadFiles.length === 0 || !selectedFolder) return;
-    setUploading(true);
-    setUploadError(null);
-    setUploadWarnings([]);
-    setUploadProgress(0);
-
-    const uploadNode = selectedFolder ? findNodeById(tree, selectedFolder) : null;
-    const storedToken = typeof window !== "undefined" ? localStorage.getItem("df-token") : null;
-    const authHeaders: Record<string, string> = {};
-    if (storedToken) authHeaders["Authorization"] = `Bearer ${storedToken}`;
-
-    const totalFiles = uploadFiles.length;
-    let completed = 0;
-    const allWarnings: string[] = [];
-    const errors: string[] = [];
-
-    for (const file of uploadFiles) {
-      try {
-        const usePresigned = file.size > PRESIGNED_THRESHOLD;
-
-        if (usePresigned) {
-          // --- Large file: presigned URL → direct browser upload to R2 ---
-          const processingType = (uploadNode?.type === "ghiduri" && ghidSubType === "reference_data")
-            ? "reference_data" : undefined;
-
-          // Step 1: Get presigned URL from API
-          const presignedRes = await fetch("/api/documents/presigned-url", {
-            method: "POST",
-            headers: { ...authHeaders, "Content-Type": "application/json" },
-            credentials: "include",
-            body: JSON.stringify({
-              filename: file.name,
-              mime_type: file.type || "application/octet-stream",
-              size_bytes: file.size,
-              folder_id: selectedFolder,
-              ...(processingType && { processing_type: processingType }),
-            }),
-          });
-
-          if (!presignedRes.ok) {
-            const body = await presignedRes.json().catch(() => ({ error: "Failed to get presigned URL" }));
-            errors.push(`${file.name}: ${body.error || `HTTP ${presignedRes.status}`}`);
-            completed++;
-            setUploadProgress(Math.round((completed / totalFiles) * 100));
-            continue;
-          }
-
-          const { presigned_url, document_id } = await presignedRes.json();
-
-          // Step 2: Upload directly to R2 via presigned URL (or local API fallback)
-          const isLocalUpload = presigned_url.startsWith("/");
-          const uploadRes = await fetch(presigned_url, {
-            method: "PUT",
-            headers: {
-              "Content-Type": file.type || "application/octet-stream",
-              ...(isLocalUpload ? authHeaders : {}),
-            },
-            ...(isLocalUpload ? { credentials: "include" as const } : {}),
-            body: file,
-          });
-
-          if (!uploadRes.ok) {
-            errors.push(`${file.name}: Upload direct la storage a eșuat (HTTP ${uploadRes.status})`);
-            completed++;
-            setUploadProgress(Math.round((completed / totalFiles) * 100));
-            continue;
-          }
-
-          // Step 3: Confirm upload to trigger processing
-          const confirmRes = await fetch(`/api/documents/documents/${document_id}/confirm-upload`, {
-            method: "POST",
-            headers: { ...authHeaders, "Content-Type": "application/json" },
-            credentials: "include",
-          });
-
-          if (!confirmRes.ok) {
-            const body = await confirmRes.json().catch(() => ({ error: "Confirm failed" }));
-            errors.push(`${file.name}: ${body.error || "Confirmare eșuată"}`);
-          }
-        } else {
-          // --- Small file: classic FormData upload through Node ---
-          const formData = new FormData();
-          formData.append("file", file);
-          formData.append("tags", JSON.stringify([]));
-
-          if (uploadNode?.type === "ghiduri" && ghidSubType === "reference_data") {
-            formData.append("processingType", "reference_data");
-          }
-
-          const res = await fetch(`/api/documents/folders/${selectedFolder}/documents`, {
-            method: "POST",
-            headers: authHeaders,
-            credentials: "include",
-            body: formData,
-          });
-
-          if (!res.ok) {
-            const body = await res.json().catch(() => ({ error: "Upload failed" }));
-            errors.push(`${file.name}: ${body.error || `HTTP ${res.status}`}`);
-          } else {
-            const result = await res.json();
-            if (result.warnings) allWarnings.push(...result.warnings.map((w: string) => `${file.name}: ${w}`));
-          }
-        }
-      } catch (err: any) {
-        errors.push(`${file.name}: ${err.message || "Eroare la upload"}`);
-      }
-
-      completed++;
-      setUploadProgress(Math.round((completed / totalFiles) * 100));
-    }
-
-    if (errors.length > 0) {
-      setUploadError(errors.join("\n"));
-    } else {
-      await new Promise(r => setTimeout(r, 300));
-      setShowUpload(false);
-      setUploadFiles([]);
-      setUploadError(null);
-      setUploadProgress(0);
-    }
-    if (allWarnings.length > 0) setUploadWarnings(allWarnings);
-
-    fetchDocs(selectedFolder);
-    setUploading(false);
-  }, [uploadFiles, selectedFolder, tree, ghidSubType, fetchDocs]);
-
   // Filtered documents
   const filteredDocs = docs.filter(d => {
     if (!search) return true;
@@ -639,7 +496,7 @@ export default function DocumentsPage() {
   const breadcrumb = selectedFolder ? getBreadcrumb(tree, selectedFolder) || [] : [];
   const selectedNode = selectedFolder ? findNodeById(tree, selectedFolder) : null;
   const isLeafSelected = selectedNode ? LEAF_TYPES.has(selectedNode.type) : false;
-  const isClientFolder = selectedNode ? (selectedNode.type === "clienti_prospecti" || selectedNode.type === "clienti_finali") : false;
+  const isClientFolder = selectedNode ? CLIENT_FOLDER_TYPES.has(selectedNode.type) : false;
   const canUpload = isLeafSelected && !isClientFolder;
 
   // Stats
@@ -894,22 +751,36 @@ export default function DocumentsPage() {
               </>
             ) : (
               <>
-                <div className="doc-empty-title">{isClientFolder ? "Documente client" : isLeafSelected ? "Folder gol" : "Navigheaza mai adanc"}</div>
-                <div className="doc-empty-desc">
-                  {isClientFolder
-                    ? <>Documentele client se uploadeaza <strong>prin Solomon</strong> in contextul proiectului.<br />Deschide un proiect si foloseste chat-ul Solomon pentru a uploada certificate, contracte, oferte etc.<br />Documentele procesate apar automat aici.</>
-                    : isLeafSelected
-                    ? <>Acest folder nu contine inca documente.<br />Adauga primul document cu butonul de upload.</>
-                    : <>Documentele se adauga doar in folderele de tip<br /><strong>Ghiduri</strong> sau <strong>Template-uri</strong>.<br />Documentele client se uploadeaza prin Solomon.<br />Expandeaza arborele si selecteaza un folder final.</>
-                  }
-                </div>
-                {canUpload && (
-                  <button className="doc-empty-cta" onClick={() => setShowUpload(true)}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
-                    </svg>
-                    Upload document
-                  </button>
+                {isClientFolder ? (
+                  <>
+                    <div className="doc-empty-title">Documentele client vin prin Solomon</div>
+                    <div className="doc-empty-desc">
+                      Deschide Solomon pe un proiect pentru a uploada și procesa documente client.<br />
+                      Certificate, contracte, bilanțuri, oferte — toate se procesează automat.<br />
+                      Documentele procesate apar automat aici.
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="doc-empty-title">
+                      {selectedNode?.type === "ghiduri" ? "Niciun ghid uploadat" : selectedNode?.type === "templateuri" ? "Niciun template uploadat" : "Folder gol"}
+                    </div>
+                    <div className="doc-empty-desc">
+                      {selectedNode?.type === "ghiduri"
+                        ? "Uploadează ghidul solicitantului și anexele cu date de referință."
+                        : selectedNode?.type === "templateuri"
+                        ? "Uploadează template-urile pentru Cerere, Memoriu, Plan afaceri."
+                        : "Acest folder nu conține încă documente."}
+                    </div>
+                    {canUpload && (
+                      <button className="doc-empty-cta" onClick={() => setShowUpload(true)}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+                        </svg>
+                        Upload document
+                      </button>
+                    )}
+                  </>
                 )}
               </>
             )}
@@ -1412,168 +1283,14 @@ export default function DocumentsPage() {
       })()}
 
       {/* ─── UPLOAD MODAL ─── */}
-      {showUpload && (
-        <div className="doc-overlay" onClick={e => { if (e.target === e.currentTarget) { setShowUpload(false); setUploadError(null); setUploadFiles([]); setUploadProgress(0); setUploadWarnings([]); } }}>
-          <div className="doc-modal">
-            <div className="doc-modal-title">
-              Upload documente
-              <button className="doc-modal-close" onClick={() => { setShowUpload(false); setUploadFiles([]); setUploadError(null); setUploadProgress(0); setUploadWarnings([]); }}>{"\u2715"}</button>
-            </div>
-            <div className="doc-modal-sub">
-              Destinatie: <strong className="text-slate-900">{breadcrumb.length > 0 ? breadcrumb.join(" \u203A ") : "Selecteaza un folder"}</strong>
-            </div>
-
-            {/* Auto-detected type from folder — shown as info pill, not a selector */}
-            {selectedNode && LEAF_TYPES.has(selectedNode.type) && selectedNode.type !== "ghiduri" && (
-              <div className="doc-upload-type-info">
-                <span className="doc-upload-type-info-icon">
-                  {selectedNode.type === "templateuri" ? "\u{1F4DD}" : selectedNode.type === "clienti_prospecti" ? "\u{1F50D}" : "\u2705"}
-                </span>
-                <div>
-                  <div className="doc-upload-type-info-label">
-                    Tip document: <strong>{selectedNode.type === "templateuri" ? "Template" : selectedNode.type === "clienti_prospecti" ? "Document client prospect" : "Document client final"}</strong>
-                  </div>
-                  <div className="doc-upload-type-info-desc">
-                    {selectedNode.type === "templateuri"
-                      ? "Template-ul va fi procesat automat pentru detectarea campurilor."
-                      : "Documentul va fi adaugat in dosarul clientului."}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Ghiduri sub-classification: Ghid solicitant vs Anexa cu date */}
-            {selectedNode?.type === "ghiduri" && (
-              <div className="doc-upload-ghid-subtype">
-                <div className="doc-upload-ghid-subtype-label">Tip continut in folderul Ghiduri:</div>
-                <div className="doc-upload-ghid-subtype-options">
-                  <button
-                    className={`doc-upload-ghid-option ${ghidSubType === "ghid" ? "active" : ""}`}
-                    onClick={() => setGhidSubType("ghid")}
-                  >
-                    <span className="doc-upload-ghid-option-icon">{"\u{1F4D6}"}</span>
-                    <div>
-                      <div className="doc-upload-ghid-option-title">Ghid solicitant</div>
-                      <div className="doc-upload-ghid-option-desc">Ghidul va fi procesat cu AI pentru extragerea regulilor de eligibilitate.</div>
-                    </div>
-                  </button>
-                  <button
-                    className={`doc-upload-ghid-option ${ghidSubType === "reference_data" ? "active" : ""}`}
-                    onClick={() => setGhidSubType("reference_data")}
-                  >
-                    <span className="doc-upload-ghid-option-icon">{"\u{1F4CA}"}</span>
-                    <div>
-                      <div className="doc-upload-ghid-option-title">Anexa cu date (tabele referinta)</div>
-                      <div className="doc-upload-ghid-option-desc">Anexele cu tabele de clasificare, liste UAT, corelatii putere/suprafata etc. vor fi extrase ca date structurate.</div>
-                    </div>
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* File input inside modal for reliable file picker trigger */}
-            <input
-              ref={fileInputRef}
-              id="doc-upload-input"
-              type="file"
-              accept=".pdf,.docx,.xlsx,.xls,.doc,.png,.jpg,.jpeg"
-              multiple
-              style={{ position: "absolute", width: 0, height: 0, opacity: 0, pointerEvents: "none" }}
-              onChange={e => {
-                const files = e.target.files;
-                if (files && files.length > 0) setUploadFiles(prev => [...prev, ...Array.from(files)]);
-                e.target.value = "";
-              }}
-            />
-            <div
-              className={`doc-upload-zone ${dragOver ? "drag-active" : ""} ${uploadFiles.length > 0 ? "has-file" : ""}`}
-              style={{ display: "block", cursor: "pointer" }}
-              onClick={() => { if (uploadFiles.length === 0) fileInputRef.current?.click(); }}
-              onDragOver={e => { e.preventDefault(); e.stopPropagation(); setDragOver(true); }}
-              onDragLeave={e => { e.preventDefault(); e.stopPropagation(); setDragOver(false); }}
-              onDrop={e => {
-                e.preventDefault();
-                e.stopPropagation();
-                setDragOver(false);
-                const droppedFiles = e.dataTransfer.files;
-                if (droppedFiles && droppedFiles.length > 0) setUploadFiles(prev => [...prev, ...Array.from(droppedFiles)]);
-              }}
-            >
-              {uploadFiles.length > 0 ? (
-                <>
-                  <button className="doc-upload-zone-remove" onClick={e => { e.stopPropagation(); setUploadFiles([]); setUploadError(null); }}>{"\u2715"}</button>
-                  <div className="doc-upload-zone-icon">{"\u2705"}</div>
-                  <div className="doc-upload-zone-title">
-                    {uploadFiles.length === 1 ? uploadFiles[0].name : `${uploadFiles.length} fisiere selectate`}
-                  </div>
-                  <div className="doc-upload-zone-sub">
-                    {formatFileSize(uploadFiles.reduce((sum, f) => sum + f.size, 0))} total {"\u00B7"} Gata de upload
-                  </div>
-                  {uploadFiles.length > 1 && (
-                    <div className="mt-2 text-[11px] text-left max-h-[80px] overflow-auto text-slate-400">
-                      {uploadFiles.map((f, i) => (
-                        <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "1px 0" }}>
-                          <span>{f.name}</span>
-                          <span>{formatFileSize(f.size)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  <button
-                    className="mt-2 text-xs text-blue-600 bg-transparent border-none cursor-pointer font-sans"
-                    onClick={e => { e.stopPropagation(); fileInputRef.current?.click(); }}
-                  >
-                    + Adauga mai multe
-                  </button>
-                </>
-              ) : (
-                <>
-                  <div className="doc-upload-zone-icon">{dragOver ? "\u{1F4E5}" : "\u{1F4E4}"}</div>
-                  <div className="doc-upload-zone-title">
-                    {dragOver ? "Elibereaza pentru upload" : "Trage fisierele aici sau click pentru a alege"}
-                  </div>
-                  <div className="doc-upload-zone-sub">PDF, DOCX, XLSX, DOC, PNG, JPG — max 50 MB per fisier. Se pot selecta mai multe.</div>
-                </>
-              )}
-            </div>
-
-            {/* Upload progress bar */}
-            {uploading && (
-              <div className="doc-upload-progress">
-                <div
-                  className={`doc-upload-progress-bar ${uploadProgress < 100 ? "active" : ""}`}
-                  style={{ width: `${uploadProgress}%` }}
-                />
-              </div>
-            )}
-
-            {uploadError && (
-              <div className="doc-upload-error" style={{ whiteSpace: "pre-line" }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                  <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
-                </svg>
-                {uploadError}
-              </div>
-            )}
-
-            {uploadWarnings.length > 0 && (
-              <div className="px-3.5 py-2.5 mb-3 rounded-md bg-amber-500/[0.08] border border-amber-500/20 text-amber-500 text-xs leading-normal">
-                {uploadWarnings.map((w, i) => <div key={i}>{w}</div>)}
-              </div>
-            )}
-
-            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-              <button className="doc-btn-secondary" onClick={() => { setShowUpload(false); setUploadFiles([]); setUploadError(null); setUploadProgress(0); setUploadWarnings([]); }}>Anuleaza</button>
-              <button
-                className="doc-btn-primary"
-                disabled={uploadFiles.length === 0 || !selectedFolder || uploading}
-                onClick={handleUpload}
-              >
-                {uploading ? `Se uploadeaza... ${Math.round(uploadProgress)}%` : uploadFiles.length > 1 ? `Upload ${uploadFiles.length} fisiere` : "Upload & Proceseaza"}
-              </button>
-            </div>
-          </div>
-        </div>
+      {selectedNode && canUpload && (
+        <UploadModal
+          isOpen={showUpload}
+          onClose={() => setShowUpload(false)}
+          folderId={selectedFolder!}
+          folderType={selectedNode.type as "ghiduri" | "templateuri"}
+          onSuccess={() => { if (selectedFolder) fetchDocs(selectedFolder); }}
+        />
       )}
     </div>
   );

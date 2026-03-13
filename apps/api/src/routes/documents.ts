@@ -178,13 +178,23 @@ function fileHash(buffer: Buffer): string {
   return createHash("sha256").update(buffer).digest("hex");
 }
 
-/** Map folder type → processing type */
+/** Map folder type + explicit sub-type → processing type */
 function resolveProcessingType(folderType: string, explicitType: string | null): string {
   if (explicitType === "reference_data" && folderType === "ghiduri") return "reference_data";
+  if (explicitType === "ghid" && folderType === "ghiduri") return "ghid";
   if (folderType === "ghiduri") return "ghid";
+  // template_fill and template_compose both use "template" processing type
+  // (the distinction is stored in generationMode on the document record)
+  if (explicitType === "template_fill" || explicitType === "template_compose") return "template";
   if (folderType === "templateuri") return "template";
   if (folderType === "clienti_prospecti" || folderType === "clienti_finali") return "client_doc";
   return "reference";
+}
+
+/** Resolve generation mode from explicit processing type */
+function resolveGenerationMode(explicitType: string | null): "fill" | "compose" {
+  if (explicitType === "template_compose") return "compose";
+  return "fill";
 }
 
 // --- PRESIGNED UPLOAD URL (direct browser → R2 upload, bypasses Node memory) ---
@@ -245,6 +255,9 @@ documentRoutes.post("/presigned-url", async (c) => {
   const rawName = body.filename.replace(/\.[^.]+$/, "");
   const safeName = sanitizeFilename(rawName) || rawName;
 
+  // Resolve generation mode for templates
+  const generationMode = processingType === "template" ? resolveGenerationMode(body.processing_type || null) : "fill";
+
   // Pre-create document record in "uploaded" status (will be confirmed later)
   const [doc] = await db.insert(documents).values({
     folderId: body.folder_id,
@@ -257,6 +270,7 @@ documentRoutes.post("/presigned-url", async (c) => {
     fileHash: null,
     status: "uploaded",
     processingType: processingType as any,
+    generationMode: generationMode as any,
     tags: [],
     uploadedBy: auth.userId,
   }).returning();
@@ -428,6 +442,9 @@ documentRoutes.post("/folders/:folderId/documents", async (c) => {
     ? "guides" : processingType === "template" ? "templates" : "uploads";
   const fileId = await uploadFile(buffer, file.name, file.type, auth.organizationId!, auth.userId, uploadContext);
 
+  // --- Resolve generation mode for templates ---
+  const generationMode = processingType === "template" ? resolveGenerationMode(explicitType) : "fill";
+
   // --- Create DB record ---
   const [doc] = await db.insert(documents).values({
     folderId,
@@ -440,6 +457,7 @@ documentRoutes.post("/folders/:folderId/documents", async (c) => {
     fileHash: hash,
     status: "uploaded",
     processingType: processingType as any,
+    generationMode: generationMode as any,
     tags,
     uploadedBy: auth.userId,
   }).returning();

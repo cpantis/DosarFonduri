@@ -297,16 +297,21 @@ documentRoutes.post("/documents/:id/confirm-upload", async (c) => {
     await db.update(documents).set({ fileSize: size }).where(eq(documents.id, id));
   }
 
-  // Dispatch BullMQ processing job
-  const jobPayload = { documentId: doc.id, organizationId: auth.organizationId };
-  if (doc.processingType === "ghid") {
-    await processGuideQueue.add("process-guide", jobPayload, { priority: JOB_PRIORITY.GUIDE });
-  } else if (doc.processingType === "template") {
-    await processTemplateQueue.add("process-template", jobPayload, { priority: JOB_PRIORITY.TEMPLATE });
-  } else if (doc.processingType === "reference_data") {
-    await processReferenceDataQueue.add("process-reference-data", jobPayload, { priority: JOB_PRIORITY.REFERENCE_DATA });
-  } else if (doc.processingType === "client_doc") {
-    await processClientDocQueue.add("process-client-doc", jobPayload, { priority: JOB_PRIORITY.CLIENT_DOC });
+  // Dispatch BullMQ processing job (best-effort — upload succeeds even if queue is down)
+  try {
+    const jobPayload = { documentId: doc.id, organizationId: auth.organizationId };
+    if (doc.processingType === "ghid") {
+      await processGuideQueue.add("process-guide", jobPayload, { priority: JOB_PRIORITY.GUIDE });
+    } else if (doc.processingType === "template") {
+      await processTemplateQueue.add("process-template", jobPayload, { priority: JOB_PRIORITY.TEMPLATE });
+    } else if (doc.processingType === "reference_data") {
+      await processReferenceDataQueue.add("process-reference-data", jobPayload, { priority: JOB_PRIORITY.REFERENCE_DATA });
+    } else if (doc.processingType === "client_doc") {
+      await processClientDocQueue.add("process-client-doc", jobPayload, { priority: JOB_PRIORITY.CLIENT_DOC });
+    }
+  } catch (queueErr: any) {
+    console.error(`Queue dispatch failed for document ${doc.id}:`, queueErr.message);
+    // Upload still succeeds — processing can be retried via POST /documents/:id/process
   }
 
   // SSE notification
@@ -407,16 +412,26 @@ documentRoutes.post("/folders/:folderId/documents", async (c) => {
     uploadedBy: auth.userId,
   }).returning();
 
-  // --- Dispatch BullMQ job with priority ---
-  const jobPayload = { documentId: doc.id, organizationId: auth.organizationId! };
-  if (processingType === "ghid") {
-    await processGuideQueue.add("process-guide", jobPayload, { priority: JOB_PRIORITY.GUIDE });
-  } else if (processingType === "template") {
-    await processTemplateQueue.add("process-template", jobPayload, { priority: JOB_PRIORITY.TEMPLATE });
-  } else if (processingType === "reference_data") {
-    await processReferenceDataQueue.add("process-reference-data", jobPayload, { priority: JOB_PRIORITY.REFERENCE_DATA });
-  } else if (processingType === "client_doc") {
-    await processClientDocQueue.add("process-client-doc", jobPayload, { priority: JOB_PRIORITY.CLIENT_DOC });
+  // --- Response with warnings ---
+  const warnings: string[] = [];
+  if (duplicateWarning) warnings.push(duplicateWarning);
+  if (docWarning) warnings.push(docWarning);
+
+  // --- Dispatch BullMQ job with priority (best-effort) ---
+  try {
+    const jobPayload = { documentId: doc.id, organizationId: auth.organizationId! };
+    if (processingType === "ghid") {
+      await processGuideQueue.add("process-guide", jobPayload, { priority: JOB_PRIORITY.GUIDE });
+    } else if (processingType === "template") {
+      await processTemplateQueue.add("process-template", jobPayload, { priority: JOB_PRIORITY.TEMPLATE });
+    } else if (processingType === "reference_data") {
+      await processReferenceDataQueue.add("process-reference-data", jobPayload, { priority: JOB_PRIORITY.REFERENCE_DATA });
+    } else if (processingType === "client_doc") {
+      await processClientDocQueue.add("process-client-doc", jobPayload, { priority: JOB_PRIORITY.CLIENT_DOC });
+    }
+  } catch (queueErr: any) {
+    console.error(`Queue dispatch failed for document ${doc.id}:`, queueErr.message);
+    warnings.push("Procesarea automată nu a pornit (Redis indisponibil). Poți reporni manual din meniul documentului.");
   }
 
   // --- SSE notification ---
@@ -427,11 +442,6 @@ documentRoutes.post("/folders/:folderId/documents", async (c) => {
     processingType,
     message: `Document uploadat "${safeName}", procesare în curs...`,
   }).catch(() => {}); // fire and forget
-
-  // --- Response with warnings ---
-  const warnings: string[] = [];
-  if (duplicateWarning) warnings.push(duplicateWarning);
-  if (docWarning) warnings.push(docWarning);
 
   return c.json({ ...doc, warnings: warnings.length > 0 ? warnings : undefined }, 201);
 });
@@ -479,15 +489,21 @@ documentRoutes.post("/documents/:id/process", async (c) => {
 
   await db.update(documents).set({ status: "processing" }).where(eq(documents.id, id));
 
-  const jobPayload = { documentId: doc.id, organizationId: auth.organizationId! };
-  if (doc.processingType === "ghid") {
-    await processGuideQueue.add("process-guide", jobPayload, { priority: JOB_PRIORITY.GUIDE });
-  } else if (doc.processingType === "template") {
-    await processTemplateQueue.add("process-template", jobPayload, { priority: JOB_PRIORITY.TEMPLATE });
-  } else if (doc.processingType === "reference_data") {
-    await processReferenceDataQueue.add("process-reference-data", jobPayload, { priority: JOB_PRIORITY.REFERENCE_DATA });
-  } else if (doc.processingType === "client_doc") {
-    await processClientDocQueue.add("process-client-doc", jobPayload, { priority: JOB_PRIORITY.CLIENT_DOC });
+  try {
+    const jobPayload = { documentId: doc.id, organizationId: auth.organizationId! };
+    if (doc.processingType === "ghid") {
+      await processGuideQueue.add("process-guide", jobPayload, { priority: JOB_PRIORITY.GUIDE });
+    } else if (doc.processingType === "template") {
+      await processTemplateQueue.add("process-template", jobPayload, { priority: JOB_PRIORITY.TEMPLATE });
+    } else if (doc.processingType === "reference_data") {
+      await processReferenceDataQueue.add("process-reference-data", jobPayload, { priority: JOB_PRIORITY.REFERENCE_DATA });
+    } else if (doc.processingType === "client_doc") {
+      await processClientDocQueue.add("process-client-doc", jobPayload, { priority: JOB_PRIORITY.CLIENT_DOC });
+    }
+  } catch (queueErr: any) {
+    console.error(`Queue dispatch failed for document ${doc.id}:`, queueErr.message);
+    await db.update(documents).set({ status: "uploaded" }).where(eq(documents.id, id));
+    return c.json({ error: "Procesarea nu a pornit — Redis indisponibil. Reîncearcă mai târziu." }, 503);
   }
 
   return c.json({ ok: true, message: "Procesare pornită" });

@@ -22,12 +22,12 @@ function AppShell({ children }: { children: React.ReactNode }) {
 
   if (auth.loading) {
     return (
-      <div className="flex h-screen items-center justify-center" style={{ background: "var(--bg-deep)" }}>
+      <div className="flex h-screen items-center justify-center" style={{ background: "#f0f2f5" }}>
         <div className="text-center">
           <div className="w-12 h-12 mx-auto mb-4 flex items-center justify-center text-white text-xl font-extrabold rounded-xl bg-blue-600 shadow-lg shadow-blue-600/30">
             DF
           </div>
-          <div className="text-sm font-medium" style={{ color: "var(--text-muted)" }}>
+          <div className="text-sm font-medium" style={{ color: "#94a3b8" }}>
             Se incarca...
           </div>
         </div>
@@ -49,11 +49,11 @@ function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <AuthContext.Provider value={auth}>
       <SSEProvider />
-      <div className="flex h-screen overflow-hidden transition-colors" style={{ background: "var(--bg-deep)" }}>
+      <div className="flex min-h-screen bg-slate-50" style={{ fontFamily: "'Inter', system-ui, -apple-system, sans-serif" }}>
         <Sidebar />
-        <main className="flex-1 flex flex-col overflow-hidden min-w-0" style={{ background: "var(--bg-deep)" }}>
+        <div className="flex-1 min-w-0 overflow-y-auto">
           {children}
-        </main>
+        </div>
       </div>
     </AuthContext.Provider>
   );
@@ -105,14 +105,14 @@ function SSEProvider() {
           key={`ext-${ext.documentId}`}
           className="px-4 py-3 rounded-xl text-[13px] font-medium animate-[slideUp_.2s_ease-out]"
           style={{
-            background: "var(--bg-surface)",
-            color: "var(--text-primary)",
-            border: ext.completed ? "1px solid var(--accent-green-border)" : "1px solid var(--accent-blue-border)",
-            boxShadow: "var(--shadow)",
+            background: "#ffffff",
+            color: "#0f172a",
+            border: ext.completed ? "1px solid #a7f3d0" : "1px solid #bfdbfe",
+            boxShadow: "0 1px 3px rgba(0,0,0,.1)",
           }}
         >
           <div className="flex items-center gap-2 mb-2">
-            <span className="text-sm" style={{ color: ext.completed ? "var(--accent-green)" : "var(--accent-blue)" }}>
+            <span className="text-sm" style={{ color: ext.completed ? "#34d399" : "#4d8bff" }}>
               {ext.completed ? "\u2705" : "\u{1F50D}"}
             </span>
             <span className="truncate flex-1">
@@ -121,7 +121,7 @@ function SSEProvider() {
                 : `Extrag date... (${ext.extractedFields.length}/${ext.totalFields || "?"} campuri)`}
             </span>
           </div>
-          <div className="text-[11px] mb-1.5" style={{ color: "var(--text-muted)" }}>
+          <div className="text-[11px] mb-1.5" style={{ color: "#94a3b8" }}>
             {ext.documentName}
           </div>
           {/* Per-field progress chips */}
@@ -130,7 +130,7 @@ function SSEProvider() {
               <span
                 key={f.key}
                 className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold animate-[slideUp_.15s_ease-out]"
-                style={{ background: "var(--accent-green-bg)", color: "var(--accent-green)" }}
+                style={{ background: "#ecfdf5", color: "#34d399" }}
               >
                 {fieldLabel(f.key)} {"\u2713"}
               </span>
@@ -138,12 +138,12 @@ function SSEProvider() {
           </div>
           {/* Progress bar */}
           {ext.totalFields > 0 && (
-            <div className="h-1 rounded-sm overflow-hidden mt-1.5" style={{ background: "var(--bg-elevated)" }}>
+            <div className="h-1 rounded-sm overflow-hidden mt-1.5" style={{ background: "#f8fafc" }}>
               <div
                 className="h-full rounded-sm transition-[width] duration-300 ease-out"
                 style={{
                   width: `${Math.round((ext.extractedFields.length / ext.totalFields) * 100)}%`,
-                  background: ext.completed ? "var(--accent-green)" : "var(--accent-blue)",
+                  background: ext.completed ? "#34d399" : "#4d8bff",
                 }}
               />
             </div>
@@ -157,24 +157,24 @@ function SSEProvider() {
           key={job.id}
           className="px-4 py-3 rounded-xl text-[13px] font-medium animate-[slideUp_.2s_ease-out]"
           style={{
-            background: "var(--bg-surface)",
-            color: "var(--text-primary)",
-            border: job.status === "failed" ? "1px solid var(--accent-red-border)" : "1px solid var(--accent-blue-border)",
-            boxShadow: "var(--shadow)",
+            background: "#ffffff",
+            color: "#0f172a",
+            border: job.status === "failed" ? "1px solid #fecaca" : "1px solid #bfdbfe",
+            boxShadow: "0 1px 3px rgba(0,0,0,.1)",
           }}
         >
           <div className="flex items-center gap-2 mb-1.5">
-            <span style={{ color: job.status === "failed" ? "var(--accent-red)" : "var(--accent-blue)" }}>
+            <span style={{ color: job.status === "failed" ? "#f87171" : "#4d8bff" }}>
               {job.status === "processing" ? "&#9881;" : job.status === "failed" ? "&#10060;" : "&#9989;"}
             </span>
             <span className="truncate">{job.message}</span>
           </div>
-          <div className="h-1 rounded-sm overflow-hidden" style={{ background: "var(--bg-elevated)" }}>
+          <div className="h-1 rounded-sm overflow-hidden" style={{ background: "#f8fafc" }}>
             <div
               className="h-full rounded-sm transition-[width] duration-300 ease-out"
               style={{
                 width: `${job.progress}%`,
-                background: job.status === "failed" ? "var(--accent-red)" : "var(--accent-blue)",
+                background: job.status === "failed" ? "#f87171" : "#4d8bff",
               }}
             />
           </div>
@@ -186,27 +186,27 @@ function SSEProvider() {
 
 function PendingCabinetScreen() {
   return (
-    <div className="flex h-screen items-center justify-center" style={{ background: "var(--bg-deep)" }}>
+    <div className="flex h-screen items-center justify-center" style={{ background: "#f0f2f5" }}>
       <div className="text-center max-w-md px-6">
         <div
           className="w-16 h-16 mx-auto mb-6 flex items-center justify-center text-3xl rounded-xl"
-          style={{ background: "var(--bg-elevated)", border: "1px solid var(--border)" }}
+          style={{ background: "#f8fafc", border: "1px solid #e2e8f0" }}
         >
           ⏳
         </div>
-        <h2 className="text-2xl font-extrabold mb-3" style={{ color: "var(--text-primary)" }}>
+        <h2 className="text-2xl font-extrabold mb-3" style={{ color: "#0f172a" }}>
           Asteapta activarea
         </h2>
-        <p className="text-sm leading-relaxed mb-8" style={{ color: "var(--text-secondary)" }}>
+        <p className="text-sm leading-relaxed mb-8" style={{ color: "#64748b" }}>
           Contul tau a fost creat cu succes. Asteapta sa fii adaugat intr-un
           cabinet de catre un administrator, sau introdu un cod de cabinet
           pentru a activa contul.
         </p>
-        <div className="p-4 text-left rounded-[10px]" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
-          <div className="text-[10px] font-bold uppercase mb-2 tracking-wider" style={{ color: "var(--text-muted)" }}>
+        <div className="p-4 text-left rounded-[10px]" style={{ background: "#ffffff", border: "1px solid #e2e8f0" }}>
+          <div className="text-[10px] font-bold uppercase mb-2 tracking-wider" style={{ color: "#94a3b8" }}>
             Ai un cod de cabinet?
           </div>
-          <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
+          <p className="text-xs" style={{ color: "#64748b" }}>
             Daca ai primit un cod de cabinet de la furnizorul DosarFonduri,
             te rugam sa te deconectezi si sa te inregistrezi din nou folosind
             codul.

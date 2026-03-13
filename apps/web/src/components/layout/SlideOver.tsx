@@ -40,20 +40,20 @@ export function SlideOver({ open, onClose, title, width = "400px", children }: S
         style={{
           width,
           maxWidth: "90vw",
-          background: "var(--bg-surface)",
-          borderLeft: "1px solid var(--border)",
+          background: "#ffffff",
+          borderLeft: "1px solid #e2e8f0",
         }}
       >
         {title && (
-          <div className="flex items-center gap-3 p-4" style={{ borderBottom: "1px solid var(--border)" }}>
+          <div className="flex items-center gap-3 p-4" style={{ borderBottom: "1px solid #e2e8f0" }}>
             <button
               onClick={onClose}
               className="transition-colors cursor-pointer border-none bg-transparent"
-              style={{ color: "var(--text-secondary)" }}
+              style={{ color: "#64748b" }}
             >
               &#8592;
             </button>
-            <h3 className="font-bold" style={{ color: "var(--text-primary)" }}>{title}</h3>
+            <h3 className="font-bold" style={{ color: "#0f172a" }}>{title}</h3>
           </div>
         )}
         {children}

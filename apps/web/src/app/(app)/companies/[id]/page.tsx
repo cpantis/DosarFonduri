@@ -5,10 +5,14 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { isSOC, isPF, FORME_JURIDICE, getCompanyTabs, getFieldLabel } from "@/hooks/useFormaJuridica";
 import { apiGet, apiPost, apiDelete, api } from "@/lib/api";
-import { PageHeader } from "@/components/shared/PageHeader";
-import { StatusBadge } from "@/components/shared/StatusBadge";
-import { TypeBadge } from "@/components/shared/TypeBadge";
-import { CardLabel } from "@/components/ui/CardLabel";
+import { StatusBadge } from "@/components/ui/StatusBadge";
+import { TypeBadge } from "@/components/ui/TypeBadge";
+import { InfoCard } from "@/components/ui/InfoCard";
+import { DataTable } from "@/components/ui/DataTable";
+import { SectionTitle } from "@/components/ui/SectionTitle";
+import { Tabs } from "@/components/ui/Tabs";
+import { BtnSecondary, BtnDanger } from "@/components/ui/Buttons";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 /* === HELPERS === */
 const fmt = (v: string | number | null | undefined) => {
@@ -195,28 +199,29 @@ export default function CompanyDetailPage() {
 
   const sel = detail;
   const tabs = sel ? getCompanyTabs(sel.forma) : [];
+  const tabObjects = tabs.map(t => ({ key: t, label: t }));
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* LOADING STATE */}
       {loading && (
-        <div className="flex-1 flex items-center justify-center flex-col gap-3" style={{ color: "var(--text-muted)" }}>
-          <div className="w-7 h-7 border-2 border-t-blue-600 rounded-full animate-spin" style={{ borderColor: "var(--border)" }} />
+        <div className="flex-1 flex items-center justify-center flex-col gap-3 text-slate-400">
+          <div className="w-7 h-7 border-2 border-slate-200 border-t-blue-600 rounded-full animate-spin" />
           <div className="text-sm">Se incarca detaliile firmei...</div>
         </div>
       )}
 
       {/* ERROR STATE */}
       {!loading && error && (
-        <div className="flex-1 flex items-center justify-center flex-col gap-3" style={{ color: "var(--text-muted)" }}>
-          <div className="text-sm" style={{ color: "var(--accent-red)" }}>{error}</div>
+        <div className="flex-1 flex items-center justify-center flex-col gap-3 text-slate-400">
+          <div className="text-sm text-red-500">{error}</div>
           <button
-            className="px-4 py-2 text-[13px] font-medium border rounded-lg hover: mt-2" style={{ color: "var(--text-primary)", background: "var(--bg-elevated)", borderColor: "var(--border-active)" }}
+            className="px-4 py-2 text-[13px] font-medium bg-white border border-slate-300 rounded-lg hover:bg-slate-50 hover:border-slate-400 text-slate-700 mt-2 transition-colors"
             onClick={fetchDetail}
           >
             Reincearca
           </button>
-          <Link href="/companies" className="text-[13px] font-semibold hover: mt-3" style={{ color: "var(--accent-blue)" }}>
+          <Link href="/companies" className="text-[13px] font-semibold text-blue-600 hover:text-blue-700 mt-3">
             &larr; Inapoi la lista
           </Link>
         </div>
@@ -226,16 +231,16 @@ export default function CompanyDetailPage() {
       {!loading && !error && sel && (<>
         {/* PROCESSING BANNER */}
         {sel.processingStatus === "processing" && (
-          <div className="px-8 py-3.5 /60 border-b flex items-center gap-3 flex-shrink-0" style={{ background: "var(--accent-blue-bg)", borderColor: "var(--accent-blue-border)" }}>
-            <div className="w-[18px] h-[18px] border-2 border-t-blue-600 rounded-full animate-spin" style={{ borderColor: "var(--border)" }} />
-            <span className="text-sm font-semibold" style={{ color: "var(--accent-blue)" }}>Se proceseaza documentul... Datele firmei se actualizeaza automat.</span>
+          <div className="px-8 py-3.5 bg-blue-50 border-b border-blue-200 flex items-center gap-3 flex-shrink-0">
+            <div className="w-[18px] h-[18px] border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+            <span className="text-sm font-semibold text-blue-600">Se proceseaza documentul... Datele firmei se actualizeaza automat.</span>
           </div>
         )}
         {sel.processingStatus === "error" && (
-          <div className="px-8 py-3.5 /60 border-b border-red-400 flex items-center gap-3 flex-shrink-0" style={{ background: "var(--accent-red-bg)" }}>
-            <span className="text-sm font-semibold" style={{ color: "var(--accent-red)" }}>Eroare la procesare: {sel.processingError || "Eroare necunoscuta"}</span>
+          <div className="px-8 py-3.5 bg-red-50 border-b border-red-200 flex items-center gap-3 flex-shrink-0">
+            <span className="text-sm font-semibold text-red-600">Eroare la procesare: {sel.processingError || "Eroare necunoscuta"}</span>
             <button
-              className="ml-auto px-4 py-1.5 text-xs font-medium border rounded-lg hover:" style={{ color: "var(--text-primary)", background: "var(--bg-elevated)", borderColor: "var(--border-active)" }}
+              className="ml-auto px-4 py-1.5 text-xs font-medium bg-white border border-slate-300 rounded-lg hover:bg-slate-50 text-slate-700 transition-colors"
               onClick={() => setShowOnrcUpload(true)}
             >
               Reincearca upload
@@ -244,130 +249,89 @@ export default function CompanyDetailPage() {
         )}
 
         {/* HEADER */}
-        <PageHeader
-          title={sel.denumire}
-          subtitle={`CUI: ${sel.cui} \u00b7 ${sel.regCom || "\u2014"}${sel.euid ? ` \u00b7 EUID: ${sel.euid}` : ""}`}
-          badges={
-            <>
-              <TypeBadge type={sel.forma} />
-              <StatusBadge status={sel.stare || "activ"} label={sel.stare} />
-            </>
-          }
-        >
-          <button
-            className="px-4 py-2 text-[13px] font-medium border rounded-lg hover:" style={{ color: "var(--text-primary)", background: "var(--bg-elevated)", borderColor: "var(--border-active)" }}
-            onClick={handleSyncOnrc}
-          >
-            Actualizare CUI
-          </button>
-          <button
-            className="px-4 py-2 text-[13px] font-medium border rounded-lg hover:" style={{ color: "var(--text-primary)", background: "var(--bg-elevated)", borderColor: "var(--border-active)" }}
-            onClick={() => setShowOnrcUpload(true)}
-          >
-            Upload ONRC
-          </button>
-          <button
-            className="px-4 py-2 text-[13px] font-medium border rounded-lg hover:" style={{ color: "var(--text-primary)", background: "var(--bg-elevated)", borderColor: "var(--border-active)" }}
-            onClick={() => setShowBilantUpload(true)}
-          >
-            Upload Bilant
-          </button>
-          <button
-            className="px-4 py-2 text-[13px] font-medium border rounded-lg hover:" style={{ color: "var(--accent-red)", background: "var(--accent-red-bg)", borderColor: "var(--accent-red-border)" }}
-            onClick={handleDelete}
-          >
-            Sterge
-          </button>
-        </PageHeader>
-
-        {/* TABS */}
-        <div className="flex border-b px-8 flex-shrink-0 overflow-x-auto gap-0" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
-          {tabs.map(t => (
-            <button
-              key={t}
-              className="px-4 text-sm font-medium cursor-pointer transition-colors whitespace-nowrap pb-3 pt-3 border-b-2"
-              style={activeTab === t
-                ? { color: "var(--accent-blue)", borderBottomColor: "var(--accent-blue)" }
-                : { color: "var(--text-secondary)", borderBottomColor: "transparent" }
-              }
-              onClick={() => setActiveTab(t)}
-            >
-              {t}
-            </button>
-          ))}
+        <div className="bg-white border-b border-slate-200">
+          <div className="max-w-6xl mx-auto px-8 py-6">
+            <div className="flex items-start justify-between">
+              <div>
+                <div className="flex items-center gap-3">
+                  <Link href="/companies" className="text-slate-400 hover:text-slate-600 transition-colors">
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
+                  </Link>
+                  <h1 className="text-2xl font-bold text-slate-900 tracking-tight">{sel.denumire}</h1>
+                  <TypeBadge type={sel.forma} />
+                  <StatusBadge status={sel.stare || "activ"} />
+                </div>
+                <p className="text-[13px] text-slate-500 mt-1.5 ml-8">
+                  CUI: {sel.cui} &middot; {sel.regCom || "\u2014"}{sel.euid ? ` \u00b7 EUID: ${sel.euid}` : ""}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <BtnSecondary onClick={handleSyncOnrc}>Actualizare CUI</BtnSecondary>
+                <BtnSecondary onClick={() => setShowOnrcUpload(true)}>Upload ONRC</BtnSecondary>
+                <BtnSecondary onClick={() => setShowBilantUpload(true)}>Upload Bilant</BtnSecondary>
+                <BtnDanger onClick={handleDelete}>Sterge</BtnDanger>
+              </div>
+            </div>
+            <div className="mt-6">
+              <Tabs tabs={tabObjects} active={activeTab} onChange={setActiveTab} />
+            </div>
+          </div>
         </div>
 
         {/* TAB CONTENT */}
-        <div className="flex-1 overflow-y-auto px-8 py-8" style={{ background: "var(--bg-deep)" }}>
+        <div className="flex-1 overflow-y-auto bg-slate-50">
+          <div className="max-w-6xl mx-auto px-8 py-6">
 
           {/* GENERAL */}
           {activeTab === "General" && (<>
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-5 mb-6">
-              <div className="rounded-xl border p-5 col-span-2" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
-                <CardLabel label="Forma juridica" value={FORME_JURIDICE.find(fj => fj.cod === sel.forma)?.label || sel.forma} size="lg" />
-              </div>
-              <div className="rounded-xl border p-5" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
-                <CardLabel label="Stare" value={<StatusBadge status={sel.stare || "activ"} label={sel.stare} />} />
-              </div>
-              <div className="rounded-xl border p-5 col-span-2" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
-                <CardLabel
-                  label="Adresa"
-                  value={
-                    <>
-                      <div>{sel.adresa || "\u2014"}</div>
-                      <div className="text-[13px] font-normal mt-1" style={{ color: "var(--text-muted)" }}>
-                        {sel.localitate || ""}{sel.localitate && sel.judet ? ", " : ""}{sel.judet || ""} {sel.codPostal || ""}
-                      </div>
-                    </>
-                  }
-                  size="lg"
-                />
-              </div>
-              <div className="rounded-xl border p-5" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
-                <CardLabel label="Telefon" value={sel.telefon || "\u2014"} mono size="lg" />
-              </div>
-              {sel.email && (
-                <div className="rounded-xl border p-5" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
-                  <CardLabel label="Email" value={sel.email} mono />
+              <InfoCard label="Forma juridica" span={2}>
+                <div className="text-[15px] font-semibold text-slate-900">
+                  {FORME_JURIDICE.find(fj => fj.cod === sel.forma)?.label || sel.forma}
                 </div>
+              </InfoCard>
+              <InfoCard label="Stare">
+                <StatusBadge status={sel.stare || "activ"} />
+              </InfoCard>
+              <InfoCard label="Adresa" span={2}>
+                <div className="text-[15px] font-semibold text-slate-900">{sel.adresa || "\u2014"}</div>
+                <div className="text-[13px] font-normal mt-1 text-slate-400">
+                  {sel.localitate || ""}{sel.localitate && sel.judet ? ", " : ""}{sel.judet || ""} {sel.codPostal || ""}
+                </div>
+              </InfoCard>
+              <InfoCard label="Telefon" value={sel.telefon || "\u2014"} />
+              {sel.email && (
+                <InfoCard label="Email" value={sel.email} />
               )}
               {sel.website && (
-                <div className="rounded-xl border p-5" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
-                  <CardLabel label="Website" value={<a href={sel.website.startsWith('http') ? sel.website : `https://${sel.website}`} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: "var(--accent-blue)" }}>{sel.website}</a>} />
-                </div>
+                <InfoCard label="Website">
+                  <a href={sel.website.startsWith('http') ? sel.website : `https://${sel.website}`} target="_blank" rel="noopener noreferrer" className="text-[15px] font-semibold text-blue-600 hover:underline">
+                    {sel.website}
+                  </a>
+                </InfoCard>
               )}
-              <div className="rounded-xl border p-5" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
-                <CardLabel label={getFieldLabel("durata_label", sel.forma)} value={sel.durata || "\u2014"} size="lg" />
-              </div>
-              <div className="rounded-xl border p-5" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
-                <CardLabel label="An infiintare" value={sel.anInfiintare || "\u2014"} mono />
-              </div>
-              <div className="rounded-xl border p-5" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
-                <CardLabel label="CAEN" value={`${sel.caen || "\u2014"} — ${sel.caenDesc}`} />
-              </div>
+              <InfoCard label={getFieldLabel("durata_label", sel.forma)} value={sel.durata || "\u2014"} />
+              <InfoCard label="An infiintare" value={sel.anInfiintare || "\u2014"} />
+              <InfoCard label="CAEN" value={`${sel.caen || "\u2014"} \u2014 ${sel.caenDesc}`} />
               {sel.regCom && (
-                <div className="rounded-xl border p-5" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
-                  <CardLabel label="Nr. Reg. Com." value={sel.regCom} mono size="lg" />
-                </div>
+                <InfoCard label="Nr. Reg. Com." value={sel.regCom} />
               )}
               {sel.euid && (
-                <div className="rounded-xl border p-5" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
-                  <CardLabel label="EUID" value={sel.euid} mono />
-                </div>
+                <InfoCard label="EUID" value={sel.euid} />
               )}
             </div>
             {sel.activitatiSecundare && sel.activitatiSecundare.length > 0 && (
-              <div className="rounded-xl border p-5 mt-5 mb-2" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
-                <div className="text-[12px] uppercase tracking-wide font-semibold mb-3" style={{ color: "var(--text-secondary)" }}>Activitati secundare ({sel.activitatiSecundare.length})</div>
+              <div className="bg-white rounded-xl border border-slate-200 p-5 mt-5 mb-2">
+                <div className="text-[11px] uppercase tracking-wide font-semibold text-slate-500 mb-3">Activitati secundare ({sel.activitatiSecundare.length})</div>
                 <div className="flex flex-wrap gap-2">
                   {sel.activitatiSecundare.slice(0, 5).map((a: any, i: number) => (
-                    <span key={i} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-[12px]" style={{ color: "var(--text-secondary)", background: "var(--bg-elevated)", borderColor: "var(--border)" }}>
-                      <span className="font-mono text-[11px]" style={{ color: "var(--text-muted)" }}>{a.cod}</span>
+                    <span key={i} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-slate-200 bg-slate-50 text-[12px] text-slate-500">
+                      <span className="font-mono text-[11px] text-slate-400">{a.cod}</span>
                       {a.den}
                     </span>
                   ))}
                   {sel.activitatiSecundare.length > 5 && (
-                    <button className="text-[12px] font-semibold hover:underline cursor-pointer border-none bg-transparent" style={{ color: "var(--accent-blue)" }} onClick={() => setActiveTab("Activitati")}>
+                    <button className="text-[12px] font-semibold text-blue-600 hover:underline cursor-pointer border-none bg-transparent" onClick={() => setActiveTab("Activitati")}>
                       +{sel.activitatiSecundare.length - 5} mai multe
                     </button>
                   )}
@@ -375,230 +339,146 @@ export default function CompanyDetailPage() {
               </div>
             )}
             {isPF(sel.forma) && sel.patrimoniu_afectat && (
-              <div className="rounded-xl p-5 mb-6" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderLeft: "3px solid var(--accent-blue)" }}>
-                <div className="text-[12px] uppercase tracking-wide font-semibold mb-1.5" style={{ color: "var(--text-secondary)" }}>Patrimoniu de afectatiune</div>
-                <div className="text-[14px] leading-relaxed" style={{ color: "var(--text-primary)" }}>{sel.patrimoniu_afectat}</div>
-              </div>
+              <InfoCard label="Patrimoniu de afectatiune" accent>
+                <div className="text-[14px] leading-relaxed text-slate-900">{sel.patrimoniu_afectat}</div>
+              </InfoCard>
             )}
-            <div className="rounded-xl p-5 mb-6" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderLeft: "3px solid var(--accent-blue)" }}>
-              <div className="text-[12px] uppercase tracking-wide font-semibold mb-1.5" style={{ color: "var(--text-secondary)" }}>Ultima mentiune</div>
-              <div className="text-[14px] leading-relaxed" style={{ color: "var(--text-primary)" }}>{sel.ultimaMentiune}</div>
+            <div className="mt-5">
+              <InfoCard label="Ultima mentiune" accent>
+                <div className="text-[14px] leading-relaxed text-slate-900">{sel.ultimaMentiune}</div>
+              </InfoCard>
             </div>
-            {isSOC(sel.forma) && sel.capitalSocial && (<>
-              <div className="rounded-xl border p-6 mb-6" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
-                <div className="text-[14px] font-bold mb-5" style={{ color: "var(--text-primary)" }}>Capital social</div>
+            {isSOC(sel.forma) && sel.capitalSocial && (
+              <div className="bg-white rounded-xl border border-slate-200 p-6 mt-6">
+                <div className="text-[14px] font-bold text-slate-900 mb-5">Capital social</div>
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
-                  <CardLabel label="Subscris" value={fmt(sel.capitalSocial)} mono size="lg" />
-                  <CardLabel label={getFieldLabel("parti_actiuni", sel.forma)} value={sel.partiSociale || sel.actiuni || "\u2014"} mono size="lg" />
-                  <CardLabel label={getFieldLabel("valoare_parte", sel.forma)} value={fmt(sel.valoareParte || sel.valoareActiune)} mono size="lg" />
-                  <CardLabel
-                    label="Natura"
-                    value={
-                      <>
-                        privat autohton {sel.natura?.privatAutohton || sel.natura?.privat_autohton || 0}%
-                        {((sel.natura?.privatStrain ?? sel.natura?.privat_strain ?? 0) > 0) ? `, strain ${sel.natura?.privatStrain || sel.natura?.privat_strain}%` : ""}
-                        {((sel.natura?.stat ?? 0) > 0) ? `, stat ${sel.natura!.stat}%` : ""}
-                      </>
-                    }
-                    size="lg"
-                  />
+                  <InfoCard label="Subscris" value={fmt(sel.capitalSocial)} />
+                  <InfoCard label={getFieldLabel("parti_actiuni", sel.forma)} value={sel.partiSociale || sel.actiuni || "\u2014"} />
+                  <InfoCard label={getFieldLabel("valoare_parte", sel.forma)} value={fmt(sel.valoareParte || sel.valoareActiune)} />
+                  <InfoCard label="Natura">
+                    <div className="text-[15px] font-semibold text-slate-900">
+                      privat autohton {sel.natura?.privatAutohton || sel.natura?.privat_autohton || 0}%
+                      {((sel.natura?.privatStrain ?? sel.natura?.privat_strain ?? 0) > 0) ? `, strain ${sel.natura?.privatStrain || sel.natura?.privat_strain}%` : ""}
+                      {((sel.natura?.stat ?? 0) > 0) ? `, stat ${sel.natura!.stat}%` : ""}
+                    </div>
+                  </InfoCard>
                 </div>
               </div>
-            </>)}
+            )}
           </>)}
 
           {/* ASOCIATI / ACTIONARI */}
           {(activeTab === "Asociati" || activeTab === "Actionari") && (<>
             {sel.asociatiPJ.length > 0 && (<>
-              <div className="text-xs font-bold uppercase tracking-wider mt-2 mb-3" style={{ color: "var(--text-muted)" }}>
+              <SectionTitle>
                 {getFieldLabel("asociati_label", sel.forma)} &mdash; Persoane Juridice ({sel.asociatiPJ.length})
-              </div>
-              <div className="rounded-xl border overflow-hidden mb-5" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="" style={{ background: "var(--bg-elevated)" }}>
-                      <th className="text-left px-4 py-2.5 text-[11px] uppercase tracking-wide font-semibold" style={{ color: "var(--text-secondary)" }}>Denumire</th>
-                      <th className="text-left px-4 py-2.5 text-[11px] uppercase tracking-wide font-semibold" style={{ color: "var(--text-secondary)" }}>Calitate</th>
-                      <th className="text-left px-4 py-2.5 text-[11px] uppercase tracking-wide font-semibold" style={{ color: "var(--text-secondary)" }}>Tara</th>
-                      <th className="text-right px-4 py-2.5 text-[11px] uppercase tracking-wide font-semibold" style={{ color: "var(--text-secondary)" }}>Cota %</th>
-                      <th className="text-right px-4 py-2.5 text-[11px] uppercase tracking-wide font-semibold" style={{ color: "var(--text-secondary)" }}>Aport</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sel.asociatiPJ.map((a: any, i: number) => (
-                      <tr key={i} className="border-t hover: transition-colors" style={{ background: "var(--bg-elevated)", borderColor: "var(--border)" }}>
-                        <td className="px-4 py-3 font-medium" style={{ color: "var(--text-primary)" }}>{a.denumire}</td>
-                        <td className="px-4 py-3" style={{ color: "var(--text-secondary)" }}>{a.calitate}</td>
-                        <td className="px-4 py-3" style={{ color: "var(--text-secondary)" }}>{a.tara}</td>
-                        <td className="px-4 py-3 text-right font-mono" style={{ color: "var(--text-secondary)" }}>{a.cotaBeneficii}%</td>
-                        <td className="px-4 py-3 text-right font-mono" style={{ color: "var(--text-secondary)" }}>{a.aport}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              </SectionTitle>
+              <DataTable
+                columns={[
+                  { key: "denumire", label: "Denumire", className: "text-slate-900 font-medium" },
+                  { key: "calitate", label: "Calitate" },
+                  { key: "tara", label: "Tara" },
+                  { key: "cotaBeneficii", label: "Cota %", className: "text-right font-mono text-slate-500", render: (row: any) => `${row.cotaBeneficii}%` },
+                  { key: "aport", label: "Aport", className: "text-right font-mono text-slate-500" },
+                ]}
+                rows={sel.asociatiPJ}
+              />
+              <div className="mb-5" />
             </>)}
-            <div className="text-xs font-bold uppercase tracking-wider mt-2 mb-3" style={{ color: "var(--text-muted)" }}>
+            <SectionTitle>
               {getFieldLabel("asociati_label", sel.forma)} &mdash; Persoane Fizice ({sel.asociatiPF.length})
-            </div>
-            <div className="rounded-xl border overflow-hidden" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="" style={{ background: "var(--bg-elevated)" }}>
-                    <th className="text-left px-4 py-2.5 text-[11px] uppercase tracking-wide font-semibold" style={{ color: "var(--text-secondary)" }}>Nume</th>
-                    <th className="text-left px-4 py-2.5 text-[11px] uppercase tracking-wide font-semibold" style={{ color: "var(--text-secondary)" }}>Calitate</th>
-                    <th className="text-left px-4 py-2.5 text-[11px] uppercase tracking-wide font-semibold" style={{ color: "var(--text-secondary)" }}>Cetatenie</th>
-                    <th className="text-right px-4 py-2.5 text-[11px] uppercase tracking-wide font-semibold" style={{ color: "var(--text-secondary)" }}>Cota %</th>
-                    <th className="text-right px-4 py-2.5 text-[11px] uppercase tracking-wide font-semibold" style={{ color: "var(--text-secondary)" }}>{sel.forma === "SA" ? "Actiuni" : "Parti soc."}</th>
-                    <th className="text-right px-4 py-2.5 text-[11px] uppercase tracking-wide font-semibold" style={{ color: "var(--text-secondary)" }}>Aport</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sel.asociatiPF.map((a: any, i: number) => (
-                    <tr key={i} className="border-t hover: transition-colors" style={{ background: "var(--bg-elevated)", borderColor: "var(--border)" }}>
-                      <td className="px-4 py-3 font-medium" style={{ color: "var(--text-primary)" }}>{a.nume}</td>
-                      <td className="px-4 py-3" style={{ color: "var(--text-secondary)" }}>{a.calitate}</td>
-                      <td className="px-4 py-3" style={{ color: "var(--text-secondary)" }}>{a.cetatenie}</td>
-                      <td className="px-4 py-3 text-right font-mono" style={{ color: "var(--text-secondary)" }}>{a.cotaBeneficii}%</td>
-                      <td className="px-4 py-3 text-right font-mono" style={{ color: "var(--text-secondary)" }}>{a.partiSociale || a.actiuni}</td>
-                      <td className="px-4 py-3 text-right font-mono" style={{ color: "var(--text-secondary)" }}>{a.aport}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            </SectionTitle>
+            <DataTable
+              columns={[
+                { key: "nume", label: "Nume", className: "text-slate-900 font-medium" },
+                { key: "calitate", label: "Calitate" },
+                { key: "cetatenie", label: "Cetatenie" },
+                { key: "cotaBeneficii", label: "Cota %", className: "text-right font-mono text-slate-500", render: (row: any) => `${row.cotaBeneficii}%` },
+                { key: "partiSociale", label: sel.forma === "SA" ? "Actiuni" : "Parti soc.", className: "text-right font-mono text-slate-500", render: (row: any) => row.partiSociale || row.actiuni },
+                { key: "aport", label: "Aport", className: "text-right font-mono text-slate-500" },
+              ]}
+              rows={sel.asociatiPF}
+            />
           </>)}
 
           {/* TITULAR (PFA/II) */}
           {activeTab === "Titular" && sel.titular && (<>
-            <div className="text-xs font-bold uppercase tracking-wider mt-2 mb-3" style={{ color: "var(--text-muted)" }}>Titular</div>
+            <SectionTitle>Titular</SectionTitle>
             <div className="grid grid-cols-2 gap-4">
-              <div className="rounded-xl border p-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
-                <CardLabel label="Nume" value={sel.titular.nume} />
-              </div>
-              <div className="rounded-xl border p-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
-                <CardLabel label="Cetatenie" value={sel.titular.cetatenie} />
-              </div>
-              <div className="rounded-xl border p-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
-                <CardLabel label="Data nasterii" value={sel.titular.dataNasterii} mono />
-              </div>
-              <div className="rounded-xl border p-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
-                <CardLabel label="Stare civila" value={sel.titular.stare_civila} />
-              </div>
+              <InfoCard label="Nume" value={sel.titular.nume} />
+              <InfoCard label="Cetatenie" value={sel.titular.cetatenie} />
+              <InfoCard label="Data nasterii" value={sel.titular.dataNasterii} />
+              <InfoCard label="Stare civila" value={sel.titular.stare_civila} />
             </div>
           </>)}
           {activeTab === "Titular" && !sel.titular && (
-            <div className="flex items-center justify-center flex-col gap-3 py-16" style={{ color: "var(--text-muted)" }}>
-              <div className="text-4xl opacity-50">&#128100;</div>
-              <div className="text-sm">Nicio informatie despre titular disponibila.</div>
-            </div>
+            <EmptyState icon="&#128100;" title="Nicio informatie despre titular disponibila." />
           )}
 
           {/* MEMBRI IF */}
           {activeTab === "Membri IF" && (<>
-            <div className="text-xs font-bold uppercase tracking-wider mt-2 mb-3" style={{ color: "var(--text-muted)" }}>Reprezentant</div>
-            <div className="rounded-xl border p-4 flex items-center gap-3 mb-5" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
+            <SectionTitle>Reprezentant</SectionTitle>
+            <div className="bg-white rounded-xl border border-slate-200 p-4 flex items-center gap-3 mb-5">
               <span className="text-lg">&#128084;</span>
-              <div className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{sel.reprezentantIF || "\u2014"}</div>
-              <span className="ml-auto text-xs font-mono" style={{ color: "var(--text-secondary)" }}>Reprezentant IF</span>
+              <div className="text-sm font-semibold text-slate-900">{sel.reprezentantIF || "\u2014"}</div>
+              <span className="ml-auto text-xs font-mono text-slate-500">Reprezentant IF</span>
             </div>
-            <div className="text-xs font-bold uppercase tracking-wider mt-2 mb-3" style={{ color: "var(--text-muted)" }}>Membri ({(sel.membriIF || []).length})</div>
-            <div className="rounded-xl border overflow-hidden" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="" style={{ background: "var(--bg-elevated)" }}>
-                    <th className="text-left px-4 py-2.5 text-[11px] uppercase tracking-wide font-semibold" style={{ color: "var(--text-secondary)" }}>Nume</th>
-                    <th className="text-left px-4 py-2.5 text-[11px] uppercase tracking-wide font-semibold" style={{ color: "var(--text-secondary)" }}>Calitate</th>
-                    <th className="text-left px-4 py-2.5 text-[11px] uppercase tracking-wide font-semibold" style={{ color: "var(--text-secondary)" }}>Grad rudenie</th>
-                    <th className="text-left px-4 py-2.5 text-[11px] uppercase tracking-wide font-semibold" style={{ color: "var(--text-secondary)" }}>Cetatenie</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(sel.membriIF || []).map((m: any, i: number) => (
-                    <tr key={i} className="border-t hover: transition-colors" style={{ background: "var(--bg-elevated)", borderColor: "var(--border)" }}>
-                      <td className="px-4 py-3 font-medium" style={{ color: "var(--text-primary)" }}>{m.nume}</td>
-                      <td className="px-4 py-3" style={{ color: "var(--text-secondary)" }}>{m.calitate}</td>
-                      <td className="px-4 py-3" style={{ color: "var(--text-secondary)" }}>{m.gradRudenie}</td>
-                      <td className="px-4 py-3" style={{ color: "var(--text-secondary)" }}>{m.cetatenie}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <SectionTitle>Membri ({(sel.membriIF || []).length})</SectionTitle>
+            <DataTable
+              columns={[
+                { key: "nume", label: "Nume", className: "text-slate-900 font-medium" },
+                { key: "calitate", label: "Calitate" },
+                { key: "gradRudenie", label: "Grad rudenie" },
+                { key: "cetatenie", label: "Cetatenie" },
+              ]}
+              rows={sel.membriIF || []}
+            />
           </>)}
 
           {/* ADMINISTRARE */}
           {activeTab === "Administrare" && (<>
-            <div className="text-xs font-bold uppercase tracking-wider mt-2 mb-3" style={{ color: "var(--text-muted)" }}>
+            <SectionTitle>
               {getFieldLabel("admin_label", sel.forma)} ({sel.administratori.length})
-            </div>
-            <div className="rounded-xl border overflow-hidden mb-5" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="" style={{ background: "var(--bg-elevated)" }}>
-                    <th className="text-left px-4 py-2.5 text-[11px] uppercase tracking-wide font-semibold" style={{ color: "var(--text-secondary)" }}>Nume</th>
-                    <th className="text-left px-4 py-2.5 text-[11px] uppercase tracking-wide font-semibold" style={{ color: "var(--text-secondary)" }}>Functie</th>
-                    <th className="text-left px-4 py-2.5 text-[11px] uppercase tracking-wide font-semibold" style={{ color: "var(--text-secondary)" }}>Puteri</th>
-                    <th className="text-left px-4 py-2.5 text-[11px] uppercase tracking-wide font-semibold" style={{ color: "var(--text-secondary)" }}>Mandat</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sel.administratori.map((a: any, i: number) => (
-                    <tr key={i} className="border-t hover: transition-colors" style={{ background: "var(--bg-elevated)", borderColor: "var(--border)" }}>
-                      <td className="px-4 py-3 font-medium" style={{ color: "var(--text-primary)" }}>{a.nume}</td>
-                      <td className="px-4 py-3" style={{ color: "var(--text-secondary)" }}>{a.functie}</td>
-                      <td className="px-4 py-3" style={{ color: "var(--text-secondary)" }}>{a.puteri}</td>
-                      <td className="px-4 py-3" style={{ color: "var(--text-secondary)" }}>{a.durataMandatLabel}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            </SectionTitle>
+            <DataTable
+              columns={[
+                { key: "nume", label: "Nume", className: "text-slate-900 font-medium" },
+                { key: "functie", label: "Functie" },
+                { key: "puteri", label: "Puteri" },
+                { key: "durataMandatLabel", label: "Mandat" },
+              ]}
+              rows={sel.administratori}
+            />
             {sel.cenzori && sel.cenzori.length > 0 && (<>
-              <div className="text-xs font-bold uppercase tracking-wider mt-5 mb-3" style={{ color: "var(--text-muted)" }}>Cenzori / Auditori</div>
-              <div className="rounded-xl border overflow-hidden" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="" style={{ background: "var(--bg-elevated)" }}>
-                      <th className="text-left px-4 py-2.5 text-[11px] uppercase tracking-wide font-semibold" style={{ color: "var(--text-secondary)" }}>Nume</th>
-                      <th className="text-left px-4 py-2.5 text-[11px] uppercase tracking-wide font-semibold" style={{ color: "var(--text-secondary)" }}>Calitate</th>
-                      <th className="text-left px-4 py-2.5 text-[11px] uppercase tracking-wide font-semibold" style={{ color: "var(--text-secondary)" }}>Nr. autorizare</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sel.cenzori.map((c: any, i: number) => (
-                      <tr key={i} className="border-t hover: transition-colors" style={{ background: "var(--bg-elevated)", borderColor: "var(--border)" }}>
-                        <td className="px-4 py-3 font-medium" style={{ color: "var(--text-primary)" }}>{c.nume}</td>
-                        <td className="px-4 py-3" style={{ color: "var(--text-secondary)" }}>{c.calitate}</td>
-                        <td className="px-4 py-3 font-mono" style={{ color: "var(--text-secondary)" }}>{c.nrAutorizare}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <SectionTitle>Cenzori / Auditori</SectionTitle>
+              <DataTable
+                columns={[
+                  { key: "nume", label: "Nume", className: "text-slate-900 font-medium" },
+                  { key: "calitate", label: "Calitate" },
+                  { key: "nrAutorizare", label: "Nr. autorizare", className: "font-mono text-slate-500" },
+                ]}
+                rows={sel.cenzori}
+              />
             </>)}
           </>)}
 
           {/* ACTIVITATI */}
           {activeTab === "Activitati" && (<>
-            <div className="text-xs font-bold uppercase tracking-wider mt-2 mb-3" style={{ color: "var(--text-muted)" }}>Activitate principala</div>
-            <div className="rounded-xl border /30 p-4 mb-5" style={{ background: "var(--accent-blue-bg)", borderColor: "var(--accent-blue-border)" }}>
-              <div className="text-[11px] uppercase tracking-wide font-semibold mb-1" style={{ color: "var(--accent-blue)" }}>CAEN {sel.caen || "\u2014"}</div>
-              <div className="text-[15px] font-semibold" style={{ color: "var(--text-primary)" }}>{sel.caenDesc}</div>
+            <SectionTitle>Activitate principala</SectionTitle>
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-5">
+              <div className="text-[11px] uppercase tracking-wide font-semibold text-blue-600 mb-1">CAEN {sel.caen || "\u2014"}</div>
+              <div className="text-[15px] font-semibold text-slate-900">{sel.caenDesc}</div>
             </div>
             {sel.activitatiSecundare.length > 0 && (<>
-              <div className="text-xs font-bold uppercase tracking-wider mt-5 mb-3" style={{ color: "var(--text-muted)" }}>
-                Activitati secundare ({sel.activitatiSecundare.length})
-              </div>
-              <div className="rounded-xl border overflow-hidden" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
+              <SectionTitle>Activitati secundare ({sel.activitatiSecundare.length})</SectionTitle>
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
                 {sel.activitatiSecundare.map((a: any, i: number) => (
                   <div
                     key={i}
-                    className="flex items-center gap-4 px-4 py-2.5"
-                    style={i > 0 ? { borderTop: "1px solid var(--border)" } : undefined}
+                    className={`flex items-center gap-4 px-4 py-2.5 ${i > 0 ? "border-t border-slate-100" : ""}`}
                   >
-                    <span className="font-mono text-xs min-w-[55px]" style={{ color: "var(--text-secondary)" }}>{a.cod}</span>
-                    <span className="text-sm" style={{ color: "var(--text-primary)" }}>{a.den}</span>
+                    <span className="font-mono text-xs min-w-[55px] text-slate-500">{a.cod}</span>
+                    <span className="text-sm text-slate-900">{a.den}</span>
                   </div>
                 ))}
               </div>
@@ -607,24 +487,20 @@ export default function CompanyDetailPage() {
 
           {/* SEDII */}
           {activeTab === "Sedii" && (<>
-            <div className="text-xs font-bold uppercase tracking-wider mt-2 mb-3" style={{ color: "var(--text-muted)" }}>Sediu social</div>
-            <div className="rounded-xl border p-4 mb-5" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
-              <CardLabel
-                label="Adresa completa"
-                value={`${sel.adresa || "\u2014"}, ${sel.localitate || ""}, ${sel.judet || ""} ${sel.codPostal || ""}`}
-              />
-            </div>
+            <SectionTitle>Sediu social</SectionTitle>
+            <InfoCard
+              label="Adresa completa"
+              value={`${sel.adresa || "\u2014"}, ${sel.localitate || ""}, ${sel.judet || ""} ${sel.codPostal || ""}`}
+            />
             {sel.sediiSecundare && sel.sediiSecundare.length > 0 && (<>
-              <div className="text-xs font-bold uppercase tracking-wider mt-5 mb-3" style={{ color: "var(--text-muted)" }}>
-                Sedii secundare / Puncte de lucru ({sel.sediiSecundare.length})
-              </div>
+              <SectionTitle>Sedii secundare / Puncte de lucru ({sel.sediiSecundare.length})</SectionTitle>
               <div className="space-y-2">
                 {sel.sediiSecundare.map((s: any, i: number) => (
-                  <div key={i} className="rounded-xl border p-4 flex items-center gap-3" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
+                  <div key={i} className="bg-white rounded-xl border border-slate-200 p-4 flex items-center gap-3">
                     <span className="text-lg">&#128205;</span>
                     <div>
-                      <div className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{s.denumire}</div>
-                      <div className="text-xs mt-0.5" style={{ color: "var(--text-secondary)" }}>{s.adresa}</div>
+                      <div className="text-sm font-semibold text-slate-900">{s.denumire}</div>
+                      <div className="text-xs mt-0.5 text-slate-500">{s.adresa}</div>
                     </div>
                   </div>
                 ))}
@@ -634,48 +510,27 @@ export default function CompanyDetailPage() {
 
           {/* FIN. ONRC */}
           {activeTab === "Fin. ONRC" && (<>
-            <div className="text-xs font-bold uppercase tracking-wider mt-2 mb-3" style={{ color: "var(--text-muted)" }}>Situatii financiare (din date ONRC)</div>
+            <SectionTitle>Situatii financiare (din date ONRC)</SectionTitle>
             {sel.situatiiFinanciare.length > 0 ? (
               <>
-                <div className="rounded-xl border overflow-hidden" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="" style={{ background: "var(--bg-elevated)" }}>
-                        <th className="text-left px-4 py-2.5 text-[11px] uppercase tracking-wide font-semibold" style={{ color: "var(--text-secondary)" }}>An</th>
-                        <th className="text-right px-4 py-2.5 text-[11px] uppercase tracking-wide font-semibold" style={{ color: "var(--text-secondary)" }}>Cifra afaceri</th>
-                        <th className="text-right px-4 py-2.5 text-[11px] uppercase tracking-wide font-semibold" style={{ color: "var(--text-secondary)" }}>Profit net</th>
-                        <th className="text-right px-4 py-2.5 text-[11px] uppercase tracking-wide font-semibold" style={{ color: "var(--text-secondary)" }}>Angajati</th>
-                        {isSOC(sel.forma) && <th className="text-right px-4 py-2.5 text-[11px] uppercase tracking-wide font-semibold" style={{ color: "var(--text-secondary)" }}>Capitaluri proprii</th>}
-                        {isPF(sel.forma) && (<>
-                          <th className="text-right px-4 py-2.5 text-[11px] uppercase tracking-wide font-semibold" style={{ color: "var(--text-secondary)" }}>Venituri</th>
-                          <th className="text-right px-4 py-2.5 text-[11px] uppercase tracking-wide font-semibold" style={{ color: "var(--text-secondary)" }}>Cheltuieli</th>
-                        </>)}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {sel.situatiiFinanciare.map((s: any, i: number) => (
-                        <tr key={i} className="border-t hover: transition-colors" style={{ background: "var(--bg-elevated)", borderColor: "var(--border)" }}>
-                          <td className="px-4 py-3 font-semibold" style={{ color: "var(--text-primary)" }}>{s.an}</td>
-                          <td className="px-4 py-3 text-right font-mono" style={{ color: "var(--text-secondary)" }}>{fmtLei(s.cifraAfaceri)}</td>
-                          <td className="px-4 py-3 text-right font-mono" style={{ color: (s.profitNet ?? 0) >= 0 ? "var(--accent-green)" : "var(--accent-red)" }}>{fmtLei(s.profitNet)}</td>
-                          <td className="px-4 py-3 text-right font-mono" style={{ color: "var(--text-secondary)" }}>{s.angajati ?? "\u2014"}</td>
-                          {isSOC(sel.forma) && <td className="px-4 py-3 text-right font-mono" style={{ color: "var(--text-secondary)" }}>{fmtLei(s.capitaluriProprii)}</td>}
-                          {isPF(sel.forma) && (<>
-                            <td className="px-4 py-3 text-right font-mono" style={{ color: "var(--text-secondary)" }}>{fmtLei(s.venituriTotale)}</td>
-                            <td className="px-4 py-3 text-right font-mono" style={{ color: "var(--text-secondary)" }}>{fmtLei(s.cheltuieliTotale)}</td>
-                          </>)}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <div className="mt-3 text-xs" style={{ color: "var(--text-muted)" }}>Sursa: Date publice ONRC / termene.ro</div>
+                <DataTable
+                  columns={[
+                    { key: "an", label: "An", className: "text-slate-900 font-semibold" },
+                    { key: "cifraAfaceri", label: "Cifra afaceri", className: "text-right font-mono text-slate-500", render: (row: any) => fmtLei(row.cifraAfaceri) },
+                    { key: "profitNet", label: "Profit net", className: "text-right font-mono", render: (row: any) => <span className={(row.profitNet ?? 0) >= 0 ? "text-emerald-600" : "text-red-500"}>{fmtLei(row.profitNet)}</span> },
+                    { key: "angajati", label: "Angajati", className: "text-right font-mono text-slate-500", render: (row: any) => row.angajati ?? "\u2014" },
+                    ...(isSOC(sel.forma) ? [{ key: "capitaluriProprii", label: "Capitaluri proprii", className: "text-right font-mono text-slate-500", render: (row: any) => fmtLei(row.capitaluriProprii) }] : []),
+                    ...(isPF(sel.forma) ? [
+                      { key: "venituriTotale", label: "Venituri", className: "text-right font-mono text-slate-500", render: (row: any) => fmtLei(row.venituriTotale) },
+                      { key: "cheltuieliTotale", label: "Cheltuieli", className: "text-right font-mono text-slate-500", render: (row: any) => fmtLei(row.cheltuieliTotale) },
+                    ] : []),
+                  ]}
+                  rows={sel.situatiiFinanciare}
+                />
+                <div className="mt-3 text-xs text-slate-400">Sursa: Date publice ONRC / termene.ro</div>
               </>
             ) : (
-              <div className="flex items-center justify-center flex-col gap-3 py-16" style={{ color: "var(--text-muted)" }}>
-                <div className="text-4xl opacity-50">&#128202;</div>
-                <div className="text-sm">Nicio situatie financiara disponibila.</div>
-              </div>
+              <EmptyState icon="&#128202;" title="Nicio situatie financiara disponibila." />
             )}
           </>)}
 
@@ -693,53 +548,47 @@ export default function CompanyDetailPage() {
               {/* Header with year selector + upload button */}
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-3">
-                  <div className="text-xs font-bold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Bilant ANAF</div>
+                  <h3 className="text-[13px] font-semibold text-slate-700 uppercase tracking-wide">Bilant ANAF</h3>
                   {anafYears.length > 1 && (
                     <select
                       value={viewYear ?? ""}
                       onChange={e => setSelectedBilantYear(Number(e.target.value))}
-                      className="px-2.5 py-1.5 rounded-lg border text-[13px] font-mono" style={{ color: "var(--text-primary)", background: "var(--bg-elevated)", borderColor: "var(--border)" }}
+                      className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-[13px] font-mono text-slate-900"
                     >
                       {anafYears.map((y: number) => <option key={y} value={y}>{y}</option>)}
                     </select>
                   )}
-                  {anafYears.length === 1 && <span className="text-sm font-mono" style={{ color: "var(--text-secondary)" }}>{viewYear}</span>}
+                  {anafYears.length === 1 && <span className="text-sm font-mono text-slate-500">{viewYear}</span>}
                 </div>
-                <button
-                  className="px-4 py-2 text-[13px] font-medium border rounded-lg hover:" style={{ color: "var(--text-primary)", background: "var(--bg-elevated)", borderColor: "var(--border-active)" }}
-                  onClick={() => setShowBilantUpload(true)}
-                >
-                  Upload bilant
-                </button>
+                <BtnSecondary onClick={() => setShowBilantUpload(true)}>Upload bilant</BtnSecondary>
               </div>
 
               {/* Summary table all years */}
-              <div className="rounded-xl border overflow-hidden mb-6" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
-                <table className="w-full text-sm">
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden mb-6">
+                <table className="w-full">
                   <thead>
-                    <tr className="" style={{ background: "var(--bg-elevated)" }}>
-                      <th className="text-left px-4 py-2.5 text-[11px] uppercase tracking-wide font-semibold" style={{ color: "var(--text-secondary)" }}>An</th>
-                      <th className="text-right px-4 py-2.5 text-[11px] uppercase tracking-wide font-semibold" style={{ color: "var(--text-secondary)" }}>Cifra afaceri</th>
-                      <th className="text-right px-4 py-2.5 text-[11px] uppercase tracking-wide font-semibold" style={{ color: "var(--text-secondary)" }}>Profit net</th>
-                      <th className="text-right px-4 py-2.5 text-[11px] uppercase tracking-wide font-semibold" style={{ color: "var(--text-secondary)" }}>Rezultat exploatare</th>
-                      <th className="text-right px-4 py-2.5 text-[11px] uppercase tracking-wide font-semibold" style={{ color: "var(--text-secondary)" }}>Angajati</th>
-                      {isSOC(sel.forma) && <th className="text-right px-4 py-2.5 text-[11px] uppercase tracking-wide font-semibold" style={{ color: "var(--text-secondary)" }}>Capitaluri proprii</th>}
+                    <tr className="bg-slate-50 border-b border-slate-200">
+                      <th className="text-left px-5 py-3 text-[11px] uppercase tracking-wide text-slate-500 font-medium">An</th>
+                      <th className="text-right px-5 py-3 text-[11px] uppercase tracking-wide text-slate-500 font-medium">Cifra afaceri</th>
+                      <th className="text-right px-5 py-3 text-[11px] uppercase tracking-wide text-slate-500 font-medium">Profit net</th>
+                      <th className="text-right px-5 py-3 text-[11px] uppercase tracking-wide text-slate-500 font-medium">Rezultat exploatare</th>
+                      <th className="text-right px-5 py-3 text-[11px] uppercase tracking-wide text-slate-500 font-medium">Angajati</th>
+                      {isSOC(sel.forma) && <th className="text-right px-5 py-3 text-[11px] uppercase tracking-wide text-slate-500 font-medium">Capitaluri proprii</th>}
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className="divide-y divide-slate-100">
                     {anafData.map((s: any, i: number) => (
                       <tr
                         key={i}
-                        className="transition-colors cursor-pointer"
-                        style={{ borderTop: "1px solid var(--border)", background: s.an === viewYear ? "var(--accent-blue-bg)" : undefined }}
+                        className={`transition-colors cursor-pointer hover:bg-slate-50/50 ${s.an === viewYear ? "bg-blue-50/50" : ""}`}
                         onClick={() => setSelectedBilantYear(s.an)}
                       >
-                        <td className={`px-4 py-3 ${s.an === viewYear ? "font-bold" : "font-medium"}`} style={{ color: "var(--text-primary)" }}>{s.an}</td>
-                        <td className="px-4 py-3 text-right font-mono" style={{ color: "var(--text-secondary)" }}>{fmtLei(s.cifraAfaceri)}</td>
-                        <td className="px-4 py-3 text-right font-mono" style={{ color: (s.profitNet ?? 0) >= 0 ? "var(--accent-green)" : "var(--accent-red)" }}>{fmtLei(s.profitNet)}</td>
-                        <td className="px-4 py-3 text-right font-mono" style={{ color: "var(--text-secondary)" }}>{fmtLei(raw?.f20?.rezultatExploatare)}</td>
-                        <td className="px-4 py-3 text-right font-mono" style={{ color: "var(--text-secondary)" }}>{s.angajati ?? "\u2014"}</td>
-                        {isSOC(sel.forma) && <td className="px-4 py-3 text-right font-mono" style={{ color: "var(--text-secondary)" }}>{fmtLei(s.capitaluriProprii)}</td>}
+                        <td className={`px-5 py-4 text-[13px] ${s.an === viewYear ? "font-bold text-slate-900" : "font-medium text-slate-900"}`}>{s.an}</td>
+                        <td className="px-5 py-4 text-[13px] text-right font-mono text-slate-500">{fmtLei(s.cifraAfaceri)}</td>
+                        <td className={`px-5 py-4 text-[13px] text-right font-mono ${(s.profitNet ?? 0) >= 0 ? "text-emerald-600" : "text-red-500"}`}>{fmtLei(s.profitNet)}</td>
+                        <td className="px-5 py-4 text-[13px] text-right font-mono text-slate-500">{fmtLei(raw?.f20?.rezultatExploatare)}</td>
+                        <td className="px-5 py-4 text-[13px] text-right font-mono text-slate-500">{s.angajati ?? "\u2014"}</td>
+                        {isSOC(sel.forma) && <td className="px-5 py-4 text-[13px] text-right font-mono text-slate-500">{fmtLei(s.capitaluriProprii)}</td>}
                       </tr>
                     ))}
                   </tbody>
@@ -748,100 +597,97 @@ export default function CompanyDetailPage() {
 
               {/* Detailed data for selected year */}
               {f20 && (<>
-                <div className="text-xs font-bold uppercase tracking-wider mt-5 mb-3" style={{ color: "var(--text-muted)" }}>Cont profit si pierderi ({viewYear})</div>
+                <SectionTitle>Cont profit si pierderi ({viewYear})</SectionTitle>
                 <div className="grid grid-cols-2 gap-4 mb-5">
-                  <div className="rounded-xl border p-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}><CardLabel label="Cifra afaceri neta" value={fmtLei(f20.cifraAfaceriNeta)} mono /></div>
-                  <div className="rounded-xl border p-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}><CardLabel label="Venituri exploatare" value={fmtLei(f20.venituriExploatare)} mono /></div>
-                  <div className="rounded-xl border p-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}><CardLabel label="Cheltuieli exploatare" value={fmtLei(f20.cheltuieliExploatare)} mono /></div>
-                  <div className="rounded-xl border p-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}><CardLabel label="Rezultat exploatare" value={<span className="font-mono" style={{ color: (f20.rezultatExploatare ?? 0) >= 0 ? "var(--accent-green)" : "var(--accent-red)" }}>{fmtLei(f20.rezultatExploatare)}</span>} /></div>
-                  <div className="rounded-xl border p-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}><CardLabel label="Venituri financiare" value={fmtLei(f20.venituriFinanciare)} mono /></div>
-                  <div className="rounded-xl border p-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}><CardLabel label="Cheltuieli financiare" value={fmtLei(f20.cheltuieliFinanciare)} mono /></div>
-                  <div className="rounded-xl border p-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}><CardLabel label="Rezultat brut" value={<span className="font-mono" style={{ color: (f20.rezultatBrut ?? 0) >= 0 ? "var(--accent-green)" : "var(--accent-red)" }}>{fmtLei(f20.rezultatBrut)}</span>} /></div>
-                  <div className="rounded-xl border p-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}><CardLabel label="Rezultat net" value={<span className="font-mono" style={{ color: (f20.profitNet ?? 0) >= 0 ? "var(--accent-green)" : "var(--accent-red)" }}>{fmtLei(f20.profitNet)}</span>} /></div>
+                  <InfoCard label="Cifra afaceri neta" value={fmtLei(f20.cifraAfaceriNeta)} />
+                  <InfoCard label="Venituri exploatare" value={fmtLei(f20.venituriExploatare)} />
+                  <InfoCard label="Cheltuieli exploatare" value={fmtLei(f20.cheltuieliExploatare)} />
+                  <InfoCard label="Rezultat exploatare">
+                    <span className={`text-[15px] font-semibold font-mono ${(f20.rezultatExploatare ?? 0) >= 0 ? "text-emerald-600" : "text-red-500"}`}>{fmtLei(f20.rezultatExploatare)}</span>
+                  </InfoCard>
+                  <InfoCard label="Venituri financiare" value={fmtLei(f20.venituriFinanciare)} />
+                  <InfoCard label="Cheltuieli financiare" value={fmtLei(f20.cheltuieliFinanciare)} />
+                  <InfoCard label="Rezultat brut">
+                    <span className={`text-[15px] font-semibold font-mono ${(f20.rezultatBrut ?? 0) >= 0 ? "text-emerald-600" : "text-red-500"}`}>{fmtLei(f20.rezultatBrut)}</span>
+                  </InfoCard>
+                  <InfoCard label="Rezultat net">
+                    <span className={`text-[15px] font-semibold font-mono ${(f20.profitNet ?? 0) >= 0 ? "text-emerald-600" : "text-red-500"}`}>{fmtLei(f20.profitNet)}</span>
+                  </InfoCard>
                 </div>
               </>)}
 
               {f10 && (<>
-                <div className="text-xs font-bold uppercase tracking-wider mt-5 mb-3" style={{ color: "var(--text-muted)" }}>Bilant ({viewYear})</div>
+                <SectionTitle>Bilant ({viewYear})</SectionTitle>
                 <div className="grid grid-cols-2 gap-4 mb-5">
-                  <div className="rounded-xl border p-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}><CardLabel label="Active imobilizate" value={fmtLei(f10.activeImobilizate)} mono /></div>
-                  <div className="rounded-xl border p-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}><CardLabel label="Active circulante" value={fmtLei(f10.activeCirculante)} mono /></div>
-                  <div className="rounded-xl border p-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}><CardLabel label="Stocuri" value={fmtLei(f10.stocuri)} mono /></div>
-                  <div className="rounded-xl border p-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}><CardLabel label="Creante" value={fmtLei(f10.creante)} mono /></div>
-                  <div className="rounded-xl border p-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}><CardLabel label="Casa si conturi" value={fmtLei(f10.casaSiConturi)} mono /></div>
-                  <div className="rounded-xl border p-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}><CardLabel label="Datorii sub 1 an" value={fmtLei(f10.datoriiSub1An)} mono /></div>
-                  <div className="rounded-xl border p-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}><CardLabel label="Datorii peste 1 an" value={fmtLei(f10.datoriiPeste1An)} mono /></div>
-                  <div className="rounded-xl border p-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}><CardLabel label="Capitaluri proprii" value={<span className="font-mono" style={{ color: (f10.capitaluriProprii ?? 0) >= 0 ? "var(--accent-green)" : "var(--accent-red)" }}>{fmtLei(f10.capitaluriProprii)}</span>} /></div>
+                  <InfoCard label="Active imobilizate" value={fmtLei(f10.activeImobilizate)} />
+                  <InfoCard label="Active circulante" value={fmtLei(f10.activeCirculante)} />
+                  <InfoCard label="Stocuri" value={fmtLei(f10.stocuri)} />
+                  <InfoCard label="Creante" value={fmtLei(f10.creante)} />
+                  <InfoCard label="Casa si conturi" value={fmtLei(f10.casaSiConturi)} />
+                  <InfoCard label="Datorii sub 1 an" value={fmtLei(f10.datoriiSub1An)} />
+                  <InfoCard label="Datorii peste 1 an" value={fmtLei(f10.datoriiPeste1An)} />
+                  <InfoCard label="Capitaluri proprii">
+                    <span className={`text-[15px] font-semibold font-mono ${(f10.capitaluriProprii ?? 0) >= 0 ? "text-emerald-600" : "text-red-500"}`}>{fmtLei(f10.capitaluriProprii)}</span>
+                  </InfoCard>
                 </div>
               </>)}
 
               {f30 && (f30.numarMediuSalariati || f30.numarSalariati31Dec) && (<>
-                <div className="text-xs font-bold uppercase tracking-wider mt-5 mb-3" style={{ color: "var(--text-muted)" }}>Date informative ({viewYear})</div>
+                <SectionTitle>Date informative ({viewYear})</SectionTitle>
                 <div className="grid grid-cols-2 gap-4">
                   {f30.numarMediuSalariati != null && (
-                    <div className="rounded-xl border p-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}><CardLabel label="Nr. mediu salariati" value={f30.numarMediuSalariati} mono /></div>
+                    <InfoCard label="Nr. mediu salariati" value={f30.numarMediuSalariati} />
                   )}
                   {f30.numarSalariati31Dec != null && (
-                    <div className="rounded-xl border p-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}><CardLabel label="Nr. salariati la 31 dec" value={f30.numarSalariati31Dec} mono /></div>
+                    <InfoCard label="Nr. salariati la 31 dec" value={f30.numarSalariati31Dec} />
                   )}
                 </div>
               </>)}
 
-              <div className="mt-3 text-xs" style={{ color: "var(--text-muted)" }}>Sursa: Bilant ANAF uploadat</div>
+              <div className="mt-3 text-xs text-slate-400">Sursa: Bilant ANAF uploadat</div>
             </>) : (
-              <div className="flex items-center justify-center flex-col gap-3 py-16" style={{ color: "var(--text-muted)" }}>
-                <div className="text-4xl opacity-50">&#128202;</div>
-                <div className="text-sm">Niciun bilant ANAF incarcat.</div>
-                <button
-                  className="mt-3 px-5 py-2.5 rounded-lg text-sm font-bold hover: transition-colors" style={{ color: "var(--text-on-accent)", background: "var(--accent-blue)" }}
-                  onClick={() => setShowBilantUpload(true)}
-                >
-                  Upload bilant ANAF
-                </button>
-              </div>
+              <EmptyState
+                icon="&#128202;"
+                title="Niciun bilant ANAF incarcat."
+                actionLabel="Upload bilant ANAF"
+                onAction={() => setShowBilantUpload(true)}
+              />
             );
           })()}
 
           {/* JURIDIC */}
           {activeTab === "Juridic" && (<>
-            <div className="text-xs font-bold uppercase tracking-wider mt-2 mb-3" style={{ color: "var(--text-muted)" }}>Stare juridica</div>
-            <div className="rounded-xl border p-4 mb-5 space-y-2" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
-              <div className="flex items-center gap-3 text-sm">
-                <span style={{ color: sel.insolventa ? "var(--accent-red)" : "var(--accent-green)" }}>{sel.insolventa ? "\u274C" : "\u2705"}</span>
-                <span className="font-medium" style={{ color: sel.insolventa ? "var(--accent-red)" : "var(--text-primary)" }}>Insolventa</span>
-              </div>
-              <div className="flex items-center gap-3 text-sm">
-                <span style={{ color: sel.dizolvare ? "var(--accent-red)" : "var(--accent-green)" }}>{sel.dizolvare ? "\u274C" : "\u2705"}</span>
-                <span className="font-medium" style={{ color: sel.dizolvare ? "var(--accent-red)" : "var(--text-primary)" }}>Dizolvare</span>
-              </div>
-              <div className="flex items-center gap-3 text-sm">
-                <span style={{ color: sel.lichidare ? "var(--accent-red)" : "var(--accent-green)" }}>{sel.lichidare ? "\u274C" : "\u2705"}</span>
-                <span className="font-medium" style={{ color: sel.lichidare ? "var(--accent-red)" : "var(--text-primary)" }}>Lichidare</span>
-              </div>
-              <div className="flex items-center gap-3 text-sm">
-                <span style={{ color: sel.restrictii ? "var(--accent-red)" : "var(--accent-green)" }}>{sel.restrictii ? "\u274C" : "\u2705"}</span>
-                <span className="font-medium" style={{ color: sel.restrictii ? "var(--accent-red)" : "var(--text-primary)" }}>Restrictii</span>
-              </div>
+            <SectionTitle>Stare juridica</SectionTitle>
+            <div className="bg-white rounded-xl border border-slate-200 p-5 mb-5 space-y-3">
+              {[
+                { key: "insolventa", label: "Insolventa", value: sel.insolventa },
+                { key: "dizolvare", label: "Dizolvare", value: sel.dizolvare },
+                { key: "lichidare", label: "Lichidare", value: sel.lichidare },
+                { key: "restrictii", label: "Restrictii", value: sel.restrictii },
+              ].map(item => (
+                <div key={item.key} className="flex items-center gap-3 text-sm">
+                  <span className={item.value ? "text-red-500" : "text-emerald-500"}>{item.value ? "\u274C" : "\u2705"}</span>
+                  <span className={`font-medium ${item.value ? "text-red-600" : "text-slate-900"}`}>{item.label}</span>
+                </div>
+              ))}
             </div>
             {!sel.insolventa && !sel.dizolvare && !sel.lichidare && !sel.restrictii && (
-              <div className="rounded-xl border /50 p-4 mb-5 text-sm flex items-center gap-2" style={{ color: "var(--accent-green)", background: "var(--accent-green-bg)", borderColor: "var(--accent-green-border)" }}>
-                <span>\u2705</span> Fara restrictii, insolventa, dizolvare sau lichidare
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 mb-5 text-sm text-emerald-700 flex items-center gap-2">
+                <span>&#9989;</span> Fara restrictii, insolventa, dizolvare sau lichidare
               </div>
             )}
             <div className="grid grid-cols-2 gap-4 mt-4">
-              <div className="rounded-xl border p-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
-                <CardLabel label="Nr. Reg. Comertului" value={sel.regCom} mono />
-              </div>
-              <div className="rounded-xl border p-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
-                <CardLabel label="Forma juridica" value={FORME_JURIDICE.find(fj => fj.cod === sel.forma)?.label || sel.forma} />
-              </div>
+              <InfoCard label="Nr. Reg. Comertului" value={sel.regCom} />
+              <InfoCard label="Forma juridica" value={FORME_JURIDICE.find(fj => fj.cod === sel.forma)?.label || sel.forma} />
             </div>
-            <div className="rounded-xl border border-l-[3px] border-l-blue-500 p-4 mt-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
-              <div className="text-[11px] uppercase tracking-wide font-medium mb-1" style={{ color: "var(--text-secondary)" }}>Ultima mentiune</div>
-              <div className="text-[13px] leading-relaxed" style={{ color: "var(--text-secondary)" }}>{sel.ultimaMentiune}</div>
+            <div className="mt-4">
+              <InfoCard label="Ultima mentiune" accent>
+                <div className="text-[13px] leading-relaxed text-slate-500">{sel.ultimaMentiune}</div>
+              </InfoCard>
             </div>
           </>)}
 
+          </div>
         </div>
       </>)}
 
@@ -851,32 +697,32 @@ export default function CompanyDetailPage() {
           className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[100] animate-in fade-in"
           onClick={e => { if (e.target === e.currentTarget) setShowOnrcUpload(false); }}
         >
-          <div className="border rounded-2xl w-[480px] max-h-[85vh] overflow-y-auto p-7 animate-in slide-in-from-bottom-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
+          <div className="bg-white border border-slate-200 rounded-2xl w-[480px] max-h-[85vh] overflow-y-auto p-7 animate-in slide-in-from-bottom-4">
             <div className="flex items-center justify-between mb-1">
-              <h2 className="text-lg font-extrabold" style={{ color: "var(--text-primary)" }}>Upload Certificat Constatator</h2>
-              <button className="hover: text-lg p-1" style={{ color: "var(--text-muted)" }} onClick={() => setShowOnrcUpload(false)}>&times;</button>
+              <h2 className="text-lg font-extrabold text-slate-900">Upload Certificat Constatator</h2>
+              <button className="text-slate-400 hover:text-slate-600 text-lg p-1" onClick={() => setShowOnrcUpload(false)}>&times;</button>
             </div>
-            <p className="text-[13px] mb-5 leading-relaxed" style={{ color: "var(--text-secondary)" }}>
+            <p className="text-[13px] mb-5 leading-relaxed text-slate-500">
               Incarca un certificat constatator ONRC (PDF). Datele firmei se vor actualiza automat cu informatiile extrase.
             </p>
-            <input type="file" ref={onrcFileRef} accept=".pdf" style={{ display: "none" }} onChange={() => {}} />
+            <input type="file" ref={onrcFileRef} accept=".pdf" className="hidden" onChange={() => {}} />
             <div
-              className="border-2 border-dashed rounded-xl p-7 text-center mb-5 cursor-pointer hover:border-blue-500 hover:/30 transition-all" style={{ background: "var(--accent-blue-bg)", borderColor: "var(--border)" }}
+              className="border-2 border-dashed border-slate-200 rounded-xl p-7 text-center mb-5 cursor-pointer hover:border-blue-500 hover:bg-blue-50/30 bg-slate-50 transition-all"
               onClick={() => onrcFileRef.current?.click()}
             >
               <div className="text-2xl mb-1.5">{onrcFileRef.current?.files?.[0] ? "\u2705" : "\ud83d\udcc4"}</div>
-              <div className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{onrcFileRef.current?.files?.[0]?.name || "Certificat constatator (PDF)"}</div>
-              <div className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>Click pentru a selecta fisierul</div>
+              <div className="text-sm font-semibold text-slate-900">{onrcFileRef.current?.files?.[0]?.name || "Certificat constatator (PDF)"}</div>
+              <div className="text-xs mt-1 text-slate-400">Click pentru a selecta fisierul</div>
             </div>
             <div className="flex gap-2.5 justify-end">
               <button
-                className="px-5 py-2.5 rounded-lg border text-sm font-semibold hover: hover: transition-colors" style={{ color: "var(--text-secondary)", background: "var(--bg-surface)", borderColor: "var(--border-active)" }}
+                className="px-5 py-2.5 rounded-lg border border-slate-300 bg-white text-sm font-semibold text-slate-500 hover:bg-slate-50 hover:border-slate-400 transition-colors"
                 onClick={() => setShowOnrcUpload(false)}
               >
                 Anuleaza
               </button>
               <button
-                className="px-5 py-2.5 rounded-lg text-sm font-bold hover: transition-colors disabled:opacity-50 disabled:cursor-not-allowed" style={{ color: "var(--text-on-accent)", background: "var(--accent-blue)" }}
+                className="px-5 py-2.5 rounded-lg bg-blue-600 text-sm font-bold text-white hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled={onrcUploading}
                 onClick={handleOnrcUpload}
               >
@@ -893,44 +739,44 @@ export default function CompanyDetailPage() {
           className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[100] animate-in fade-in"
           onClick={e => { if (e.target === e.currentTarget) setShowBilantUpload(false); }}
         >
-          <div className="border rounded-2xl w-[480px] max-h-[85vh] overflow-y-auto p-7 animate-in slide-in-from-bottom-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
+          <div className="bg-white border border-slate-200 rounded-2xl w-[480px] max-h-[85vh] overflow-y-auto p-7 animate-in slide-in-from-bottom-4">
             <div className="flex items-center justify-between mb-1">
-              <h2 className="text-lg font-extrabold" style={{ color: "var(--text-primary)" }}>Upload bilant ANAF</h2>
-              <button className="hover: text-lg p-1" style={{ color: "var(--text-muted)" }} onClick={() => setShowBilantUpload(false)}>&times;</button>
+              <h2 className="text-lg font-extrabold text-slate-900">Upload bilant ANAF</h2>
+              <button className="text-slate-400 hover:text-slate-600 text-lg p-1" onClick={() => setShowBilantUpload(false)}>&times;</button>
             </div>
-            <p className="text-[13px] mb-5 leading-relaxed" style={{ color: "var(--text-secondary)" }}>
+            <p className="text-[13px] mb-5 leading-relaxed text-slate-500">
               Incarca un bilant ANAF (PDF descarcat din SPV). Se accepta Formularul 10 (bilant), Formularul 20 (cont profit/pierderi), Formularul 30/40. Datele financiare se extrag automat.
             </p>
             <div className="mb-4">
-              <label className="block text-[11px] font-semibold uppercase tracking-wide mb-1.5" style={{ color: "var(--text-muted)" }}>An fiscal</label>
+              <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-1.5">An fiscal</label>
               <select
                 value={bilantYear}
                 onChange={e => setBilantYear(Number(e.target.value))}
-                className="px-3.5 py-2.5 rounded-lg border text-sm font-mono w-[140px]" style={{ color: "var(--text-primary)", background: "var(--bg-elevated)", borderColor: "var(--border)" }}
+                className="px-3.5 py-2.5 rounded-lg border border-slate-200 bg-white text-sm font-mono text-slate-900 w-[140px]"
               >
                 {Array.from({ length: 6 }, (_, i) => new Date().getFullYear() - 1 - i).map(y => (
                   <option key={y} value={y}>{y}</option>
                 ))}
               </select>
             </div>
-            <input type="file" ref={bilantFileRef} accept=".pdf" style={{ display: "none" }} onChange={() => {}} />
+            <input type="file" ref={bilantFileRef} accept=".pdf" className="hidden" onChange={() => {}} />
             <div
-              className="border-2 border-dashed rounded-xl p-7 text-center mb-5 cursor-pointer hover:border-blue-500 hover:/30 transition-all" style={{ background: "var(--accent-blue-bg)", borderColor: "var(--border)" }}
+              className="border-2 border-dashed border-slate-200 rounded-xl p-7 text-center mb-5 cursor-pointer hover:border-blue-500 hover:bg-blue-50/30 bg-slate-50 transition-all"
               onClick={() => bilantFileRef.current?.click()}
             >
               <div className="text-2xl mb-1.5">{bilantFileRef.current?.files?.[0] ? "\u2705" : "\ud83d\udcca"}</div>
-              <div className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{bilantFileRef.current?.files?.[0]?.name || "Bilant ANAF (PDF)"}</div>
-              <div className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>Click pentru a selecta fisierul</div>
+              <div className="text-sm font-semibold text-slate-900">{bilantFileRef.current?.files?.[0]?.name || "Bilant ANAF (PDF)"}</div>
+              <div className="text-xs mt-1 text-slate-400">Click pentru a selecta fisierul</div>
             </div>
             <div className="flex gap-2.5 justify-end">
               <button
-                className="px-5 py-2.5 rounded-lg border text-sm font-semibold hover: hover: transition-colors" style={{ color: "var(--text-secondary)", background: "var(--bg-surface)", borderColor: "var(--border-active)" }}
+                className="px-5 py-2.5 rounded-lg border border-slate-300 bg-white text-sm font-semibold text-slate-500 hover:bg-slate-50 hover:border-slate-400 transition-colors"
                 onClick={() => setShowBilantUpload(false)}
               >
                 Anuleaza
               </button>
               <button
-                className="px-5 py-2.5 rounded-lg text-sm font-bold hover: transition-colors disabled:opacity-50 disabled:cursor-not-allowed" style={{ color: "var(--text-on-accent)", background: "var(--accent-blue)" }}
+                className="px-5 py-2.5 rounded-lg bg-blue-600 text-sm font-bold text-white hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled={bilantUploading}
                 onClick={handleBilantUpload}
               >

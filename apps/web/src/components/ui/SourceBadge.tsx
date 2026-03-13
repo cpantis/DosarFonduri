@@ -1,44 +1,36 @@
-/** Badge for data source: ONRC, ANAF, Solomon, Document, Calculat */
-const SOURCE_STYLES: Record<string, { bg: string; color: string; border: string }> = {
-  onrc: { bg: "var(--accent-blue-bg)", color: "var(--accent-blue)", border: "var(--accent-blue-border)" },
-  "date onrc": { bg: "var(--accent-blue-bg)", color: "var(--accent-blue)", border: "var(--accent-blue-border)" },
-  onrc_auto: { bg: "var(--accent-blue-bg)", color: "var(--accent-blue)", border: "var(--accent-blue-border)" },
-  anaf: { bg: "var(--accent-purple-bg)", color: "var(--accent-purple)", border: "var(--accent-purple-border)" },
-  anaf_auto: { bg: "var(--accent-purple-bg)", color: "var(--accent-purple)", border: "var(--accent-purple-border)" },
-  solomon: { bg: "var(--accent-purple-bg)", color: "var(--accent-purple)", border: "var(--accent-purple-border)" },
-  solomon_chat: { bg: "var(--accent-purple-bg)", color: "var(--accent-purple)", border: "var(--accent-purple-border)" },
-  "chat solomon": { bg: "var(--accent-purple-bg)", color: "var(--accent-purple)", border: "var(--accent-purple-border)" },
-  document: { bg: "var(--accent-yellow-bg)", color: "var(--accent-yellow)", border: "var(--accent-yellow-border)" },
-  document_extracted: { bg: "var(--accent-yellow-bg)", color: "var(--accent-yellow)", border: "var(--accent-yellow-border)" },
-  "document uploadat": { bg: "var(--accent-yellow-bg)", color: "var(--accent-yellow)", border: "var(--accent-yellow-border)" },
-  calculat: { bg: "var(--bg-elevated)", color: "var(--text-secondary)", border: "var(--border)" },
-  derived: { bg: "var(--bg-elevated)", color: "var(--text-secondary)", border: "var(--border)" },
-  consultant_manual: { bg: "var(--bg-elevated)", color: "var(--text-secondary)", border: "var(--border)" },
-  manual: { bg: "var(--bg-elevated)", color: "var(--text-secondary)", border: "var(--border)" },
-  ghid: { bg: "var(--accent-orange-bg)", color: "var(--accent-orange)", border: "var(--accent-orange-border)" },
+interface SourceBadgeProps {
+  source?: string | null;
+}
+
+const map: Record<string, string> = {
+  ONRC: "bg-blue-50 text-blue-700 border-blue-200",
+  onrc_auto: "bg-blue-50 text-blue-700 border-blue-200",
+  ANAF: "bg-indigo-50 text-indigo-700 border-indigo-200",
+  anaf_auto: "bg-indigo-50 text-indigo-700 border-indigo-200",
+  Solomon: "bg-violet-50 text-violet-700 border-violet-200",
+  solomon_chat: "bg-violet-50 text-violet-700 border-violet-200",
+  Document: "bg-amber-50 text-amber-700 border-amber-200",
+  document_extracted: "bg-amber-50 text-amber-700 border-amber-200",
+  Calculat: "bg-slate-100 text-slate-600 border-slate-200",
+  derived: "bg-slate-100 text-slate-600 border-slate-200",
+  Manual: "bg-slate-100 text-slate-600 border-slate-200",
+  consultant_manual: "bg-slate-100 text-slate-600 border-slate-200",
 };
 
-const SOURCE_LABELS: Record<string, string> = {
+const labels: Record<string, string> = {
   onrc_auto: "ONRC",
   anaf_auto: "ANAF",
   solomon_chat: "Solomon",
   document_extracted: "Document",
-  consultant_manual: "Manual",
   derived: "Calculat",
+  consultant_manual: "Manual",
 };
 
-const DEFAULT = { bg: "var(--bg-elevated)", color: "var(--text-secondary)", border: "var(--border)" };
-
-export function SourceBadge({ source, className = "" }: { source: string; className?: string }) {
-  const key = source.toLowerCase();
-  const s = SOURCE_STYLES[key] || DEFAULT;
-  const label = SOURCE_LABELS[key] || source;
+export function SourceBadge({ source }: SourceBadgeProps) {
+  if (!source) return null;
   return (
-    <span
-      className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold ${className}`}
-      style={{ background: s.bg, color: s.color, border: `1px solid ${s.border}` }}
-    >
-      {label}
+    <span className={`inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full border ${map[source] || "bg-slate-100 text-slate-600 border-slate-200"}`}>
+      {labels[source] || source}
     </span>
   );
 }

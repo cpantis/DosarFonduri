@@ -8,7 +8,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { TypeBadge } from "@/components/ui/TypeBadge";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { BtnPrimary, BtnSecondary } from "@/components/ui/Buttons";
+import { BtnPrimary, BtnSecondary, IconPlus, IconSearch, IconUpload, IconX } from "@/components/ui/Buttons";
 
 export default function CompaniesPage() {
   const router = useRouter();
@@ -166,7 +166,7 @@ export default function CompaniesPage() {
       `}</style>
 
       <PageHeader title="Firme" subtitle={`${filtered.length} firme gestionate`}>
-        <BtnPrimary icon="+" onClick={openAdd}>Adaugă firmă</BtnPrimary>
+        <BtnPrimary icon={<IconPlus />} onClick={openAdd}>Adaugă firmă</BtnPrimary>
       </PageHeader>
 
       <div className="max-w-6xl mx-auto px-8 py-6">
@@ -295,10 +295,8 @@ export default function CompaniesPage() {
                   onFocus={e => { if (!cuiRes) e.currentTarget.style.borderColor = "#2563eb"; }}
                   onBlur={e => { if (!cuiRes) e.currentTarget.style.borderColor = "rgba(226,232,240,.8)"; }}
                 />
-                <BtnPrimary onClick={checkCui} disabled={cuiLoad || cui.replace(/\D/g, "").length < 4}>
-                  {cuiLoad ? (
-                    <svg style={{ width: 16, height: 16, animation: "spin .7s linear infinite" }} fill="none" viewBox="0 0 24 24"><circle style={{ opacity: .25 }} cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" /><path style={{ opacity: .75 }} fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
-                  ) : "Adaugă"}
+                <BtnPrimary icon={<IconSearch />} onClick={checkCui} disabled={cuiLoad || cui.replace(/\D/g, "").length < 4}>
+                  {cuiLoad ? "Se caută..." : "Adaugă"}
                 </BtnPrimary>
               </div>
 
@@ -402,7 +400,7 @@ export default function CompaniesPage() {
 
               <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 20 }}>
                 <BtnSecondary onClick={() => setShowAdd(false)}>Anulează</BtnSecondary>
-                <BtnPrimary disabled={!uploadFile || uploadLoading} onClick={handleManualUpload}>
+                <BtnPrimary icon={<IconUpload />} disabled={!uploadFile || uploadLoading} onClick={handleManualUpload}>
                   {uploadLoading ? "Se procesează..." : "Procesează și creează firma"}
                 </BtnPrimary>
               </div>

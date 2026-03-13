@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from "react";
 import { apiGet, apiPut, apiPost, apiDelete } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { BtnPrimary } from "@/components/ui/Buttons";
+import { BtnPrimary, BtnSecondary, BtnDanger, IconSave, IconRefresh, IconZap, IconPlus, IconEdit, IconTrash } from "@/components/ui/Buttons";
 
 // ─── Types ───
 interface OrgConfig {
@@ -241,8 +241,8 @@ export default function SettingsPage() {
           {configError ? (
             <div className="text-center">
               <div className="text-sm mb-3 text-red-500">{configError}</div>
-              <BtnPrimary onClick={loadConfig}>
-                Reincearca
+              <BtnPrimary icon={<IconRefresh />} onClick={loadConfig}>
+                Reîncearcă
               </BtnPrimary>
             </div>
           ) : (
@@ -290,8 +290,8 @@ export default function SettingsPage() {
 
       {/* Topbar */}
       <PageHeader title="Configurări">
-        <BtnPrimary onClick={handleSave}>
-          {saved ? "✓ Salvat" : "Salveaza modificarile"}
+        <BtnPrimary icon={<IconSave />} onClick={handleSave}>
+          {saved ? "Salvat" : "Salvează modificările"}
         </BtnPrimary>
       </PageHeader>
 
@@ -548,41 +548,31 @@ export default function SettingsPage() {
                     </div>
 
                     <div className="flex gap-1.5">
-                      <button
-                        className="px-3.5 py-1.5 text-xs font-semibold flex items-center gap-1 cursor-pointer transition-all rounded-md bg-transparent font-sans border border-blue-600/30 text-blue-600"
-                        style={{ opacity: isTesting ? 0.6 : 1 }}
+                      <BtnSecondary
+                        size="sm"
+                        icon={<IconZap />}
+                        disabled={isTesting}
                         onClick={() => !isTesting && handleTestApi(api.id)}
                       >
-                        {isTesting ? <><span className="api-spinner" /> Se testeaza...</> : "⚡ Test conexiune"}
-                      </button>
-                      <button
-                        className="px-3.5 py-1.5 text-xs font-semibold flex items-center gap-1 cursor-pointer transition-all rounded-md bg-transparent font-sans border border-slate-200 text-slate-500"
-                      >
-                        ✏️ Editeaza
-                      </button>
+                        {isTesting ? "Se testează..." : "Test conexiune"}
+                      </BtnSecondary>
+                      <BtnSecondary size="sm" icon={<IconEdit />}>
+                        Editează
+                      </BtnSecondary>
                       {deleteConfirmId === api.id ? (
                         <>
-                          <span className="text-xs font-semibold text-red-500">Sigur stergi?</span>
-                          <button
-                            className="px-3 py-1.5 text-xs font-bold cursor-pointer rounded-md font-sans border border-red-500 bg-red-500/10 text-red-500"
-                            onClick={() => handleDeleteApi(api.id)}
-                          >
-                            Da, sterge
-                          </button>
-                          <button
-                            className="px-3 py-1.5 text-xs font-semibold cursor-pointer rounded-md bg-transparent font-sans border border-slate-200 text-slate-500"
-                            onClick={() => setDeleteConfirmId(null)}
-                          >
-                            Anuleaza
-                          </button>
+                          <span className="text-xs font-semibold text-red-500">Sigur ștergi?</span>
+                          <BtnDanger size="sm" icon={<IconTrash />} onClick={() => handleDeleteApi(api.id)}>
+                            Da, șterge
+                          </BtnDanger>
+                          <BtnSecondary size="sm" onClick={() => setDeleteConfirmId(null)}>
+                            Anulează
+                          </BtnSecondary>
                         </>
                       ) : (
-                        <button
-                          className="px-3.5 py-1.5 text-xs font-semibold flex items-center gap-1 cursor-pointer transition-all rounded-md bg-transparent font-sans border border-red-500/25 text-red-500"
-                          onClick={() => setDeleteConfirmId(api.id)}
-                        >
-                          🗑 Sterge
-                        </button>
+                        <BtnDanger size="sm" icon={<IconTrash />} onClick={() => setDeleteConfirmId(api.id)}>
+                          Șterge
+                        </BtnDanger>
                       )}
                     </div>
                   </div>
@@ -639,17 +629,15 @@ export default function SettingsPage() {
                     onChange={(e) => setNewApi((p) => ({ ...p, apiKey: e.target.value }))}
                   />
                   <div className="flex gap-2 justify-end mt-2.5">
-                    <button
-                      className="px-3.5 py-1.5 text-xs font-semibold cursor-pointer rounded-md bg-transparent font-sans border border-slate-200 text-slate-500"
-                      onClick={() => setShowAddApi(false)}
-                    >
-                      Anuleaza
-                    </button>
+                    <BtnSecondary size="sm" onClick={() => setShowAddApi(false)}>
+                      Anulează
+                    </BtnSecondary>
                     <BtnPrimary
+                      icon={<IconPlus />}
                       disabled={!newApi.name || !newApi.url}
                       onClick={handleAddApi}
                     >
-                      Adauga
+                      Adaugă
                     </BtnPrimary>
                   </div>
                 </div>
@@ -785,8 +773,8 @@ export default function SettingsPage() {
                 )}
               </div>
 
-              <BtnPrimary onClick={handleSaveBranding}>
-                {brandingSaved ? "✓ Salvat!" : "Salveaza branding"}
+              <BtnPrimary icon={<IconSave />} onClick={handleSaveBranding}>
+                {brandingSaved ? "Salvat!" : "Salvează branding"}
               </BtnPrimary>
             </>
           )}

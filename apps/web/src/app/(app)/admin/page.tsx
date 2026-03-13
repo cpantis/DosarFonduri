@@ -5,7 +5,7 @@ import { apiGet, apiPost, apiPut } from "@/lib/api";
 import { getInitials } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import { BtnPrimary, BtnSecondary } from "@/components/ui/Buttons";
+import { BtnPrimary, BtnSecondary, BtnDanger, IconUserPlus, IconEdit, IconSend, IconBan } from "@/components/ui/Buttons";
 import { Tabs } from "@/components/ui/Tabs";
 
 // ─── Types ───
@@ -227,10 +227,10 @@ export default function AdminPage() {
                 Echipa — {users.length} utilizatori
               </div>
               <BtnPrimary
-                icon="+"
+                icon={<IconUserPlus />}
                 onClick={() => { setShowInvite(true); setInviteEmail(""); setInviteRole("consultant"); }}
               >
-                Invita consultant
+                Invită consultant
               </BtnPrimary>
             </div>
 
@@ -317,26 +317,27 @@ export default function AdminPage() {
                       <div className="flex gap-2">
                         <BtnSecondary
                           size="sm"
+                          icon={<IconEdit />}
                           onClick={() => {
                             const next = u.role === "admin" ? "consultant" : u.role === "consultant" ? "viewer" : "admin";
                             handleChangeRole(u.id, next);
                           }}
                         >
-                          Schimba rol
+                          Schimbă rol
                         </BtnSecondary>
                         {u.status === "invited" && (
-                          <BtnSecondary size="sm">
-                            Retrimite invitatie
+                          <BtnSecondary size="sm" icon={<IconSend />}>
+                            Retrimite invitație
                           </BtnSecondary>
                         )}
                         {u.id !== user?.id && (
-                          <button
-                            className="rounded-lg px-3 py-1.5 text-[12px] font-semibold flex items-center gap-1 cursor-pointer transition-all text-red-500 border border-red-500 hover:opacity-80"
-                            style={{ background: "rgba(248,113,113,0.09)" }}
+                          <BtnDanger
+                            size="sm"
+                            icon={<IconBan />}
                             onClick={() => handleToggleStatus(u.id, u.status)}
                           >
-                            {u.status === "disabled" ? "Activeaza" : "Dezactiveaza"}
-                          </button>
+                            {u.status === "disabled" ? "Activează" : "Dezactivează"}
+                          </BtnDanger>
                         )}
                       </div>
                     </div>
@@ -634,10 +635,11 @@ export default function AdminPage() {
                 Anuleaza
               </BtnSecondary>
               <BtnPrimary
+                icon={<IconSend />}
                 disabled={!inviteEmail.includes("@")}
                 onClick={handleInvite}
               >
-                Trimite invitatie
+                Trimite invitația
               </BtnPrimary>
             </div>
           </div>

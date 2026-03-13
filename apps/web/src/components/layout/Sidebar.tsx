@@ -18,7 +18,7 @@ const NAV_ITEMS = [
   },
   {
     section: "Configurare",
-    items: [{ href: "/settings", icon: "🛠", label: "Configurari" }],
+    items: [{ href: "/settings", icon: "🛠", label: "Configurări" }],
   },
   {
     section: "Sistem",
@@ -43,15 +43,15 @@ export function Sidebar() {
   return (
     <aside
       className="flex flex-col h-full bg-slate-900 border-r border-slate-800 flex-shrink-0 transition-all duration-200"
-      style={{ width: collapsed ? 68 : 250, minWidth: collapsed ? 68 : 250 }}
+      style={{ width: collapsed ? 68 : 240, minWidth: collapsed ? 68 : 240 }}
     >
       {/* Logo */}
-      <div className={`flex items-center gap-3 flex-shrink-0 border-b border-slate-800 ${collapsed ? "px-3.5 py-6 justify-center" : "px-5 py-6"}`}>
-        <div className="w-9 h-9 rounded-[10px] bg-blue-600 flex items-center justify-center text-white font-extrabold text-[15px] flex-shrink-0 shadow-lg shadow-blue-600/30">
+      <div className={`flex items-center gap-2.5 flex-shrink-0 border-b border-slate-800 ${collapsed ? "px-3.5 py-5 justify-center" : "px-5 py-5"}`}>
+        <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold text-[13px] flex-shrink-0 shadow-lg shadow-blue-600/30">
           DF
         </div>
         {!collapsed && (
-          <span className="text-lg font-extrabold tracking-tight text-white">
+          <span className="text-[15px] font-semibold tracking-tight text-white">
             DosarFonduri
           </span>
         )}
@@ -61,37 +61,37 @@ export function Sidebar() {
       {!collapsed && organization?.name && (
         <div className="mx-3 mt-3 px-3 py-2.5 rounded-lg bg-slate-800/60 border border-slate-700/50">
           <div className="text-[10px] uppercase tracking-[0.12em] text-slate-500 font-medium mb-0.5">Cabinet activ</div>
-          <div className="text-[13px] font-semibold text-white truncate">{organization.name}</div>
+          <div className="text-[13px] font-medium text-white truncate">{organization.name}</div>
         </div>
       )}
 
       {/* Navigation */}
-      <nav className={`flex-1 overflow-y-auto ${collapsed ? "px-2 py-3" : "px-3 py-4"}`}>
+      <nav className={`flex-1 overflow-y-auto ${collapsed ? "px-2 py-3" : "px-3 py-3"}`}>
         {NAV_ITEMS.map((section) => (
-          <div key={section.section} className="mb-2">
+          <div key={section.section} className="mb-1">
             {!collapsed && (
-              <div className="px-3 pt-4 pb-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-600">
+              <div className="px-3 mt-6 mb-2 text-[10px] font-medium uppercase tracking-[0.12em] text-slate-600">
                 {section.section}
               </div>
             )}
             {collapsed && <div className="pt-2" />}
             {section.items.map((item) => {
-              const isActive = pathname.startsWith(item.href);
+              const isActive = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href));
               return (
                 <Link
                   key={item.href}
                   href={item.href}
                   className={`flex items-center no-underline rounded-lg mb-0.5 transition-all duration-150 ${
-                    collapsed ? "justify-center py-2.5" : "gap-3 px-3 py-2.5"
+                    collapsed ? "justify-center py-2.5" : "px-3 py-2 gap-2.5"
                   } ${
                     isActive
-                      ? "bg-slate-800 text-white font-semibold border-l-2 border-blue-500"
-                      : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 border-l-2 border-transparent"
+                      ? "bg-slate-800 text-white font-medium border-l-2 border-blue-400 pl-[10px]"
+                      : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/40 border-l-2 border-transparent"
                   }`}
-                  style={{ fontSize: "13.5px" }}
+                  style={{ fontSize: "13px" }}
                   title={item.label}
                 >
-                  <span className="flex-shrink-0 text-center" style={{ width: 22, fontSize: 17 }}>{item.icon}</span>
+                  <span className="flex-shrink-0 text-[14px]" style={{ width: 20 }}>{item.icon}</span>
                   {!collapsed && <span>{item.label}</span>}
                 </Link>
               );
@@ -105,8 +105,8 @@ export function Sidebar() {
         <button
           onClick={() => setCollapsed(!collapsed)}
           className="flex items-center justify-center cursor-pointer w-full py-1.5 rounded-lg text-slate-600 border border-slate-800 bg-slate-800/30 hover:bg-slate-800/60 transition-all text-[11px]"
-          title={collapsed ? "Extinde sidebar" : "Restrange sidebar"}
-          aria-label={collapsed ? "Extinde sidebar" : "Restrange sidebar"}
+          title={collapsed ? "Extinde sidebar" : "Restrânge sidebar"}
+          aria-label={collapsed ? "Extinde sidebar" : "Restrânge sidebar"}
           aria-expanded={!collapsed}
         >
           {collapsed ? "\u25B6" : "\u25C0"}
@@ -131,7 +131,7 @@ export function Sidebar() {
             <button
               onClick={toggle}
               className="flex items-center justify-center flex-shrink-0 cursor-pointer w-8 h-8 rounded-full border border-slate-700 bg-slate-800/50 hover:bg-slate-700 transition-all text-[15px]"
-              title={theme === "dark" ? "Comuta la Light Mode" : "Comuta la Dark Mode"}
+              title={theme === "dark" ? "Comută la Light Mode" : "Comută la Dark Mode"}
             >
               {theme === "dark" ? "\u2600\uFE0F" : "\uD83C\uDF19"}
             </button>

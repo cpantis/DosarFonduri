@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { apiGet, apiPut, apiPost, apiDelete } from "@/lib/api";
 import { getToken } from "@/lib/auth";
+import { PageHeader } from "@/components/shared/PageHeader";
 
 // ─── Types ───
 interface OrgConfig {
@@ -234,15 +235,13 @@ export default function SettingsPage() {
   if (!config) {
     return (
       <>
-        <div className="flex items-center gap-4 flex-shrink-0 bg-white border-b border-slate-200" style={{ padding: "18px 32px" }}>
-          <div className="flex-1" style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-.4px" }}>Configurari</div>
-        </div>
-        <div className="flex-1 flex items-center justify-center">
+        <PageHeader title="Configurări" />
+        <div className="flex-1 flex items-center justify-center bg-slate-50">
           {configError ? (
             <div className="text-center">
               <div className="text-sm mb-3 text-red-500">{configError}</div>
               <button
-                className="px-4 py-2 text-sm font-semibold cursor-pointer rounded-md border border-slate-200 bg-transparent text-slate-500 font-sans"
+                className="bg-blue-600 text-white rounded-lg px-4 py-2 text-sm font-medium cursor-pointer border-none"
                 onClick={loadConfig}
               >
                 Reincearca
@@ -264,37 +263,36 @@ export default function SettingsPage() {
         .cfg-nav-item{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:500;color:#64748b;transition:all .15s;margin-bottom:2px}
         .cfg-nav-item:hover{background:#f1f5f9;color:#0f172a}
         .cfg-nav-item.active{background:rgba(37,99,235,.08);color:#2563eb;font-weight:600}
-        .cfg-content{flex:1;overflow-y:auto;padding:28px 36px;background:#f8fafc}
-        .setting{display:flex;align-items:flex-start;gap:16px;padding:16px;border-radius:10px;border:1px solid #e2e8f0;background:#ffffff;margin-bottom:10px;transition:all .15s}
+        .cfg-content{flex:1;overflow-y:auto;padding:24px 32px;background:#f8fafc}
+        .setting{display:flex;align-items:flex-start;gap:16px;padding:16px;border-radius:12px;border:1px solid #e2e8f0;background:#ffffff;margin-bottom:10px;transition:all .15s}
         .setting:hover{border-color:#cbd5e1}
         .toggle{width:44px;height:24px;border-radius:12px;background:#e2e8f0;cursor:pointer;position:relative;transition:background .2s;flex-shrink:0}
         .toggle.on{background:#2563eb}
         .toggle-knob{width:20px;height:20px;border-radius:50%;background:#fff;position:absolute;top:2px;left:2px;transition:left .2s;box-shadow:0 1px 4px rgba(0,0,0,.3)}
         .toggle.on .toggle-knob{left:22px}
         .model-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px}
-        .model-card{padding:14px;border-radius:10px;border:2px solid #e2e8f0;background:#f8fafc;cursor:pointer;transition:all .15s;text-align:center}
+        .model-card{padding:14px;border-radius:12px;border:2px solid #e2e8f0;background:#ffffff;cursor:pointer;transition:all .15s;text-align:center}
         .model-card:hover{border-color:#cbd5e1}
-        .model-card.on{border-color:#2563eb;background:rgba(37,99,235,.04)}
-        .api-card{padding:16px;border-radius:10px;border:1px solid #e2e8f0;background:#ffffff;margin-bottom:10px;transition:all .15s}
+        .model-card.on{border-color:#3b82f6;background:rgba(59,130,246,.04)}
+        .api-card{padding:16px;border-radius:12px;border:1px solid #e2e8f0;background:#ffffff;margin-bottom:10px;transition:all .15s}
         .api-card:hover{border-color:#cbd5e1}
         .api-card.disabled{opacity:.5}
         .api-spinner{width:12px;height:12px;border:2px solid rgba(37,99,235,.3);border-top-color:#2563eb;border-radius:50%;animation:spin .7s linear infinite;display:inline-block}
         @keyframes spin{to{transform:rotate(360deg)}}
         .export-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-        .export-btn{padding:20px;border-radius:10px;border:1px solid #e2e8f0;background:#f8fafc;cursor:pointer;transition:all .15s;text-align:center}
-        .export-btn:hover{border-color:#cbd5e1;background:#f1f5f9}
+        .export-btn{padding:20px;border-radius:12px;border:1px solid #e2e8f0;background:#ffffff;cursor:pointer;transition:all .15s;text-align:center}
+        .export-btn:hover{border-color:#cbd5e1;background:#f8fafc}
       `}</style>
 
       {/* Topbar */}
-      <div className="flex items-center gap-4 flex-shrink-0 bg-white border-b border-slate-200" style={{ padding: "18px 32px" }}>
-        <div className="flex-1" style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-.4px" }}>Configurari</div>
+      <PageHeader title="Configurări">
         <button
-          className="px-5 py-2 text-[13px] font-bold text-white flex items-center gap-1.5 cursor-pointer transition-all rounded-[10px] border-none bg-emerald-500 font-sans"
+          className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-4 py-2 text-sm font-medium cursor-pointer transition-all border-none"
           onClick={handleSave}
         >
-          {saved ? "✓ Salvat" : "💾 Salveaza modificarile"}
+          {saved ? "✓ Salvat" : "Salveaza modificarile"}
         </button>
-      </div>
+      </PageHeader>
 
       <div className="cfg-layout">
         {/* Left nav */}
@@ -316,13 +314,13 @@ export default function SettingsPage() {
           {/* ═══ SOLOMON ═══ */}
           {activeSection === "solomon" && (
             <>
-              <div className="text-[22px] font-extrabold mb-1">🤖 Solomon — Expert Fonduri Europene</div>
+              <div className="text-lg font-semibold text-slate-900 mb-1">🤖 Solomon — Expert Fonduri Europene</div>
               <div className="text-sm mb-7 leading-relaxed text-slate-500">
                 Configureaza modelul AI pentru Solomon — expert in pregatirea si conformitatea proiectelor cu finantare europeana, cu cunostinte de achizitii, eligibilitate cheltuieli, specificatii tehnice si cerinte documentare.
               </div>
 
               <div className="mb-7">
-                <div className="text-[11px] font-bold uppercase mb-3 flex items-center gap-2 text-slate-400" style={{ letterSpacing: ".8px" }}>
+                <div className="text-[11px] uppercase tracking-wide text-slate-500 font-medium mb-3 flex items-center gap-2" style={{ letterSpacing: ".8px" }}>
                   Model implicit
                 </div>
                 <div className="model-grid">
@@ -366,13 +364,13 @@ export default function SettingsPage() {
           {/* ═══ NEEMIA ═══ */}
           {activeSection === "neemia" && (
             <>
-              <div className="text-[22px] font-extrabold mb-1">📝 Neemia — Expert Generare Dosar</div>
+              <div className="text-lg font-semibold text-slate-900 mb-1">📝 Neemia — Expert Generare Dosar</div>
               <div className="text-sm mb-7 leading-relaxed text-slate-500">
                 Configureaza modelul AI pentru Neemia — expert in generarea dosarului complet de finantare, completarea template-urilor DOCX/XLSX, verificarea consistentei intre documente si validarea conformitatii.
               </div>
 
               <div className="mb-7">
-                <div className="text-[11px] font-bold uppercase mb-3 text-slate-400" style={{ letterSpacing: ".8px" }}>Model completare</div>
+                <div className="text-[11px] uppercase tracking-wide text-slate-500 font-medium mb-3" style={{ letterSpacing: ".8px" }}>Model completare</div>
                 <div className="model-grid">
                   {AI_MODELS.filter((m) => m.short !== "haiku").map((m) => (
                     <div
@@ -412,20 +410,20 @@ export default function SettingsPage() {
           {/* ═══ GHID FINANTARE ═══ */}
           {activeSection === "ghid" && (
             <>
-              <div className="text-[22px] font-extrabold mb-1">📖 Ghid Finantare — Extragere Reguli</div>
+              <div className="text-lg font-semibold text-slate-900 mb-1">📖 Ghid Finantare — Extragere Reguli</div>
               <div className="text-sm mb-7 leading-relaxed text-slate-500">
                 Configureaza modelele AI pentru extragerea regulilor fixe si interpretate din ghidurile de finantare.
               </div>
 
               <div className="mb-7">
-                <div className="text-[11px] font-bold uppercase mb-3 text-slate-400" style={{ letterSpacing: ".8px" }}>Reguli fixe (binar, verificabile)</div>
+                <div className="text-[11px] uppercase tracking-wide text-slate-500 font-medium mb-3" style={{ letterSpacing: ".8px" }}>Reguli fixe (binar, verificabile)</div>
                 <div className="setting">
                   <div className="flex-1">
                     <div className="text-sm font-semibold mb-0.5">Model extragere reguli fixe</div>
                     <div className="text-xs text-slate-400">Dimensiuni minime, plafoane, categorii eligibile. ~25-30 reguli/ghid, precizie 92-97%.</div>
                   </div>
                   <select
-                    className="px-3 py-2 text-[13px] outline-none cursor-pointer min-w-[160px] rounded-md border border-slate-200 bg-slate-50 text-slate-900 font-sans"
+                    className="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white outline-none cursor-pointer min-w-[160px] text-slate-900 font-sans"
                     value={config.reguliFixeModel}
                     onChange={(e) => updateConfig({ reguliFixeModel: e.target.value })}
                   >
@@ -436,14 +434,14 @@ export default function SettingsPage() {
               </div>
 
               <div className="mb-7">
-                <div className="text-[11px] font-bold uppercase mb-3 text-slate-400" style={{ letterSpacing: ".8px" }}>Reguli interpretate (context, arbori decizionali)</div>
+                <div className="text-[11px] uppercase tracking-wide text-slate-500 font-medium mb-3" style={{ letterSpacing: ".8px" }}>Reguli interpretate (context, arbori decizionali)</div>
                 <div className="setting">
                   <div className="flex-1">
                     <div className="text-sm font-semibold mb-0.5">Model extragere reguli interpretate</div>
                     <div className="text-xs text-slate-400">Intensitate sprijin, criterii selectie complexe. Precizie 75-85%, necesita validare umana.</div>
                   </div>
                   <select
-                    className="px-3 py-2 text-[13px] outline-none cursor-pointer min-w-[160px] rounded-md border border-slate-200 bg-slate-50 text-slate-900 font-sans"
+                    className="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white outline-none cursor-pointer min-w-[160px] text-slate-900 font-sans"
                     value={config.reguliInterpModel}
                     onChange={(e) => updateConfig({ reguliInterpModel: e.target.value })}
                   >
@@ -480,7 +478,7 @@ export default function SettingsPage() {
                         updateConfig({ reviewThreshold: (val / 100).toFixed(2) });
                       }
                     }}
-                    className="w-[70px] text-center px-3 py-2 text-[13px] outline-none rounded-md border border-slate-200 bg-slate-50 text-slate-900 font-mono"
+                    className="w-[70px] text-center border border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white outline-none text-slate-900 font-mono"
                   />
                   <span>%</span>
                 </div>
@@ -496,7 +494,7 @@ export default function SettingsPage() {
           {/* ═══ INTEGRARE API ═══ */}
           {activeSection === "api" && (
             <>
-              <div className="text-[22px] font-extrabold mb-1">🔌 Integrare API</div>
+              <div className="text-lg font-semibold text-slate-900 mb-1">🔌 Integrare API</div>
               <div className="text-sm mb-7 leading-relaxed text-slate-500">
                 Gestioneaza conexiunile cu servicii externe: date ONRC, ANAF, email, si altele. Fiecare API poate fi testat independent.
               </div>
@@ -600,13 +598,13 @@ export default function SettingsPage() {
                   </div>
                   <div className="flex gap-2 mb-2">
                     <input
-                      className="flex-1 px-3 py-2 text-[13px] outline-none rounded-md border border-slate-200 bg-slate-50 text-slate-900 font-mono"
+                      className="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white outline-none text-slate-900 font-mono"
                       placeholder="Nume (ex: termene.ro)"
                       value={newApi.name}
                       onChange={(e) => setNewApi((p) => ({ ...p, name: e.target.value }))}
                     />
                     <select
-                      className="px-3 py-2 text-[13px] outline-none cursor-pointer rounded-md border border-slate-200 bg-slate-50 text-slate-900 font-sans"
+                      className="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white outline-none cursor-pointer text-slate-900 font-sans"
                       value={newApi.type}
                       onChange={(e) => setNewApi((p) => ({ ...p, type: e.target.value }))}
                     >
@@ -619,13 +617,13 @@ export default function SettingsPage() {
                     </select>
                   </div>
                   <input
-                    className="w-full px-3 py-2 text-[13px] outline-none mb-2 rounded-md border border-slate-200 bg-slate-50 text-slate-900 font-mono"
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white outline-none mb-2 text-slate-900 font-mono"
                     placeholder="URL endpoint (ex: https://api.termene.ro/v1)"
                     value={newApi.url}
                     onChange={(e) => setNewApi((p) => ({ ...p, url: e.target.value }))}
                   />
                   <input
-                    className="w-full px-3 py-2 text-[13px] outline-none mb-2 rounded-md border border-slate-200 bg-slate-50 text-slate-900 font-mono"
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white outline-none mb-2 text-slate-900 font-mono"
                     placeholder="API Key"
                     type="password"
                     value={newApi.apiKey}
@@ -639,7 +637,7 @@ export default function SettingsPage() {
                       Anuleaza
                     </button>
                     <button
-                      className="px-4 py-1.5 text-xs font-bold text-white cursor-pointer rounded-md border-none bg-emerald-500 font-sans"
+                      className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-4 py-2 text-sm font-medium cursor-pointer border-none transition-all"
                       style={{
                         opacity: !newApi.name || !newApi.url ? 0.4 : 1,
                       }}
@@ -657,14 +655,14 @@ export default function SettingsPage() {
           {/* ═══ BRANDING DOCUMENTE ═══ */}
           {activeSection === "branding" && (
             <>
-              <div className="text-[22px] font-extrabold mb-1">🎨 Branding Documente</div>
+              <div className="text-lg font-semibold text-slate-900 mb-1">🎨 Branding Documente</div>
               <div className="text-sm mb-7 leading-relaxed text-slate-500">
                 Personalizeaza aspectul documentelor generate de Neemia cu culorile si fontul cabinetului tau.
               </div>
 
               <div className="grid grid-cols-2 gap-4 mb-6">
                 <div>
-                  <label className="block text-[11px] font-semibold uppercase mb-1.5 text-slate-400" style={{ letterSpacing: ".7px" }}>Culoare principala (header tabele)</label>
+                  <label className="block text-[11px] uppercase tracking-wide text-slate-500 font-medium mb-1" style={{ letterSpacing: ".7px" }}>Culoare principala (header tabele)</label>
                   <div className="flex gap-2 items-center">
                     <input
                       type="color"
@@ -673,14 +671,14 @@ export default function SettingsPage() {
                       className="cursor-pointer w-10 h-8 border border-slate-200 rounded-md bg-transparent p-0"
                     />
                     <input
-                      className="flex-1 px-3 py-2 text-[13px] outline-none rounded-md border border-slate-200 bg-slate-50 text-slate-900 font-mono"
+                      className="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white outline-none text-slate-900 font-mono"
                       value={branding.primaryColor}
                       onChange={(e) => setBranding(prev => ({ ...prev, primaryColor: e.target.value }))}
                     />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-[11px] font-semibold uppercase mb-1.5 text-slate-400" style={{ letterSpacing: ".7px" }}>Culoare accent (badge-uri)</label>
+                  <label className="block text-[11px] uppercase tracking-wide text-slate-500 font-medium mb-1" style={{ letterSpacing: ".7px" }}>Culoare accent (badge-uri)</label>
                   <div className="flex gap-2 items-center">
                     <input
                       type="color"
@@ -689,7 +687,7 @@ export default function SettingsPage() {
                       className="cursor-pointer w-10 h-8 border border-slate-200 rounded-md bg-transparent p-0"
                     />
                     <input
-                      className="flex-1 px-3 py-2 text-[13px] outline-none rounded-md border border-slate-200 bg-slate-50 text-slate-900 font-mono"
+                      className="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white outline-none text-slate-900 font-mono"
                       value={branding.accentColor}
                       onChange={(e) => setBranding(prev => ({ ...prev, accentColor: e.target.value }))}
                     />
@@ -699,9 +697,9 @@ export default function SettingsPage() {
 
               <div className="grid grid-cols-2 gap-4 mb-6">
                 <div>
-                  <label className="block text-[11px] font-semibold uppercase mb-1.5 text-slate-400" style={{ letterSpacing: ".7px" }}>Font documente</label>
+                  <label className="block text-[11px] uppercase tracking-wide text-slate-500 font-medium mb-1" style={{ letterSpacing: ".7px" }}>Font documente</label>
                   <select
-                    className="w-full px-3 py-2 text-[13px] outline-none rounded-md border border-slate-200 bg-slate-50 text-slate-900 font-sans"
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white outline-none text-slate-900 font-sans"
                     value={branding.fontFamily}
                     onChange={(e) => setBranding(prev => ({ ...prev, fontFamily: e.target.value }))}
                   >
@@ -714,7 +712,7 @@ export default function SettingsPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[11px] font-semibold uppercase mb-1.5 text-slate-400" style={{ letterSpacing: ".7px" }}>Culoare evidentiare (randuri)</label>
+                  <label className="block text-[11px] uppercase tracking-wide text-slate-500 font-medium mb-1" style={{ letterSpacing: ".7px" }}>Culoare evidentiare (randuri)</label>
                   <div className="flex gap-2 items-center">
                     <input
                       type="color"
@@ -723,7 +721,7 @@ export default function SettingsPage() {
                       className="cursor-pointer w-10 h-8 border border-slate-200 rounded-md bg-transparent p-0"
                     />
                     <input
-                      className="flex-1 px-3 py-2 text-[13px] outline-none rounded-md border border-slate-200 bg-slate-50 text-slate-900 font-mono"
+                      className="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white outline-none text-slate-900 font-mono"
                       value={branding.highlightColor}
                       onChange={(e) => setBranding(prev => ({ ...prev, highlightColor: e.target.value }))}
                     />
@@ -732,9 +730,9 @@ export default function SettingsPage() {
               </div>
 
               <div className="mb-6">
-                <label className="block text-[11px] font-semibold uppercase mb-1.5 text-slate-400" style={{ letterSpacing: ".7px" }}>Text footer cabinet</label>
+                <label className="block text-[11px] uppercase tracking-wide text-slate-500 font-medium mb-1" style={{ letterSpacing: ".7px" }}>Text footer cabinet</label>
                 <input
-                  className="w-full px-3 py-2 text-[13px] outline-none rounded-md border border-slate-200 bg-slate-50 text-slate-900 font-sans"
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white outline-none text-slate-900 font-sans"
                   placeholder="ex: Cabinet Consultant ABC SRL - dosarfonduri.ro"
                   value={branding.footerText}
                   onChange={(e) => setBranding(prev => ({ ...prev, footerText: e.target.value }))}
@@ -762,7 +760,7 @@ export default function SettingsPage() {
 
               {/* Preview */}
               <div className="mb-6 p-4 rounded-[10px] border border-slate-200 bg-slate-50">
-                <div className="text-[11px] font-semibold uppercase mb-3 text-slate-400" style={{ letterSpacing: ".7px" }}>Previzualizare tabel</div>
+                <div className="text-[11px] uppercase tracking-wide text-slate-500 font-medium mb-3" style={{ letterSpacing: ".7px" }}>Previzualizare tabel</div>
                 <table className="w-full text-[12px]" style={{ borderCollapse: "collapse" }}>
                   <thead>
                     <tr>
@@ -783,7 +781,7 @@ export default function SettingsPage() {
               </div>
 
               <button
-                className="px-5 py-2.5 text-sm font-bold text-white cursor-pointer rounded-[10px] border-none bg-blue-600 font-sans"
+                className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-4 py-2 text-sm font-medium cursor-pointer border-none transition-all"
                 onClick={handleSaveBranding}
               >
                 {brandingSaved ? "✓ Salvat!" : "Salveaza branding"}
@@ -794,20 +792,20 @@ export default function SettingsPage() {
           {/* ═══ NOTIFICARI ═══ */}
           {activeSection === "notificari" && (
             <>
-              <div className="text-[22px] font-extrabold mb-1">🔔 Notificari</div>
+              <div className="text-lg font-semibold text-slate-900 mb-1">🔔 Notificari</div>
               <div className="text-sm mb-7 leading-relaxed text-slate-500">
                 Configureaza cand si cum primesti notificari despre activitatea din proiecte.
               </div>
 
               <div className="mb-7">
-                <div className="text-[11px] font-bold uppercase mb-3 text-slate-400" style={{ letterSpacing: ".8px" }}>Email</div>
+                <div className="text-[11px] uppercase tracking-wide text-slate-500 font-medium mb-3" style={{ letterSpacing: ".8px" }}>Email</div>
                 <div className="setting">
                   <div className="flex-1">
                     <div className="text-sm font-semibold mb-0.5">Adresa expeditor</div>
                     <div className="text-xs text-slate-400">Adresa de email de la care se trimit notificarile (via Resend).</div>
                   </div>
                   <input
-                    className="px-3 py-2 text-[13px] outline-none rounded-md border border-slate-200 bg-slate-50 text-slate-900 font-mono"
+                    className="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white outline-none text-slate-900 font-mono"
                     style={{ width: 260 }}
                     value={config.emailFrom || ""}
                     onChange={(e) => updateConfig({ emailFrom: e.target.value })}
@@ -816,7 +814,7 @@ export default function SettingsPage() {
               </div>
 
               <div className="mb-7">
-                <div className="text-[11px] font-bold uppercase mb-3 text-slate-400" style={{ letterSpacing: ".8px" }}>Evenimente</div>
+                <div className="text-[11px] uppercase tracking-wide text-slate-500 font-medium mb-3" style={{ letterSpacing: ".8px" }}>Evenimente</div>
                 {[
                   { key: "notifNewElement" as const, label: "Element nou identificat de Solomon", desc: "Cand Solomon identifica si extrage un element din conversatie, document sau analiza." },
                   { key: "notifEligFail" as const, label: "Eligibilitate esuata", desc: "Cand o verificare de eligibilitate nu trece." },
@@ -843,7 +841,7 @@ export default function SettingsPage() {
           {/* ═══ EXPORT & BACKUP ═══ */}
           {activeSection === "export" && (
             <>
-              <div className="text-[22px] font-extrabold mb-1">📤 Export & Backup</div>
+              <div className="text-lg font-semibold text-slate-900 mb-1">📤 Export & Backup</div>
               <div className="text-sm mb-7 leading-relaxed text-slate-500">
                 Exporta datele proiectelor sau creeaza backup-uri ale configurarilor.
               </div>

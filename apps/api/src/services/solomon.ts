@@ -8,7 +8,7 @@ import {
   orgConfig, solomonKnowledge,
   elementRuleLinks, elementDefinitions, guideReferenceTables,
 } from "../db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { logAIUsage } from "./aiUsage";
 import { validateElement, logElementChange } from "./elementValidation";
 import { checkEligibility } from "./eligibility";
@@ -222,7 +222,9 @@ async function buildSystemPrompt(projectId: string, organizationId: string): Pro
 
     if (!el.value || el.value.trim() === "") {
       const helpHint = ed?.helpText ? ` — ${ed.helpText.slice(0, 100)}` : "";
-      emptyElements.push(`- ${label} (key: ${key}, tip: ${dataType}, categorie: ${category})${helpHint}`);
+      const valRules = ed?.validationRules;
+      const valHint = valRules ? ` [${valRules.min !== undefined ? `min: ${valRules.min}` : ""}${valRules.max !== undefined ? `${valRules.min !== undefined ? ", " : ""}max: ${valRules.max}` : ""}${valRules.pattern ? `, pattern: ${valRules.pattern}` : ""}]` : "";
+      emptyElements.push(`- ${label} (key: ${key}, tip: ${dataType}, categorie: ${category})${valHint}${helpHint}`);
     } else {
       filledElements.push(`- ${label}: ${el.value} [${el.confirmed ? "✓ confirmat" : "neconfirmat"}, sursa: ${el.source || "necunoscută"}]`);
     }
@@ -232,7 +234,9 @@ async function buildSystemPrompt(projectId: string, organizationId: string): Pro
   for (const ed of elemDefs) {
     if (coveredKeys.has(ed.elementKey)) continue;
     const helpHint = ed.helpText ? ` — ${ed.helpText.slice(0, 100)}` : "";
-    emptyElements.push(`- ${ed.displayName} (key: ${ed.elementKey}, tip: ${ed.dataType}, categorie: ${ed.category})${helpHint}`);
+    const valRules = ed.validationRules;
+    const valHint = valRules ? ` [${valRules.min !== undefined ? `min: ${valRules.min}` : ""}${valRules.max !== undefined ? `${valRules.min !== undefined ? ", " : ""}max: ${valRules.max}` : ""}${valRules.pattern ? `, pattern: ${valRules.pattern}` : ""}]` : "";
+    emptyElements.push(`- ${ed.displayName} (key: ${ed.elementKey}, tip: ${ed.dataType}, categorie: ${ed.category})${valHint}${helpHint}`);
   }
 
   // Load guide reference tables for context
@@ -243,13 +247,16 @@ async function buildSystemPrompt(projectId: string, organizationId: string): Pro
   const refTablesSummary = refTables.map(rt => {
     const rowCount = Array.isArray(rt.data) ? rt.data.length : 0;
     const schemaInfo = Array.isArray(rt.schema) ? rt.schema.map(s => s.label || s.key).join(", ") : "";
-    // Include first few rows as sample for smaller tables
+    // Include data for lookup/classification tables (essential for Solomon to do lookups)
+    // For smaller tables (≤100 rows): include all data
+    // For larger tables: include first 50 rows + note about total
     let sampleData = "";
-    if (rowCount > 0 && rowCount <= 30 && Array.isArray(rt.data)) {
-      sampleData = "\n    Date:\n" + rt.data.slice(0, 20).map(row =>
+    if (rowCount > 0 && Array.isArray(rt.data)) {
+      const maxRows = rowCount <= 100 ? rowCount : 50;
+      sampleData = "\n    Date:\n" + rt.data.slice(0, maxRows).map(row =>
         "    " + Object.entries(row).map(([k, v]) => `${k}: ${v}`).join(" | ")
       ).join("\n");
-      if (rowCount > 20) sampleData += `\n    ... și alte ${rowCount - 20} rânduri`;
+      if (rowCount > maxRows) sampleData += `\n    ... și alte ${rowCount - maxRows} rânduri (verifică în ghid)`;
     }
     return `- **${rt.name}** (${rt.tableType}, ${rowCount} rânduri${rt.lookupKey ? `, cheie: ${rt.lookupKey}` : ""})${schemaInfo ? `\n    Coloane: ${schemaInfo}` : ""}${sampleData}`;
   });
@@ -831,43 +838,63 @@ ${refTablesSummary.join("\n\n")}
 ` : ""}
 ${await (async () => {
   // Build element→rule mapping from elementRuleLinks
-  const allElemLinks = await db.query.elementRuleLinks.findMany({
-    where: eq(elementRuleLinks.templateElementId, tmplElements[0]?.id || ""),
-  });
-  // Actually load all links for all template elements in this org
-  const orgElemLinks: Array<{ templateElementId: string | null; ruleId: string }> = [];
-  for (const te of tmplElements) {
-    const links = await db.query.elementRuleLinks.findMany({
-      where: eq(elementRuleLinks.templateElementId, te.id),
-    });
-    orgElemLinks.push(...links);
-  }
+  // Load ALL links for the org's elements (both templateElementId and elementDefId paths)
+  const tmplElIds = tmplElements.map(te => te.id);
+  const elemDefIds = elemDefs.map(ed => ed.id);
 
-  if (orgElemLinks.length === 0) return "";
+  // Batch load links by templateElementId
+  const tmplLinks = tmplElIds.length > 0
+    ? await db.query.elementRuleLinks.findMany({
+        where: inArray(elementRuleLinks.templateElementId, tmplElIds),
+      })
+    : [];
 
-  // Group by element
-  const linksByElement = new Map<string, string[]>();
-  for (const link of orgElemLinks) {
-    if (!link.templateElementId) continue;
-    const teId = link.templateElementId;
-    const existing = linksByElement.get(teId) || [];
+  // Batch load links by elementDefId
+  const edLinks = elemDefIds.length > 0
+    ? await db.query.elementRuleLinks.findMany({
+        where: inArray(elementRuleLinks.elementDefId, elemDefIds),
+      })
+    : [];
+
+  // Merge and deduplicate (prefer elementDefId links)
+  const seenPairs = new Set<string>();
+  const allLinks: Array<{ key: string; label: string; ruleDesc: string }> = [];
+
+  for (const link of edLinks) {
+    if (!link.elementDefId) continue;
+    const ed = elemDefMap.get(link.elementDefId);
     const rule = rulesMap.get(link.ruleId);
-    if (rule) {
-      existing.push(rule.description);
-      linksByElement.set(teId, existing);
-    }
+    if (!ed || !rule) continue;
+    const pairKey = `${ed.elementKey}:${rule.id}`;
+    if (seenPairs.has(pairKey)) continue;
+    seenPairs.add(pairKey);
+    allLinks.push({ key: ed.elementKey, label: ed.displayName, ruleDesc: rule.description });
   }
 
-  if (linksByElement.size === 0) return "";
-
-  const mappingLines: string[] = [];
-  for (const [teId, ruleDescs] of linksByElement) {
-    const te = tmplMap.get(teId);
-    if (!te) continue;
-    mappingLines.push(`- **${te.label}** (${te.key}): ${ruleDescs.join("; ")}`);
+  for (const link of tmplLinks) {
+    if (!link.templateElementId) continue;
+    const te = tmplMap.get(link.templateElementId);
+    const rule = rulesMap.get(link.ruleId);
+    if (!te || !rule) continue;
+    const pairKey = `${te.key}:${rule.id}`;
+    if (seenPairs.has(pairKey)) continue;
+    seenPairs.add(pairKey);
+    allLinks.push({ key: te.key, label: te.label, ruleDesc: rule.description });
   }
 
-  if (mappingLines.length === 0) return "";
+  if (allLinks.length === 0) return "";
+
+  // Group by element key
+  const byKey = new Map<string, { label: string; rules: string[] }>();
+  for (const link of allLinks) {
+    const existing = byKey.get(link.key) || { label: link.label, rules: [] };
+    existing.rules.push(link.ruleDesc);
+    byKey.set(link.key, existing);
+  }
+
+  const mappingLines = [...byKey.entries()].map(([key, { label, rules }]) =>
+    `- **${label}** (${key}): ${rules.join("; ")}`
+  );
 
   return `═══════════════════════════════════════════
 ## MAPARE CÂMP → REGULĂ

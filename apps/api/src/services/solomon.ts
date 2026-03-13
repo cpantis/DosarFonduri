@@ -6,6 +6,7 @@ import {
   companies, companyFinancials,
   solomonConversations, solomonMessages,
   orgConfig, solomonKnowledge,
+  elementRuleLinks,
 } from "../db/schema";
 import { eq, and } from "drizzle-orm";
 import { logAIUsage } from "./aiUsage";
@@ -773,6 +774,51 @@ ${emptyElements.length > 0 ? emptyElements.join("\n") : "Toate câmpurile sunt c
 ${filledElements.length > 0 ? filledElements.slice(0, 30).join("\n") : "Niciun câmp completat încă."}
 ${filledElements.length > 30 ? `\n... și alte ${filledElements.length - 30} câmpuri` : ""}
 
+${await (async () => {
+  // Build element→rule mapping from elementRuleLinks
+  const allElemLinks = await db.query.elementRuleLinks.findMany({
+    where: eq(elementRuleLinks.templateElementId, tmplElements[0]?.id || ""),
+  });
+  // Actually load all links for all template elements in this org
+  const orgElemLinks: Array<{ templateElementId: string; ruleId: string }> = [];
+  for (const te of tmplElements) {
+    const links = await db.query.elementRuleLinks.findMany({
+      where: eq(elementRuleLinks.templateElementId, te.id),
+    });
+    orgElemLinks.push(...links);
+  }
+
+  if (orgElemLinks.length === 0) return "";
+
+  // Group by element
+  const linksByElement = new Map<string, string[]>();
+  for (const link of orgElemLinks) {
+    const existing = linksByElement.get(link.templateElementId) || [];
+    const rule = rulesMap.get(link.ruleId);
+    if (rule) {
+      existing.push(rule.description);
+      linksByElement.set(link.templateElementId, existing);
+    }
+  }
+
+  if (linksByElement.size === 0) return "";
+
+  const mappingLines: string[] = [];
+  for (const [teId, ruleDescs] of linksByElement) {
+    const te = tmplMap.get(teId);
+    if (!te) continue;
+    mappingLines.push(`- **${te.label}** (${te.key}): ${ruleDescs.join("; ")}`);
+  }
+
+  if (mappingLines.length === 0) return "";
+
+  return `═══════════════════════════════════════════
+## MAPARE CÂMP → REGULĂ
+═══════════════════════════════════════════
+Următoarele câmpuri sunt direct legate de reguli din ghid. Când colectezi aceste date, verifică automat că valorile respectă regulile:
+${mappingLines.join("\n")}
+`;
+})()}
 ${await (async () => {
   const ctx = await detectProgramContext(projectId, organizationId, project, company);
   return `═══════════════════════════════════════════

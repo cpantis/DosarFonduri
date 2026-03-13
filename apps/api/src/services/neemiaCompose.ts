@@ -145,10 +145,27 @@ export async function buildComposeContext(
     where: eq(guideReferenceTables.organizationId, organizationId),
   });
 
-  // Load relevant rules
+  // Load rules — prioritize rules linked to this template's elements
   const orgRules = await db.query.rules.findMany({
     where: eq(rules.organizationId, organizationId),
   });
+
+  // Find rules linked to elements in this template via elementRuleLinks
+  const linkedRuleIds = new Set<string>();
+  for (const te of allTmplEls) {
+    const links = await db.query.elementRuleLinks.findMany({
+      where: eq(elementRuleLinks.templateElementId, te.id),
+    });
+    for (const link of links) {
+      linkedRuleIds.add(link.ruleId);
+    }
+  }
+
+  // Sort rules: linked rules first, then unlinked (prioritized by type)
+  const sortedRules = [
+    ...orgRules.filter(r => linkedRuleIds.has(r.id)),
+    ...orgRules.filter(r => !linkedRuleIds.has(r.id)),
+  ];
 
   // Get template composeConfig to find specific reference tables
   const templateDoc = await db.query.documents.findFirst({
@@ -185,11 +202,12 @@ export async function buildComposeContext(
       schema: t.schema as any,
       data: t.data as any,
     })),
-    relevantRules: orgRules.slice(0, 50).map(r => ({
+    relevantRules: sortedRules.slice(0, 50).map(r => ({
       description: r.description,
       category: r.category,
       type: r.type,
       sourceText: r.sourceText,
+      linkedToTemplate: linkedRuleIds.has(r.id),
     })),
   };
 }

@@ -310,6 +310,7 @@ async function validateCrossElements(
 async function validateAgainstRules(
   templateElementId: string,
   value: string,
+  organizationId?: string,
 ): Promise<{ ruleResults: RuleResult[]; lookupResult?: LookupResult }> {
   const ruleResults: RuleResult[] = [];
   let lookupResult: LookupResult | undefined;
@@ -319,12 +320,45 @@ async function validateAgainstRules(
     where: eq(elementRuleLinks.templateElementId, templateElementId),
   });
 
-  for (const link of elemLinks) {
-    const rule = await db.query.rules.findFirst({
-      where: eq(rules.id, link.ruleId),
-    });
-    if (!rule) continue;
+  // FALLBACK: If no explicit links exist, try to match rules by condition.field
+  let matchedRules: Array<{ rule: typeof rules.$inferSelect; fromLink: boolean }> = [];
 
+  if (elemLinks.length > 0) {
+    // Use explicit links
+    for (const link of elemLinks) {
+      const rule = await db.query.rules.findFirst({
+        where: eq(rules.id, link.ruleId),
+      });
+      if (rule) matchedRules.push({ rule, fromLink: true });
+    }
+  } else if (organizationId) {
+    // Fallback: find rules whose condition.field matches this element's key
+    const templateEl = await db.query.templateElements.findFirst({
+      where: eq(templateElements.id, templateElementId),
+    });
+    if (templateEl) {
+      const orgRules = await db.query.rules.findMany({
+        where: eq(rules.organizationId, organizationId),
+      });
+      const elementKey = templateEl.key.toLowerCase();
+      const elementLabel = templateEl.label.toLowerCase();
+
+      for (const rule of orgRules) {
+        const condition = rule.condition as any;
+        if (!condition?.field) continue;
+        const fieldName = String(condition.field).toLowerCase();
+        // Match if condition.field equals element key or is a close variant
+        if (fieldName === elementKey ||
+            elementKey.includes(fieldName) ||
+            fieldName.includes(elementKey) ||
+            elementLabel.includes(fieldName.replace(/_/g, " "))) {
+          matchedRules.push({ rule, fromLink: false });
+        }
+      }
+    }
+  }
+
+  for (const { rule, fromLink } of matchedRules) {
     // Check reference tables linked to this rule
     const refLinks = await db.query.ruleReferenceLinks.findMany({
       where: eq(ruleReferenceLinks.ruleId, rule.id),
@@ -336,8 +370,8 @@ async function validateAgainstRules(
         ruleText: rule.description,
         status: rule.type === "fixed" ? "info" : "warning",
         message: rule.type === "fixed"
-          ? `Regulă fixă: ${rule.description}`
-          : `Regulă interpretată — verificare manuală necesară`,
+          ? `Regulă fixă: ${rule.description}${!fromLink ? " (auto-match)" : ""}`
+          : `Regulă interpretată — verificare manuală necesară${!fromLink ? " (auto-match)" : ""}`,
       });
       continue;
     }
@@ -411,6 +445,7 @@ export async function validateElement(
   const { ruleResults, lookupResult } = await validateAgainstRules(
     element.templateElementId,
     value,
+    templateEl.organizationId,
   );
 
   // 3. Cross-element validation

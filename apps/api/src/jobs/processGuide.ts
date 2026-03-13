@@ -1,8 +1,8 @@
 import { Worker, Job } from "bullmq";
 import Anthropic from "@anthropic-ai/sdk";
 import { db } from "../db";
-import { documents, rules, orgConfig, scoringCriteria } from "../db/schema";
-import { eq } from "drizzle-orm";
+import { documents, rules, orgConfig, scoringCriteria, templateElements, elementRuleLinks, ruleReferenceLinks, guideReferenceTables } from "../db/schema";
+import { eq, and, ilike } from "drizzle-orm";
 import { getFileBuffer } from "../services/storage";
 import { extractTextFromPDF, extractTextFromDOCX, extractTextFromXLSX } from "../services/ocr";
 import { logAIUsage } from "../services/aiUsage";
@@ -546,6 +546,270 @@ async function extractScoringCriteria(
   }
 }
 
+/**
+ * Phase 4: Auto-link extracted rules to templateElements and guideReferenceTables.
+ *
+ * For elementRuleLinks:
+ *   - Fixed rules with condition.field → match templateElements by key
+ *   - All rules → fuzzy match by description keywords against element keys/labels
+ *
+ * For ruleReferenceLinks:
+ *   - Rules whose sourceText mentions table names → link to matching guideReferenceTables
+ *   - Scoring criteria with evaluationLogic.type="lookup" → link to reference tables
+ */
+async function autoLinkRulesAndReferences(
+  documentId: string,
+  organizationId: string,
+): Promise<{ elementLinks: number; referenceLinks: number }> {
+  let elementLinksCreated = 0;
+  let referenceLinksCreated = 0;
+
+  // Load all rules for this document
+  const docRules = await db.query.rules.findMany({
+    where: eq(rules.documentId, documentId),
+  });
+
+  // Load all template elements for this organization
+  const orgTemplateElements = await db.query.templateElements.findMany({
+    where: eq(templateElements.organizationId, organizationId),
+  });
+
+  // Load all reference tables for this organization
+  const orgRefTables = await db.query.guideReferenceTables.findMany({
+    where: eq(guideReferenceTables.organizationId, organizationId),
+  });
+
+  if (docRules.length === 0) {
+    return { elementLinks: 0, referenceLinks: 0 };
+  }
+
+  // Build element key→id lookup (normalized)
+  const elementsByKey = new Map<string, typeof orgTemplateElements[0]>();
+  for (const el of orgTemplateElements) {
+    elementsByKey.set(el.key.toLowerCase(), el);
+    // Also index by label (normalized)
+    const labelKey = el.label.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
+    if (labelKey && !elementsByKey.has(labelKey)) {
+      elementsByKey.set(labelKey, el);
+    }
+  }
+
+  // Common field name aliases to match condition.field → element key
+  const fieldAliases: Record<string, string[]> = {
+    "forma_juridica": ["forma_juridica", "tip_entitate", "forma_organizare", "tip_firma"],
+    "cifra_afaceri": ["cifra_afaceri", "cifra_de_afaceri", "turnover", "venituri"],
+    "angajati": ["angajati", "numar_angajati", "nr_angajati", "nr_salariati", "salariati"],
+    "cod_caen": ["cod_caen", "caen", "cod_caen_principal", "caen_principal"],
+    "vechime_ani": ["vechime_ani", "vechime", "ani_activitate", "data_infiintare"],
+    "judet": ["judet", "judet_firma", "judet_sediu", "judet_implementare"],
+    "capital_social": ["capital_social", "capital"],
+    "suprafata": ["suprafata", "suprafata_ha", "suprafata_ferma", "suprafata_teren"],
+  };
+
+  // Reverse alias map: alias → canonical field
+  const aliasToField = new Map<string, string>();
+  for (const [canonical, aliases] of Object.entries(fieldAliases)) {
+    for (const alias of aliases) {
+      aliasToField.set(alias, canonical);
+    }
+  }
+
+  // Track existing links to avoid duplicates
+  const existingElemLinks = new Set<string>();
+  const existingRefLinks = new Set<string>();
+
+  for (const rule of docRules) {
+    const condition = rule.condition as any;
+
+    // --- ELEMENT LINKS ---
+    // 1. Direct match via condition.field
+    if (condition?.field) {
+      const fieldName = String(condition.field).toLowerCase();
+      const fieldsToCheck = [fieldName];
+
+      // Add aliases
+      const canonical = aliasToField.get(fieldName);
+      if (canonical) {
+        const aliases = fieldAliases[canonical] || [];
+        fieldsToCheck.push(...aliases);
+      }
+
+      for (const f of fieldsToCheck) {
+        const matchedElement = elementsByKey.get(f);
+        if (matchedElement) {
+          const linkKey = `${matchedElement.id}:${rule.id}`;
+          if (!existingElemLinks.has(linkKey)) {
+            existingElemLinks.add(linkKey);
+            try {
+              await db.insert(elementRuleLinks).values({
+                templateElementId: matchedElement.id,
+                ruleId: rule.id,
+                role: "constraint",
+                description: `Auto-linked: rule condition.field "${condition.field}" → element "${matchedElement.key}"`,
+              });
+              elementLinksCreated++;
+            } catch (err: any) {
+              // Ignore duplicate constraint violations
+              if (!err?.message?.includes("duplicate") && !err?.message?.includes("unique")) {
+                console.warn(`[autoLink] Failed to create element-rule link:`, err?.message);
+              }
+            }
+          }
+          break; // Only link to first matching element
+        }
+      }
+    }
+
+    // 2. Match via scoring criteria elementKey
+    if (condition?.type === "scoring" || condition?.elementKey) {
+      const elementKey = (condition.elementKey || "").toLowerCase();
+      if (elementKey) {
+        const matchedElement = elementsByKey.get(elementKey);
+        if (matchedElement) {
+          const linkKey = `${matchedElement.id}:${rule.id}`;
+          if (!existingElemLinks.has(linkKey)) {
+            existingElemLinks.add(linkKey);
+            try {
+              await db.insert(elementRuleLinks).values({
+                templateElementId: matchedElement.id,
+                ruleId: rule.id,
+                role: "input",
+                description: `Auto-linked: scoring elementKey "${condition.elementKey}" → element "${matchedElement.key}"`,
+              });
+              elementLinksCreated++;
+            } catch (err: any) {
+              if (!err?.message?.includes("duplicate") && !err?.message?.includes("unique")) {
+                console.warn(`[autoLink] Failed to create element-rule link:`, err?.message);
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // --- REFERENCE TABLE LINKS ---
+    // Match rules whose sourceText mentions table names or "Anexa"
+    const ruleText = `${rule.description || ""} ${rule.sourceText || ""}`.toLowerCase();
+
+    for (const refTable of orgRefTables) {
+      const tableName = (refTable.name || "").toLowerCase();
+      if (!tableName || tableName.length < 5) continue;
+
+      // Check if rule text mentions the table name
+      const tableNameWords = tableName.split(/[\s\-_,]+/).filter(w => w.length > 3);
+      const matchScore = tableNameWords.filter(w => ruleText.includes(w)).length;
+
+      // Require at least 2 significant words to match, or exact table name
+      if (ruleText.includes(tableName) || (tableNameWords.length >= 2 && matchScore >= 2)) {
+        const linkKey = `${rule.id}:${refTable.id}`;
+        if (!existingRefLinks.has(linkKey)) {
+          existingRefLinks.add(linkKey);
+
+          // Determine usage based on rule type
+          const usage = rule.type === "fixed" ? "validates" as const
+            : rule.category === "selectie" ? "scores" as const
+            : "classifies" as const;
+
+          try {
+            await db.insert(ruleReferenceLinks).values({
+              ruleId: rule.id,
+              referenceTableId: refTable.id,
+              usage,
+              description: `Auto-linked: rule mentions "${tableName}"`,
+            });
+            referenceLinksCreated++;
+          } catch (err: any) {
+            if (!err?.message?.includes("duplicate") && !err?.message?.includes("unique")) {
+              console.warn(`[autoLink] Failed to create rule-reference link:`, err?.message);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Also link scoring criteria to reference tables
+  const docScoring = await db.query.scoringCriteria.findMany({
+    where: eq(scoringCriteria.documentId, documentId),
+  });
+
+  for (const sc of docScoring) {
+    const evalLogic = sc.evaluationLogic as any;
+    if (!evalLogic) continue;
+
+    // Link scoring criteria elementKey to template elements
+    if (evalLogic.elementKey) {
+      const elementKey = String(evalLogic.elementKey).toLowerCase();
+      const matchedElement = elementsByKey.get(elementKey);
+      if (matchedElement) {
+        // Find the rule that corresponds to this scoring criterion (by code match in description)
+        const matchingRule = docRules.find(r =>
+          r.description?.includes(sc.code) || r.description?.includes(sc.name)
+        );
+        if (matchingRule) {
+          const linkKey = `${matchedElement.id}:${matchingRule.id}`;
+          if (!existingElemLinks.has(linkKey)) {
+            existingElemLinks.add(linkKey);
+            try {
+              await db.insert(elementRuleLinks).values({
+                templateElementId: matchedElement.id,
+                ruleId: matchingRule.id,
+                role: "input",
+                description: `Auto-linked: scoring ${sc.code} elementKey "${evalLogic.elementKey}"`,
+              });
+              elementLinksCreated++;
+            } catch (err: any) {
+              if (!err?.message?.includes("duplicate") && !err?.message?.includes("unique")) {
+                console.warn(`[autoLink] Failed to create scoring element link:`, err?.message);
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Link lookup-type scoring criteria to reference tables
+    if (evalLogic.type === "lookup" && evalLogic.lookupColumn) {
+      for (const refTable of orgRefTables) {
+        const schema = refTable.schema as Array<{ key: string; label: string }> | null;
+        if (!schema) continue;
+        // Check if the reference table has the lookup column
+        const hasColumn = schema.some(col =>
+          col.key === evalLogic.lookupColumn || col.label === evalLogic.lookupColumn
+        );
+        if (hasColumn) {
+          // Find matching rule for this scoring criterion
+          const matchingRule = docRules.find(r =>
+            r.description?.includes(sc.code) || r.description?.includes(sc.name)
+          );
+          if (matchingRule) {
+            const linkKey = `${matchingRule.id}:${refTable.id}`;
+            if (!existingRefLinks.has(linkKey)) {
+              existingRefLinks.add(linkKey);
+              try {
+                await db.insert(ruleReferenceLinks).values({
+                  ruleId: matchingRule.id,
+                  referenceTableId: refTable.id,
+                  usage: "scores",
+                  description: `Auto-linked: scoring ${sc.code} lookup column "${evalLogic.lookupColumn}"`,
+                });
+                referenceLinksCreated++;
+              } catch (err: any) {
+                if (!err?.message?.includes("duplicate") && !err?.message?.includes("unique")) {
+                  console.warn(`[autoLink] Failed to create scoring reference link:`, err?.message);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  console.log(`[autoLink] Created ${elementLinksCreated} element-rule links and ${referenceLinksCreated} rule-reference links for document ${documentId}`);
+  return { elementLinks: elementLinksCreated, referenceLinks: referenceLinksCreated };
+}
+
 export const processGuideWorker = new Worker<ProcessGuidePayload>(
   "process-guide",
   async (job: Job<ProcessGuidePayload>) => {
@@ -666,6 +930,19 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         }
       });
 
+      // Phase 4: Auto-link rules to template elements and reference tables (progress 90-95)
+      await job.updateProgress(90);
+      publishJobProgress(organizationId, {
+        jobId: job.id || "",
+        jobType: "ghid",
+        documentId,
+        documentName: doc.name,
+        progress: 90,
+        status: "processing",
+        message: `Creare link-uri reguli ↔ elemente din "${doc.name}"...`,
+      }).catch(() => {});
+      const linkResult = await autoLinkRulesAndReferences(documentId, organizationId);
+
       const pageCount = (text.match(/--- Pagina/g) || []).length;
       await db.update(documents).set({
         status: "processed",
@@ -682,7 +959,9 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         status: "processed",
         processingType: "ghid",
         pageCount,
-        message: `Ghid procesat "${doc.name}". ${pageCount} pagini, reguli extrase.`,
+        elementLinks: linkResult.elementLinks,
+        referenceLinks: linkResult.referenceLinks,
+        message: `Ghid procesat "${doc.name}". ${pageCount} pagini, reguli extrase. ${linkResult.elementLinks + linkResult.referenceLinks} link-uri create.`,
       }).catch(() => {});
     } catch (error) {
       console.error(`Process guide error (attempt ${job.attemptsMade + 1}/${job.opts.attempts || 3}):`, error);

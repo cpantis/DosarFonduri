@@ -198,17 +198,50 @@ function mapElements(elements: any[]): ElementItem[] {
 
     const sourceMap: Record<string, string> = {
       onrc: "Date ONRC",
+      onrc_auto: "ONRC (auto)",
+      anaf_auto: "ANAF (auto)",
       manual: "Completare manuală",
+      consultant_manual: "Consultant",
       solomon: "Solomon",
+      solomon_chat: "Solomon Chat",
       document: "Document uploadat",
+      document_extracted: "Extras din document",
       calculated: "Calculat automat",
+      derived: "Derivat",
+      ghid: "Ghid finanțare",
     };
+
+    // Resolve key/label: prefer elementDefinition (new anchor), fallback to templateElement
+    const elemDef = el.elementDefinition;
+    const tmplEl = el.templateElement;
+    const key = elemDef?.elementKey || tmplEl?.key || el.elementDefId || el.templateElementId || el.id;
+    const label = elemDef?.displayName || tmplEl?.label || key;
+
+    // Format value for display: JSON objects/arrays should be shown readable
+    let displayValue = el.value;
+    if (displayValue && typeof displayValue === "string") {
+      try {
+        const parsed = JSON.parse(displayValue);
+        if (Array.isArray(parsed)) {
+          displayValue = parsed.map((item: any) =>
+            typeof item === "object" ? Object.values(item).filter(Boolean).join(", ") : String(item)
+          ).join("; ");
+        } else if (typeof parsed === "object" && parsed !== null) {
+          displayValue = Object.entries(parsed)
+            .filter(([, v]) => v != null)
+            .map(([k, v]) => `${k}: ${v}`)
+            .join(", ");
+        }
+      } catch {
+        // Not JSON — keep as is
+      }
+    }
 
     return {
       id: el.id,
-      key: el.templateElement?.key || el.id,
-      label: el.templateElement?.label || "Element",
-      value: el.value,
+      key,
+      label,
+      value: displayValue,
       status,
       confidence: confirmed ? 100 : hasValue ? 85 : 0,
       source: el.source,

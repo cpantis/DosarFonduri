@@ -57,9 +57,35 @@ function adaptCompanyResult(data: Awaited<ReturnType<typeof extractCompanyFromDo
   if (data.capitalSocial) fields.push({ field_key: "capital_social", field_value: data.capitalSocial, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
   if (data.anInfiintare) fields.push({ field_key: "data_inregistrare", field_value: data.anInfiintare, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
 
+  // Fields previously lost at Layer 3 — now mapped properly
+  if (data.euid) fields.push({ field_key: "euid", field_value: data.euid, confidence: 0.9, source_page: null, extraction_method: "ai_sonnet" });
+  if (data.telefon) fields.push({ field_key: "telefon", field_value: data.telefon, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
+  if (data.email) fields.push({ field_key: "email", field_value: data.email, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
+  if (data.durata) fields.push({ field_key: "durata_societate", field_value: data.durata, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
+  if (data.moneda) fields.push({ field_key: "moneda_capital", field_value: data.moneda, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
+  if (data.partiSociale != null) fields.push({ field_key: "parti_sociale", field_value: data.partiSociale, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
+  if (data.naturaCapital) fields.push({ field_key: "natura_capital", field_value: data.naturaCapital, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
+  if (data.caenDesc) fields.push({ field_key: "caen_descriere", field_value: data.caenDesc, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
+  if (data.sediiSecundare?.length) fields.push({ field_key: "sedii_secundare", field_value: data.sediiSecundare, confidence: 0.8, source_page: null, extraction_method: "ai_sonnet" });
+
+  // Structured sub-entities (prefixed with _ to signal raw/complex data)
   if (data.asociati?.length) fields.push({ field_key: "_raw_asociati", field_value: data.asociati, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
   if (data.administratori?.length) fields.push({ field_key: "_raw_administratori", field_value: data.administratori, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
   if (data.financials?.length) fields.push({ field_key: "_raw_financials", field_value: data.financials, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
+
+  // Extract individual financial years as top-level fields (not just _raw)
+  if (data.financials?.length) {
+    for (const fin of data.financials) {
+      if (!fin.year) continue;
+      const y = fin.year;
+      if (fin.cifraAfaceri != null) fields.push({ field_key: `cifra_afaceri_${y}`, field_value: fin.cifraAfaceri, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
+      if (fin.profitBrut != null) fields.push({ field_key: `profit_brut_${y}`, field_value: fin.profitBrut, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
+      if (fin.profitNet != null) fields.push({ field_key: `profit_net_${y}`, field_value: fin.profitNet, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
+      if (fin.angajati != null) fields.push({ field_key: `numar_angajati_${y}`, field_value: fin.angajati, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
+      if (fin.capitaluriProprii != null) fields.push({ field_key: `capitaluri_proprii_${y}`, field_value: fin.capitaluriProprii, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
+      if (fin.activeImobilizate != null) fields.push({ field_key: `active_imobilizate_${y}`, field_value: fin.activeImobilizate, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
+    }
+  }
 
   return { document_type: "certificat_constatator", extracted_fields: fields, raw_text: rawText.slice(0, 5000), processing_time_ms: timeMs };
 }
@@ -71,18 +97,52 @@ function adaptBilantResult(data: Awaited<ReturnType<typeof parseBilantPDF>>, raw
   const fields: ExtractionResult["extracted_fields"] = [];
   const year = data.year;
 
+  // F20 — Profit & Loss (all fields)
   if (data.f20?.cifraAfaceriNeta != null) fields.push({ field_key: `cifra_afaceri_${year}`, field_value: data.f20.cifraAfaceriNeta, confidence: 0.9, source_page: null, extraction_method: "ai_sonnet" });
   if (data.f20?.profitNet != null) fields.push({ field_key: `profit_net_${year}`, field_value: data.f20.profitNet, confidence: 0.9, source_page: null, extraction_method: "ai_sonnet" });
+  if (data.f20?.profitBrut != null) fields.push({ field_key: `profit_brut_${year}`, field_value: data.f20.profitBrut, confidence: 0.9, source_page: null, extraction_method: "ai_sonnet" });
   if (data.f20?.profitExploatare != null) fields.push({ field_key: `profit_exploatare_${year}`, field_value: data.f20.profitExploatare, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
-  if (data.f10?.activeImobilizate?.total != null) fields.push({ field_key: `active_totale_${year}`, field_value: (data.f10.activeImobilizate.total || 0) + (data.f10.activeCirculante?.total || 0), confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
-  if (data.f10?.capitaluriProprii != null) fields.push({ field_key: `capitaluri_proprii_${year}`, field_value: data.f10.capitaluriProprii, confidence: 0.9, source_page: null, extraction_method: "ai_sonnet" });
-  if (data.f30?.numarMediuSalariati != null) fields.push({ field_key: `numar_angajati_${year}`, field_value: data.f30.numarMediuSalariati, confidence: 0.9, source_page: null, extraction_method: "ai_sonnet" });
+  if (data.f20?.venituriExploatare != null) fields.push({ field_key: `venituri_exploatare_${year}`, field_value: data.f20.venituriExploatare, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
+  if (data.f20?.cheltuieliExploatare != null) fields.push({ field_key: `cheltuieli_exploatare_${year}`, field_value: data.f20.cheltuieliExploatare, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
+  if (data.f20?.venituriTotale != null) fields.push({ field_key: `venituri_totale_${year}`, field_value: data.f20.venituriTotale, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
+  if (data.f20?.cheltuieliTotale != null) fields.push({ field_key: `cheltuieli_totale_${year}`, field_value: data.f20.cheltuieliTotale, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
+  if (data.f20?.impozitProfit != null) fields.push({ field_key: `impozit_profit_${year}`, field_value: data.f20.impozitProfit, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
 
-  // Compute datorii_totale if we have the data
+  // F10 — Balance sheet (totals and components)
+  if (data.f10?.activeImobilizate?.total != null) {
+    const activeTotale = (data.f10.activeImobilizate.total || 0) + (data.f10.activeCirculante?.total || 0);
+    fields.push({ field_key: `active_totale_${year}`, field_value: activeTotale, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
+    fields.push({ field_key: `active_imobilizate_${year}`, field_value: data.f10.activeImobilizate.total, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
+  }
+  if (data.f10?.activeCirculante?.total != null) fields.push({ field_key: `active_circulante_${year}`, field_value: data.f10.activeCirculante.total, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
+  if (data.f10?.activeCirculante?.stocuri != null) fields.push({ field_key: `stocuri_${year}`, field_value: data.f10.activeCirculante.stocuri, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
+  if (data.f10?.activeCirculante?.creante != null) fields.push({ field_key: `creante_${year}`, field_value: data.f10.activeCirculante.creante, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
+  if (data.f10?.activeCirculante?.casa != null) fields.push({ field_key: `casa_conturi_${year}`, field_value: data.f10.activeCirculante.casa, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
+  if (data.f10?.capitaluriProprii != null) fields.push({ field_key: `capitaluri_proprii_${year}`, field_value: data.f10.capitaluriProprii, confidence: 0.9, source_page: null, extraction_method: "ai_sonnet" });
+  if (data.f10?.capital?.subscrisVarsat != null) fields.push({ field_key: `capital_subscris_varsat_${year}`, field_value: data.f10.capital.subscrisVarsat, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
+  if (data.f10?.capital?.rezerve != null) fields.push({ field_key: `rezerve_${year}`, field_value: data.f10.capital.rezerve, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
+
+  // Datorii (short-term + long-term)
+  if (data.f10?.datoriiSubAnul != null) fields.push({ field_key: `datorii_sub_an_${year}`, field_value: data.f10.datoriiSubAnul, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
+  if (data.f10?.datoriiPesteAnul != null) fields.push({ field_key: `datorii_peste_an_${year}`, field_value: data.f10.datoriiPesteAnul, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
   if (data.f10?.datoriiSubAnul != null || data.f10?.datoriiPesteAnul != null) {
     const datorii = (data.f10.datoriiSubAnul || 0) + (data.f10.datoriiPesteAnul || 0);
     fields.push({ field_key: `datorii_totale_${year}`, field_value: datorii, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
   }
+
+  // F30 — Informative data
+  if (data.f30?.numarMediuSalariati != null) fields.push({ field_key: `numar_angajati_${year}`, field_value: data.f30.numarMediuSalariati, confidence: 0.9, source_page: null, extraction_method: "ai_sonnet" });
+  if (data.f30?.numarEfectivSalariati != null) fields.push({ field_key: `numar_angajati_efectiv_${year}`, field_value: data.f30.numarEfectivSalariati, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
+
+  // F40 — Fixed assets (immobilizations)
+  if (data.f40?.totalCorporale) {
+    const f40 = data.f40.totalCorporale;
+    if (f40.soldInitial != null) fields.push({ field_key: `imobilizari_sold_initial_${year}`, field_value: f40.soldInitial, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
+    if (f40.cresteri != null) fields.push({ field_key: `imobilizari_cresteri_${year}`, field_value: f40.cresteri, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
+    if (f40.reduceri != null) fields.push({ field_key: `imobilizari_reduceri_${year}`, field_value: f40.reduceri, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
+    if (f40.soldFinal != null) fields.push({ field_key: `imobilizari_sold_final_${year}`, field_value: f40.soldFinal, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
+  }
+  if (data.f40?.amortizareTotal != null) fields.push({ field_key: `amortizare_totala_${year}`, field_value: data.f40.amortizareTotal, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
 
   fields.push({ field_key: `an_fiscal`, field_value: year, confidence: 0.95, source_page: 1, extraction_method: "ai_sonnet" });
   fields.push({ field_key: `_raw_bilant_${year}`, field_value: data, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
@@ -100,6 +160,12 @@ function detectBilantYear(text: string): number {
     /ANUL\s+(\d{4})/,
     /31[./]12[./](\d{4})/,
     /exerci[țt]iul\s+financiar\s+(\d{4})/i,
+    // XFA tag-style format: "An_r: 2023" or "an_r:2023" or "AnRaportare: 2023"
+    /[Aa]n[_\s]?[Rr](?:aportare)?[:\s]+(\d{4})/,
+    // XFA: "perioadaRaportare: 2023" or "DataRaportare_luna: 12" + "DataRaportare_an: 2023"
+    /[Dd]ata[Rr]aportare[_\s]?[Aa]n[:\s]+(\d{4})/,
+    // Filename pattern: _2023_12 or _2023_
+    /_(\d{4})_\d{1,2}/,
   ];
 
   for (const pattern of yearPatterns) {

@@ -5,7 +5,7 @@ import { z } from "zod";
 import { db } from "../db";
 import {
   projects, projectElements, projectEligibility, projectDocuments,
-  projectChecklist, templateElements, rules, companies, companyFinancials,
+  projectChecklist, templateElements, elementDefinitions, rules, companies, companyFinancials,
   documentFolders, documents, auditLog, orgConfig, users, elementAuditLog,
 } from "../db/schema";
 import { eq, and, count, asc, desc, sql } from "drizzle-orm";
@@ -318,12 +318,21 @@ projectRoutes.get("/:id", async (c) => {
     where: eq(projectElements.projectId, id),
   });
 
-  // Enrich elements with template element data
+  // Enrich elements with template element AND element definition data
   const enrichedElements = await Promise.all(elements.map(async (el) => {
     const templateEl = el.templateElementId ? await db.query.templateElements.findFirst({
       where: eq(templateElements.id, el.templateElementId),
     }) : null;
-    return { ...el, templateElement: templateEl };
+
+    // Also resolve element_definition (the new canonical anchor)
+    let elemDef = null;
+    if (el.elementDefId) {
+      elemDef = await db.query.elementDefinitions.findFirst({
+        where: eq(elementDefinitions.id, el.elementDefId),
+      });
+    }
+
+    return { ...el, templateElement: templateEl, elementDefinition: elemDef };
   }));
 
   const eligibility = await db.query.projectEligibility.findMany({

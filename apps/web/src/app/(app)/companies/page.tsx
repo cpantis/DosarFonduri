@@ -4,39 +4,10 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { isPF, FORME_JURIDICE } from "@/hooks/useFormaJuridica";
 import { apiGet, apiPost, api } from "@/lib/api";
-
-/* ═══ HELPERS ═══ */
-const formaColorClasses = (cod: string): { iconBg: string; iconText: string; badgeCls: string } => {
-  if (isPF(cod)) return { iconBg: "bg-orange-50", iconText: "text-orange-600", badgeCls: "bg-purple-50 text-purple-700 border-purple-200" };
-  const map: Record<string, { iconBg: string; iconText: string; badgeCls: string }> = {
-    SRL: { iconBg: "bg-blue-50", iconText: "text-blue-600", badgeCls: "bg-blue-50 text-blue-700 border-blue-200" },
-    SA: { iconBg: "bg-purple-50", iconText: "text-purple-600", badgeCls: "bg-purple-50 text-purple-700 border-purple-200" },
-    SNC: { iconBg: "bg-emerald-50", iconText: "text-emerald-600", badgeCls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-    SCS: { iconBg: "bg-emerald-50", iconText: "text-emerald-600", badgeCls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-    SCA: { iconBg: "bg-purple-50", iconText: "text-purple-600", badgeCls: "bg-purple-50 text-purple-700 border-purple-200" },
-  };
-  return map[cod] || { iconBg: "bg-blue-50", iconText: "text-blue-600", badgeCls: "bg-blue-50 text-blue-700 border-blue-200" };
-};
-
-const stareClasses = (stare: string | undefined, isProcessing: boolean): string => {
-  if (isProcessing) return "bg-blue-50 text-blue-700 border-blue-200";
-  if (stare === "radiata") return "bg-red-50 text-red-700 border-red-200";
-  return "bg-emerald-50 text-emerald-700 border-emerald-200";
-};
-
-const formatSyncTime = (iso: string | null | undefined) => {
-  if (!iso) return "\u2014";
-  const d = new Date(iso);
-  const now = new Date();
-  const diffMs = now.getTime() - d.getTime();
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-  const hh = d.getHours().toString().padStart(2, "0");
-  const mm = d.getMinutes().toString().padStart(2, "0");
-  if (diffDays === 0) return `Azi, ${hh}:${mm}`;
-  if (diffDays === 1) return `Ieri, ${hh}:${mm}`;
-  const months = ["ian", "feb", "mar", "apr", "mai", "iun", "iul", "aug", "sep", "oct", "nov", "dec"];
-  return `${d.getDate()} ${months[d.getMonth()]}, ${hh}:${mm}`;
-};
+import { PageHeader } from "@/components/shared/PageHeader";
+import { StatusBadge } from "@/components/shared/StatusBadge";
+import { TypeBadge } from "@/components/shared/TypeBadge";
+import { EmptyState } from "@/components/shared/EmptyState";
 
 /* ═══ COMPONENT ═══ */
 export default function CompaniesPage() {
@@ -156,99 +127,96 @@ export default function CompaniesPage() {
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (file) setUploadFile(file); };
 
   return (
-    <div className="px-8 py-6 max-w-7xl mx-auto">
-      {/* TOPBAR */}
-      <div className="flex items-center gap-4 mb-6">
-        <h1 className="text-2xl font-bold text-slate-900 flex-1 tracking-tight">Firme</h1>
-        <span className="text-[13px] text-slate-500 font-medium">{loading ? "..." : `${filtered.length} firme`}</span>
+    <div className="min-h-full bg-slate-50">
+      <PageHeader title="Firme">
         <button
-          className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded-lg text-[13px] transition-colors shadow-sm"
+          className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-4 py-2 text-sm font-medium transition-colors cursor-pointer"
           onClick={() => { setShowAdd(true); setCui(""); setCuiRes(null); setAddMode("auto"); setAddForma("SRL"); setUploadFile(null); setCuiSearchResults([]); }}
-        >+ Adauga firma</button>
-      </div>
+        >+ Adaugă firmă</button>
+      </PageHeader>
 
-      {/* TOOLBAR */}
-      <div className="flex items-center gap-3 mb-6 flex-wrap">
-        <input
-          className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-[13px] text-slate-700 placeholder:text-slate-400 focus:border-blue-300 focus:ring-1 focus:ring-blue-100 outline-none transition-colors w-80"
-          placeholder="Cauta firma, CUI, CAEN, judet, forma..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-        />
-        <div className="flex bg-slate-100 rounded-lg p-0.5 gap-0.5">
-          {[
-            { key: "all", label: "Toate" },
-            { key: "activ", label: "Active" },
-            { key: "radiat", label: "Radiate" },
-            { key: "soc", label: "Societati" },
-            { key: "pf", label: "PFA/II/IF" },
-          ].map(item => (
-            <button
-              key={item.key}
-              className={`px-3.5 py-1.5 rounded-md text-[12px] font-semibold border-none cursor-pointer transition-colors whitespace-nowrap ${
-                filter === item.key
-                  ? "bg-blue-600 text-white"
-                  : "bg-transparent text-slate-500 hover:text-slate-700"
-              }`}
-              onClick={() => setFilter(item.key)}
-            >{item.label}</button>
-          ))}
+      <div className="px-8 py-6">
+        {/* TOOLBAR */}
+        <div className="flex items-center gap-3 mb-6 flex-wrap">
+          <input
+            className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-[13px] text-slate-700 placeholder:text-slate-400 focus:border-blue-300 focus:ring-1 focus:ring-blue-100 outline-none transition-colors w-80"
+            placeholder="Cauta firma, CUI, CAEN, judet, forma..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+          <div className="flex bg-slate-100 rounded-lg p-0.5 gap-0.5">
+            {[
+              { key: "all", label: "Toate" },
+              { key: "activ", label: "Active" },
+              { key: "radiat", label: "Radiate" },
+              { key: "soc", label: "Societati" },
+              { key: "pf", label: "PFA/II/IF" },
+            ].map(item => (
+              <button
+                key={item.key}
+                className={`px-3.5 py-1.5 rounded-md text-[12px] font-semibold border-none cursor-pointer transition-colors whitespace-nowrap ${
+                  filter === item.key
+                    ? "bg-blue-600 text-white"
+                    : "bg-transparent text-slate-500 hover:text-slate-700"
+                }`}
+                onClick={() => setFilter(item.key)}
+              >{item.label}</button>
+            ))}
+          </div>
+          {!loading && <span className="text-[13px] text-slate-500 font-medium ml-auto">{filtered.length} firme</span>}
         </div>
-      </div>
 
-      {/* COMPANY CARDS GRID */}
-      <div className="flex-1">
-        {loading && (
-          <div className="flex flex-col items-center justify-center py-20 text-slate-400 gap-3">
-            <span className="inline-block w-7 h-7 border-2 border-slate-200 border-t-blue-600 rounded-full animate-spin" />
-            <div className="text-[14px] text-center">Se incarca firmele...</div>
-          </div>
-        )}
-        {error && (
-          <div className="flex flex-col items-center justify-center py-20 text-slate-400 gap-3">
-            <div className="text-[14px] text-center text-red-500">{error}</div>
-            <button className="bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 rounded-lg px-4 py-2 text-[13px] font-medium mt-2 cursor-pointer" onClick={fetchCompanies}>Reincearca</button>
-          </div>
-        )}
-        {!loading && !error && filtered.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-20 text-slate-400 gap-3">
-            <div className="text-5xl opacity-40">&#128269;</div>
-            <div className="text-[14px] text-center">Nicio firma gasita</div>
-          </div>
-        )}
-        {!loading && !error && filtered.length > 0 && (
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(420px,1fr))] gap-4">
-            {filtered.map(f => {
-              const forma = f.formaJuridica || "";
-              const fc = formaColorClasses(forma);
-              const isProcessing = f.processingStatus === "processing";
-              const stareCls = stareClasses(f.stare, isProcessing);
-              return (
-                <div
-                  key={f.id}
-                  className="flex items-start gap-4 p-5 rounded-xl border border-slate-200 bg-white cursor-pointer transition-all hover:border-slate-300 hover:shadow-sm hover:-translate-y-px"
-                  onClick={() => router.push(`/companies/${f.id}`)}
-                >
-                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-[13px] font-extrabold shrink-0 font-mono ${fc.iconBg} ${fc.iconText}`}>{forma}</div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[15px] font-semibold text-slate-900 mb-1.5 leading-tight">{f.denumire}</div>
-                    <div className="flex gap-1.5 flex-wrap mb-2">
-                      <span className={`text-[10px] font-semibold rounded-full border px-2 py-0.5 ${stareCls}`}>{isProcessing ? "Se proceseaza..." : f.stare || "activ"}</span>
-                      <span className={`text-[10px] font-semibold rounded-full border px-2 py-0.5 ${fc.badgeCls}`}>{FORME_JURIDICE.find(fj => fj.cod === forma)?.short || forma}</span>
-                      {f.caen && <span className="text-[10px] font-semibold rounded-full border px-2 py-0.5 bg-slate-50 text-slate-500 border-slate-200">CAEN {f.caen}</span>}
+        {/* COMPANY CARDS */}
+        <div className="flex-1">
+          {loading && (
+            <div className="flex flex-col items-center justify-center py-20 text-slate-400 gap-3">
+              <span className="inline-block w-7 h-7 border-2 border-slate-200 border-t-blue-600 rounded-full animate-spin" />
+              <div className="text-[14px] text-center">Se incarca firmele...</div>
+            </div>
+          )}
+          {error && (
+            <div className="flex flex-col items-center justify-center py-20 text-slate-400 gap-3">
+              <div className="text-[14px] text-center text-red-500">{error}</div>
+              <button className="bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 rounded-lg px-4 py-2 text-[13px] font-medium mt-2 cursor-pointer" onClick={fetchCompanies}>Reincearca</button>
+            </div>
+          )}
+          {!loading && !error && filtered.length === 0 && (
+            <EmptyState
+              icon="🏢"
+              title="Nicio firmă adăugată"
+              description="Adaugă prima firmă pentru a începe"
+            />
+          )}
+          {!loading && !error && filtered.length > 0 && (
+            <div className="space-y-3">
+              {filtered.map(f => {
+                const forma = f.formaJuridica || "";
+                const isProcessing = f.processingStatus === "processing";
+                return (
+                  <div
+                    key={f.id}
+                    className="bg-white rounded-xl border border-slate-200 p-5 hover:shadow-sm cursor-pointer transition-shadow"
+                    onClick={() => router.push(`/companies/${f.id}`)}
+                  >
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="text-[15px] font-semibold text-slate-900">{f.denumire}</div>
+                      <div className="flex gap-1.5 flex-wrap shrink-0 ml-3">
+                        <TypeBadge type={forma || "SRL"} />
+                        <StatusBadge status={isProcessing ? "in_progress" : (f.stare || "functiune")} label={isProcessing ? "Se proceseaza..." : undefined} />
+                      </div>
                     </div>
-                    <div className="text-[12px] text-slate-500 flex gap-3 flex-wrap leading-relaxed">
-                      <span className="flex items-center gap-1">CUI: {f.cui}</span>
+                    <div className="text-[13px] text-slate-500 flex gap-3 flex-wrap">
+                      <span>CUI: {f.cui}</span>
+                      {f.caen && <span>CAEN: {f.caen}</span>}
                       {f.judet && <span>{f.judet}</span>}
                       {f.anInfiintare && <span>Din {f.anInfiintare}</span>}
                     </div>
-                    <div className="text-[11px] text-slate-400 font-mono mt-1.5">Sync: {formatSyncTime(f.lastSyncedAt)}</div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* ADD MODAL */}

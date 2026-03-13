@@ -2,17 +2,11 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
+import { PageHeader } from "@/components/shared/PageHeader";
+import { StatusBadge } from "@/components/shared/StatusBadge";
+import { EmptyState } from "@/components/shared/EmptyState";
 
 /* ═══ HELPERS ═══ */
-
-const STATUS_MAP: Record<string, { label: string; cls: string }> = {
-  draft: { label: "Ciornă", cls: "bg-slate-100 text-slate-600 border-slate-200" },
-  in_progress: { label: "În lucru", cls: "bg-blue-50 text-blue-700 border-blue-200" },
-  review: { label: "Verificare", cls: "bg-amber-50 text-amber-700 border-amber-200" },
-  submitted: { label: "Depus", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-  rejected: { label: "Respins", cls: "bg-red-50 text-red-700 border-red-200" },
-  approved: { label: "Aprobat", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-};
 
 const STATUS_DOT: Record<string, string> = {
   draft: "bg-slate-400",
@@ -212,244 +206,216 @@ export default function ProjectsPage() {
   };
 
   return (
-    <div className="px-8 py-6 max-w-7xl mx-auto flex flex-col min-h-full">
-      {/* Topbar */}
-      <div className="flex items-center gap-4 flex-shrink-0 pb-6 border-b border-slate-200">
-        <div className="flex-1 text-2xl font-bold text-slate-900 tracking-tight">Proiecte</div>
+    <div className="min-h-full bg-slate-50 flex flex-col">
+      {/* PageHeader */}
+      <PageHeader title="Proiecte">
         <button
-          className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[13px] font-semibold cursor-pointer shadow-sm transition-all duration-150"
+          className="bg-blue-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-blue-700 cursor-pointer transition-colors"
           onClick={() => { setShowCreate(true); setCreateStep(1); setCreateData({ name: "", firmaId: null, folderId: null, program: null, masura: null, sesiune: null }); }}
         >+ Proiect nou</button>
-      </div>
+      </PageHeader>
 
-      {/* Stats pills */}
-      <div className="flex gap-3 py-4 border-b border-slate-200 flex-shrink-0">
-        <div
-          className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[12px] font-semibold cursor-pointer transition-all duration-150 border ${statusFilter === "all" ? "border-blue-300 bg-blue-50/60 text-slate-900" : "border-transparent text-slate-500 hover:bg-slate-50"}`}
-          onClick={() => setStatusFilter("all")}
-        >
-          <span className="font-mono font-bold">{stats.total}</span> Total
+      <div className="px-8 py-6 flex-1 flex flex-col">
+        {/* Stats pills */}
+        <div className="flex gap-3 pb-4 border-b border-slate-200 flex-shrink-0">
+          <div
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[12px] font-semibold cursor-pointer transition-all duration-150 border ${statusFilter === "all" ? "border-blue-300 bg-blue-50/60 text-slate-900" : "border-transparent text-slate-500 hover:bg-slate-50"}`}
+            onClick={() => setStatusFilter("all")}
+          >
+            <span className="font-mono font-bold">{stats.total}</span> Total
+          </div>
+          <div
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[12px] font-semibold cursor-pointer transition-all duration-150 border ${statusFilter === "draft" ? "border-blue-300 bg-blue-50/60 text-slate-900" : "border-transparent text-slate-500 hover:bg-slate-50"}`}
+            onClick={() => setStatusFilter("draft")}
+          >
+            <span className="w-2 h-2 rounded-full bg-slate-400" />
+            <span className="font-mono font-bold">{stats.draft}</span> Ciornă
+          </div>
+          <div
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[12px] font-semibold cursor-pointer transition-all duration-150 border ${statusFilter === "in_progress" ? "border-blue-300 bg-blue-50/60 text-slate-900" : "border-transparent text-slate-500 hover:bg-slate-50"}`}
+            onClick={() => setStatusFilter("in_progress")}
+          >
+            <span className="w-2 h-2 rounded-full bg-blue-500" />
+            <span className="font-mono font-bold">{stats.inProgress}</span> În lucru
+          </div>
+          <div
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[12px] font-semibold cursor-pointer transition-all duration-150 border ${statusFilter === "review" ? "border-blue-300 bg-blue-50/60 text-slate-900" : "border-transparent text-slate-500 hover:bg-slate-50"}`}
+            onClick={() => setStatusFilter("review")}
+          >
+            <span className="w-2 h-2 rounded-full bg-amber-500" />
+            <span className="font-mono font-bold">{stats.review}</span> Verificare
+          </div>
+          <div
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[12px] font-semibold cursor-pointer transition-all duration-150 border ${statusFilter === "submitted" ? "border-blue-300 bg-blue-50/60 text-slate-900" : "border-transparent text-slate-500 hover:bg-slate-50"}`}
+            onClick={() => setStatusFilter("submitted")}
+          >
+            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+            <span className="font-mono font-bold">{stats.submitted}</span> Depus
+          </div>
         </div>
-        <div
-          className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[12px] font-semibold cursor-pointer transition-all duration-150 border ${statusFilter === "draft" ? "border-blue-300 bg-blue-50/60 text-slate-900" : "border-transparent text-slate-500 hover:bg-slate-50"}`}
-          onClick={() => setStatusFilter("draft")}
-        >
-          <span className="w-2 h-2 rounded-full bg-slate-400" />
-          <span className="font-mono font-bold">{stats.draft}</span> Ciornă
-        </div>
-        <div
-          className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[12px] font-semibold cursor-pointer transition-all duration-150 border ${statusFilter === "in_progress" ? "border-blue-300 bg-blue-50/60 text-slate-900" : "border-transparent text-slate-500 hover:bg-slate-50"}`}
-          onClick={() => setStatusFilter("in_progress")}
-        >
-          <span className="w-2 h-2 rounded-full bg-blue-500" />
-          <span className="font-mono font-bold">{stats.inProgress}</span> În lucru
-        </div>
-        <div
-          className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[12px] font-semibold cursor-pointer transition-all duration-150 border ${statusFilter === "review" ? "border-blue-300 bg-blue-50/60 text-slate-900" : "border-transparent text-slate-500 hover:bg-slate-50"}`}
-          onClick={() => setStatusFilter("review")}
-        >
-          <span className="w-2 h-2 rounded-full bg-amber-500" />
-          <span className="font-mono font-bold">{stats.review}</span> Verificare
-        </div>
-        <div
-          className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[12px] font-semibold cursor-pointer transition-all duration-150 border ${statusFilter === "submitted" ? "border-blue-300 bg-blue-50/60 text-slate-900" : "border-transparent text-slate-500 hover:bg-slate-50"}`}
-          onClick={() => setStatusFilter("submitted")}
-        >
-          <span className="w-2 h-2 rounded-full bg-emerald-500" />
-          <span className="font-mono font-bold">{stats.submitted}</span> Depus
-        </div>
-      </div>
 
-      {/* Toolbar */}
-      <div className="flex items-center gap-2.5 py-3 flex-shrink-0">
-        <input
-          className="w-72 bg-white border border-slate-200 rounded-lg px-3 py-2 text-[13px] text-slate-700 outline-none transition-colors duration-200 focus:border-blue-500 placeholder:text-slate-400"
-          placeholder="Caută proiect, firmă, program..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-        />
-        <div className="flex bg-slate-100 rounded-lg p-0.5 gap-px">
-          <button
-            className={`px-2.5 py-1 rounded-md text-[11px] font-semibold border-none cursor-pointer transition-all duration-150 ${programFilter === "all" ? "bg-white shadow-sm text-slate-900" : "bg-transparent text-slate-500 hover:text-slate-700"}`}
-            onClick={() => setProgramFilter("all")}
-          >Toate</button>
-          {[...new Set(projects.map(p => p.programPath?.program).filter(Boolean))].map(pr => (
+        {/* Toolbar */}
+        <div className="flex items-center gap-2.5 py-3 flex-shrink-0">
+          <input
+            className="w-72 bg-white border border-slate-200 rounded-lg px-3 py-2 text-[13px] text-slate-700 outline-none transition-colors duration-200 focus:border-blue-500 placeholder:text-slate-400"
+            placeholder="Caută proiect, firmă, program..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+          <div className="flex bg-slate-100 rounded-lg p-0.5 gap-px">
             <button
-              key={pr}
-              className={`px-2.5 py-1 rounded-md text-[11px] font-semibold border-none cursor-pointer transition-all duration-150 ${programFilter === pr ? "bg-white shadow-sm text-slate-900" : "bg-transparent text-slate-500 hover:text-slate-700"}`}
-              onClick={() => setProgramFilter(pr)}
-            >{pr}</button>
-          ))}
-        </div>
-        <div className="flex ml-auto bg-slate-100 rounded-md p-0.5 gap-px">
-          <button
-            className={`px-2.5 py-1.5 rounded border-none cursor-pointer text-sm transition-all duration-150 ${viewMode === "cards" ? "bg-white shadow-sm text-slate-900" : "bg-transparent text-slate-400 hover:bg-slate-50"}`}
-            onClick={() => setViewMode("cards")} title="Carduri"
-          >&#9638;</button>
-          <button
-            className={`px-2.5 py-1.5 rounded border-none cursor-pointer text-sm transition-all duration-150 ${viewMode === "table" ? "bg-white shadow-sm text-slate-900" : "bg-transparent text-slate-400 hover:bg-slate-50"}`}
-            onClick={() => setViewMode("table")} title="Tabel"
-          >&#9776;</button>
-        </div>
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto pt-2 pb-8">
-        {loading ? (
-          <div className="text-center py-16 text-slate-400">
-            <div className="text-[40px] opacity-50 mb-2">&#8987;</div>
-            <div className="text-sm">Se încarcă proiectele...</div>
+              className={`px-2.5 py-1 rounded-md text-[11px] font-semibold border-none cursor-pointer transition-all duration-150 ${programFilter === "all" ? "bg-white shadow-sm text-slate-900" : "bg-transparent text-slate-500 hover:text-slate-700"}`}
+              onClick={() => setProgramFilter("all")}
+            >Toate</button>
+            {[...new Set(projects.map(p => p.programPath?.program).filter(Boolean))].map(pr => (
+              <button
+                key={pr}
+                className={`px-2.5 py-1 rounded-md text-[11px] font-semibold border-none cursor-pointer transition-all duration-150 ${programFilter === pr ? "bg-white shadow-sm text-slate-900" : "bg-transparent text-slate-500 hover:text-slate-700"}`}
+                onClick={() => setProgramFilter(pr)}
+              >{pr}</button>
+            ))}
           </div>
-        ) : filtered.length === 0 ? (
-          <div className="text-center py-16 text-slate-400">
-            <div className="text-[40px] opacity-50 mb-2">&#128188;</div>
-            <div className="text-sm">Niciun proiect găsit</div>
+          <div className="flex ml-auto bg-slate-100 rounded-md p-0.5 gap-px">
+            <button
+              className={`px-2.5 py-1.5 rounded border-none cursor-pointer text-sm transition-all duration-150 ${viewMode === "cards" ? "bg-white shadow-sm text-slate-900" : "bg-transparent text-slate-400 hover:bg-slate-50"}`}
+              onClick={() => setViewMode("cards")} title="Carduri"
+            >&#9638;</button>
+            <button
+              className={`px-2.5 py-1.5 rounded border-none cursor-pointer text-sm transition-all duration-150 ${viewMode === "table" ? "bg-white shadow-sm text-slate-900" : "bg-transparent text-slate-400 hover:bg-slate-50"}`}
+              onClick={() => setViewMode("table")} title="Tabel"
+            >&#9776;</button>
           </div>
-        ) : viewMode === "cards" ? (
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(380px,1fr))] gap-4">
-            {filtered.map(p => {
-              const st = STATUS_MAP[p.status] || STATUS_MAP.draft;
-              const prog = p.progress || {};
-              const eligibility = prog.eligibility || { passed: 0, total: 0 };
-              const elements = prog.elements || { filled: 0, total: 0 };
-              const docs = prog.docs || { done: 0, total: 0 };
-              const templates = prog.templates || { done: 0, total: 0 };
-              const programPath = p.programPath || {};
-              const valDisplay = formatValoare(p.valoare);
-              return (
-                <div
-                  className="bg-white rounded-xl border border-slate-200 p-5 cursor-pointer transition-all duration-200 flex flex-col gap-3.5 hover:border-slate-300 hover:shadow-sm hover:-translate-y-px"
-                  key={p.id}
-                  onClick={() => router.push(`/projects/${p.id}`)}
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="text-[16px] font-bold text-slate-900 mb-0.5">{p.name}</div>
-                      <div className="text-[12px] text-slate-500 mb-1.5">{p.company?.denumire || "—"}</div>
-                      <div className="text-[11px] text-slate-400 flex items-center gap-1">
-                        <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0" />
-                        {programPath.program || "—"} &rsaquo; {programPath.masura || "—"} &rsaquo; {programPath.sesiune || "—"}
-                      </div>
-                      {valDisplay !== "—" && <div className="text-[11px] font-mono text-slate-400 mt-1.5">{valDisplay}</div>}
-                    </div>
-                    <div>
-                      <span className={`inline-flex items-center gap-1 text-[10px] font-semibold rounded-full border px-2 py-0.5 ${st.cls}`}>{st.label}</span>
-                    </div>
-                  </div>
+        </div>
 
-                  {/* Workflow stages */}
-                  {(() => {
-                    const wf = getWorkflowStage(p);
-                    const overallPct = Math.round(wf.stageProgress.reduce((s, v) => s + v, 0) / wf.stageProgress.length);
-                    return <>
-                      <div className="flex items-center pt-2.5 border-t border-slate-100">
-                        {WORKFLOW_STAGES.map((stage, i) => {
-                          const done = wf.stageProgress[i] === 100;
-                          const active = i === wf.currentStage;
-                          return (
-                            <div key={stage.key} className="flex flex-col items-center flex-1 relative">
-                              <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[12px] border-2 relative z-[1] transition-all duration-200 ${
-                                done ? "border-emerald-400 bg-emerald-50" :
-                                active ? "border-blue-400 bg-blue-50 shadow-[0_0_8px_rgba(59,130,246,0.3)]" :
-                                "border-slate-200 bg-slate-50"
-                              }`}>{stage.icon}</div>
-                              <span className={`text-[9px] font-semibold mt-0.5 text-center whitespace-nowrap ${
-                                done ? "text-emerald-500" :
-                                active ? "text-blue-500" :
-                                "text-slate-400"
-                              }`}>{stage.label}</span>
-                              {i < WORKFLOW_STAGES.length - 1 && (
-                                <div className={`absolute top-3.5 left-[calc(50%+14px)] h-0.5 z-0 ${
-                                  done ? "bg-emerald-400" :
-                                  active ? "bg-gradient-to-r from-blue-400 to-slate-200" :
-                                  "bg-slate-200"
-                                }`} style={{ width: "calc(100% - 28px)" }} />
-                              )}
-                            </div>
-                          );
-                        })}
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto pt-2 pb-8">
+          {loading ? (
+            <div className="text-center py-16 text-slate-400">
+              <div className="text-[40px] opacity-50 mb-2">&#8987;</div>
+              <div className="text-sm">Se încarcă proiectele...</div>
+            </div>
+          ) : filtered.length === 0 ? (
+            <EmptyState
+              icon="💼"
+              title="Niciun proiect"
+              description={search || statusFilter !== "all" || programFilter !== "all" ? "Niciun proiect nu corespunde filtrelor aplicate." : undefined}
+              actionLabel="Creează primul proiect"
+              onAction={() => { setShowCreate(true); setCreateStep(1); setCreateData({ name: "", firmaId: null, folderId: null, program: null, masura: null, sesiune: null }); }}
+            />
+          ) : viewMode === "cards" ? (
+            <div className="space-y-3">
+              {filtered.map(p => {
+                const prog = p.progress || {};
+                const elements = prog.elements || { filled: 0, total: 0 };
+                const programPath = p.programPath || {};
+                const elemPct = pct(elements.filled, elements.total);
+                const scorePct = overallProgress(p);
+                return (
+                  <div
+                    className="bg-white rounded-xl border border-slate-200 p-5 cursor-pointer transition-shadow hover:shadow-sm"
+                    key={p.id}
+                    onClick={() => router.push(`/projects/${p.id}`)}
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[15px] font-semibold text-slate-900">{p.name}</div>
+                        <div className="text-[13px] text-slate-500 mt-0.5">
+                          {p.company?.denumire || "—"}
+                          {(programPath.masura || programPath.sesiune) && (
+                            <span> &middot; {programPath.masura || programPath.program || "—"}</span>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2 py-1.5">
-                        <span className="text-[11px] font-semibold text-slate-500">Progres</span>
-                        <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+                      <div className="flex items-center gap-3 flex-shrink-0">
+                        {scorePct > 0 && (
+                          <span className="text-lg font-bold text-slate-900">{scorePct}%</span>
+                        )}
+                        <StatusBadge status={p.status} />
+                      </div>
+                    </div>
+
+                    {/* Progress bar: elements */}
+                    {elements.total > 0 && (
+                      <div className="mt-3">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[11px] text-slate-500">Elemente completate</span>
+                          <span className="text-[11px] font-mono text-slate-400">{elements.filled}/{elements.total}</span>
+                        </div>
+                        <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
                           <div
-                            className="h-full rounded-full transition-[width] duration-400 bg-gradient-to-r from-blue-500 to-emerald-500"
-                            style={{ width: `${overallPct}%` }}
+                            className="h-full rounded-full bg-gradient-to-r from-blue-500 to-emerald-500 transition-[width] duration-300"
+                            style={{ width: `${elemPct}%` }}
                           />
                         </div>
-                        <span className={`text-[13px] font-mono font-bold min-w-[36px] text-right ${
-                          overallPct === 100 ? "text-emerald-500" : overallPct > 60 ? "text-blue-500" : "text-amber-500"
-                        }`}>{overallPct}%</span>
                       </div>
-                    </>;
-                  })()}
+                    )}
 
-                  <div className="flex items-center gap-2.5 pt-2.5 border-t border-slate-100">
-                    <span className="text-[11px] text-slate-400 flex items-center gap-1 flex-1">&#128100; {p.consultantId || "—"}</span>
-                    {p.lock && <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-600">&#128274; {p.lock.lockedByName}</span>}
-                    <span className="text-[11px] text-slate-400 font-mono">{p.updatedAt ? formatRelativeTime(p.updatedAt) : "—"}</span>
+                    {/* Footer meta */}
+                    <div className="flex items-center gap-2.5 mt-3 pt-3 border-t border-slate-100">
+                      {p.lock && <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-600">&#128274; {p.lock.lockedByName}</span>}
+                      <span className="text-[11px] text-slate-400 ml-auto font-mono">{p.updatedAt ? formatRelativeTime(p.updatedAt) : "—"}</span>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="w-full border border-slate-200 rounded-xl overflow-hidden bg-white">
-            <div className="grid grid-cols-[1fr_140px_90px_100px_100px_100px_90px] items-center px-4 py-2.5 border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase tracking-wide text-slate-500">
-              <div>Proiect / Firmă</div>
-              <div>Program</div>
-              <div>Status</div>
-              <div>Eligibilitate</div>
-              <div>Elemente</div>
-              <div>Documente</div>
-              <div>Actualizat</div>
+                );
+              })}
             </div>
-            {filtered.map(p => {
-              const st = STATUS_MAP[p.status] || STATUS_MAP.draft;
-              const prog = p.progress || {};
-              const eligibility = prog.eligibility || { passed: 0, total: 0 };
-              const elements = prog.elements || { filled: 0, total: 0 };
-              const docs = prog.docs || { done: 0, total: 0 };
-              const programPath = p.programPath || {};
-              return (
-                <div
-                  className="grid grid-cols-[1fr_140px_90px_100px_100px_100px_90px] items-center px-4 py-2.5 border-b border-slate-100 last:border-b-0 transition-colors duration-150 cursor-pointer hover:bg-slate-50"
-                  key={p.id}
-                  onClick={() => router.push(`/projects/${p.id}`)}
-                >
-                  <div>
-                    <div className="text-[13px] font-semibold text-slate-900">
-                      {p.name}
-                      {p.lock && <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-600 ml-2">&#128274;</span>}
+          ) : (
+            <div className="w-full border border-slate-200 rounded-xl overflow-hidden bg-white">
+              <div className="grid grid-cols-[1fr_140px_90px_100px_100px_100px_90px] items-center px-4 py-2.5 border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                <div>Proiect / Firmă</div>
+                <div>Program</div>
+                <div>Status</div>
+                <div>Eligibilitate</div>
+                <div>Elemente</div>
+                <div>Documente</div>
+                <div>Actualizat</div>
+              </div>
+              {filtered.map(p => {
+                const prog = p.progress || {};
+                const eligibility = prog.eligibility || { passed: 0, total: 0 };
+                const elements = prog.elements || { filled: 0, total: 0 };
+                const docs = prog.docs || { done: 0, total: 0 };
+                const programPath = p.programPath || {};
+                return (
+                  <div
+                    className="grid grid-cols-[1fr_140px_90px_100px_100px_100px_90px] items-center px-4 py-2.5 border-b border-slate-100 last:border-b-0 transition-colors duration-150 cursor-pointer hover:bg-slate-50"
+                    key={p.id}
+                    onClick={() => router.push(`/projects/${p.id}`)}
+                  >
+                    <div>
+                      <div className="text-[13px] font-semibold text-slate-900">
+                        {p.name}
+                        {p.lock && <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-600 ml-2">&#128274;</span>}
+                      </div>
+                      <div className="text-[11px] text-slate-400">{p.company?.denumire || "—"}</div>
                     </div>
-                    <div className="text-[11px] text-slate-400">{p.company?.denumire || "—"}</div>
-                  </div>
-                  <div className="text-[11px] text-slate-500 font-mono">{programPath.masura || "—"}</div>
-                  <div><span className={`inline-flex items-center gap-1 text-[10px] font-semibold rounded-full border px-2 py-0.5 ${st.cls}`}>{st.label}</span></div>
-                  <div>
-                    <div className="h-1 rounded-sm bg-slate-100 overflow-hidden w-full">
-                      <div className={`h-full rounded-sm transition-[width] duration-400 ${pct(eligibility.passed, eligibility.total) === 100 ? "bg-emerald-500" : "bg-amber-400"}`} style={{ width: `${pct(eligibility.passed, eligibility.total)}%` }} />
+                    <div className="text-[11px] text-slate-500 font-mono">{programPath.masura || "—"}</div>
+                    <div><StatusBadge status={p.status} /></div>
+                    <div>
+                      <div className="h-1 rounded-sm bg-slate-100 overflow-hidden w-full">
+                        <div className={`h-full rounded-sm transition-[width] duration-400 ${pct(eligibility.passed, eligibility.total) === 100 ? "bg-emerald-500" : "bg-amber-400"}`} style={{ width: `${pct(eligibility.passed, eligibility.total)}%` }} />
+                      </div>
+                      <div className="text-[10px] font-mono text-slate-400 mt-0.5">{eligibility.passed}/{eligibility.total}</div>
                     </div>
-                    <div className="text-[10px] font-mono text-slate-400 mt-0.5">{eligibility.passed}/{eligibility.total}</div>
-                  </div>
-                  <div>
-                    <div className="h-1 rounded-sm bg-slate-100 overflow-hidden w-full">
-                      <div className="h-full rounded-sm transition-[width] duration-400 bg-blue-500" style={{ width: `${pct(elements.filled, elements.total)}%` }} />
+                    <div>
+                      <div className="h-1 rounded-sm bg-slate-100 overflow-hidden w-full">
+                        <div className="h-full rounded-sm transition-[width] duration-400 bg-blue-500" style={{ width: `${pct(elements.filled, elements.total)}%` }} />
+                      </div>
+                      <div className="text-[10px] font-mono text-slate-400 mt-0.5">{elements.filled}/{elements.total}</div>
                     </div>
-                    <div className="text-[10px] font-mono text-slate-400 mt-0.5">{elements.filled}/{elements.total}</div>
-                  </div>
-                  <div>
-                    <div className="h-1 rounded-sm bg-slate-100 overflow-hidden w-full">
-                      <div className="h-full rounded-sm transition-[width] duration-400 bg-orange-400" style={{ width: `${pct(docs.done, docs.total)}%` }} />
+                    <div>
+                      <div className="h-1 rounded-sm bg-slate-100 overflow-hidden w-full">
+                        <div className="h-full rounded-sm transition-[width] duration-400 bg-orange-400" style={{ width: `${pct(docs.done, docs.total)}%` }} />
+                      </div>
+                      <div className="text-[10px] font-mono text-slate-400 mt-0.5">{docs.done}/{docs.total}</div>
                     </div>
-                    <div className="text-[10px] font-mono text-slate-400 mt-0.5">{docs.done}/{docs.total}</div>
+                    <div className="text-[11px] text-slate-400">{p.updatedAt ? formatRelativeTime(p.updatedAt) : "—"}</div>
                   </div>
-                  <div className="text-[11px] text-slate-400">{p.updatedAt ? formatRelativeTime(p.updatedAt) : "—"}</div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* ═══ CREATE PROJECT MODAL ═══ */}

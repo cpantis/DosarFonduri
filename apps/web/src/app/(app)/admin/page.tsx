@@ -3,6 +3,8 @@ import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { apiGet, apiPost, apiPut } from "@/lib/api";
 import { getInitials } from "@/lib/utils";
+import { PageHeader } from "@/components/shared/PageHeader";
+import { StatusBadge } from "@/components/shared/StatusBadge";
 
 // ─── Types ───
 interface OrgUser {
@@ -29,20 +31,20 @@ interface AuditEntry {
 const ROLES: Record<string, { label: string; badgeClass: string; textClass: string; perms: string[] }> = {
   admin: {
     label: "Administrator",
-    badgeClass: "bg-purple-50 text-purple-600 border border-purple-200",
-    textClass: "text-purple-600",
+    badgeClass: "bg-blue-50 text-blue-700",
+    textClass: "text-blue-700",
     perms: ["Toate permisiunile", "Gestionare utilizatori", "Configurari", "Stergere proiecte", "Export date", "Facturare"],
   },
   consultant: {
     label: "Consultant",
-    badgeClass: "bg-blue-50 text-blue-600 border border-blue-200",
-    textClass: "text-blue-600",
+    badgeClass: "bg-emerald-50 text-emerald-700",
+    textClass: "text-emerald-700",
     perms: ["Creare/editare proiecte", "Solomon & Neemia", "Upload documente", "Validare elemente", "Export proiecte proprii"],
   },
   viewer: {
     label: "Vizualizare",
-    badgeClass: "bg-emerald-50 text-emerald-600 border border-emerald-200",
-    textClass: "text-emerald-600",
+    badgeClass: "bg-slate-100 text-slate-600",
+    textClass: "text-slate-600",
     perms: ["Vizualizare proiecte", "Vizualizare documente", "Fara editare", "Fara upload"],
   },
 };
@@ -191,10 +193,8 @@ export default function AdminPage() {
   if (user?.role !== "admin") {
     return (
       <>
-        <div className="flex items-center gap-4 flex-shrink-0 px-8 py-[18px] border-b border-slate-200 bg-white">
-          <div className="flex-1 text-2xl font-bold text-slate-900 tracking-tight">Administrare</div>
-        </div>
-        <div className="flex-1 flex items-center justify-center">
+        <PageHeader title="Admin" />
+        <div className="flex-1 flex items-center justify-center bg-slate-50">
           <div className="text-center">
             <div className="text-4xl mb-4">🔒</div>
             <div className="text-lg font-bold mb-2 text-slate-900">Acces restrictionat</div>
@@ -210,9 +210,7 @@ export default function AdminPage() {
   return (
     <>
       {/* Topbar */}
-      <div className="flex items-center gap-4 flex-shrink-0 px-8 py-[18px] border-b border-slate-200 bg-white">
-        <div className="flex-1 text-2xl font-bold text-slate-900 tracking-tight">Administrare</div>
-      </div>
+      <PageHeader title="Admin" />
 
       {/* Tabs */}
       <div className="flex border-b border-slate-200 px-8 bg-white flex-shrink-0">
@@ -238,7 +236,7 @@ export default function AdminPage() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto px-8 py-6 max-w-7xl">
+      <div className="flex-1 overflow-y-auto px-8 py-6 max-w-7xl bg-slate-50">
 
         {/* ═══ UTILIZATORI ═══ */}
         {activeTab === "users" && (
@@ -264,7 +262,7 @@ export default function AdminPage() {
                     className={`flex items-center gap-4 px-5 py-4 rounded-xl border bg-white mb-2 cursor-pointer transition-all ${
                       isActive
                         ? "border-blue-400 bg-blue-50/30"
-                        : "border-slate-200 hover:border-slate-300 hover:shadow-sm"
+                        : "border-slate-200 hover:bg-slate-50 hover:border-slate-300"
                     }`}
                     onClick={() => setSelectedUser(isActive ? null : u.id)}
                   >
@@ -279,17 +277,10 @@ export default function AdminPage() {
                         <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 ${role.badgeClass}`}>
                           {role.label}
                         </span>
-                        <span
-                          className={`text-[10px] font-semibold rounded-full border px-2 py-0.5 ${
-                            u.status === "active"
-                              ? "bg-emerald-50 text-emerald-600 border-emerald-200"
-                              : u.status === "invited"
-                              ? "bg-yellow-50 text-yellow-600 border-yellow-200"
-                              : "bg-slate-100 text-slate-500 border-slate-200"
-                          }`}
-                        >
-                          {u.status === "active" ? "activ" : u.status === "invited" ? "invitat" : u.status}
-                        </span>
+                        <StatusBadge
+                          status={u.status}
+                          label={u.status === "active" ? "activ" : u.status === "invited" ? "invitat" : u.status}
+                        />
                       </div>
                       <div className="text-xs mt-0.5 font-mono text-slate-400">
                         {u.email}
@@ -382,7 +373,7 @@ export default function AdminPage() {
             <div className="grid grid-cols-5 gap-3 mb-6">
               <div className="bg-white rounded-xl border border-slate-200 p-5">
                 <div className="text-[11px] uppercase tracking-wide text-slate-500 font-medium mb-1.5">Total luna curenta</div>
-                <div className="text-[22px] font-extrabold font-mono tracking-tight text-slate-900">
+                <div className="text-2xl font-bold font-mono tracking-tight text-slate-900">
                   ${(costs?.totalMonth || 0).toFixed(2)}
                 </div>
                 {costs && (
@@ -399,7 +390,7 @@ export default function AdminPage() {
                     <div className="text-[11px] uppercase tracking-wide text-slate-500 font-medium mb-1.5">
                       {labels[agent] || agent}
                     </div>
-                    <div className="text-[22px] font-extrabold font-mono tracking-tight text-slate-900">
+                    <div className="text-2xl font-bold font-mono tracking-tight text-slate-900">
                       ${Number(agentData?.totalCost || 0).toFixed(2)}
                     </div>
                     <div className="text-xs mt-1 text-slate-400">
@@ -551,19 +542,19 @@ export default function AdminPage() {
 
             <div className="flex flex-col gap-0.5">
               {auditLogs.map((a) => (
-                <div key={a.id} className="flex items-start gap-3 px-4 py-3 rounded-md transition-colors hover:bg-slate-50">
+                <div key={a.id} className="flex items-start gap-3 px-4 py-3 rounded-md transition-colors hover:bg-slate-50 border-b border-slate-100">
                   <div className="w-8 h-8 flex items-center justify-center text-sm flex-shrink-0 rounded-md bg-slate-100 border border-slate-200 text-slate-500">
                     {AUDIT_ICONS[a.action] || "📋"}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="text-[13px] font-semibold text-slate-900 mb-px">{a.action}</div>
+                    <div className="text-sm text-slate-700 font-medium mb-px">{a.action}</div>
                     <div className="text-xs text-slate-500">
                       {a.entityType && `${a.entityType}`}
                       {a.details && typeof a.details === "object" && a.details.description && ` — ${a.details.description}`}
                     </div>
-                    <div className="flex gap-2 mt-0.5 text-[11px] text-slate-400">
-                      <span>👤 {a.userName || "System"}</span>
-                      <span>{timeAgo(a.createdAt)}</span>
+                    <div className="flex gap-2 mt-0.5">
+                      <span className="text-[11px] text-slate-400">👤 {a.userName || "System"}</span>
+                      <span className="font-mono text-[12px] text-slate-500">{timeAgo(a.createdAt)}</span>
                     </div>
                   </div>
                 </div>
@@ -608,7 +599,7 @@ export default function AdminPage() {
                 placeholder="consultant.nou@firma.ro"
                 value={inviteEmail}
                 onChange={(e) => setInviteEmail(e.target.value)}
-                className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-[13px] focus:border-blue-300 focus:ring-1 focus:ring-blue-100 outline-none text-slate-900"
+                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white outline-none text-slate-900"
               />
             </div>
 

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { SplitPane } from "@/components/layout/SplitPane";
+import { PageHeader } from "@/components/shared/PageHeader";
 import { apiGet, apiPost, apiPut, apiDelete, api } from "@/lib/api";
 
 /* ══════════════════════════════════════════
@@ -1101,25 +1102,17 @@ export default function DocumentsPage() {
         @keyframes docCheckIn { from { transform: scale(0) } to { transform: scale(1) } }
         @keyframes docProgressStripe { 0% { background-position: 0 0 } 100% { background-position: 40px 0 } }
 
-        /* ─── Topbar ─── */
-        .doc-topbar { padding: 18px 32px; border-bottom: 1px solid #e0e4ea; display: flex; align-items: center; gap: 16px; background: #ffffff; flex-shrink: 0; }
-        .doc-topbar-title { font-size: 22px; font-weight: 800; flex: 1; letter-spacing: -.4px; display: flex; align-items: center; gap: 10px; }
-        .doc-topbar-title-icon { width: 30px; height: 30px; border-radius: 6px; background: rgba(77,139,255,.1); display: flex; align-items: center; justify-content: center; font-size: 15px; }
-        .doc-topbar-stats { display: flex; gap: 16px; }
-        .doc-topbar-stat { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #8892a8; }
-        .doc-topbar-stat-num { font-family: 'JetBrains Mono', monospace; font-weight: 700; color: #5a6478; font-size: 13px; }
-
         /* ─── Tree panel ─── */
         .doc-tree-panel { display: flex; flex-direction: column; overflow: hidden; background: #ffffff; height: 100%; }
-        .doc-tree-header { padding: 12px 16px; border-bottom: 1px solid #e0e4ea; display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+        .doc-tree-header { padding: 12px 16px; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
         .doc-tree-header-icon { font-size: 14px; opacity: .6; }
         .doc-tree-header-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: #8892a8; flex: 1; }
         .doc-tree-scroll { flex: 1; overflow-y: auto; padding: 6px 0; }
 
-        .doc-tree-item { display: flex; align-items: center; gap: 6px; padding: 5px 10px; cursor: pointer; font-size: 13px; color: #5a6478; transition: all .15s; position: relative; }
-        .doc-tree-item:hover { background: #eef0f4; color: #1a1e28; }
-        .doc-tree-item.active { background: rgba(77,139,255,.08); color: #4d8bff; font-weight: 600; }
-        .doc-tree-item.active::before { content: ''; position: absolute; left: 0; top: 4px; bottom: 4px; width: 3px; background: #4d8bff; border-radius: 0 2px 2px 0; }
+        .doc-tree-item { display: flex; align-items: center; gap: 6px; padding: 5px 10px; cursor: pointer; font-size: 13px; color: #334155; transition: all .15s; position: relative; }
+        .doc-tree-item:hover { background: #f8fafc; color: #1e293b; }
+        .doc-tree-item.active { background: #eff6ff; color: #1d4ed8; font-weight: 500; }
+        .doc-tree-item.active::before { content: ''; position: absolute; left: 0; top: 4px; bottom: 4px; width: 3px; background: #1d4ed8; border-radius: 0 2px 2px 0; }
         .doc-tree-arrow { width: 14px; font-size: 10px; color: #8892a8; flex-shrink: 0; text-align: center; transition: transform .2s ease; display: inline-block; }
         .doc-tree-arrow.expanded { transform: rotate(90deg); }
         .doc-tree-icon { font-size: 14px; flex-shrink: 0; }
@@ -1128,7 +1121,7 @@ export default function DocumentsPage() {
         .doc-tree-label-program { font-weight: 700; font-size: 14px; color: #1a1e28; }
         .doc-tree-label-masura { font-weight: 600; font-size: 13px; color: #C9A84C; }
         .doc-tree-label-sesiune { font-weight: 500; font-size: 13px; color: #5a6478; }
-        .doc-tree-count { font-size: 10px; font-family: 'JetBrains Mono', monospace; font-weight: 700; color: #8892a8; background: #f8f9fb; padding: 1px 6px; border-radius: 8px; }
+        .doc-tree-count { font-size: 10px; font-family: 'JetBrains Mono', monospace; font-weight: 600; color: #64748b; background: #f1f5f9; padding: 1px 6px; border-radius: 4px; }
         .doc-tree-rename { flex: 1; padding: 2px 6px; border-radius: 3px; border: 1px solid #4d8bff; background: #f0f2f5; color: #1a1e28; font-size: 13px; font-family: 'Inter', system-ui, sans-serif; outline: none; min-width: 0; }
         .doc-tree-guide { position: absolute; top: 0; bottom: 0; width: 1px; background: #e0e4ea; opacity: .5; }
         .doc-tree-children { position: relative; }
@@ -1136,7 +1129,7 @@ export default function DocumentsPage() {
         .doc-tree-add-btn:hover { border-color: #4d8bff; color: #4d8bff; background: rgba(77,139,255,.04); }
 
         /* ─── Context menu ─── */
-        .doc-ctx-menu { position: fixed; z-index: 200; background: #f8f9fb; border: 1px solid #e0e4ea; border-radius: 10px; padding: 4px; min-width: 180px; box-shadow: 0 8px 32px rgba(0,0,0,.5); animation: docCtxIn .12s ease; }
+        .doc-ctx-menu { position: fixed; z-index: 200; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 4px; min-width: 180px; box-shadow: 0 8px 32px rgba(0,0,0,.12); animation: docCtxIn .12s ease; }
         .doc-ctx-item { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; color: #5a6478; transition: all .1s; border: none; background: none; width: 100%; text-align: left; font-family: 'Inter', system-ui, sans-serif; }
         .doc-ctx-item:hover { background: #eef0f4; color: #1a1e28; }
         .doc-ctx-item.danger { color: #f87171; }
@@ -1145,7 +1138,7 @@ export default function DocumentsPage() {
 
         /* ─── Document list panel ─── */
         .doc-list-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; height: 100%; }
-        .doc-list-bar { padding: 10px 20px; border-bottom: 1px solid #e0e4ea; background: #ffffff; flex-shrink: 0; }
+        .doc-list-bar { padding: 10px 20px; border-bottom: 1px solid #e2e8f0; background: #ffffff; flex-shrink: 0; }
         .doc-breadcrumb { display: flex; align-items: center; gap: 0; font-size: 12px; margin-bottom: 8px; min-height: 18px; }
         .doc-bc-seg { color: #8892a8; transition: color .15s; }
         .doc-bc-active { color: #4d8bff; font-weight: 600; }
@@ -1162,16 +1155,16 @@ export default function DocumentsPage() {
         .doc-search-kbd { position: absolute; right: 8px; font-size: 10px; font-family: 'JetBrains Mono', monospace; color: #8892a8; background: #f8f9fb; padding: 1px 5px; border-radius: 3px; border: 1px solid #e0e4ea; pointer-events: none; opacity: .7; }
         .doc-search-wrap:focus-within .doc-search-kbd { opacity: 0; }
 
-        .doc-upload-btn { display: flex; align-items: center; gap: 6px; padding: 7px 16px; border-radius: 10px; border: none; background: #4d8bff; color: #fff; font-size: 13px; font-weight: 700; cursor: pointer; font-family: 'Inter', system-ui, sans-serif; margin-left: auto; box-shadow: 0 2px 12px rgba(77,139,255,.25); transition: all .15s; white-space: nowrap; }
-        .doc-upload-btn:hover:not(:disabled) { background: #5d9bff; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(77,139,255,.35); }
+        .doc-upload-btn { display: flex; align-items: center; gap: 6px; padding: 7px 16px; border-radius: 8px; border: none; background: #2563eb; color: #fff; font-size: 13px; font-weight: 700; cursor: pointer; font-family: 'Inter', system-ui, sans-serif; margin-left: auto; box-shadow: 0 1px 3px rgba(37,99,235,.2); transition: all .15s; white-space: nowrap; }
+        .doc-upload-btn:hover:not(:disabled) { background: #1d4ed8; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(37,99,235,.3); }
         .doc-upload-btn:active:not(:disabled) { transform: translateY(0); }
         .doc-upload-btn:disabled { opacity: .4; cursor: not-allowed; }
-        .doc-list-scroll { flex: 1; overflow-y: auto; padding: 12px 20px; display: flex; flex-direction: column; gap: 6px; }
+        .doc-list-scroll { flex: 1; overflow-y: auto; padding: 12px 20px; display: flex; flex-direction: column; gap: 6px; background: #f8fafc; }
 
         /* ─── Document card ─── */
-        .doc-card { display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-radius: 10px; border: 1px solid #e0e4ea; background: #ffffff; cursor: pointer; transition: all .18s; animation: docSlideIn .25s ease both; }
-        .doc-card:hover { border-color: #c8cdd6; background: #f8f9fb; transform: translateX(2px); }
-        .doc-card.active { border-color: #4d8bff; background: rgba(77,139,255,.04); box-shadow: 0 0 0 1px rgba(77,139,255,.15); }
+        .doc-card { display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-radius: 12px; border: 1px solid #e2e8f0; background: #ffffff; cursor: pointer; transition: all .18s; animation: docSlideIn .25s ease both; }
+        .doc-card:hover { border-color: #cbd5e1; background: #f8fafc; transform: translateX(2px); }
+        .doc-card.active { border-color: #3b82f6; background: #eff6ff; box-shadow: 0 0 0 1px rgba(59,130,246,.15); }
         .doc-card-icon { font-size: 26px; flex-shrink: 0; }
         .doc-card-info { flex: 1; min-width: 0; }
         .doc-card-name { font-size: 13px; font-weight: 700; margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1184,16 +1177,16 @@ export default function DocumentsPage() {
         .doc-stat-num { font-size: 11px; font-family: 'JetBrains Mono', monospace; color: #8892a8; }
 
         /* ─── Detail panel ─── */
-        .doc-detail { background: #ffffff; display: flex; flex-direction: column; overflow-y: auto; height: 100%; }
+        .doc-detail { background: #ffffff; display: flex; flex-direction: column; overflow-y: auto; height: 100%; border-left: 1px solid #e2e8f0; }
         .doc-detail-empty { align-items: center; justify-content: center; }
         .doc-detail-empty-inner { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 40px 20px; text-align: center; }
-        .doc-detail-header { padding: 20px; border-bottom: 1px solid #e0e4ea; position: relative; animation: docFadeIn .3s ease; }
+        .doc-detail-header { padding: 20px; border-bottom: 1px solid #e2e8f0; position: relative; animation: docFadeIn .3s ease; }
         .doc-detail-close { position: absolute; top: 14px; right: 14px; background: none; border: none; color: #8892a8; cursor: pointer; font-size: 16px; width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; transition: all .15s; }
         .doc-detail-close:hover { color: #1a1e28; background: #eef0f4; }
         .doc-detail-icon { font-size: 36px; margin-bottom: 8px; }
         .doc-detail-name { font-size: 16px; font-weight: 800; margin-bottom: 4px; line-height: 1.3; }
         .doc-detail-type { font-size: 12px; font-family: 'JetBrains Mono', monospace; color: #5a6478; }
-        .doc-detail-section { padding: 16px 20px; border-bottom: 1px solid #e0e4ea; animation: docFadeIn .4s ease; }
+        .doc-detail-section { padding: 16px 20px; border-bottom: 1px solid #e2e8f0; animation: docFadeIn .4s ease; }
         .doc-detail-stitle { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: #8892a8; margin-bottom: 10px; }
         .doc-detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
         .doc-detail-cell { padding: 8px 10px; background: #f0f2f5; border-radius: 6px; border: 1px solid #e0e4ea; transition: border-color .15s; }
@@ -1222,8 +1215,8 @@ export default function DocumentsPage() {
         .doc-empty-folder.f3 { width: 40px; height: 30px; bottom: 8px; left: 12px; background: #ffffff; opacity: .4; border-style: dashed; }
         .doc-empty-title { font-size: 15px; font-weight: 700; color: #1a1e28; margin-bottom: 6px; }
         .doc-empty-desc { font-size: 12px; color: #8892a8; line-height: 1.6; max-width: 240px; margin-bottom: 16px; }
-        .doc-empty-cta { display: inline-flex; align-items: center; gap: 6px; padding: 8px 18px; border-radius: 10px; border: none; background: #4d8bff; color: #fff; font-size: 13px; font-weight: 700; cursor: pointer; font-family: 'Inter', system-ui, sans-serif; transition: all .15s; box-shadow: 0 2px 12px rgba(77,139,255,.25); }
-        .doc-empty-cta:hover { background: #5d9bff; transform: translateY(-1px); }
+        .doc-empty-cta { display: inline-flex; align-items: center; gap: 6px; padding: 8px 18px; border-radius: 8px; border: none; background: #2563eb; color: #fff; font-size: 13px; font-weight: 700; cursor: pointer; font-family: 'Inter', system-ui, sans-serif; transition: all .15s; box-shadow: 0 1px 3px rgba(37,99,235,.2); }
+        .doc-empty-cta:hover { background: #1d4ed8; transform: translateY(-1px); }
         .doc-empty-cta-secondary { display: inline-flex; align-items: center; gap: 6px; padding: 7px 16px; border-radius: 10px; border: 1px solid #e0e4ea; background: transparent; color: #5a6478; font-size: 13px; font-weight: 600; cursor: pointer; font-family: 'Inter', system-ui, sans-serif; transition: all .15s; }
         .doc-empty-cta-secondary:hover { border-color: #c8cdd6; color: #1a1e28; }
 
@@ -1247,14 +1240,14 @@ export default function DocumentsPage() {
 
         /* ─── Upload modal ─── */
         .doc-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; z-index: 100; animation: docFadeIn .2s; }
-        .doc-modal { background: #ffffff; border: 1px solid #e0e4ea; border-radius: 14px; width: 520px; max-width: calc(100vw - 40px); padding: 28px; animation: docSlideUp .3s ease; }
+        .doc-modal { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; width: 520px; max-width: calc(100vw - 40px); padding: 28px; animation: docSlideUp .3s ease; box-shadow: 0 20px 60px rgba(0,0,0,.15); }
         .doc-modal-title { font-size: 20px; font-weight: 800; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; }
         .doc-modal-close { background: none; border: none; color: #8892a8; cursor: pointer; font-size: 18px; width: 32px; height: 32px; border-radius: 6px; display: flex; align-items: center; justify-content: center; transition: all .15s; }
         .doc-modal-close:hover { color: #1a1e28; background: #eef0f4; }
         .doc-modal-sub { font-size: 14px; color: #5a6478; margin-bottom: 20px; }
-        .doc-upload-zone { border: 2px dashed #e0e4ea; border-radius: 10px; padding: 32px 20px; text-align: center; margin-bottom: 16px; cursor: pointer; transition: all .25s; position: relative; }
-        .doc-upload-zone:hover { border-color: #4d8bff; background: rgba(77,139,255,.03); }
-        .doc-upload-zone.drag-active { border-color: #4d8bff; background: rgba(77,139,255,.06); box-shadow: 0 0 0 4px rgba(77,139,255,.1); }
+        .doc-upload-zone { border: 2px dashed #cbd5e1; border-radius: 12px; padding: 32px 20px; text-align: center; margin-bottom: 16px; cursor: pointer; transition: all .25s; position: relative; }
+        .doc-upload-zone:hover { border-color: #60a5fa; background: rgba(59,130,246,.03); }
+        .doc-upload-zone.drag-active { border-color: #60a5fa; background: rgba(59,130,246,.06); box-shadow: 0 0 0 4px rgba(59,130,246,.1); }
         .doc-upload-zone.has-file { border-color: #34d399; border-style: solid; background: rgba(52,211,153,.04); }
         .doc-upload-zone-icon { font-size: 28px; margin-bottom: 6px; }
         .doc-upload-zone-title { font-size: 14px; font-weight: 600; margin-bottom: 3px; }
@@ -1262,9 +1255,9 @@ export default function DocumentsPage() {
         .doc-upload-zone-remove { position: absolute; top: 8px; right: 8px; background: #f8f9fb; border: 1px solid #e0e4ea; color: #8892a8; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 12px; transition: all .15s; }
         .doc-upload-zone-remove:hover { color: #f87171; border-color: #f87171; }
         .doc-upload-type-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 16px; }
-        .doc-upload-type { padding: 12px; border-radius: 6px; border: 1px solid #e0e4ea; cursor: pointer; transition: all .15s; text-align: center; background: transparent; font-family: 'Inter', system-ui, sans-serif; }
-        .doc-upload-type:hover { border-color: #c8cdd6; background: #eef0f4; }
-        .doc-upload-type.on { border-color: #4d8bff; background: rgba(77,139,255,.06); }
+        .doc-upload-type { padding: 12px; border-radius: 6px; border: 1px solid #e2e8f0; cursor: pointer; transition: all .15s; text-align: center; background: transparent; font-family: 'Inter', system-ui, sans-serif; }
+        .doc-upload-type:hover { border-color: #cbd5e1; background: #f1f5f9; }
+        .doc-upload-type.on { border-width: 2px; border-color: #3b82f6; background: #eff6ff; }
         .doc-upload-type-icon { font-size: 20px; margin-bottom: 4px; }
         .doc-upload-type-label { font-size: 12px; font-weight: 600; color: #5a6478; }
         .doc-upload-type-desc { font-size: 10px; color: #8892a8; margin-top: 2px; }
@@ -1279,9 +1272,9 @@ export default function DocumentsPage() {
         .doc-upload-ghid-subtype { margin-bottom: 16px; }
         .doc-upload-ghid-subtype-label { font-size: 13px; color: #5a6478; margin-bottom: 10px; font-weight: 500; }
         .doc-upload-ghid-subtype-options { display: flex; flex-direction: column; gap: 8px; }
-        .doc-upload-ghid-option { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border-radius: 10px; border: 1px solid #e0e4ea; background: #f8f9fb; cursor: pointer; text-align: left; transition: all .15s; }
-        .doc-upload-ghid-option:hover { border-color: #c8cdd6; background: #eef0f4; }
-        .doc-upload-ghid-option.active { border-color: #4d8bff; background: rgba(77,139,255,.06); box-shadow: 0 0 0 1px rgba(77,139,255,.2); }
+        .doc-upload-ghid-option { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border-radius: 10px; border: 1px solid #e2e8f0; background: #f8fafc; cursor: pointer; text-align: left; transition: all .15s; }
+        .doc-upload-ghid-option:hover { border-color: #cbd5e1; background: #f1f5f9; }
+        .doc-upload-ghid-option.active { border-width: 2px; border-color: #3b82f6; background: #eff6ff; box-shadow: none; }
         .doc-upload-ghid-option-icon { font-size: 22px; flex-shrink: 0; margin-top: 2px; }
         .doc-upload-ghid-option-title { font-size: 13px; font-weight: 600; color: #1a1e28; margin-bottom: 2px; }
         .doc-upload-ghid-option.active .doc-upload-ghid-option-title { color: #4d8bff; }
@@ -1295,8 +1288,8 @@ export default function DocumentsPage() {
         /* Error box */
         .doc-upload-error { padding: 10px 14px; margin-bottom: 12px; border-radius: 6px; background: rgba(248,113,113,.08); border: 1px solid rgba(248,113,113,.2); color: #f87171; font-size: 13px; display: flex; align-items: center; gap: 8px; animation: docFadeIn .2s ease; }
 
-        .doc-btn-primary { padding: 10px 20px; border-radius: 10px; border: none; background: #4d8bff; color: #fff; font-size: 14px; font-weight: 700; font-family: 'Inter', system-ui, sans-serif; cursor: pointer; transition: all .15s; }
-        .doc-btn-primary:hover:not(:disabled) { background: #5d9bff; }
+        .doc-btn-primary { padding: 10px 20px; border-radius: 8px; border: none; background: #2563eb; color: #fff; font-size: 14px; font-weight: 700; font-family: 'Inter', system-ui, sans-serif; cursor: pointer; transition: all .15s; }
+        .doc-btn-primary:hover:not(:disabled) { background: #1d4ed8; }
         .doc-btn-primary:disabled { opacity: .5; cursor: not-allowed; }
         .doc-btn-secondary { padding: 10px 20px; border-radius: 10px; border: 1px solid #e0e4ea; background: transparent; color: #5a6478; font-size: 14px; font-weight: 600; font-family: 'Inter', system-ui, sans-serif; cursor: pointer; transition: all .15s; }
         .doc-btn-secondary:hover { border-color: #c8cdd6; color: #1a1e28; }
@@ -1319,26 +1312,22 @@ export default function DocumentsPage() {
       {/* File input moved inside upload modal for reliable click() */}
 
       {/* ─── TOPBAR ─── */}
-      <div className="doc-topbar">
-        <div className="doc-topbar-title">
-          <div className="doc-topbar-title-icon">{"\u{1F4C3}"}</div>
-          Documente
-        </div>
-        <div className="doc-topbar-stats">
-          <div className="doc-topbar-stat">
-            <span className="doc-topbar-stat-num">{totalDocs}</span> documente
+      <PageHeader title="Documente">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-1.5 text-xs text-slate-500">
+            <span className="font-mono font-bold text-sm text-slate-700">{totalDocs}</span> documente
           </div>
-          <div className="doc-topbar-stat">
-            <span className="doc-topbar-stat-num text-emerald-500">{procesate}</span> procesate
+          <div className="flex items-center gap-1.5 text-xs text-slate-500">
+            <span className="font-mono font-bold text-sm text-emerald-600">{procesate}</span> procesate
           </div>
-          <div className="doc-topbar-stat">
-            <span className="doc-topbar-stat-num text-blue-600">{templates}</span> template-uri
+          <div className="flex items-center gap-1.5 text-xs text-slate-500">
+            <span className="font-mono font-bold text-sm text-blue-600">{templates}</span> template-uri
           </div>
         </div>
-      </div>
+      </PageHeader>
 
       {/* ─── MAIN LAYOUT ─── */}
-      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+      <div style={{ flex: 1, display: "flex", overflow: "hidden", background: "#f8fafc" }}>
         <SplitPane
           side="left"
           defaultWidth={300}

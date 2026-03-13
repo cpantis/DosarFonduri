@@ -5,6 +5,10 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { isSOC, isPF, FORME_JURIDICE, getCompanyTabs, getFieldLabel } from "@/hooks/useFormaJuridica";
 import { apiGet, apiPost, apiDelete, api } from "@/lib/api";
+import { PageHeader } from "@/components/shared/PageHeader";
+import { StatusBadge } from "@/components/shared/StatusBadge";
+import { TypeBadge } from "@/components/shared/TypeBadge";
+import { CardLabel } from "@/components/ui/CardLabel";
 
 /* === HELPERS === */
 const fmt = (v: string | number | null | undefined) => {
@@ -17,9 +21,11 @@ const fmtNum = (v: number | string | null | undefined) => {
   const n = typeof v === "number" ? v : parseInt(String(v).replace(/[^0-9-]/g, ""));
   return isNaN(n) ? String(v) : n.toLocaleString("ro-RO");
 };
-const formaColor = (cod: string) => {
-  if (isPF(cod)) return { bg: "rgba(251,146,60,0.12)", color: "#fb923c" };
-  return { bg: "rgba(77,139,255,0.12)", color: "#2563eb" };
+const fmtLei = (v: number | string | null | undefined) => {
+  if (v == null) return "\u2014";
+  const n = typeof v === "number" ? v : parseInt(String(v).replace(/[^0-9-]/g, ""));
+  if (isNaN(n)) return String(v);
+  return n.toLocaleString("de-DE") + " LEI";
 };
 
 /** Map API company detail to the shapes expected by JSX */
@@ -191,434 +197,659 @@ export default function CompanyDetailPage() {
   const tabs = sel ? getCompanyTabs(sel.forma) : [];
 
   return (
-    <>
-      <style>{`
-        .cd-page{display:flex;flex-direction:column;height:100%;overflow:hidden}
-        .cd-back{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:#64748b;text-decoration:none;transition:color .15s;padding:0;background:none;border:none;cursor:pointer;font-family:'Inter',system-ui,sans-serif}
-        .cd-back:hover{color:#2563eb}
-        .cd-header{padding:24px 32px;border-bottom:1px solid #e2e8f0;background:#ffffff;flex-shrink:0}
-        .cd-header-top{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;margin-bottom:8px}
-        .cd-name{font-size:22px;font-weight:800;color:#0f172a;letter-spacing:-.3px;margin:0 0 4px}
-        .cd-sub{font-size:13px;font-family:ui-monospace,SFMono-Regular,monospace;color:#64748b;margin-bottom:10px}
-        .cd-badges{display:flex;gap:6px;flex-wrap:wrap}
-        .cd-badge{font-size:11px;font-weight:700;padding:3px 10px;border-radius:12px;white-space:nowrap}
-        .cd-actions{display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;align-items:flex-start}
-        .cd-act{padding:7px 14px;border-radius:6px;border:1px solid #e2e8f0;background:transparent;color:#64748b;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',system-ui,sans-serif;transition:all .15s;display:flex;align-items:center;gap:5px;white-space:nowrap}
-        .cd-act:hover{border-color:#cbd5e1;color:#0f172a;background:#f1f5f9}
-        .cd-act.danger{color:#ef4444;border-color:rgba(248,113,113,.25)}.cd-act.danger:hover{background:rgba(248,113,113,.06)}
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* LOADING STATE */}
+      {loading && (
+        <div className="flex-1 flex items-center justify-center flex-col gap-3 text-slate-400">
+          <div className="w-7 h-7 border-2 border-slate-200 border-t-blue-600 rounded-full animate-spin" />
+          <div className="text-sm">Se incarca detaliile firmei...</div>
+        </div>
+      )}
 
-        .cd-tabs{display:flex;border-bottom:1px solid #e2e8f0;padding:0 32px;background:#ffffff;flex-shrink:0;overflow-x:auto;gap:0}
-        .cd-tab{padding:11px 18px;font-size:14px;font-weight:600;color:#64748b;cursor:pointer;border-bottom:2px solid transparent;transition:all .15s;font-family:'Inter',system-ui,sans-serif;background:none;border-top:none;border-left:none;border-right:none;white-space:nowrap}
-        .cd-tab:hover{color:#0f172a}.cd-tab.on{color:#2563eb;border-bottom-color:#2563eb}
+      {/* ERROR STATE */}
+      {!loading && error && (
+        <div className="flex-1 flex items-center justify-center flex-col gap-3 text-slate-400">
+          <div className="text-sm text-red-500">{error}</div>
+          <button
+            className="px-4 py-2 text-[13px] font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 mt-2"
+            onClick={fetchDetail}
+          >
+            Reincearca
+          </button>
+          <Link href="/companies" className="text-[13px] font-semibold text-slate-500 hover:text-blue-600 mt-3">
+            &larr; Inapoi la lista
+          </Link>
+        </div>
+      )}
 
-        .cd-body{flex:1;overflow-y:auto;padding:24px 32px}
-        .cd-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:20px}
-        .cd-grid.c2{grid-template-columns:1fr 1fr}.cd-grid.c4{grid-template-columns:repeat(4,1fr)}
-        .cd-card{padding:16px 18px;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0}
-        .cd-card.full{grid-column:1/-1}.cd-card.span2{grid-column:span 2}
-        .cd-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:#94a3b8;margin-bottom:4px}
-        .cd-val{font-size:15px;font-weight:600;color:#0f172a}.cd-val.mono{font-family:ui-monospace,SFMono-Regular,monospace}
-        .cd-val.green{color:#10b981}.cd-val.red{color:#ef4444}
-        .cd-val.sub{font-size:12px;color:#94a3b8;font-weight:400;margin-top:3px}
-
-        .cd-mention{padding:14px 16px;background:#f8fafc;border-radius:10px;border-left:3px solid #2563eb;margin-bottom:20px}
-        .cd-mention-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:#94a3b8;margin-bottom:4px}
-        .cd-mention-text{font-size:13px;color:#64748b;line-height:1.6}
-
-        .cd-stitle{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#94a3b8;margin:20px 0 10px}
-        .cd-assoc{display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:10px;border:1px solid #e2e8f0;background:#f8fafc;margin-bottom:6px}
-        .cd-assoc-name{font-size:14px;font-weight:600;flex:1}.cd-assoc-detail{font-size:13px;color:#64748b;font-family:ui-monospace,SFMono-Regular,monospace}
-
-        .cd-warn{padding:12px 16px;border-radius:10px;border:1px solid #ef4444;background:rgba(248,113,113,.04);margin-bottom:8px;font-size:14px;color:#ef4444;display:flex;align-items:center;gap:8px}
-        .cd-ok{padding:12px 16px;border-radius:10px;border:1px solid #10b981;background:rgba(52,211,153,.04);margin-bottom:8px;font-size:14px;color:#10b981;display:flex;align-items:center;gap:8px}
-
-        .cd-fin-table{width:100%;border-collapse:collapse;font-size:13px}
-        .cd-fin-table th{text-align:left;padding:8px 12px;font-weight:600;color:#94a3b8;border-bottom:1px solid #e2e8f0;font-size:11px;text-transform:uppercase;letter-spacing:.5px}
-        .cd-fin-table td{padding:8px 12px;border-bottom:1px solid #e2e8f0;font-family:ui-monospace,SFMono-Regular,monospace;color:#64748b}
-        .cd-fin-table td.green{color:#10b981}.cd-fin-table td.red{color:#ef4444}
-
-        .cd-empty{display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;color:#94a3b8;padding:60px 20px}
-        .cd-empty-icon{font-size:44px;opacity:.5}.cd-empty-text{font-size:14px}
-
-        .cd-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.5);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:100;animation:cdFadeIn .2s}
-        @keyframes cdFadeIn{from{opacity:0}to{opacity:1}}
-        .cd-modal{background:#ffffff;border:1px solid #e2e8f0;border-radius:14px;width:480px;max-height:85vh;overflow-y:auto;padding:28px;animation:cdSlideUp .3s ease}
-        @keyframes cdSlideUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
-        .cd-modal-title{font-size:18px;font-weight:800;margin-bottom:4px;display:flex;align-items:center;justify-content:space-between}
-        .cd-modal-close{background:none;border:none;color:#94a3b8;cursor:pointer;font-size:18px;padding:4px}.cd-modal-close:hover{color:#0f172a}
-
-        .cd-upload-zone{border:2px dashed #e2e8f0;border-radius:10px;padding:28px 20px;text-align:center;margin-bottom:16px;transition:all .2s;cursor:pointer}
-        .cd-upload-zone:hover{border-color:#2563eb;background:rgba(77,139,255,.03)}
-        .cd-upload-zone .uz-icon{font-size:24px;margin-bottom:6px}.cd-upload-zone .uz-title{font-size:14px;font-weight:600;margin-bottom:3px}.cd-upload-zone .uz-sub{font-size:12px;color:#94a3b8}
-
-        .cd-btn-p{padding:10px 20px;border-radius:10px;border:none;background:#2563eb;color:#fff;font-size:14px;font-weight:700;font-family:'Inter',system-ui,sans-serif;cursor:pointer;transition:all .15s}
-        .cd-btn-p:hover{background:#5d9bff}.cd-btn-p:disabled{opacity:.5;cursor:not-allowed}
-        .cd-btn-s{padding:10px 20px;border-radius:10px;border:1px solid #e2e8f0;background:transparent;color:#64748b;font-size:14px;font-weight:600;font-family:'Inter',system-ui,sans-serif;cursor:pointer}
-        .cd-btn-s:hover{border-color:#cbd5e1;color:#0f172a}
-
-        .cd-spinner{width:18px;height:18px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:cdSpin .7s linear infinite;display:inline-block}
-        @keyframes cdSpin{to{transform:rotate(360deg)}}
-        .cd-spinner-dark{border-color:#e2e8f0;border-top-color:#2563eb}
-
-        .cd-body::-webkit-scrollbar{width:5px}
-        .cd-body::-webkit-scrollbar-track{background:transparent}
-        .cd-body::-webkit-scrollbar-thumb{background:#e2e8f0;border-radius:3px}
-      `}</style>
-
-      <div className="cd-page">
-        {/* LOADING STATE */}
-        {loading && (
-          <div className="cd-empty" style={{ flex: 1 }}>
-            <span className="cd-spinner cd-spinner-dark" style={{ width: 28, height: 28 }} />
-            <div className="cd-empty-text">Se incarca detaliile firmei...</div>
+      {/* DETAIL VIEW */}
+      {!loading && !error && sel && (<>
+        {/* PROCESSING BANNER */}
+        {sel.processingStatus === "processing" && (
+          <div className="px-8 py-3.5 bg-blue-50/60 border-b border-blue-400 flex items-center gap-3 flex-shrink-0">
+            <div className="w-[18px] h-[18px] border-2 border-slate-200 border-t-blue-600 rounded-full animate-spin" />
+            <span className="text-sm font-semibold text-blue-600">Se proceseaza documentul... Datele firmei se actualizeaza automat.</span>
+          </div>
+        )}
+        {sel.processingStatus === "error" && (
+          <div className="px-8 py-3.5 bg-red-50/60 border-b border-red-400 flex items-center gap-3 flex-shrink-0">
+            <span className="text-sm font-semibold text-red-500">Eroare la procesare: {sel.processingError || "Eroare necunoscuta"}</span>
+            <button
+              className="ml-auto px-4 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+              onClick={() => setShowOnrcUpload(true)}
+            >
+              Reincearca upload
+            </button>
           </div>
         )}
 
-        {/* ERROR STATE */}
-        {!loading && error && (
-          <div className="cd-empty" style={{ flex: 1 }}>
-            <div className="cd-empty-text" style={{ color: "#ef4444" }}>{error}</div>
-            <button className="cd-btn-s" onClick={fetchDetail} style={{ marginTop: 8 }}>Reincearca</button>
-            <Link href="/companies" className="cd-back" style={{ marginTop: 12 }}>&larr; Inapoi la lista</Link>
-          </div>
-        )}
+        {/* HEADER */}
+        <PageHeader
+          title={sel.denumire}
+          subtitle={`CUI: ${sel.cui} \u00b7 ${sel.regCom || "\u2014"}`}
+          badges={
+            <>
+              <TypeBadge type={sel.forma} />
+              <StatusBadge status={sel.stare || "activ"} label={sel.stare} />
+            </>
+          }
+        >
+          <button
+            className="px-4 py-2 text-[13px] font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+            onClick={handleSyncOnrc}
+          >
+            Actualizare CUI
+          </button>
+          <button
+            className="px-4 py-2 text-[13px] font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+            onClick={() => setShowOnrcUpload(true)}
+          >
+            Upload ONRC
+          </button>
+          <button
+            className="px-4 py-2 text-[13px] font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+            onClick={() => setShowBilantUpload(true)}
+          >
+            Upload Bilant
+          </button>
+          <button
+            className="px-4 py-2 text-[13px] font-medium text-red-600 bg-white border border-red-300 rounded-lg hover:bg-red-50"
+            onClick={handleDelete}
+          >
+            Sterge
+          </button>
+        </PageHeader>
 
-        {/* DETAIL VIEW */}
-        {!loading && !error && sel && (<>
-          {/* PROCESSING BANNER */}
-          {sel.processingStatus === "processing" && (
-            <div style={{ padding: "14px 32px", background: "rgba(77,139,255,0.06)", borderBottom: "1px solid #3b82f6", display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
-              <span className="cd-spinner cd-spinner-dark" style={{ width: 18, height: 18 }} />
-              <span style={{ fontSize: 14, fontWeight: 600, color: "#2563eb" }}>Se proceseaza documentul... Datele firmei se actualizeaza automat.</span>
-            </div>
-          )}
-          {sel.processingStatus === "error" && (
-            <div style={{ padding: "14px 32px", background: "rgba(248,113,113,0.06)", borderBottom: "1px solid #ef4444", display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
-              <span style={{ fontSize: 14, fontWeight: 600, color: "#ef4444" }}>Eroare la procesare: {sel.processingError || "Eroare necunoscuta"}</span>
-              <button className="cd-btn-s" style={{ marginLeft: "auto", padding: "6px 14px", fontSize: 12 }} onClick={() => setShowOnrcUpload(true)}>Reincearca upload</button>
-            </div>
-          )}
+        {/* TABS */}
+        <div className="flex border-b border-slate-200 bg-white px-8 flex-shrink-0 overflow-x-auto gap-0">
+          {tabs.map(t => (
+            <button
+              key={t}
+              className={`px-4 text-sm font-medium cursor-pointer transition-colors whitespace-nowrap ${
+                activeTab === t
+                  ? "text-blue-600 border-b-2 border-blue-600 pb-3 pt-3"
+                  : "text-slate-600 hover:text-slate-900 pb-3 pt-3 border-b-2 border-transparent"
+              }`}
+              onClick={() => setActiveTab(t)}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
 
-          {/* HEADER */}
-          <div className="cd-header">
-            <div style={{ marginBottom: 16 }}>
-              <Link href="/companies" className="cd-back">&larr; Firme</Link>
-            </div>
-            <div className="cd-header-top">
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <h1 className="cd-name">{sel.denumire}</h1>
-                <div className="cd-sub">CUI: {sel.cui} &middot; {sel.regCom || "\u2014"}</div>
-                <div className="cd-badges">
-                  <span className="cd-badge" style={sel.stare === "radiata" ? { background: "rgba(248,113,113,.12)", color: "#ef4444" } : { background: "rgba(52,211,153,.12)", color: "#10b981" }}>{sel.stare}</span>
-                  <span className="cd-badge" style={formaColor(sel.forma)}>{sel.forma}</span>
-                  <span className="cd-badge" style={{ background: "#f8fafc", color: "#94a3b8" }}>CAEN {sel.caen || "\u2014"}</span>
+        {/* TAB CONTENT */}
+        <div className="flex-1 overflow-y-auto px-8 py-6 bg-slate-50">
+
+          {/* GENERAL */}
+          {activeTab === "General" && (<>
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-5">
+              <div className="bg-white rounded-xl border border-slate-200 p-4 col-span-2">
+                <CardLabel label="Forma juridica" value={FORME_JURIDICE.find(fj => fj.cod === sel.forma)?.label || sel.forma} />
+              </div>
+              <div className="bg-white rounded-xl border border-slate-200 p-4">
+                <CardLabel label="Stare" value={<StatusBadge status={sel.stare || "activ"} label={sel.stare} />} />
+              </div>
+              <div className="bg-white rounded-xl border border-slate-200 p-4 col-span-2">
+                <CardLabel
+                  label="Adresa"
+                  value={
+                    <>
+                      <div>{sel.adresa || "\u2014"}</div>
+                      <div className="text-xs text-slate-400 font-normal mt-1">
+                        {sel.localitate || ""}{sel.localitate && sel.judet ? ", " : ""}{sel.judet || ""} {sel.codPostal || ""}
+                      </div>
+                    </>
+                  }
+                />
+              </div>
+              <div className="bg-white rounded-xl border border-slate-200 p-4">
+                <CardLabel label="Telefon" value={sel.telefon || "\u2014"} mono />
+              </div>
+              {sel.email && (
+                <div className="bg-white rounded-xl border border-slate-200 p-4">
+                  <CardLabel label="Email" value={sel.email} mono />
                 </div>
-              </div>
-              <div className="cd-actions">
-                <button className="cd-act" onClick={handleSyncOnrc}>Actualizare CUI</button>
-                <button className="cd-act" onClick={() => setShowOnrcUpload(true)}>Upload ONRC</button>
-                <button className="cd-act" onClick={() => setShowBilantUpload(true)}>Upload Bilant</button>
-                <button className="cd-act danger" onClick={handleDelete}>Sterge</button>
-              </div>
-            </div>
-          </div>
-
-          {/* TABS */}
-          <div className="cd-tabs">
-            {tabs.map(t => (
-              <button key={t} className={`cd-tab ${activeTab === t ? "on" : ""}`} onClick={() => setActiveTab(t)}>{t}</button>
-            ))}
-          </div>
-
-          {/* TAB CONTENT */}
-          <div className="cd-body">
-
-            {/* GENERAL */}
-            {activeTab === "General" && (<>
-              <div className="cd-grid">
-                <div className="cd-card span2"><div className="cd-label">Forma juridica</div><div className="cd-val">{FORME_JURIDICE.find(fj => fj.cod === sel.forma)?.label || sel.forma}</div></div>
-                <div className="cd-card"><div className="cd-label">Stare</div><div className="cd-val"><span className="cd-badge" style={sel.stare === "radiata" ? { background: "rgba(248,113,113,.12)", color: "#ef4444" } : { background: "rgba(52,211,153,.12)", color: "#10b981" }}>{sel.stare}</span></div></div>
-                <div className="cd-card span2"><div className="cd-label">Adresa</div><div className="cd-val">{sel.adresa || "\u2014"}</div><div className="cd-val sub">{sel.localitate || ""}{sel.localitate && sel.judet ? ", " : ""}{sel.judet || ""} {sel.codPostal || ""}</div></div>
-                <div className="cd-card"><div className="cd-label">Telefon</div><div className="cd-val mono">{sel.telefon || "\u2014"}</div></div>
-                {sel.email && <div className="cd-card"><div className="cd-label">Email</div><div className="cd-val mono" style={{ fontSize: 13 }}>{sel.email}</div></div>}
-                <div className="cd-card"><div className="cd-label">{getFieldLabel("durata_label", sel.forma)}</div><div className="cd-val">{sel.durata || "\u2014"}</div></div>
-                <div className="cd-card"><div className="cd-label">An infiintare</div><div className="cd-val mono">{sel.anInfiintare || "\u2014"}</div></div>
-              </div>
-              {isPF(sel.forma) && sel.patrimoniu_afectat && (
-                <div className="cd-mention"><div className="cd-mention-label">Patrimoniu de afectatiune</div><div className="cd-mention-text">{sel.patrimoniu_afectat}</div></div>
               )}
-              <div className="cd-mention"><div className="cd-mention-label">Ultima mentiune</div><div className="cd-mention-text">{sel.ultimaMentiune}</div></div>
-              {isSOC(sel.forma) && sel.capitalSocial && (<>
-                <div className="cd-stitle">Capital social</div>
-                <div className="cd-grid c4">
-                  <div className="cd-card"><div className="cd-label">Subscris</div><div className="cd-val mono">{fmt(sel.capitalSocial)}</div></div>
-                  <div className="cd-card"><div className="cd-label">{getFieldLabel("parti_actiuni", sel.forma)}</div><div className="cd-val mono">{sel.partiSociale || sel.actiuni || "\u2014"}</div></div>
-                  <div className="cd-card"><div className="cd-label">{getFieldLabel("valoare_parte", sel.forma)}</div><div className="cd-val mono">{fmt(sel.valoareParte || sel.valoareActiune)}</div></div>
-                  <div className="cd-card"><div className="cd-label">Natura capital</div><div className="cd-val" style={{ fontSize: 12 }}>privat autohton {sel.natura?.privatAutohton || sel.natura?.privat_autohton || 0}%{((sel.natura?.privatStrain ?? sel.natura?.privat_strain ?? 0) > 0) ? `, strain ${sel.natura?.privatStrain || sel.natura?.privat_strain}%` : ""}{((sel.natura?.stat ?? 0) > 0) ? `, stat ${sel.natura!.stat}%` : ""}</div></div>
-                </div>
-              </>)}
-            </>)}
-
-            {/* ASOCIATI / ACTIONARI */}
-            {(activeTab === "Asociati" || activeTab === "Actionari") && (<>
-              {sel.asociatiPJ.length > 0 && (<>
-                <div className="cd-stitle">{getFieldLabel("asociati_label", sel.forma)} &mdash; Persoane Juridice ({sel.asociatiPJ.length})</div>
-                {sel.asociatiPJ.map((a: any, i: number) => (
-                  <div className="cd-assoc" key={i}>
-                    <span style={{ fontSize: 18 }}>&#127970;</span>
-                    <div className="cd-assoc-name">{a.denumire}<div style={{ fontSize: 12, color: "#94a3b8" }}>{a.calitate} &middot; {a.tara}</div></div>
-                    <div className="cd-assoc-detail">{a.cotaBeneficii}%</div>
-                    <div className="cd-assoc-detail">{a.aport}</div>
-                  </div>
-                ))}
-              </>)}
-              <div className="cd-stitle">{getFieldLabel("asociati_label", sel.forma)} &mdash; Persoane Fizice ({sel.asociatiPF.length})</div>
-              {sel.asociatiPF.map((a: any, i: number) => (
-                <div className="cd-assoc" key={i}>
-                  <span style={{ fontSize: 18 }}>&#128100;</span>
-                  <div className="cd-assoc-name">{a.nume}<div style={{ fontSize: 12, color: "#94a3b8" }}>{a.calitate} &middot; {a.cetatenie}</div></div>
-                  <div className="cd-assoc-detail">{a.cotaBeneficii}%</div>
-                  <div className="cd-assoc-detail">{a.partiSociale || a.actiuni} {sel.forma === "SA" ? "actiuni" : "p.s."}</div>
-                  <div className="cd-assoc-detail">{a.aport}</div>
-                </div>
-              ))}
-            </>)}
-
-            {/* TITULAR (PFA/II) */}
-            {activeTab === "Titular" && sel.titular && (<>
-              <div className="cd-stitle">Titular</div>
-              <div className="cd-grid c2">
-                <div className="cd-card"><div className="cd-label">Nume</div><div className="cd-val">{sel.titular.nume}</div></div>
-                <div className="cd-card"><div className="cd-label">Cetatenie</div><div className="cd-val">{sel.titular.cetatenie}</div></div>
-                <div className="cd-card"><div className="cd-label">Data nasterii</div><div className="cd-val mono">{sel.titular.dataNasterii}</div></div>
-                <div className="cd-card"><div className="cd-label">Stare civila</div><div className="cd-val">{sel.titular.stare_civila}</div></div>
+              <div className="bg-white rounded-xl border border-slate-200 p-4">
+                <CardLabel label={getFieldLabel("durata_label", sel.forma)} value={sel.durata || "\u2014"} />
               </div>
-            </>)}
-            {activeTab === "Titular" && !sel.titular && (
-              <div className="cd-empty"><div className="cd-empty-icon">&#128100;</div><div className="cd-empty-text">Nicio informatie despre titular disponibila.</div></div>
+              <div className="bg-white rounded-xl border border-slate-200 p-4">
+                <CardLabel label="An infiintare" value={sel.anInfiintare || "\u2014"} mono />
+              </div>
+              <div className="bg-white rounded-xl border border-slate-200 p-4">
+                <CardLabel label="CAEN" value={`${sel.caen || "\u2014"} — ${sel.caenDesc}`} />
+              </div>
+            </div>
+            {isPF(sel.forma) && sel.patrimoniu_afectat && (
+              <div className="bg-white rounded-xl border border-slate-200 border-l-[3px] border-l-blue-500 p-4 mb-5">
+                <div className="text-[11px] uppercase tracking-wide text-slate-500 font-medium mb-1">Patrimoniu de afectatiune</div>
+                <div className="text-[13px] text-slate-600 leading-relaxed">{sel.patrimoniu_afectat}</div>
+              </div>
             )}
-
-            {/* MEMBRI IF */}
-            {activeTab === "Membri IF" && (<>
-              <div className="cd-stitle">Reprezentant</div>
-              <div className="cd-assoc"><span style={{ fontSize: 18 }}>&#128084;</span><div className="cd-assoc-name">{sel.reprezentantIF || "\u2014"}</div><div className="cd-assoc-detail">Reprezentant IF</div></div>
-              <div className="cd-stitle">Membri ({(sel.membriIF || []).length})</div>
-              {(sel.membriIF || []).map((m: any, i: number) => (
-                <div className="cd-assoc" key={i}>
-                  <span style={{ fontSize: 18 }}>&#128100;</span>
-                  <div className="cd-assoc-name">{m.nume}<div style={{ fontSize: 12, color: "#94a3b8" }}>{m.calitate}</div></div>
-                  <div className="cd-assoc-detail">{m.gradRudenie}</div>
-                  <div className="cd-assoc-detail">{m.cetatenie}</div>
+            <div className="bg-white rounded-xl border border-slate-200 border-l-[3px] border-l-blue-500 p-4 mb-5">
+              <div className="text-[11px] uppercase tracking-wide text-slate-500 font-medium mb-1">Ultima mentiune</div>
+              <div className="text-[13px] text-slate-600 leading-relaxed">{sel.ultimaMentiune}</div>
+            </div>
+            {isSOC(sel.forma) && sel.capitalSocial && (<>
+              <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mt-5 mb-3">Capital social</div>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="bg-white rounded-xl border border-slate-200 p-4">
+                  <CardLabel label="Subscris" value={fmt(sel.capitalSocial)} mono />
                 </div>
-              ))}
-            </>)}
-
-            {/* ADMINISTRARE */}
-            {activeTab === "Administrare" && (<>
-              <div className="cd-stitle">{getFieldLabel("admin_label", sel.forma)} ({sel.administratori.length})</div>
-              {sel.administratori.map((a: any, i: number) => (
-                <div className="cd-assoc" key={i}>
-                  <span style={{ fontSize: 18 }}>&#128084;</span>
-                  <div className="cd-assoc-name">{a.nume}<div style={{ fontSize: 12, color: "#94a3b8" }}>{a.functie}</div></div>
-                  <div className="cd-assoc-detail">Puteri: {a.puteri}</div>
-                  <div className="cd-assoc-detail">Mandat: {a.durataMandatLabel}</div>
+                <div className="bg-white rounded-xl border border-slate-200 p-4">
+                  <CardLabel label={getFieldLabel("parti_actiuni", sel.forma)} value={sel.partiSociale || sel.actiuni || "\u2014"} mono />
                 </div>
-              ))}
-              {sel.cenzori && sel.cenzori.length > 0 && (<>
-                <div className="cd-stitle">Cenzori / Auditori</div>
-                {sel.cenzori.map((c: any, i: number) => (
-                  <div className="cd-assoc" key={i}><span style={{ fontSize: 18 }}>&#128269;</span><div className="cd-assoc-name">{c.nume}<div style={{ fontSize: 12, color: "#94a3b8" }}>{c.calitate}</div></div><div className="cd-assoc-detail">{c.nrAutorizare}</div></div>
-                ))}
-              </>)}
-            </>)}
-
-            {/* ACTIVITATI */}
-            {activeTab === "Activitati" && (<>
-              <div className="cd-stitle">Activitate principala</div>
-              <div className="cd-card full" style={{ marginBottom: 16 }}><div className="cd-label">CAEN {sel.caen || "\u2014"}</div><div className="cd-val">{sel.caenDesc}</div></div>
-              {sel.activitatiSecundare.length > 0 && (<>
-                <div className="cd-stitle">Activitati secundare ({sel.activitatiSecundare.length})</div>
-                {sel.activitatiSecundare.map((a: any, i: number) => (
-                  <div className="cd-assoc" key={i} style={{ padding: "9px 16px" }}><div className="cd-assoc-detail" style={{ minWidth: 55 }}>{a.cod}</div><div className="cd-assoc-name" style={{ fontSize: 14 }}>{a.den}</div></div>
-                ))}
-              </>)}
-            </>)}
-
-            {/* SEDII */}
-            {activeTab === "Sedii" && (<>
-              <div className="cd-stitle">Sediu social</div>
-              <div className="cd-card full" style={{ marginBottom: 16 }}><div className="cd-label">Adresa completa</div><div className="cd-val">{sel.adresa || "\u2014"}, {sel.localitate || ""}, {sel.judet || ""} {sel.codPostal || ""}</div></div>
-              {sel.sediiSecundare && sel.sediiSecundare.length > 0 && (<>
-                <div className="cd-stitle">Sedii secundare / Puncte de lucru ({sel.sediiSecundare.length})</div>
-                {sel.sediiSecundare.map((s: any, i: number) => (
-                  <div className="cd-assoc" key={i}><span style={{ fontSize: 18 }}>&#128205;</span><div className="cd-assoc-name">{s.denumire}<div style={{ fontSize: 12, color: "#94a3b8" }}>{s.adresa}</div></div></div>
-                ))}
-              </>)}
-            </>)}
-
-            {/* FIN. ONRC */}
-            {activeTab === "Fin. ONRC" && (<>
-              <div className="cd-stitle">Situatii financiare (din date ONRC)</div>
-              {sel.situatiiFinanciare.length > 0 ? (
-                <>
-                  <table className="cd-fin-table">
-                    <thead><tr>
-                      <th>An</th><th>Cifra afaceri</th><th>Profit net</th><th>Angajati</th>
-                      {isSOC(sel.forma) && <th>Capitaluri proprii</th>}
-                      {isPF(sel.forma) && <><th>Venituri</th><th>Cheltuieli</th></>}
-                    </tr></thead>
-                    <tbody>{sel.situatiiFinanciare.map((s: any, i: number) => (
-                      <tr key={i}>
-                        <td>{s.an}</td>
-                        <td>{fmtNum(s.cifraAfaceri)}</td>
-                        <td className={(s.profitNet ?? 0) >= 0 ? "green" : "red"}>{fmtNum(s.profitNet)}</td>
-                        <td>{s.angajati ?? "\u2014"}</td>
-                        {isSOC(sel.forma) && <td>{fmtNum(s.capitaluriProprii)}</td>}
-                        {isPF(sel.forma) && <><td>{fmtNum(s.venituriTotale)}</td><td>{fmtNum(s.cheltuieliTotale)}</td></>}
-                      </tr>
-                    ))}</tbody>
-                  </table>
-                  <div style={{ marginTop: 14, fontSize: 12, color: "#94a3b8" }}>Sursa: Date publice ONRC / termene.ro</div>
-                </>
-              ) : (
-                <div className="cd-empty">
-                  <div className="cd-empty-icon">&#128202;</div>
-                  <div className="cd-empty-text">Nicio situatie financiara disponibila.</div>
+                <div className="bg-white rounded-xl border border-slate-200 p-4">
+                  <CardLabel label={getFieldLabel("valoare_parte", sel.forma)} value={fmt(sel.valoareParte || sel.valoareActiune)} mono />
                 </div>
-              )}
-            </>)}
-
-            {/* FIN. ANAF */}
-            {activeTab === "Fin. ANAF" && (() => {
-              const anafData = sel.situatiiFinanciare.filter((s: any) => s.source === "anaf_upload");
-              const anafYears = anafData.map((s: any) => s.an).sort((a: number, b: number) => b - a);
-              const viewYear = selectedBilantYear ?? anafYears[0] ?? null;
-              const raw = (detail?.financials || []).find((f: any) => f.source === "anaf_upload" && f.year === viewYear);
-              const f10 = raw?.f10;
-              const f20 = raw?.f20;
-              const f30 = raw?.f30;
-
-              return anafData.length > 0 ? (<>
-                {/* Header with year selector + upload button */}
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <div className="cd-stitle" style={{ margin: 0 }}>Bilant ANAF</div>
-                    {anafYears.length > 1 && (
-                      <select
-                        value={viewYear ?? ""}
-                        onChange={e => setSelectedBilantYear(Number(e.target.value))}
-                        style={{ padding: "5px 10px", borderRadius: "6px", border: "1px solid #e2e8f0", background: "#f8fafc", color: "#0f172a", fontSize: 13, fontFamily: "ui-monospace, SFMono-Regular, monospace" }}
-                      >
-                        {anafYears.map((y: number) => <option key={y} value={y}>{y}</option>)}
-                      </select>
-                    )}
-                    {anafYears.length === 1 && <span style={{ fontSize: 14, fontFamily: "ui-monospace, SFMono-Regular, monospace", color: "#64748b" }}>{viewYear}</span>}
-                  </div>
-                  <button className="cd-act" onClick={() => setShowBilantUpload(true)}>Upload bilant</button>
+                <div className="bg-white rounded-xl border border-slate-200 p-4">
+                  <CardLabel
+                    label="Natura capital"
+                    value={
+                      <span className="text-xs">
+                        privat autohton {sel.natura?.privatAutohton || sel.natura?.privat_autohton || 0}%
+                        {((sel.natura?.privatStrain ?? sel.natura?.privat_strain ?? 0) > 0) ? `, strain ${sel.natura?.privatStrain || sel.natura?.privat_strain}%` : ""}
+                        {((sel.natura?.stat ?? 0) > 0) ? `, stat ${sel.natura!.stat}%` : ""}
+                      </span>
+                    }
+                  />
                 </div>
-
-                {/* Summary table all years */}
-                <table className="cd-fin-table" style={{ marginBottom: 24 }}>
-                  <thead><tr>
-                    <th>An</th><th>Cifra afaceri</th><th>Profit net</th><th>Rezultat exploatare</th><th>Angajati</th>
-                    {isSOC(sel.forma) && <th>Capitaluri proprii</th>}
-                  </tr></thead>
-                  <tbody>{anafData.map((s: any, i: number) => (
-                    <tr key={i} style={{ cursor: "pointer", background: s.an === viewYear ? "rgba(77,139,255,.05)" : undefined }} onClick={() => setSelectedBilantYear(s.an)}>
-                      <td style={{ fontWeight: s.an === viewYear ? 700 : 400 }}>{s.an}</td>
-                      <td>{fmtNum(s.cifraAfaceri)}</td>
-                      <td className={(s.profitNet ?? 0) >= 0 ? "green" : "red"}>{fmtNum(s.profitNet)}</td>
-                      <td>{fmtNum(raw?.f20?.rezultatExploatare)}</td>
-                      <td>{s.angajati ?? "\u2014"}</td>
-                      {isSOC(sel.forma) && <td>{fmtNum(s.capitaluriProprii)}</td>}
-                    </tr>
-                  ))}</tbody>
-                </table>
-
-                {/* Detailed data for selected year */}
-                {f20 && (<>
-                  <div className="cd-stitle">Cont profit si pierderi ({viewYear})</div>
-                  <div className="cd-grid c2" style={{ marginBottom: 20 }}>
-                    <div className="cd-card"><div className="cd-label">Cifra afaceri neta</div><div className="cd-val mono">{fmtNum(f20.cifraAfaceriNeta)}</div></div>
-                    <div className="cd-card"><div className="cd-label">Venituri exploatare</div><div className="cd-val mono">{fmtNum(f20.venituriExploatare)}</div></div>
-                    <div className="cd-card"><div className="cd-label">Cheltuieli exploatare</div><div className="cd-val mono">{fmtNum(f20.cheltuieliExploatare)}</div></div>
-                    <div className="cd-card"><div className="cd-label">Rezultat exploatare</div><div className={`cd-val mono ${(f20.rezultatExploatare ?? 0) >= 0 ? "green" : "red"}`}>{fmtNum(f20.rezultatExploatare)}</div></div>
-                    <div className="cd-card"><div className="cd-label">Venituri financiare</div><div className="cd-val mono">{fmtNum(f20.venituriFinanciare)}</div></div>
-                    <div className="cd-card"><div className="cd-label">Cheltuieli financiare</div><div className="cd-val mono">{fmtNum(f20.cheltuieliFinanciare)}</div></div>
-                    <div className="cd-card"><div className="cd-label">Rezultat brut</div><div className={`cd-val mono ${(f20.rezultatBrut ?? 0) >= 0 ? "green" : "red"}`}>{fmtNum(f20.rezultatBrut)}</div></div>
-                    <div className="cd-card"><div className="cd-label">Rezultat net</div><div className={`cd-val mono ${(f20.profitNet ?? 0) >= 0 ? "green" : "red"}`}>{fmtNum(f20.profitNet)}</div></div>
-                  </div>
-                </>)}
-
-                {f10 && (<>
-                  <div className="cd-stitle">Bilant ({viewYear})</div>
-                  <div className="cd-grid c2" style={{ marginBottom: 20 }}>
-                    <div className="cd-card"><div className="cd-label">Active imobilizate</div><div className="cd-val mono">{fmtNum(f10.activeImobilizate)}</div></div>
-                    <div className="cd-card"><div className="cd-label">Active circulante</div><div className="cd-val mono">{fmtNum(f10.activeCirculante)}</div></div>
-                    <div className="cd-card"><div className="cd-label">Stocuri</div><div className="cd-val mono">{fmtNum(f10.stocuri)}</div></div>
-                    <div className="cd-card"><div className="cd-label">Creante</div><div className="cd-val mono">{fmtNum(f10.creante)}</div></div>
-                    <div className="cd-card"><div className="cd-label">Casa si conturi</div><div className="cd-val mono">{fmtNum(f10.casaSiConturi)}</div></div>
-                    <div className="cd-card"><div className="cd-label">Datorii sub 1 an</div><div className="cd-val mono">{fmtNum(f10.datoriiSub1An)}</div></div>
-                    <div className="cd-card"><div className="cd-label">Datorii peste 1 an</div><div className="cd-val mono">{fmtNum(f10.datoriiPeste1An)}</div></div>
-                    <div className="cd-card"><div className="cd-label">Capitaluri proprii</div><div className={`cd-val mono ${(f10.capitaluriProprii ?? 0) >= 0 ? "green" : "red"}`}>{fmtNum(f10.capitaluriProprii)}</div></div>
-                  </div>
-                </>)}
-
-                {f30 && (f30.numarMediuSalariati || f30.numarSalariati31Dec) && (<>
-                  <div className="cd-stitle">Date informative ({viewYear})</div>
-                  <div className="cd-grid c2">
-                    {f30.numarMediuSalariati != null && <div className="cd-card"><div className="cd-label">Nr. mediu salariati</div><div className="cd-val mono">{f30.numarMediuSalariati}</div></div>}
-                    {f30.numarSalariati31Dec != null && <div className="cd-card"><div className="cd-label">Nr. salariati la 31 dec</div><div className="cd-val mono">{f30.numarSalariati31Dec}</div></div>}
-                  </div>
-                </>)}
-
-                <div style={{ marginTop: 14, fontSize: 12, color: "#94a3b8" }}>Sursa: Bilant ANAF uploadat</div>
-              </>) : (
-                <div className="cd-empty">
-                  <div className="cd-empty-icon">&#128202;</div>
-                  <div className="cd-empty-text">Niciun bilant ANAF incarcat.</div>
-                  <button className="cd-btn-p" style={{ marginTop: 12 }} onClick={() => setShowBilantUpload(true)}>Upload bilant ANAF</button>
-                </div>
-              );
-            })()}
-
-            {/* JURIDIC */}
-            {activeTab === "Juridic" && (<>
-              <div className="cd-stitle">Stare juridica</div>
-              {sel.insolventa && <div className="cd-warn">Firma in insolventa</div>}
-              {sel.dizolvare && <div className="cd-warn">Firma dizolvata</div>}
-              {sel.lichidare && <div className="cd-warn">Firma in lichidare</div>}
-              {sel.restrictii && <div className="cd-warn">Restrictii active</div>}
-              {!sel.insolventa && !sel.dizolvare && !sel.lichidare && !sel.restrictii && <div className="cd-ok">Fara restrictii, insolventa, dizolvare sau lichidare</div>}
-              <div className="cd-grid c2" style={{ marginTop: 16 }}>
-                <div className="cd-card"><div className="cd-label">Nr. Reg. Comertului</div><div className="cd-val mono">{sel.regCom}</div></div>
-                <div className="cd-card"><div className="cd-label">Forma juridica</div><div className="cd-val">{FORME_JURIDICE.find(fj => fj.cod === sel.forma)?.label || sel.forma}</div></div>
               </div>
-              <div className="cd-mention" style={{ marginTop: 16 }}><div className="cd-mention-label">Ultima mentiune</div><div className="cd-mention-text">{sel.ultimaMentiune}</div></div>
             </>)}
+          </>)}
 
-          </div>
-        </>)}
-      </div>
+          {/* ASOCIATI / ACTIONARI */}
+          {(activeTab === "Asociati" || activeTab === "Actionari") && (<>
+            {sel.asociatiPJ.length > 0 && (<>
+              <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mt-2 mb-3">
+                {getFieldLabel("asociati_label", sel.forma)} &mdash; Persoane Juridice ({sel.asociatiPJ.length})
+              </div>
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden mb-5">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-slate-50">
+                      <th className="text-left px-4 py-2.5 text-[11px] uppercase tracking-wide text-slate-500 font-semibold">Denumire</th>
+                      <th className="text-left px-4 py-2.5 text-[11px] uppercase tracking-wide text-slate-500 font-semibold">Calitate</th>
+                      <th className="text-left px-4 py-2.5 text-[11px] uppercase tracking-wide text-slate-500 font-semibold">Tara</th>
+                      <th className="text-right px-4 py-2.5 text-[11px] uppercase tracking-wide text-slate-500 font-semibold">Cota %</th>
+                      <th className="text-right px-4 py-2.5 text-[11px] uppercase tracking-wide text-slate-500 font-semibold">Aport</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sel.asociatiPJ.map((a: any, i: number) => (
+                      <tr key={i} className="border-t border-slate-100 hover:bg-slate-50 transition-colors">
+                        <td className="px-4 py-3 font-medium text-slate-900">{a.denumire}</td>
+                        <td className="px-4 py-3 text-slate-600">{a.calitate}</td>
+                        <td className="px-4 py-3 text-slate-600">{a.tara}</td>
+                        <td className="px-4 py-3 text-right font-mono text-slate-600">{a.cotaBeneficii}%</td>
+                        <td className="px-4 py-3 text-right font-mono text-slate-600">{a.aport}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>)}
+            <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mt-2 mb-3">
+              {getFieldLabel("asociati_label", sel.forma)} &mdash; Persoane Fizice ({sel.asociatiPF.length})
+            </div>
+            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-slate-50">
+                    <th className="text-left px-4 py-2.5 text-[11px] uppercase tracking-wide text-slate-500 font-semibold">Nume</th>
+                    <th className="text-left px-4 py-2.5 text-[11px] uppercase tracking-wide text-slate-500 font-semibold">Calitate</th>
+                    <th className="text-left px-4 py-2.5 text-[11px] uppercase tracking-wide text-slate-500 font-semibold">Cetatenie</th>
+                    <th className="text-right px-4 py-2.5 text-[11px] uppercase tracking-wide text-slate-500 font-semibold">Cota %</th>
+                    <th className="text-right px-4 py-2.5 text-[11px] uppercase tracking-wide text-slate-500 font-semibold">{sel.forma === "SA" ? "Actiuni" : "Parti soc."}</th>
+                    <th className="text-right px-4 py-2.5 text-[11px] uppercase tracking-wide text-slate-500 font-semibold">Aport</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sel.asociatiPF.map((a: any, i: number) => (
+                    <tr key={i} className="border-t border-slate-100 hover:bg-slate-50 transition-colors">
+                      <td className="px-4 py-3 font-medium text-slate-900">{a.nume}</td>
+                      <td className="px-4 py-3 text-slate-600">{a.calitate}</td>
+                      <td className="px-4 py-3 text-slate-600">{a.cetatenie}</td>
+                      <td className="px-4 py-3 text-right font-mono text-slate-600">{a.cotaBeneficii}%</td>
+                      <td className="px-4 py-3 text-right font-mono text-slate-600">{a.partiSociale || a.actiuni}</td>
+                      <td className="px-4 py-3 text-right font-mono text-slate-600">{a.aport}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>)}
+
+          {/* TITULAR (PFA/II) */}
+          {activeTab === "Titular" && sel.titular && (<>
+            <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mt-2 mb-3">Titular</div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-white rounded-xl border border-slate-200 p-4">
+                <CardLabel label="Nume" value={sel.titular.nume} />
+              </div>
+              <div className="bg-white rounded-xl border border-slate-200 p-4">
+                <CardLabel label="Cetatenie" value={sel.titular.cetatenie} />
+              </div>
+              <div className="bg-white rounded-xl border border-slate-200 p-4">
+                <CardLabel label="Data nasterii" value={sel.titular.dataNasterii} mono />
+              </div>
+              <div className="bg-white rounded-xl border border-slate-200 p-4">
+                <CardLabel label="Stare civila" value={sel.titular.stare_civila} />
+              </div>
+            </div>
+          </>)}
+          {activeTab === "Titular" && !sel.titular && (
+            <div className="flex items-center justify-center flex-col gap-3 text-slate-400 py-16">
+              <div className="text-4xl opacity-50">&#128100;</div>
+              <div className="text-sm">Nicio informatie despre titular disponibila.</div>
+            </div>
+          )}
+
+          {/* MEMBRI IF */}
+          {activeTab === "Membri IF" && (<>
+            <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mt-2 mb-3">Reprezentant</div>
+            <div className="bg-white rounded-xl border border-slate-200 p-4 flex items-center gap-3 mb-5">
+              <span className="text-lg">&#128084;</span>
+              <div className="text-sm font-semibold text-slate-900">{sel.reprezentantIF || "\u2014"}</div>
+              <span className="ml-auto text-xs font-mono text-slate-500">Reprezentant IF</span>
+            </div>
+            <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mt-2 mb-3">Membri ({(sel.membriIF || []).length})</div>
+            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-slate-50">
+                    <th className="text-left px-4 py-2.5 text-[11px] uppercase tracking-wide text-slate-500 font-semibold">Nume</th>
+                    <th className="text-left px-4 py-2.5 text-[11px] uppercase tracking-wide text-slate-500 font-semibold">Calitate</th>
+                    <th className="text-left px-4 py-2.5 text-[11px] uppercase tracking-wide text-slate-500 font-semibold">Grad rudenie</th>
+                    <th className="text-left px-4 py-2.5 text-[11px] uppercase tracking-wide text-slate-500 font-semibold">Cetatenie</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(sel.membriIF || []).map((m: any, i: number) => (
+                    <tr key={i} className="border-t border-slate-100 hover:bg-slate-50 transition-colors">
+                      <td className="px-4 py-3 font-medium text-slate-900">{m.nume}</td>
+                      <td className="px-4 py-3 text-slate-600">{m.calitate}</td>
+                      <td className="px-4 py-3 text-slate-600">{m.gradRudenie}</td>
+                      <td className="px-4 py-3 text-slate-600">{m.cetatenie}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>)}
+
+          {/* ADMINISTRARE */}
+          {activeTab === "Administrare" && (<>
+            <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mt-2 mb-3">
+              {getFieldLabel("admin_label", sel.forma)} ({sel.administratori.length})
+            </div>
+            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden mb-5">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-slate-50">
+                    <th className="text-left px-4 py-2.5 text-[11px] uppercase tracking-wide text-slate-500 font-semibold">Nume</th>
+                    <th className="text-left px-4 py-2.5 text-[11px] uppercase tracking-wide text-slate-500 font-semibold">Functie</th>
+                    <th className="text-left px-4 py-2.5 text-[11px] uppercase tracking-wide text-slate-500 font-semibold">Puteri</th>
+                    <th className="text-left px-4 py-2.5 text-[11px] uppercase tracking-wide text-slate-500 font-semibold">Mandat</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sel.administratori.map((a: any, i: number) => (
+                    <tr key={i} className="border-t border-slate-100 hover:bg-slate-50 transition-colors">
+                      <td className="px-4 py-3 font-medium text-slate-900">{a.nume}</td>
+                      <td className="px-4 py-3 text-slate-600">{a.functie}</td>
+                      <td className="px-4 py-3 text-slate-600">{a.puteri}</td>
+                      <td className="px-4 py-3 text-slate-600">{a.durataMandatLabel}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {sel.cenzori && sel.cenzori.length > 0 && (<>
+              <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mt-5 mb-3">Cenzori / Auditori</div>
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-slate-50">
+                      <th className="text-left px-4 py-2.5 text-[11px] uppercase tracking-wide text-slate-500 font-semibold">Nume</th>
+                      <th className="text-left px-4 py-2.5 text-[11px] uppercase tracking-wide text-slate-500 font-semibold">Calitate</th>
+                      <th className="text-left px-4 py-2.5 text-[11px] uppercase tracking-wide text-slate-500 font-semibold">Nr. autorizare</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sel.cenzori.map((c: any, i: number) => (
+                      <tr key={i} className="border-t border-slate-100 hover:bg-slate-50 transition-colors">
+                        <td className="px-4 py-3 font-medium text-slate-900">{c.nume}</td>
+                        <td className="px-4 py-3 text-slate-600">{c.calitate}</td>
+                        <td className="px-4 py-3 font-mono text-slate-600">{c.nrAutorizare}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>)}
+          </>)}
+
+          {/* ACTIVITATI */}
+          {activeTab === "Activitati" && (<>
+            <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mt-2 mb-3">Activitate principala</div>
+            <div className="bg-white rounded-xl border border-blue-200 bg-blue-50/30 p-4 mb-5">
+              <div className="text-[11px] uppercase tracking-wide text-blue-600 font-semibold mb-1">CAEN {sel.caen || "\u2014"}</div>
+              <div className="text-[15px] font-semibold text-slate-900">{sel.caenDesc}</div>
+            </div>
+            {sel.activitatiSecundare.length > 0 && (<>
+              <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mt-5 mb-3">
+                Activitati secundare ({sel.activitatiSecundare.length})
+              </div>
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                {sel.activitatiSecundare.map((a: any, i: number) => (
+                  <div
+                    key={i}
+                    className={`flex items-center gap-4 px-4 py-2.5 ${i > 0 ? "border-t border-slate-100" : ""}`}
+                  >
+                    <span className="font-mono text-xs text-slate-500 min-w-[55px]">{a.cod}</span>
+                    <span className="text-sm text-slate-900">{a.den}</span>
+                  </div>
+                ))}
+              </div>
+            </>)}
+          </>)}
+
+          {/* SEDII */}
+          {activeTab === "Sedii" && (<>
+            <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mt-2 mb-3">Sediu social</div>
+            <div className="bg-white rounded-xl border border-slate-200 p-4 mb-5">
+              <CardLabel
+                label="Adresa completa"
+                value={`${sel.adresa || "\u2014"}, ${sel.localitate || ""}, ${sel.judet || ""} ${sel.codPostal || ""}`}
+              />
+            </div>
+            {sel.sediiSecundare && sel.sediiSecundare.length > 0 && (<>
+              <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mt-5 mb-3">
+                Sedii secundare / Puncte de lucru ({sel.sediiSecundare.length})
+              </div>
+              <div className="space-y-2">
+                {sel.sediiSecundare.map((s: any, i: number) => (
+                  <div key={i} className="bg-white rounded-xl border border-slate-200 p-4 flex items-center gap-3">
+                    <span className="text-lg">&#128205;</span>
+                    <div>
+                      <div className="text-sm font-semibold text-slate-900">{s.denumire}</div>
+                      <div className="text-xs text-slate-500 mt-0.5">{s.adresa}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>)}
+          </>)}
+
+          {/* FIN. ONRC */}
+          {activeTab === "Fin. ONRC" && (<>
+            <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mt-2 mb-3">Situatii financiare (din date ONRC)</div>
+            {sel.situatiiFinanciare.length > 0 ? (
+              <>
+                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-slate-50">
+                        <th className="text-left px-4 py-2.5 text-[11px] uppercase tracking-wide text-slate-500 font-semibold">An</th>
+                        <th className="text-right px-4 py-2.5 text-[11px] uppercase tracking-wide text-slate-500 font-semibold">Cifra afaceri</th>
+                        <th className="text-right px-4 py-2.5 text-[11px] uppercase tracking-wide text-slate-500 font-semibold">Profit net</th>
+                        <th className="text-right px-4 py-2.5 text-[11px] uppercase tracking-wide text-slate-500 font-semibold">Angajati</th>
+                        {isSOC(sel.forma) && <th className="text-right px-4 py-2.5 text-[11px] uppercase tracking-wide text-slate-500 font-semibold">Capitaluri proprii</th>}
+                        {isPF(sel.forma) && (<>
+                          <th className="text-right px-4 py-2.5 text-[11px] uppercase tracking-wide text-slate-500 font-semibold">Venituri</th>
+                          <th className="text-right px-4 py-2.5 text-[11px] uppercase tracking-wide text-slate-500 font-semibold">Cheltuieli</th>
+                        </>)}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sel.situatiiFinanciare.map((s: any, i: number) => (
+                        <tr key={i} className="border-t border-slate-100 hover:bg-slate-50 transition-colors">
+                          <td className="px-4 py-3 font-semibold text-slate-900">{s.an}</td>
+                          <td className="px-4 py-3 text-right font-mono text-slate-600">{fmtLei(s.cifraAfaceri)}</td>
+                          <td className={`px-4 py-3 text-right font-mono ${(s.profitNet ?? 0) >= 0 ? "text-emerald-600" : "text-red-500"}`}>{fmtLei(s.profitNet)}</td>
+                          <td className="px-4 py-3 text-right font-mono text-slate-600">{s.angajati ?? "\u2014"}</td>
+                          {isSOC(sel.forma) && <td className="px-4 py-3 text-right font-mono text-slate-600">{fmtLei(s.capitaluriProprii)}</td>}
+                          {isPF(sel.forma) && (<>
+                            <td className="px-4 py-3 text-right font-mono text-slate-600">{fmtLei(s.venituriTotale)}</td>
+                            <td className="px-4 py-3 text-right font-mono text-slate-600">{fmtLei(s.cheltuieliTotale)}</td>
+                          </>)}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="mt-3 text-xs text-slate-400">Sursa: Date publice ONRC / termene.ro</div>
+              </>
+            ) : (
+              <div className="flex items-center justify-center flex-col gap-3 text-slate-400 py-16">
+                <div className="text-4xl opacity-50">&#128202;</div>
+                <div className="text-sm">Nicio situatie financiara disponibila.</div>
+              </div>
+            )}
+          </>)}
+
+          {/* FIN. ANAF */}
+          {activeTab === "Fin. ANAF" && (() => {
+            const anafData = sel.situatiiFinanciare.filter((s: any) => s.source === "anaf_upload");
+            const anafYears = anafData.map((s: any) => s.an).sort((a: number, b: number) => b - a);
+            const viewYear = selectedBilantYear ?? anafYears[0] ?? null;
+            const raw = (detail?.financials || []).find((f: any) => f.source === "anaf_upload" && f.year === viewYear);
+            const f10 = raw?.f10;
+            const f20 = raw?.f20;
+            const f30 = raw?.f30;
+
+            return anafData.length > 0 ? (<>
+              {/* Header with year selector + upload button */}
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="text-xs font-bold uppercase tracking-wider text-slate-400">Bilant ANAF</div>
+                  {anafYears.length > 1 && (
+                    <select
+                      value={viewYear ?? ""}
+                      onChange={e => setSelectedBilantYear(Number(e.target.value))}
+                      className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-900 text-[13px] font-mono"
+                    >
+                      {anafYears.map((y: number) => <option key={y} value={y}>{y}</option>)}
+                    </select>
+                  )}
+                  {anafYears.length === 1 && <span className="text-sm font-mono text-slate-500">{viewYear}</span>}
+                </div>
+                <button
+                  className="px-4 py-2 text-[13px] font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+                  onClick={() => setShowBilantUpload(true)}
+                >
+                  Upload bilant
+                </button>
+              </div>
+
+              {/* Summary table all years */}
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden mb-6">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-slate-50">
+                      <th className="text-left px-4 py-2.5 text-[11px] uppercase tracking-wide text-slate-500 font-semibold">An</th>
+                      <th className="text-right px-4 py-2.5 text-[11px] uppercase tracking-wide text-slate-500 font-semibold">Cifra afaceri</th>
+                      <th className="text-right px-4 py-2.5 text-[11px] uppercase tracking-wide text-slate-500 font-semibold">Profit net</th>
+                      <th className="text-right px-4 py-2.5 text-[11px] uppercase tracking-wide text-slate-500 font-semibold">Rezultat exploatare</th>
+                      <th className="text-right px-4 py-2.5 text-[11px] uppercase tracking-wide text-slate-500 font-semibold">Angajati</th>
+                      {isSOC(sel.forma) && <th className="text-right px-4 py-2.5 text-[11px] uppercase tracking-wide text-slate-500 font-semibold">Capitaluri proprii</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {anafData.map((s: any, i: number) => (
+                      <tr
+                        key={i}
+                        className={`border-t border-slate-100 hover:bg-slate-50 transition-colors cursor-pointer ${s.an === viewYear ? "bg-blue-50/50" : ""}`}
+                        onClick={() => setSelectedBilantYear(s.an)}
+                      >
+                        <td className={`px-4 py-3 ${s.an === viewYear ? "font-bold" : "font-medium"} text-slate-900`}>{s.an}</td>
+                        <td className="px-4 py-3 text-right font-mono text-slate-600">{fmtLei(s.cifraAfaceri)}</td>
+                        <td className={`px-4 py-3 text-right font-mono ${(s.profitNet ?? 0) >= 0 ? "text-emerald-600" : "text-red-500"}`}>{fmtLei(s.profitNet)}</td>
+                        <td className="px-4 py-3 text-right font-mono text-slate-600">{fmtLei(raw?.f20?.rezultatExploatare)}</td>
+                        <td className="px-4 py-3 text-right font-mono text-slate-600">{s.angajati ?? "\u2014"}</td>
+                        {isSOC(sel.forma) && <td className="px-4 py-3 text-right font-mono text-slate-600">{fmtLei(s.capitaluriProprii)}</td>}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Detailed data for selected year */}
+              {f20 && (<>
+                <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mt-5 mb-3">Cont profit si pierderi ({viewYear})</div>
+                <div className="grid grid-cols-2 gap-4 mb-5">
+                  <div className="bg-white rounded-xl border border-slate-200 p-4"><CardLabel label="Cifra afaceri neta" value={fmtLei(f20.cifraAfaceriNeta)} mono /></div>
+                  <div className="bg-white rounded-xl border border-slate-200 p-4"><CardLabel label="Venituri exploatare" value={fmtLei(f20.venituriExploatare)} mono /></div>
+                  <div className="bg-white rounded-xl border border-slate-200 p-4"><CardLabel label="Cheltuieli exploatare" value={fmtLei(f20.cheltuieliExploatare)} mono /></div>
+                  <div className="bg-white rounded-xl border border-slate-200 p-4"><CardLabel label="Rezultat exploatare" value={<span className={`font-mono ${(f20.rezultatExploatare ?? 0) >= 0 ? "text-emerald-600" : "text-red-500"}`}>{fmtLei(f20.rezultatExploatare)}</span>} /></div>
+                  <div className="bg-white rounded-xl border border-slate-200 p-4"><CardLabel label="Venituri financiare" value={fmtLei(f20.venituriFinanciare)} mono /></div>
+                  <div className="bg-white rounded-xl border border-slate-200 p-4"><CardLabel label="Cheltuieli financiare" value={fmtLei(f20.cheltuieliFinanciare)} mono /></div>
+                  <div className="bg-white rounded-xl border border-slate-200 p-4"><CardLabel label="Rezultat brut" value={<span className={`font-mono ${(f20.rezultatBrut ?? 0) >= 0 ? "text-emerald-600" : "text-red-500"}`}>{fmtLei(f20.rezultatBrut)}</span>} /></div>
+                  <div className="bg-white rounded-xl border border-slate-200 p-4"><CardLabel label="Rezultat net" value={<span className={`font-mono ${(f20.profitNet ?? 0) >= 0 ? "text-emerald-600" : "text-red-500"}`}>{fmtLei(f20.profitNet)}</span>} /></div>
+                </div>
+              </>)}
+
+              {f10 && (<>
+                <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mt-5 mb-3">Bilant ({viewYear})</div>
+                <div className="grid grid-cols-2 gap-4 mb-5">
+                  <div className="bg-white rounded-xl border border-slate-200 p-4"><CardLabel label="Active imobilizate" value={fmtLei(f10.activeImobilizate)} mono /></div>
+                  <div className="bg-white rounded-xl border border-slate-200 p-4"><CardLabel label="Active circulante" value={fmtLei(f10.activeCirculante)} mono /></div>
+                  <div className="bg-white rounded-xl border border-slate-200 p-4"><CardLabel label="Stocuri" value={fmtLei(f10.stocuri)} mono /></div>
+                  <div className="bg-white rounded-xl border border-slate-200 p-4"><CardLabel label="Creante" value={fmtLei(f10.creante)} mono /></div>
+                  <div className="bg-white rounded-xl border border-slate-200 p-4"><CardLabel label="Casa si conturi" value={fmtLei(f10.casaSiConturi)} mono /></div>
+                  <div className="bg-white rounded-xl border border-slate-200 p-4"><CardLabel label="Datorii sub 1 an" value={fmtLei(f10.datoriiSub1An)} mono /></div>
+                  <div className="bg-white rounded-xl border border-slate-200 p-4"><CardLabel label="Datorii peste 1 an" value={fmtLei(f10.datoriiPeste1An)} mono /></div>
+                  <div className="bg-white rounded-xl border border-slate-200 p-4"><CardLabel label="Capitaluri proprii" value={<span className={`font-mono ${(f10.capitaluriProprii ?? 0) >= 0 ? "text-emerald-600" : "text-red-500"}`}>{fmtLei(f10.capitaluriProprii)}</span>} /></div>
+                </div>
+              </>)}
+
+              {f30 && (f30.numarMediuSalariati || f30.numarSalariati31Dec) && (<>
+                <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mt-5 mb-3">Date informative ({viewYear})</div>
+                <div className="grid grid-cols-2 gap-4">
+                  {f30.numarMediuSalariati != null && (
+                    <div className="bg-white rounded-xl border border-slate-200 p-4"><CardLabel label="Nr. mediu salariati" value={f30.numarMediuSalariati} mono /></div>
+                  )}
+                  {f30.numarSalariati31Dec != null && (
+                    <div className="bg-white rounded-xl border border-slate-200 p-4"><CardLabel label="Nr. salariati la 31 dec" value={f30.numarSalariati31Dec} mono /></div>
+                  )}
+                </div>
+              </>)}
+
+              <div className="mt-3 text-xs text-slate-400">Sursa: Bilant ANAF uploadat</div>
+            </>) : (
+              <div className="flex items-center justify-center flex-col gap-3 text-slate-400 py-16">
+                <div className="text-4xl opacity-50">&#128202;</div>
+                <div className="text-sm">Niciun bilant ANAF incarcat.</div>
+                <button
+                  className="mt-3 px-5 py-2.5 rounded-lg bg-blue-600 text-white text-sm font-bold hover:bg-blue-500 transition-colors"
+                  onClick={() => setShowBilantUpload(true)}
+                >
+                  Upload bilant ANAF
+                </button>
+              </div>
+            );
+          })()}
+
+          {/* JURIDIC */}
+          {activeTab === "Juridic" && (<>
+            <div className="text-xs font-bold uppercase tracking-wider text-slate-400 mt-2 mb-3">Stare juridica</div>
+            <div className="bg-white rounded-xl border border-slate-200 p-4 mb-5 space-y-2">
+              <div className="flex items-center gap-3 text-sm">
+                <span className={sel.insolventa ? "text-red-500" : "text-emerald-500"}>{sel.insolventa ? "\u274C" : "\u2705"}</span>
+                <span className={`font-medium ${sel.insolventa ? "text-red-600" : "text-slate-700"}`}>Insolventa</span>
+              </div>
+              <div className="flex items-center gap-3 text-sm">
+                <span className={sel.dizolvare ? "text-red-500" : "text-emerald-500"}>{sel.dizolvare ? "\u274C" : "\u2705"}</span>
+                <span className={`font-medium ${sel.dizolvare ? "text-red-600" : "text-slate-700"}`}>Dizolvare</span>
+              </div>
+              <div className="flex items-center gap-3 text-sm">
+                <span className={sel.lichidare ? "text-red-500" : "text-emerald-500"}>{sel.lichidare ? "\u274C" : "\u2705"}</span>
+                <span className={`font-medium ${sel.lichidare ? "text-red-600" : "text-slate-700"}`}>Lichidare</span>
+              </div>
+              <div className="flex items-center gap-3 text-sm">
+                <span className={sel.restrictii ? "text-red-500" : "text-emerald-500"}>{sel.restrictii ? "\u274C" : "\u2705"}</span>
+                <span className={`font-medium ${sel.restrictii ? "text-red-600" : "text-slate-700"}`}>Restrictii</span>
+              </div>
+            </div>
+            {!sel.insolventa && !sel.dizolvare && !sel.lichidare && !sel.restrictii && (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4 mb-5 text-sm text-emerald-700 flex items-center gap-2">
+                <span>\u2705</span> Fara restrictii, insolventa, dizolvare sau lichidare
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-4 mt-4">
+              <div className="bg-white rounded-xl border border-slate-200 p-4">
+                <CardLabel label="Nr. Reg. Comertului" value={sel.regCom} mono />
+              </div>
+              <div className="bg-white rounded-xl border border-slate-200 p-4">
+                <CardLabel label="Forma juridica" value={FORME_JURIDICE.find(fj => fj.cod === sel.forma)?.label || sel.forma} />
+              </div>
+            </div>
+            <div className="bg-white rounded-xl border border-slate-200 border-l-[3px] border-l-blue-500 p-4 mt-4">
+              <div className="text-[11px] uppercase tracking-wide text-slate-500 font-medium mb-1">Ultima mentiune</div>
+              <div className="text-[13px] text-slate-600 leading-relaxed">{sel.ultimaMentiune}</div>
+            </div>
+          </>)}
+
+        </div>
+      </>)}
 
       {/* ONRC UPLOAD MODAL */}
       {showOnrcUpload && (
-        <div className="cd-overlay" onClick={e => { if (e.target === e.currentTarget) setShowOnrcUpload(false); }}>
-          <div className="cd-modal">
-            <div className="cd-modal-title">Upload Certificat Constatator<button className="cd-modal-close" onClick={() => setShowOnrcUpload(false)}>&times;</button></div>
-            <div style={{ fontSize: 13, color: "#64748b", marginBottom: 18, lineHeight: 1.6 }}>
+        <div
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[100] animate-in fade-in"
+          onClick={e => { if (e.target === e.currentTarget) setShowOnrcUpload(false); }}
+        >
+          <div className="bg-white border border-slate-200 rounded-2xl w-[480px] max-h-[85vh] overflow-y-auto p-7 animate-in slide-in-from-bottom-4">
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="text-lg font-extrabold text-slate-900">Upload Certificat Constatator</h2>
+              <button className="text-slate-400 hover:text-slate-900 text-lg p-1" onClick={() => setShowOnrcUpload(false)}>&times;</button>
+            </div>
+            <p className="text-[13px] text-slate-500 mb-5 leading-relaxed">
               Incarca un certificat constatator ONRC (PDF). Datele firmei se vor actualiza automat cu informatiile extrase.
-            </div>
+            </p>
             <input type="file" ref={onrcFileRef} accept=".pdf" style={{ display: "none" }} onChange={() => {}} />
-            <div className="cd-upload-zone" onClick={() => onrcFileRef.current?.click()} style={{ marginBottom: 18 }}>
-              <div className="uz-icon">{onrcFileRef.current?.files?.[0] ? "\u2705" : "\u{1F4C4}"}</div>
-              <div className="uz-title">{onrcFileRef.current?.files?.[0]?.name || "Certificat constatator (PDF)"}</div>
-              <div className="uz-sub">Click pentru a selecta fisierul</div>
+            <div
+              className="border-2 border-dashed border-slate-200 rounded-xl p-7 text-center mb-5 cursor-pointer hover:border-blue-500 hover:bg-blue-50/30 transition-all"
+              onClick={() => onrcFileRef.current?.click()}
+            >
+              <div className="text-2xl mb-1.5">{onrcFileRef.current?.files?.[0] ? "\u2705" : "\ud83d\udcc4"}</div>
+              <div className="text-sm font-semibold text-slate-900">{onrcFileRef.current?.files?.[0]?.name || "Certificat constatator (PDF)"}</div>
+              <div className="text-xs text-slate-400 mt-1">Click pentru a selecta fisierul</div>
             </div>
-            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-              <button className="cd-btn-s" onClick={() => setShowOnrcUpload(false)}>Anuleaza</button>
-              <button className="cd-btn-p" disabled={onrcUploading} onClick={handleOnrcUpload}>
-                {onrcUploading ? <span className="cd-spinner" /> : "Actualizeaza datele"}
+            <div className="flex gap-2.5 justify-end">
+              <button
+                className="px-5 py-2.5 rounded-lg border border-slate-200 bg-white text-slate-600 text-sm font-semibold hover:border-slate-300 hover:text-slate-900 transition-colors"
+                onClick={() => setShowOnrcUpload(false)}
+              >
+                Anuleaza
+              </button>
+              <button
+                className="px-5 py-2.5 rounded-lg bg-blue-600 text-white text-sm font-bold hover:bg-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={onrcUploading}
+                onClick={handleOnrcUpload}
+              >
+                {onrcUploading ? <span className="inline-block w-[18px] h-[18px] border-2 border-white/30 border-t-white rounded-full animate-spin" /> : "Actualizeaza datele"}
               </button>
             </div>
           </div>
@@ -627,18 +858,24 @@ export default function CompanyDetailPage() {
 
       {/* BILANT ANAF UPLOAD MODAL */}
       {showBilantUpload && (
-        <div className="cd-overlay" onClick={e => { if (e.target === e.currentTarget) setShowBilantUpload(false); }}>
-          <div className="cd-modal">
-            <div className="cd-modal-title">Upload bilant ANAF<button className="cd-modal-close" onClick={() => setShowBilantUpload(false)}>&times;</button></div>
-            <div style={{ fontSize: 13, color: "#64748b", marginBottom: 18, lineHeight: 1.6 }}>
-              Incarca un bilant ANAF (PDF descarcat din SPV). Se accepta Formularul 10 (bilant), Formularul 20 (cont profit/pierderi), Formularul 30/40. Datele financiare se extrag automat.
+        <div
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[100] animate-in fade-in"
+          onClick={e => { if (e.target === e.currentTarget) setShowBilantUpload(false); }}
+        >
+          <div className="bg-white border border-slate-200 rounded-2xl w-[480px] max-h-[85vh] overflow-y-auto p-7 animate-in slide-in-from-bottom-4">
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="text-lg font-extrabold text-slate-900">Upload bilant ANAF</h2>
+              <button className="text-slate-400 hover:text-slate-900 text-lg p-1" onClick={() => setShowBilantUpload(false)}>&times;</button>
             </div>
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: "block", fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".5px", color: "#94a3b8", marginBottom: 6 }}>An fiscal</label>
+            <p className="text-[13px] text-slate-500 mb-5 leading-relaxed">
+              Incarca un bilant ANAF (PDF descarcat din SPV). Se accepta Formularul 10 (bilant), Formularul 20 (cont profit/pierderi), Formularul 30/40. Datele financiare se extrag automat.
+            </p>
+            <div className="mb-4">
+              <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-1.5">An fiscal</label>
               <select
                 value={bilantYear}
                 onChange={e => setBilantYear(Number(e.target.value))}
-                style={{ padding: "10px 14px", borderRadius: "10px", border: "1px solid #e2e8f0", background: "#f8fafc", color: "#0f172a", fontSize: 14, fontFamily: "ui-monospace, SFMono-Regular, monospace", width: 140 }}
+                className="px-3.5 py-2.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-900 text-sm font-mono w-[140px]"
               >
                 {Array.from({ length: 6 }, (_, i) => new Date().getFullYear() - 1 - i).map(y => (
                   <option key={y} value={y}>{y}</option>
@@ -646,20 +883,32 @@ export default function CompanyDetailPage() {
               </select>
             </div>
             <input type="file" ref={bilantFileRef} accept=".pdf" style={{ display: "none" }} onChange={() => {}} />
-            <div className="cd-upload-zone" onClick={() => bilantFileRef.current?.click()} style={{ marginBottom: 18 }}>
-              <div className="uz-icon">{bilantFileRef.current?.files?.[0] ? "\u2705" : "\u{1F4CA}"}</div>
-              <div className="uz-title">{bilantFileRef.current?.files?.[0]?.name || "Bilant ANAF (PDF)"}</div>
-              <div className="uz-sub">Click pentru a selecta fisierul</div>
+            <div
+              className="border-2 border-dashed border-slate-200 rounded-xl p-7 text-center mb-5 cursor-pointer hover:border-blue-500 hover:bg-blue-50/30 transition-all"
+              onClick={() => bilantFileRef.current?.click()}
+            >
+              <div className="text-2xl mb-1.5">{bilantFileRef.current?.files?.[0] ? "\u2705" : "\ud83d\udcca"}</div>
+              <div className="text-sm font-semibold text-slate-900">{bilantFileRef.current?.files?.[0]?.name || "Bilant ANAF (PDF)"}</div>
+              <div className="text-xs text-slate-400 mt-1">Click pentru a selecta fisierul</div>
             </div>
-            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-              <button className="cd-btn-s" onClick={() => setShowBilantUpload(false)}>Anuleaza</button>
-              <button className="cd-btn-p" disabled={bilantUploading} onClick={handleBilantUpload}>
-                {bilantUploading ? <span className="cd-spinner" /> : "Extrage date financiare"}
+            <div className="flex gap-2.5 justify-end">
+              <button
+                className="px-5 py-2.5 rounded-lg border border-slate-200 bg-white text-slate-600 text-sm font-semibold hover:border-slate-300 hover:text-slate-900 transition-colors"
+                onClick={() => setShowBilantUpload(false)}
+              >
+                Anuleaza
+              </button>
+              <button
+                className="px-5 py-2.5 rounded-lg bg-blue-600 text-white text-sm font-bold hover:bg-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={bilantUploading}
+                onClick={handleBilantUpload}
+              >
+                {bilantUploading ? <span className="inline-block w-[18px] h-[18px] border-2 border-white/30 border-t-white rounded-full animate-spin" /> : "Extrage date financiare"}
               </button>
             </div>
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }

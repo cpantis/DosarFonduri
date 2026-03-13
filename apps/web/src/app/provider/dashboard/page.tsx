@@ -17,7 +17,8 @@ async function providerApi<T = any>(path: string, options: RequestInit = {}): Pr
   const res = await fetch(`${API_URL}${path}`, { headers, credentials: "include", ...options });
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: "Request failed" }));
-    throw new Error(body.error || `HTTP ${res.status}`);
+    const details = body.details ? `: ${body.details.map((d: any) => `${d.path?.join(".")}: ${d.message}`).join(", ")}` : "";
+    throw new Error((body.error || `HTTP ${res.status}`) + details);
   }
   return res.json();
 }

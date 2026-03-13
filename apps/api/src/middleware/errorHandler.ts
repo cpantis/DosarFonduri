@@ -6,6 +6,7 @@ export const errorHandler = (err: Error, c: Context) => {
   console.error(`[${method} ${path}] Unhandled error:`, err.message, err.stack);
 
   if (err.name === "ZodError") {
+    console.error("ZodError details:", JSON.stringify((err as any).issues));
     return c.json({ error: "Date invalide", details: (err as any).issues }, 400);
   }
 

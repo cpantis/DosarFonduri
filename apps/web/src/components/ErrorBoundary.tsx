@@ -28,18 +28,18 @@ export class ErrorBoundary extends Component<Props, State> {
         <div className="flex items-center justify-center h-full">
           <div className="text-center p-8">
             <div className="text-4xl mb-4">&#9888;&#65039;</div>
-            <h2 className="text-lg font-bold mb-2" style={{ color: "var(--text-primary)" }}>Ceva nu a mers bine</h2>
-            <p className="text-sm mb-4" style={{ color: "var(--text-secondary)" }}>{this.state.error.message}</p>
+            <h2 className="text-lg font-bold mb-2" style={{ color: "#0f172a" }}>Ceva nu a mers bine</h2>
+            <p className="text-sm mb-4" style={{ color: "#64748b" }}>{this.state.error.message}</p>
             {canRetry ? (
               <button
                 onClick={this.handleRetry}
                 className="px-4 py-2 rounded-lg text-white font-semibold border-none cursor-pointer"
-                style={{ background: "var(--accent-blue)" }}
+                style={{ background: "#4d8bff" }}
               >
                 Încearcă din nou ({MAX_RETRIES - this.state.retryCount} incercari ramase)
               </button>
             ) : (
-              <p className="text-sm" style={{ color: "var(--accent-red)" }}>
+              <p className="text-sm" style={{ color: "#f87171" }}>
                 Eroare persistenta. Reincarca pagina.
               </p>
             )}

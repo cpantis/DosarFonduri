@@ -15,17 +15,11 @@ export function CardLabel({
   const valueSize = size === "lg" ? "text-[20px]" : "text-[16px]";
   return (
     <div className={className}>
-      <div
-        className="text-[12px] uppercase tracking-wide font-medium mb-1.5"
-        style={{ color: "var(--text-muted)" }}
-      >
+      <div className="text-[11px] uppercase tracking-wide text-slate-400 font-medium mb-1.5">
         {label}
       </div>
-      <div
-        className={`${valueSize} font-semibold leading-snug ${mono ? "font-mono" : ""}`}
-        style={{ color: "var(--text-primary)" }}
-      >
-        {value || <span style={{ color: "var(--text-muted)" }}>—</span>}
+      <div className={`${valueSize} font-semibold leading-snug text-slate-900 ${mono ? "font-mono" : ""}`}>
+        {value || <span className="text-slate-300">—</span>}
       </div>
     </div>
   );

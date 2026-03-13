@@ -30,7 +30,7 @@ export function ProgressBar({ value, max, color }: ProgressBarProps) {
         style={{
           height: "4px",
           borderRadius: "2px",
-          background: "var(--bg-elevated)",
+          background: "#f8fafc",
         }}
       >
         <div
@@ -44,7 +44,7 @@ export function ProgressBar({ value, max, color }: ProgressBarProps) {
       </div>
       <div
         className="text-[11px] font-semibold mt-0.5 font-mono"
-        style={{ color: "var(--text-secondary)" }}
+        style={{ color: "#64748b" }}
       >
         {value}/{max}
       </div>

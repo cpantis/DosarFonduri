@@ -1,58 +1,13 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { apiGet, apiPost, apiDelete } from "@/lib/api";
-import { PageHeader } from "@/components/shared/PageHeader";
-import { StatusBadge } from "@/components/shared/StatusBadge";
-import { EmptyState } from "@/components/shared/EmptyState";
-
-/* ═══ HELPERS ═══ */
+import { apiGet, apiPost } from "@/lib/api";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { StatusBadge } from "@/components/ui/StatusBadge";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { BtnPrimary } from "@/components/ui/Buttons";
 
 const pct = (a: number, b: number) => b > 0 ? Math.round((a / b) * 100) : 0;
-
-const progressColorVars: Record<string, string> = {
-  emerald: "var(--accent-green)",
-  blue: "var(--accent-blue)",
-  purple: "var(--accent-purple)",
-  orange: "var(--accent-orange)",
-};
-
-// Workflow stage definitions
-const WORKFLOW_STAGES = [
-  { key: "eligibility", label: "Eligibilitate", icon: "\u{1F6E1}" },
-  { key: "writing", label: "Scriere", icon: "\u{1F4DD}" },
-  { key: "documents", label: "Documente", icon: "\u{1F4C4}" },
-  { key: "review", label: "Verificare", icon: "\u{1F50D}" },
-  { key: "submission", label: "Depunere", icon: "\u{1F4E4}" },
-];
-
-function getWorkflowStage(p: any): { currentStage: number; stageProgress: number[] } {
-  const prog = p.progress || {};
-  const eligibility = prog.eligibility || { passed: 0, total: 0 };
-  const elements = prog.elements || { filled: 0, total: 0 };
-  const docs = prog.docs || { done: 0, total: 0 };
-  const templates = prog.templates || { done: 0, total: 0 };
-
-  const eligPct = pct(eligibility.passed, eligibility.total);
-  const elemPct = pct(elements.filled, elements.total);
-  const docsPct = pct(docs.done, docs.total);
-  const tplPct = pct(templates.done, templates.total);
-
-  const stageProgress = [
-    eligPct,
-    elemPct,
-    Math.round((docsPct + tplPct) / 2),
-    p.status === "review" || p.status === "submitted" || p.status === "approved" ? 100 : 0,
-    p.status === "submitted" || p.status === "approved" ? 100 : 0,
-  ];
-
-  if (p.status === "approved") return { currentStage: 5, stageProgress };
-  if (p.status === "submitted") return { currentStage: 4, stageProgress };
-  if (p.status === "review") return { currentStage: 3, stageProgress };
-  if (stageProgress[2] > 50) return { currentStage: 2, stageProgress };
-  if (stageProgress[1] > 30) return { currentStage: 1, stageProgress };
-  return { currentStage: 0, stageProgress };
-}
 
 function formatRelativeTime(dateStr: string): string {
   const now = new Date();
@@ -111,22 +66,16 @@ function buildProgramTree(folders: FolderNode[]): ProgramTree[] {
 
 export default function ProjectsPage() {
   const router = useRouter();
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [programFilter, setProgramFilter] = useState("all");
-  const [viewMode, setViewMode] = useState<"cards" | "table">("cards");
   const [showCreate, setShowCreate] = useState(false);
   const [createStep, setCreateStep] = useState(1);
   const [createData, setCreateData] = useState<{ name: string; firmaId: string | null; folderId: string | null; program: string | null; masura: string | null; sesiune: string | null }>({ name: "", firmaId: null, folderId: null, program: null, masura: null, sesiune: null });
   const [creating, setCreating] = useState(false);
 
-  /* ═══ DATA STATE ═══ */
   const [projects, setProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [companies, setCompanies] = useState<any[]>([]);
   const [folderTree, setFolderTree] = useState<ProgramTree[]>([]);
 
-  /* ═══ FETCH PROJECTS ═══ */
   useEffect(() => {
     setLoading(true);
     apiGet("/api/projects")
@@ -137,7 +86,6 @@ export default function ProjectsPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  /* ═══ FETCH COMPANIES + FOLDERS WHEN MODAL OPENS ═══ */
   useEffect(() => {
     if (!showCreate) return;
     apiGet("/api/companies")
@@ -154,39 +102,6 @@ export default function ProjectsPage() {
       .catch(() => setFolderTree([]));
   }, [showCreate]);
 
-  /* ═══ DERIVED ═══ */
-  const filtered = projects.filter(p => {
-    if (statusFilter !== "all" && p.status !== statusFilter) return false;
-    const progName = p.programPath?.program || "";
-    if (programFilter !== "all" && progName !== programFilter) return false;
-    if (search) {
-      const q = search.toLowerCase();
-      const firma = p.company?.denumire || "";
-      return p.name.toLowerCase().includes(q) || firma.toLowerCase().includes(q) || progName.toLowerCase().includes(q);
-    }
-    return true;
-  });
-
-  const stats = {
-    total: projects.length,
-    draft: projects.filter(p => p.status === "draft").length,
-    inProgress: projects.filter(p => p.status === "in_progress").length,
-    review: projects.filter(p => p.status === "review").length,
-    submitted: projects.filter(p => p.status === "submitted").length,
-  };
-
-  const overallProgress = (p: any) => {
-    const prog = p.progress || {};
-    const el = prog.elements || { filled: 0, total: 0 };
-    const doc = prog.docs || { done: 0, total: 0 };
-    const tpl = prog.templates || { done: 0, total: 0 };
-    const e = pct(el.filled, el.total);
-    const d = pct(doc.done, doc.total);
-    const t = pct(tpl.done, tpl.total);
-    return el.total > 0 ? Math.round((e + d + t) / 3) : 0;
-  };
-
-  /* ═══ CREATE PROJECT ═══ */
   const handleCreate = async () => {
     if (!createData.name.trim() || !createData.firmaId || !createData.folderId) return;
     setCreating(true);
@@ -204,307 +119,95 @@ export default function ProjectsPage() {
     }
   };
 
-  const statusDots: Record<string, string> = {
-    draft: "var(--text-muted)",
-    in_progress: "var(--accent-blue)",
-    review: "var(--accent-yellow)",
-    submitted: "var(--accent-green)",
-  };
-
   return (
-    <div className="min-h-full flex flex-col" style={{ background: "var(--bg-deep)" }}>
-      {/* PageHeader */}
-      <PageHeader title="Proiecte">
-        <button
-          className="rounded-lg px-4 py-2 text-sm font-medium cursor-pointer transition-colors"
-          style={{ background: "var(--accent-blue)", color: "var(--text-on-accent)" }}
-          onClick={() => { setShowCreate(true); setCreateStep(1); setCreateData({ name: "", firmaId: null, folderId: null, program: null, masura: null, sesiune: null }); }}
-        >+ Proiect nou</button>
+    <>
+      <PageHeader title="Proiecte" subtitle="Dosare de finanțare în lucru">
+        <BtnPrimary icon="+" onClick={() => { setShowCreate(true); setCreateStep(1); setCreateData({ name: "", firmaId: null, folderId: null, program: null, masura: null, sesiune: null }); }}>Proiect nou</BtnPrimary>
       </PageHeader>
 
-      <div className="px-8 py-6 flex-1 flex flex-col">
-        {/* Stats pills */}
-        <div className="flex gap-3 pb-4 flex-shrink-0" style={{ borderBottom: "1px solid var(--border)" }}>
-          {[
-            { key: "all", label: "Total", count: stats.total, dot: null },
-            { key: "draft", label: "Ciornă", count: stats.draft, dot: statusDots.draft },
-            { key: "in_progress", label: "În lucru", count: stats.inProgress, dot: statusDots.in_progress },
-            { key: "review", label: "Verificare", count: stats.review, dot: statusDots.review },
-            { key: "submitted", label: "Depus", count: stats.submitted, dot: statusDots.submitted },
-          ].map(item => (
-            <div
-              key={item.key}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[12px] font-semibold cursor-pointer transition-all duration-150"
-              style={statusFilter === item.key
-                ? { border: "1px solid var(--accent-blue-border)", background: "var(--accent-blue-bg)", color: "var(--text-primary)" }
-                : { border: "1px solid transparent", color: "var(--text-secondary)" }
-              }
-              onClick={() => setStatusFilter(item.key)}
-            >
-              {item.dot && <span className="w-2 h-2 rounded-full" style={{ background: item.dot }} />}
-              <span className="font-mono font-bold">{item.count}</span> {item.label}
-            </div>
-          ))}
-        </div>
-
-        {/* Toolbar */}
-        <div className="flex items-center gap-2.5 py-3 flex-shrink-0">
-          <input
-            className="w-72 rounded-lg px-3 py-2 text-[13px] outline-none transition-colors duration-200"
-            style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", color: "var(--text-primary)" }}
-            placeholder="Caută proiect, firmă, program..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
-          <div className="flex rounded-lg p-0.5 gap-px" style={{ background: "var(--bg-elevated)" }}>
-            <button
-              className="px-2.5 py-1 rounded-md text-[11px] font-semibold border-none cursor-pointer transition-all duration-150"
-              style={programFilter === "all"
-                ? { background: "var(--bg-surface)", boxShadow: "var(--shadow-sm)", color: "var(--text-primary)" }
-                : { background: "transparent", color: "var(--text-secondary)" }
-              }
-              onClick={() => setProgramFilter("all")}
-            >Toate</button>
-            {[...new Set(projects.map(p => p.programPath?.program).filter(Boolean))].map(pr => (
-              <button
-                key={pr}
-                className="px-2.5 py-1 rounded-md text-[11px] font-semibold border-none cursor-pointer transition-all duration-150"
-                style={programFilter === pr
-                  ? { background: "var(--bg-surface)", boxShadow: "var(--shadow-sm)", color: "var(--text-primary)" }
-                  : { background: "transparent", color: "var(--text-secondary)" }
-                }
-                onClick={() => setProgramFilter(pr)}
-              >{pr}</button>
-            ))}
+      <div className="max-w-6xl mx-auto px-8 py-6">
+        {loading ? (
+          <div className="text-center py-16 text-slate-400">
+            <div className="text-sm">Se încarcă proiectele...</div>
           </div>
-          <div className="flex ml-auto rounded-md p-0.5 gap-px" style={{ background: "var(--bg-elevated)" }}>
-            <button
-              className="px-2.5 py-1.5 rounded border-none cursor-pointer text-sm transition-all duration-150"
-              style={viewMode === "cards"
-                ? { background: "var(--bg-surface)", boxShadow: "var(--shadow-sm)", color: "var(--text-primary)" }
-                : { background: "transparent", color: "var(--text-muted)" }
-              }
-              onClick={() => setViewMode("cards")} title="Carduri"
-            >&#9638;</button>
-            <button
-              className="px-2.5 py-1.5 rounded border-none cursor-pointer text-sm transition-all duration-150"
-              style={viewMode === "table"
-                ? { background: "var(--bg-surface)", boxShadow: "var(--shadow-sm)", color: "var(--text-primary)" }
-                : { background: "transparent", color: "var(--text-muted)" }
-              }
-              onClick={() => setViewMode("table")} title="Tabel"
-            >&#9776;</button>
-          </div>
-        </div>
-
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto pt-2 pb-8">
-          {loading ? (
-            <div className="text-center py-16" style={{ color: "var(--text-muted)" }}>
-              <div className="text-[40px] opacity-50 mb-2">&#8987;</div>
-              <div className="text-sm">Se încarcă proiectele...</div>
-            </div>
-          ) : filtered.length === 0 ? (
-            <EmptyState
-              icon="💼"
-              title="Niciun proiect"
-              description={search || statusFilter !== "all" || programFilter !== "all" ? "Niciun proiect nu corespunde filtrelor aplicate." : undefined}
-              actionLabel="Creează primul proiect"
-              onAction={() => { setShowCreate(true); setCreateStep(1); setCreateData({ name: "", firmaId: null, folderId: null, program: null, masura: null, sesiune: null }); }}
-            />
-          ) : viewMode === "cards" ? (
-            <div className="space-y-4">
-              {filtered.map(p => {
-                const prog = p.progress || {};
-                const eligibility = prog.eligibility || { passed: 0, total: 0 };
-                const elements = prog.elements || { filled: 0, total: 0 };
-                const docs = prog.docs || { done: 0, total: 0 };
-                const templates = prog.templates || { done: 0, total: 0 };
-                const programPath = p.programPath || {};
-                const scorePct = overallProgress(p);
-                return (
-                  <div
-                    className="rounded-xl p-6 cursor-pointer transition-all"
-                    style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}
-                    key={p.id}
-                    onClick={() => router.push(`/projects/${p.id}`)}
-                    onMouseEnter={e => { e.currentTarget.style.boxShadow = "var(--shadow-sm)"; e.currentTarget.style.borderColor = "var(--border-active)"; }}
-                    onMouseLeave={e => { e.currentTarget.style.boxShadow = "none"; e.currentTarget.style.borderColor = "var(--border)"; }}
-                  >
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-3">
-                          <span className="text-[18px] font-bold" style={{ color: "var(--text-primary)" }}>{p.name}</span>
-                          {p.valoare && (
-                            <span className="text-[14px] font-mono font-semibold" style={{ color: "var(--accent-green)" }}>{formatValoare(p.valoare)}</span>
-                          )}
-                        </div>
-                        <div className="text-[14px] mt-1" style={{ color: "var(--text-secondary)" }}>
-                          {p.company?.denumire || "—"}
-                          {(programPath.masura || programPath.sesiune) && (
-                            <span> &middot; {programPath.masura || programPath.program || "—"}</span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3 flex-shrink-0">
-                        {scorePct > 0 && (
-                          <span className="text-[22px] font-bold" style={{ color: "var(--text-primary)" }}>{scorePct}%</span>
-                        )}
+        ) : projects.length === 0 ? (
+          <EmptyState icon="📁" title="Niciun proiect încă" description="Creează un proiect nou pentru a începe pregătirea dosarului." actionLabel="Creează primul proiect" onAction={() => { setShowCreate(true); setCreateStep(1); setCreateData({ name: "", firmaId: null, folderId: null, program: null, masura: null, sesiune: null }); }} />
+        ) : (
+          <div className="space-y-3">
+            {projects.map(p => {
+              const prog = p.progress || {};
+              const eligibility = prog.eligibility || { passed: 0, total: 0 };
+              const elements = prog.elements || { filled: 0, total: 0 };
+              const programPath = p.programPath || {};
+              return (
+                <div
+                  key={p.id}
+                  className="bg-white rounded-xl border border-slate-200 p-5 hover:shadow-sm hover:border-slate-300 transition-all cursor-pointer"
+                  onClick={() => router.push(`/projects/${p.id}`)}
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="flex items-center gap-2.5">
+                        <span className="text-[15px] font-semibold text-slate-900">{p.name}</span>
                         <StatusBadge status={p.status} />
+                        {p.valoare && <span className="text-[13px] font-mono font-semibold text-emerald-600">{formatValoare(p.valoare)}</span>}
+                      </div>
+                      <div className="text-[13px] text-slate-500 mt-1 flex items-center gap-2">
+                        <span>{p.company?.denumire || "—"}</span>
+                        {programPath.masura && <><span className="text-slate-300">·</span><span>{programPath.masura}</span></>}
+                        {p.updatedAt && <><span className="text-slate-300">·</span><span>{formatRelativeTime(p.updatedAt)}</span></>}
                       </div>
                     </div>
-
-                    {/* Workflow Progress */}
-                    <div className="grid grid-cols-4 gap-4 mt-4">
-                      {[
-                        { label: "Eligibilitate", filled: eligibility.passed, total: eligibility.total, color: "emerald" },
-                        { label: "Elemente", filled: elements.filled, total: elements.total, color: "blue" },
-                        { label: "Documente", filled: docs.done, total: docs.total, color: "purple" },
-                        { label: "Template-uri", filled: templates.done, total: templates.total, color: "orange" },
-                      ].filter(m => m.total > 0).map((m, i) => {
-                        const mp = pct(m.filled, m.total);
-                        return (
-                          <div key={i}>
-                            <div className="flex items-center justify-between mb-1.5">
-                              <span className="text-[12px] font-medium" style={{ color: "var(--text-muted)" }}>{m.label}</span>
-                              <span className="text-[12px] font-mono font-semibold" style={{ color: "var(--text-secondary)" }}>{m.filled}/{m.total}</span>
-                            </div>
-                            <div className="h-2 rounded-full overflow-hidden" style={{ background: "var(--bg-elevated)" }}>
-                              <div className="h-full rounded-full transition-all duration-300" style={{ width: `${mp}%`, background: progressColorVars[m.color] }} />
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    {/* Workflow stage indicator */}
-                    {(() => {
-                      const { currentStage } = getWorkflowStage(p);
-                      if (currentStage < WORKFLOW_STAGES.length) {
-                        const stage = WORKFLOW_STAGES[currentStage];
-                        return (
-                          <div className="flex items-center gap-2 text-[13px] mt-3" style={{ color: "var(--text-secondary)" }}>
-                            <span>{stage.icon}</span>
-                            <span className="font-medium">Etapă curentă: {stage.label}</span>
-                          </div>
-                        );
-                      }
-                      return null;
-                    })()}
-
-                    {/* Footer meta */}
-                    <div className="flex items-center gap-2.5 mt-4 pt-3" style={{ borderTop: "1px solid var(--border)" }}>
-                      {p.lock && <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[12px] font-semibold" style={{ background: "var(--accent-yellow-bg)", color: "var(--accent-yellow)" }}>&#128274; {p.lock.lockedByName}</span>}
-                      <span className="text-[12px] ml-auto font-mono" style={{ color: "var(--text-muted)" }}>{p.updatedAt ? formatRelativeTime(p.updatedAt) : "—"}</span>
+                    <div className="flex items-center gap-4 text-[12px] text-slate-500">
+                      {eligibility.total > 0 && <span>Elig. {eligibility.passed}/{eligibility.total}</span>}
+                      {elements.total > 0 && <span>Elem. {elements.filled}/{elements.total}</span>}
+                      <svg className="w-5 h-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="w-full rounded-xl overflow-hidden" style={{ border: "1px solid var(--border)", background: "var(--bg-surface)" }}>
-              <div className="grid grid-cols-[1fr_140px_90px_100px_100px_100px_90px] items-center px-4 py-2.5 text-[10px] font-bold uppercase tracking-wide" style={{ borderBottom: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-secondary)" }}>
-                <div>Proiect / Firmă</div>
-                <div>Program</div>
-                <div>Status</div>
-                <div>Eligibilitate</div>
-                <div>Elemente</div>
-                <div>Documente</div>
-                <div>Actualizat</div>
-              </div>
-              {filtered.map(p => {
-                const prog = p.progress || {};
-                const eligibility = prog.eligibility || { passed: 0, total: 0 };
-                const elements = prog.elements || { filled: 0, total: 0 };
-                const docs = prog.docs || { done: 0, total: 0 };
-                const programPath = p.programPath || {};
-                return (
-                  <div
-                    className="grid grid-cols-[1fr_140px_90px_100px_100px_100px_90px] items-center px-4 py-2.5 transition-colors duration-150 cursor-pointer"
-                    style={{ borderBottom: "1px solid var(--border)" }}
-                    key={p.id}
-                    onClick={() => router.push(`/projects/${p.id}`)}
-                    onMouseEnter={e => e.currentTarget.style.background = "var(--bg-hover)"}
-                    onMouseLeave={e => e.currentTarget.style.background = "transparent"}
-                  >
-                    <div>
-                      <div className="text-[13px] font-semibold" style={{ color: "var(--text-primary)" }}>
-                        {p.name}
-                        {p.lock && <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold ml-2" style={{ background: "var(--accent-yellow-bg)", color: "var(--accent-yellow)" }}>&#128274;</span>}
-                      </div>
-                      <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>{p.company?.denumire || "—"}</div>
-                    </div>
-                    <div className="text-[11px] font-mono" style={{ color: "var(--text-secondary)" }}>{programPath.masura || "—"}</div>
-                    <div><StatusBadge status={p.status} /></div>
-                    <div>
-                      <div className="h-1 rounded-sm overflow-hidden w-full" style={{ background: "var(--bg-elevated)" }}>
-                        <div className="h-full rounded-sm transition-[width] duration-400" style={{ width: `${pct(eligibility.passed, eligibility.total)}%`, background: pct(eligibility.passed, eligibility.total) === 100 ? "var(--accent-green)" : "var(--accent-yellow)" }} />
-                      </div>
-                      <div className="text-[10px] font-mono mt-0.5" style={{ color: "var(--text-muted)" }}>{eligibility.passed}/{eligibility.total}</div>
-                    </div>
-                    <div>
-                      <div className="h-1 rounded-sm overflow-hidden w-full" style={{ background: "var(--bg-elevated)" }}>
-                        <div className="h-full rounded-sm transition-[width] duration-400" style={{ width: `${pct(elements.filled, elements.total)}%`, background: "var(--accent-blue)" }} />
-                      </div>
-                      <div className="text-[10px] font-mono mt-0.5" style={{ color: "var(--text-muted)" }}>{elements.filled}/{elements.total}</div>
-                    </div>
-                    <div>
-                      <div className="h-1 rounded-sm overflow-hidden w-full" style={{ background: "var(--bg-elevated)" }}>
-                        <div className="h-full rounded-sm transition-[width] duration-400" style={{ width: `${pct(docs.done, docs.total)}%`, background: "var(--accent-orange)" }} />
-                      </div>
-                      <div className="text-[10px] font-mono mt-0.5" style={{ color: "var(--text-muted)" }}>{docs.done}/{docs.total}</div>
-                    </div>
-                    <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>{p.updatedAt ? formatRelativeTime(p.updatedAt) : "—"}</div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
-      {/* ═══ CREATE PROJECT MODAL ═══ */}
+      {/* CREATE PROJECT MODAL */}
       {showCreate && (
         <div
-          className="fixed inset-0 flex items-center justify-center z-[100] animate-[fadeIn_0.2s]"
-          style={{ background: "var(--overlay-bg)", backdropFilter: "blur(4px)" }}
+          className="fixed inset-0 flex items-center justify-center z-[100]"
+          style={{ background: "rgba(0,0,0,0.4)", backdropFilter: "blur(4px)" }}
           onClick={e => e.target === e.currentTarget && setShowCreate(false)}
         >
-          <div className="rounded-2xl w-[540px] max-h-[85vh] overflow-y-auto p-7 animate-[slideUp_0.3s_ease]" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
-            <div className="text-xl font-extrabold mb-1 flex justify-between items-center" style={{ color: "var(--text-primary)" }}>
+          <div className="bg-white rounded-2xl w-[540px] max-h-[85vh] overflow-y-auto p-7 border border-slate-200">
+            <div className="text-xl font-extrabold mb-1 flex justify-between items-center text-slate-900">
               Proiect nou
-              <button className="bg-transparent border-none cursor-pointer text-lg" style={{ color: "var(--text-muted)" }} onClick={() => setShowCreate(false)}>&#10005;</button>
+              <button className="bg-transparent border-none cursor-pointer text-lg text-slate-400" onClick={() => setShowCreate(false)}>&#10005;</button>
             </div>
 
             <div className="flex items-center mb-6">
               {["Firmă", "Program", "Confirmare"].map((label, i) => {
                 const s = i + 1;
                 return <div key={s} className="contents">
-                  <div className="flex items-center gap-1.5 text-[12px] font-semibold" style={{ color: createStep === s ? "var(--accent-blue)" : createStep > s ? "var(--accent-green)" : "var(--text-muted)" }}>
-                    <div className="w-6 h-6 rounded-full border-2 flex items-center justify-center text-[11px] font-bold font-mono" style={
-                      createStep === s ? { borderColor: "var(--accent-blue)", background: "var(--accent-blue)", color: "var(--text-on-accent)" } :
-                      createStep > s ? { borderColor: "var(--accent-green)", background: "var(--accent-green)", color: "var(--text-on-accent)" } :
-                      { borderColor: "var(--border)" }
-                    }>{createStep > s ? "✓" : s}</div>
+                  <div className={`flex items-center gap-1.5 text-[12px] font-semibold ${createStep === s ? "text-blue-600" : createStep > s ? "text-emerald-600" : "text-slate-400"}`}>
+                    <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center text-[11px] font-bold font-mono ${
+                      createStep === s ? "border-blue-600 bg-blue-600 text-white" :
+                      createStep > s ? "border-emerald-500 bg-emerald-500 text-white" :
+                      "border-slate-200"
+                    }`}>{createStep > s ? "✓" : s}</div>
                     <span>{label}</span>
                   </div>
-                  {s < 3 && <div className="flex-1 h-0.5 mx-2.5" style={{ background: createStep > s ? "var(--accent-green)" : "var(--border)" }} />}
+                  {s < 3 && <div className={`flex-1 h-0.5 mx-2.5 ${createStep > s ? "bg-emerald-500" : "bg-slate-200"}`} />}
                 </div>;
               })}
             </div>
 
-            {/* Step 1: Select firma */}
             {createStep === 1 && (<>
               <div className="mb-4">
-                <label className="block text-[11px] font-semibold uppercase tracking-wide mb-1.5" style={{ color: "var(--text-secondary)" }}>Selectează firma</label>
+                <label className="block text-[11px] font-semibold uppercase tracking-wide mb-1.5 text-slate-500">Selectează firma</label>
                 <div className="grid grid-cols-2 gap-2">
                   {companies.map(f => (
                     <div key={f.id}
-                      className="p-3 rounded-md cursor-pointer transition-all duration-150 text-[13px] font-semibold"
-                      style={createData.firmaId === f.id
-                        ? { border: "1px solid var(--accent-blue)", background: "var(--accent-blue-bg)", color: "var(--accent-blue)" }
-                        : { border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-primary)" }
-                      }
+                      className={`p-3 rounded-md cursor-pointer transition-all duration-150 text-[13px] font-semibold border ${createData.firmaId === f.id ? "border-blue-400 bg-blue-50 text-blue-700" : "border-slate-200 bg-slate-50 text-slate-900"}`}
                       onClick={() => setCreateData(p => ({ ...p, firmaId: f.id }))}>
                       &#127970; {f.name}
                     </div>
@@ -512,34 +215,29 @@ export default function ProjectsPage() {
                 </div>
               </div>
               <div className="flex gap-2.5 justify-end mt-5">
-                <button className="px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", color: "var(--text-primary)" }} onClick={() => setShowCreate(false)}>Anulează</button>
-                <button className="px-4 py-2 rounded-lg text-sm font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed" style={{ background: "var(--accent-blue)", color: "var(--text-on-accent)" }} disabled={!createData.firmaId} onClick={() => setCreateStep(2)}>Continuă &rarr;</button>
+                <button className="px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer bg-white border border-slate-300 text-slate-700" onClick={() => setShowCreate(false)}>Anulează</button>
+                <button className="px-4 py-2 rounded-lg text-sm font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed bg-blue-600 text-white" disabled={!createData.firmaId} onClick={() => setCreateStep(2)}>Continuă &rarr;</button>
               </div>
             </>)}
 
-            {/* Step 2: Select program path */}
             {createStep === 2 && (<>
               <div className="mb-4">
-                <label className="block text-[11px] font-semibold uppercase tracking-wide mb-1.5" style={{ color: "var(--text-secondary)" }}>Selectează programul și sesiunea</label>
+                <label className="block text-[11px] font-semibold uppercase tracking-wide mb-1.5 text-slate-500">Selectează programul și sesiunea</label>
                 {folderTree.map(prog => (
                   <div className="mb-3" key={prog.program}>
-                    <div className="text-[13px] font-bold mb-1.5 flex items-center gap-1.5" style={{ color: "var(--text-primary)" }}>
-                      <span className="w-2.5 h-2.5 rounded-full" style={{ background: "var(--accent-blue)" }} /> {prog.program}
+                    <div className="text-[13px] font-bold mb-1.5 flex items-center gap-1.5 text-slate-900">
+                      <span className="w-2.5 h-2.5 rounded-full bg-blue-500" /> {prog.program}
                     </div>
                     {prog.masuri.map(m => (
                       <div key={m.name}>
-                        <div className="py-2 px-3 pl-7 text-[13px] flex items-center gap-1.5 cursor-pointer rounded-md transition-all duration-150" style={{ color: "var(--text-secondary)" }}>
-                          <span className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--accent-orange)" }} /> {m.name}
+                        <div className="py-2 px-3 pl-7 text-[13px] flex items-center gap-1.5 cursor-pointer rounded-md text-slate-500">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400" /> {m.name}
                         </div>
                         {m.sesiuni.map(s => (
                           <div key={s.folderId}
-                            className="py-1.5 px-3 pl-[52px] text-[12px] flex items-center gap-1.5 cursor-pointer rounded-md transition-all duration-150"
-                            style={createData.folderId === s.folderId
-                              ? { background: "var(--accent-blue-bg)", color: "var(--accent-blue)", fontWeight: 600 }
-                              : { color: "var(--text-muted)" }
-                            }
+                            className={`py-1.5 px-3 pl-[52px] text-[12px] flex items-center gap-1.5 cursor-pointer rounded-md transition-all ${createData.folderId === s.folderId ? "bg-blue-50 text-blue-600 font-semibold" : "text-slate-400"}`}
                             onClick={() => setCreateData(p => ({ ...p, folderId: s.folderId, program: prog.program, masura: m.name, sesiune: s.name }))}>
-                            <span className="w-1 h-1 rounded-full" style={{ background: "var(--text-muted)" }} /> {s.name}
+                            <span className="w-1 h-1 rounded-full bg-slate-300" /> {s.name}
                           </div>
                         ))}
                       </div>
@@ -548,18 +246,16 @@ export default function ProjectsPage() {
                 ))}
               </div>
               <div className="flex gap-2.5 justify-end mt-5">
-                <button className="px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", color: "var(--text-primary)" }} onClick={() => setCreateStep(1)}>&larr; Înapoi</button>
-                <button className="px-4 py-2 rounded-lg text-sm font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed" style={{ background: "var(--accent-blue)", color: "var(--text-on-accent)" }} disabled={!createData.folderId} onClick={() => setCreateStep(3)}>Continuă &rarr;</button>
+                <button className="px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer bg-white border border-slate-300 text-slate-700" onClick={() => setCreateStep(1)}>&larr; Înapoi</button>
+                <button className="px-4 py-2 rounded-lg text-sm font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed bg-blue-600 text-white" disabled={!createData.folderId} onClick={() => setCreateStep(3)}>Continuă &rarr;</button>
               </div>
             </>)}
 
-            {/* Step 3: Name + confirm */}
             {createStep === 3 && (<>
               <div className="mb-4">
-                <label className="block text-[11px] font-semibold uppercase tracking-wide mb-1.5" style={{ color: "var(--text-secondary)" }}>Denumire proiect</label>
+                <label className="block text-[11px] font-semibold uppercase tracking-wide mb-1.5 text-slate-500">Denumire proiect</label>
                 <input
-                  className="w-full px-3.5 py-2.5 rounded-lg text-sm outline-none"
-                  style={{ border: "1px solid var(--border)", background: "var(--bg-surface)", color: "var(--text-primary)" }}
+                  className="w-full px-3.5 py-2.5 rounded-lg text-sm outline-none border border-slate-200 bg-white text-slate-900"
                   placeholder="ex: Modernizare linie producție..."
                   value={createData.name}
                   onChange={e => setCreateData(p => ({ ...p, name: e.target.value }))}
@@ -567,20 +263,20 @@ export default function ProjectsPage() {
                 />
               </div>
 
-              <div className="p-4 rounded-xl mb-4" style={{ border: "1px solid var(--accent-blue-border)", background: "var(--accent-blue-bg)" }}>
-                <div className="flex gap-2 text-[13px] mb-1"><span className="min-w-[80px]" style={{ color: "var(--text-muted)" }}>Firmă:</span><span className="font-semibold" style={{ color: "var(--text-primary)" }}>{companies.find(f => f.id === createData.firmaId)?.name}</span></div>
-                <div className="flex gap-2 text-[13px] mb-1"><span className="min-w-[80px]" style={{ color: "var(--text-muted)" }}>Program:</span><span className="font-semibold" style={{ color: "var(--text-primary)" }}>{createData.program}</span></div>
-                <div className="flex gap-2 text-[13px] mb-1"><span className="min-w-[80px]" style={{ color: "var(--text-muted)" }}>Măsură:</span><span className="font-semibold" style={{ color: "var(--text-primary)" }}>{createData.masura}</span></div>
-                <div className="flex gap-2 text-[13px]"><span className="min-w-[80px]" style={{ color: "var(--text-muted)" }}>Sesiune:</span><span className="font-semibold" style={{ color: "var(--text-primary)" }}>{createData.sesiune}</span></div>
+              <div className="p-4 rounded-xl mb-4 border border-blue-200 bg-blue-50">
+                <div className="flex gap-2 text-[13px] mb-1"><span className="min-w-[80px] text-slate-400">Firmă:</span><span className="font-semibold text-slate-900">{companies.find(f => f.id === createData.firmaId)?.name}</span></div>
+                <div className="flex gap-2 text-[13px] mb-1"><span className="min-w-[80px] text-slate-400">Program:</span><span className="font-semibold text-slate-900">{createData.program}</span></div>
+                <div className="flex gap-2 text-[13px] mb-1"><span className="min-w-[80px] text-slate-400">Măsură:</span><span className="font-semibold text-slate-900">{createData.masura}</span></div>
+                <div className="flex gap-2 text-[13px]"><span className="min-w-[80px] text-slate-400">Sesiune:</span><span className="font-semibold text-slate-900">{createData.sesiune}</span></div>
               </div>
 
-              <div className="text-[12px] mb-4 leading-relaxed" style={{ color: "var(--text-muted)" }}>
-                La creare, proiectul va prelua automat ghidurile, template-urile și regulile din sesiunea selectată. Solomon va fi disponibil pentru pregătirea și verificarea conformității dosarului.
+              <div className="text-[12px] mb-4 leading-relaxed text-slate-400">
+                La creare, proiectul va prelua automat ghidurile, template-urile și regulile din sesiunea selectată.
               </div>
 
               <div className="flex gap-2.5 justify-end mt-5">
-                <button className="px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", color: "var(--text-primary)" }} onClick={() => setCreateStep(2)}>&larr; Înapoi</button>
-                <button className="px-4 py-2 rounded-lg text-sm font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed" style={{ background: "var(--accent-blue)", color: "var(--text-on-accent)" }} disabled={!createData.name.trim() || creating} onClick={handleCreate}>
+                <button className="px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer bg-white border border-slate-300 text-slate-700" onClick={() => setCreateStep(2)}>&larr; Înapoi</button>
+                <button className="px-4 py-2 rounded-lg text-sm font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed bg-blue-600 text-white" disabled={!createData.name.trim() || creating} onClick={handleCreate}>
                   {creating ? "Se creează..." : "Creează proiect"}
                 </button>
               </div>
@@ -588,6 +284,6 @@ export default function ProjectsPage() {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }

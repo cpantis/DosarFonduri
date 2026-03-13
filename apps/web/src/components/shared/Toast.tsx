@@ -59,11 +59,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         {toasts.map(t => (
           <div key={t.id} className="px-4 py-3 rounded-lg text-sm font-medium"
             style={{
-              background: "var(--bg-surface)",
-              color: "var(--text-primary)",
-              border: `1px solid var(--border)`,
+              background: "#ffffff",
+              color: "#0f172a",
+              border: `1px solid #e2e8f0`,
               borderLeft: `3px solid ${colors[t.type]}`,
-              boxShadow: "var(--shadow-lg)",
+              boxShadow: "0 4px 12px rgba(0,0,0,.15)",
               animation: t.dismissing ? "slideDown .2s ease-in forwards" : "slideUp .2s ease-out",
             }}>
             {t.message}

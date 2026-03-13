@@ -9,6 +9,10 @@ import {
 } from "../db/schema";
 import { eq, and } from "drizzle-orm";
 import { logAIUsage } from "./aiUsage";
+import { validateElement, logElementChange } from "./elementValidation";
+import { checkEligibility } from "./eligibility";
+import { computeProjectScores } from "./scoring";
+import { publishElementValidated, publishEligibilityUpdated, publishScoreUpdated } from "../lib/sse";
 
 // Sanitize user-controlled data embedded in system prompts to prevent prompt injection.
 // Wraps content in delimiters and escapes sequences that could break out.
@@ -1241,6 +1245,83 @@ export async function processSolomonMessage(params: {
                   eq(projectElements.templateElementId, tmplEl.id),
                 )
               );
+            }
+          }
+
+          // === CASCADE: Validate → Eligibility → Score → SSE ===
+          // Mirror the cascade from projects.ts PUT /:id/elements/:eid
+          const modifiedElementIds: string[] = [];
+          for (const el of extractedElements) {
+            const tmplEl = keyToTmplEl.get(el.key);
+            if (!tmplEl) continue;
+            const pe = await db.query.projectElements.findFirst({
+              where: and(
+                eq(projectElements.projectId, projectId),
+                eq(projectElements.templateElementId, tmplEl.id),
+              ),
+            });
+            if (pe) modifiedElementIds.push(pe.id);
+          }
+
+          // 1. Validate each modified element
+          for (const elementId of modifiedElementIds) {
+            try {
+              const validation = await validateElement(elementId, projectId);
+              await db.update(projectElements).set({
+                validationStatus: validation.status,
+                validationDetails: validation.details,
+              }).where(eq(projectElements.id, elementId));
+
+              // SSE per element
+              const pe = await db.query.projectElements.findFirst({ where: eq(projectElements.id, elementId) });
+              const te = pe ? keyToTmplEl.get(
+                orgTmplEls.find(t => t.id === pe.templateElementId)?.key || ""
+              ) : null;
+              if (pe && te) {
+                publishElementValidated(projectId, {
+                  elementId,
+                  elementKey: te.key,
+                  value: pe.value,
+                  validationStatus: validation.status,
+                  message: `Element "${te.label || te.key}" → ${validation.status}`,
+                }).catch(() => {});
+              }
+            } catch (err) {
+              console.error(`[solomon] Validation failed for element ${elementId}:`, err);
+            }
+          }
+
+          // 2. Re-check eligibility
+          if (modifiedElementIds.length > 0) {
+            try {
+              await checkEligibility(projectId, organizationId);
+              const eligibility = await db.query.projectEligibility.findMany({
+                where: eq(projectEligibility.projectId, projectId),
+              });
+              publishEligibilityUpdated(projectId, {
+                total: eligibility.length,
+                passed: eligibility.filter(e => e.status === "passed").length,
+                failed: eligibility.filter(e => e.status === "failed").length,
+                pending: eligibility.filter(e => e.status === "pending").length,
+                message: `Eligibilitate re-evaluată: ${eligibility.filter(e => e.status === "passed").length}/${eligibility.length} trecute`,
+              }).catch(() => {});
+            } catch (err) {
+              console.error(`[solomon] Eligibility check failed for project ${projectId}:`, err);
+            }
+
+            // 3. Recompute scoring
+            try {
+              const scoreResult = await computeProjectScores(projectId);
+              if (scoreResult.scores.length > 0) {
+                publishScoreUpdated(projectId, {
+                  totalPoints: scoreResult.totalPoints,
+                  maxTotalPoints: scoreResult.maxTotalPoints,
+                  percentage: scoreResult.percentage,
+                  message: `Punctaj actualizat: ${scoreResult.totalPoints}/${scoreResult.maxTotalPoints} (${scoreResult.percentage}%)`,
+                }).catch(() => {});
+              }
+            } catch (err) {
+              console.error(`[solomon] Score computation failed for project ${projectId}:`, err);
             }
           }
 

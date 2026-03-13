@@ -20,14 +20,34 @@ function NavItem({ item, active }: { item: { href: string; icon: string; label: 
   return (
     <Link
       href={item.href}
-      className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] transition-all no-underline group relative ${
-        active
-          ? "bg-blue-50 text-blue-600 font-semibold"
-          : "text-slate-500 hover:bg-slate-100 hover:text-slate-900"
-      }`}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "10px 14px",
+        borderRadius: 8,
+        fontSize: 13,
+        fontWeight: active ? 600 : 500,
+        color: active ? "#2563eb" : "#64748b",
+        background: active ? "rgba(37,99,235,.08)" : "transparent",
+        textDecoration: "none",
+        transition: "all .15s",
+        marginBottom: 2,
+      }}
+      onMouseEnter={e => {
+        if (!active) {
+          e.currentTarget.style.background = "#f1f5f9";
+          e.currentTarget.style.color = "#0f172a";
+        }
+      }}
+      onMouseLeave={e => {
+        if (!active) {
+          e.currentTarget.style.background = "transparent";
+          e.currentTarget.style.color = "#64748b";
+        }
+      }}
     >
-      {active && <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-4 bg-blue-600 rounded-r-full" />}
-      <span className="text-[15px] w-5 text-center shrink-0">{item.icon}</span>
+      <span style={{ fontSize: 15, width: 20, textAlign: "center", flexShrink: 0 }}>{item.icon}</span>
       <span>{item.label}</span>
     </Link>
   );
@@ -35,7 +55,16 @@ function NavItem({ item, active }: { item: { href: string; icon: string; label: 
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="text-[10px] uppercase tracking-[0.14em] text-slate-400 font-semibold px-3 mt-6 mb-1.5 first:mt-0">{children}</div>
+    <div style={{
+      fontSize: 10,
+      textTransform: "uppercase",
+      letterSpacing: "0.14em",
+      color: "#94a3b8",
+      fontWeight: 600,
+      padding: "0 14px",
+      marginTop: 24,
+      marginBottom: 6,
+    }}>{children}</div>
   );
 }
 
@@ -52,62 +81,80 @@ export function Sidebar() {
   const initials = cabinetName.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
 
   return (
-    <div className="w-[248px] min-h-screen bg-white flex flex-col shrink-0 border-r border-slate-200/80">
+    <div style={{
+      width: 248,
+      minHeight: "100vh",
+      background: "#ffffff",
+      display: "flex",
+      flexDirection: "column",
+      flexShrink: 0,
+      borderRight: "1px solid rgba(226,232,240,.8)",
+    }}>
       {/* Logo */}
-      <div className="px-5 pt-5 pb-3">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white text-[11px] font-bold shadow-lg shadow-blue-600/20">DF</div>
-          <span className="text-slate-900 font-semibold text-[15px] tracking-tight">DosarFonduri</span>
+      <div style={{ padding: "20px 20px 12px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{
+            width: 32, height: 32, borderRadius: 8,
+            background: "#2563eb", display: "flex", alignItems: "center", justifyContent: "center",
+            color: "#ffffff", fontSize: 11, fontWeight: 700,
+            boxShadow: "0 4px 12px rgba(37,99,235,.2)",
+          }}>DF</div>
+          <span style={{ color: "#0f172a", fontWeight: 600, fontSize: 15, letterSpacing: "-0.01em" }}>DosarFonduri</span>
         </div>
       </div>
 
       {/* Cabinet card */}
-      <div className="px-4 pb-3">
-        <div className="bg-slate-50 rounded-lg p-3 border border-slate-200/80">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-blue-600/10 flex items-center justify-center text-[11px] font-bold text-blue-600">{initials}</div>
-            <div className="min-w-0">
-              <div className="text-[10px] uppercase tracking-[0.14em] text-slate-400 mb-0.5">Cabinet activ</div>
-              <div className="text-slate-900 text-[13px] font-medium leading-snug truncate">{cabinetName}</div>
+      <div style={{ padding: "0 16px 12px" }}>
+        <div style={{
+          background: "#f8fafc", borderRadius: 8, padding: 12,
+          border: "1px solid rgba(226,232,240,.8)",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{
+              width: 32, height: 32, borderRadius: 8,
+              background: "rgba(37,99,235,.08)", display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 11, fontWeight: 700, color: "#2563eb",
+            }}>{initials}</div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.14em", color: "#94a3b8", marginBottom: 2 }}>Cabinet activ</div>
+              <div style={{ color: "#0f172a", fontSize: 13, fontWeight: 500, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cabinetName}</div>
             </div>
           </div>
         </div>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto px-3 py-1">
+      <nav style={{ flex: 1, overflowY: "auto", padding: "4px 8px" }}>
         <SectionLabel>Principal</SectionLabel>
-        <div className="space-y-0.5">
-          {navItems.map((item) => (
-            <NavItem key={item.key} item={item} active={isActive(item.key, item.href)} />
-          ))}
-        </div>
+        {navItems.map((item) => (
+          <NavItem key={item.key} item={item} active={isActive(item.key, item.href)} />
+        ))}
 
         <SectionLabel>Configurare</SectionLabel>
-        <div className="space-y-0.5">
-          {configItems.map((item) => (
-            <NavItem key={item.key} item={item} active={isActive(item.key, item.href)} />
-          ))}
-        </div>
+        {configItems.map((item) => (
+          <NavItem key={item.key} item={item} active={isActive(item.key, item.href)} />
+        ))}
 
         <SectionLabel>Sistem</SectionLabel>
-        <div className="space-y-0.5">
-          {systemItems.map((item) => (
-            <NavItem key={item.key} item={item} active={isActive(item.key, item.href)} />
-          ))}
-        </div>
+        {systemItems.map((item) => (
+          <NavItem key={item.key} item={item} active={isActive(item.key, item.href)} />
+        ))}
       </nav>
 
       {/* User footer */}
       {user && (
-        <div className="px-4 py-3 border-t border-slate-200/80">
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-full bg-blue-600/10 flex items-center justify-center text-[10px] font-bold text-blue-600">
+        <div style={{ padding: "12px 16px", borderTop: "1px solid rgba(226,232,240,.8)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{
+              width: 28, height: 28, borderRadius: "50%",
+              background: "rgba(37,99,235,.08)", display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 10, fontWeight: 700, color: "#2563eb",
+            }}>
               {(user.name || user.email || "U").charAt(0).toUpperCase()}
             </div>
-            <div className="min-w-0 flex-1">
-              <div className="text-[12px] text-slate-700 font-medium truncate">{user.name || user.email}</div>
-              <div className="text-[10px] text-slate-400 capitalize">{user.role || "consultant"}</div>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ fontSize: 12, color: "#475569", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.name || user.email}</div>
+              <div style={{ fontSize: 10, color: "#94a3b8", textTransform: "capitalize" }}>{user.role || "consultant"}</div>
             </div>
           </div>
         </div>

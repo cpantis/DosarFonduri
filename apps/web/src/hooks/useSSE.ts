@@ -177,6 +177,15 @@ export function useSSE({ projectId, enabled = true, onEvent }: UseSSEOptions = {
         });
         toast("success", data.message || `Extracție completă: ${data.fields_count} câmpuri`);
         break;
+      case "company_processed":
+        toast("success", data.message || `Firmă procesată cu succes`);
+        break;
+      case "company_processing_failed":
+        toast("error", data.message || `Eroare la procesarea firmei`);
+        break;
+      case "elements_updated":
+        toast("info", data.message || `${data.updatedCount} elemente actualizate`);
+        break;
       case "job_progress":
         setJobProgress(prev => {
           const next = new Map(prev);

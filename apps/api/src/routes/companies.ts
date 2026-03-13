@@ -14,6 +14,7 @@ import { parseBilantPDF } from "../services/bilantParser";
 import { extractTextFromPDF } from "../services/ocr";
 import { extractCompanyFromDocument } from "../services/companyExtractor";
 import { AuthContext } from "../middleware/auth";
+import { publishEvent } from "../lib/sse";
 
 // Helper: ensure processing_status columns exist (self-healing)
 async function ensureProcessingColumns() {
@@ -113,12 +114,28 @@ async function processCompanyPDFInBackground(
     }
 
     console.log(`[BG] Company ${companyId} PDF processing completed successfully`);
+
+    // SSE: notify frontend that company processing is complete
+    publishEvent(`org:${organizationId}:uploads`, "company_processed", {
+      companyId,
+      status: "done",
+      denumire: companyData.denumire || null,
+      cui: companyData.cui || null,
+      message: `Firmă procesată: ${companyData.denumire || "necunoscută"}`,
+    }).catch(() => {});
   } catch (err: any) {
     console.error(`[BG] Company ${companyId} PDF processing failed:`, err.message);
     await db.update(companies).set({
       processingStatus: "error",
       processingError: err.message?.substring(0, 500) || "Eroare la procesare",
     }).where(eq(companies.id, companyId)).catch(() => {});
+
+    // SSE: notify frontend about failure
+    publishEvent(`org:${organizationId}:uploads`, "company_processing_failed", {
+      companyId,
+      status: "error",
+      message: `Eroare la procesarea firmei: ${err.message?.substring(0, 200) || "Eroare necunoscută"}`,
+    }).catch(() => {});
   }
 }
 
@@ -220,12 +237,28 @@ async function processOnrcUpdateInBackground(
     }
 
     console.log(`[BG] Company ${companyId} ONRC update completed successfully`);
+
+    // SSE: notify frontend that ONRC update is complete
+    publishEvent(`org:${organizationId}:uploads`, "company_processed", {
+      companyId,
+      status: "done",
+      denumire: companyData.denumire || null,
+      cui: companyData.cui || null,
+      message: `Date ONRC actualizate: ${companyData.denumire || "firmă"}`,
+    }).catch(() => {});
   } catch (err: any) {
     console.error(`[BG] Company ${companyId} ONRC update failed:`, err.message);
     await db.update(companies).set({
       processingStatus: "error",
       processingError: err.message?.substring(0, 500) || "Eroare la procesare",
     }).where(eq(companies.id, companyId)).catch(() => {});
+
+    // SSE: notify frontend about failure
+    publishEvent(`org:${organizationId}:uploads`, "company_processing_failed", {
+      companyId,
+      status: "error",
+      message: `Eroare la actualizarea ONRC: ${err.message?.substring(0, 200) || "Eroare necunoscută"}`,
+    }).catch(() => {});
   }
 }
 
@@ -274,12 +307,35 @@ async function processBilantInBackground(
     }).where(eq(companies.id, companyId));
 
     console.log(`[BG] Company ${companyId} bilant ${year} processing completed`);
+
+    // SSE: notify frontend that bilant processing is complete
+    // Note: we need organizationId for SSE channel but don't have it in this function signature
+    // Look up the company to get the org
+    const companyForSSE = await db.query.companies.findFirst({ where: eq(companies.id, companyId) });
+    if (companyForSSE?.organizationId) {
+      publishEvent(`org:${companyForSSE.organizationId}:uploads`, "company_processed", {
+        companyId,
+        status: "done",
+        year,
+        message: `Bilanț ${year} procesat pentru ${companyForSSE.denumire || "firmă"}`,
+      }).catch(() => {});
+    }
   } catch (err: any) {
     console.error(`[BG] Company ${companyId} bilant processing failed:`, err.message);
     await db.update(companies).set({
       processingStatus: "error",
       processingError: err.message?.substring(0, 500) || "Eroare la procesare bilant",
     }).where(eq(companies.id, companyId)).catch(() => {});
+
+    // SSE: notify frontend about failure
+    const companyForSSE = await db.query.companies.findFirst({ where: eq(companies.id, companyId) }).catch(() => null);
+    if (companyForSSE?.organizationId) {
+      publishEvent(`org:${companyForSSE.organizationId}:uploads`, "company_processing_failed", {
+        companyId,
+        status: "error",
+        message: `Eroare la procesarea bilanțului: ${err.message?.substring(0, 200) || "Eroare necunoscută"}`,
+      }).catch(() => {});
+    }
   }
 }
 

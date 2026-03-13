@@ -22,12 +22,12 @@ function AppShell({ children }: { children: React.ReactNode }) {
 
   if (auth.loading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-slate-50">
+      <div className="flex h-screen items-center justify-center" style={{ background: "var(--bg-deep)" }}>
         <div className="text-center">
           <div className="w-12 h-12 mx-auto mb-4 flex items-center justify-center text-white text-xl font-extrabold rounded-xl bg-blue-600 shadow-lg shadow-blue-600/30">
             DF
           </div>
-          <div className="text-sm font-medium text-slate-500">
+          <div className="text-sm font-medium" style={{ color: "var(--text-muted)" }}>
             Se incarca...
           </div>
         </div>
@@ -49,9 +49,9 @@ function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <AuthContext.Provider value={auth}>
       <SSEProvider />
-      <div className="flex h-screen overflow-hidden transition-colors bg-slate-50">
+      <div className="flex h-screen overflow-hidden transition-colors" style={{ background: "var(--bg-deep)" }}>
         <Sidebar />
-        <main className="flex-1 flex flex-col overflow-hidden min-w-0 bg-slate-50">
+        <main className="flex-1 flex flex-col overflow-hidden min-w-0" style={{ background: "var(--bg-deep)" }}>
           {children}
         </main>
       </div>
@@ -103,12 +103,16 @@ function SSEProvider() {
       {extractionProgress.map(ext => (
         <div
           key={`ext-${ext.documentId}`}
-          className={`px-4 py-3 rounded-lg border text-xs font-medium bg-white text-slate-900 animate-[slideUp_.2s_ease-out] ${
-            ext.completed ? "border-emerald-400" : "border-blue-400"
-          }`}
+          className="px-4 py-3 rounded-xl text-[13px] font-medium animate-[slideUp_.2s_ease-out]"
+          style={{
+            background: "var(--bg-surface)",
+            color: "var(--text-primary)",
+            border: ext.completed ? "1px solid var(--accent-green-border)" : "1px solid var(--accent-blue-border)",
+            boxShadow: "var(--shadow)",
+          }}
         >
           <div className="flex items-center gap-2 mb-2">
-            <span className={`text-sm ${ext.completed ? "text-emerald-500" : "text-blue-500"}`}>
+            <span className="text-sm" style={{ color: ext.completed ? "var(--accent-green)" : "var(--accent-blue)" }}>
               {ext.completed ? "\u2705" : "\u{1F50D}"}
             </span>
             <span className="truncate flex-1">
@@ -117,7 +121,7 @@ function SSEProvider() {
                 : `Extrag date... (${ext.extractedFields.length}/${ext.totalFields || "?"} campuri)`}
             </span>
           </div>
-          <div className="text-[10px] mb-1.5 text-slate-400">
+          <div className="text-[11px] mb-1.5" style={{ color: "var(--text-muted)" }}>
             {ext.documentName}
           </div>
           {/* Per-field progress chips */}
@@ -125,7 +129,8 @@ function SSEProvider() {
             {ext.extractedFields.slice(-8).map(f => (
               <span
                 key={f.key}
-                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 text-[10px] font-semibold animate-[slideUp_.15s_ease-out]"
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold animate-[slideUp_.15s_ease-out]"
+                style={{ background: "var(--accent-green-bg)", color: "var(--accent-green)" }}
               >
                 {fieldLabel(f.key)} {"\u2713"}
               </span>
@@ -133,10 +138,13 @@ function SSEProvider() {
           </div>
           {/* Progress bar */}
           {ext.totalFields > 0 && (
-            <div className="h-[3px] rounded-sm bg-slate-100 overflow-hidden mt-1.5">
+            <div className="h-1 rounded-sm overflow-hidden mt-1.5" style={{ background: "var(--bg-elevated)" }}>
               <div
-                className={`h-full rounded-sm transition-[width] duration-300 ease-out ${ext.completed ? "bg-emerald-500" : "bg-blue-500"}`}
-                style={{ width: `${Math.round((ext.extractedFields.length / ext.totalFields) * 100)}%` }}
+                className="h-full rounded-sm transition-[width] duration-300 ease-out"
+                style={{
+                  width: `${Math.round((ext.extractedFields.length / ext.totalFields) * 100)}%`,
+                  background: ext.completed ? "var(--accent-green)" : "var(--accent-blue)",
+                }}
               />
             </div>
           )}
@@ -147,20 +155,27 @@ function SSEProvider() {
       {jobProgress.map(job => (
         <div
           key={job.id}
-          className={`px-4 py-3 rounded-lg border text-xs font-medium bg-white text-slate-900 animate-[slideUp_.2s_ease-out] ${
-            job.status === "failed" ? "border-red-400" : "border-blue-400"
-          }`}
+          className="px-4 py-3 rounded-xl text-[13px] font-medium animate-[slideUp_.2s_ease-out]"
+          style={{
+            background: "var(--bg-surface)",
+            color: "var(--text-primary)",
+            border: job.status === "failed" ? "1px solid var(--accent-red-border)" : "1px solid var(--accent-blue-border)",
+            boxShadow: "var(--shadow)",
+          }}
         >
           <div className="flex items-center gap-2 mb-1.5">
-            <span className={job.status === "failed" ? "text-red-500" : "text-blue-500"}>
+            <span style={{ color: job.status === "failed" ? "var(--accent-red)" : "var(--accent-blue)" }}>
               {job.status === "processing" ? "&#9881;" : job.status === "failed" ? "&#10060;" : "&#9989;"}
             </span>
             <span className="truncate">{job.message}</span>
           </div>
-          <div className="h-1 rounded-sm bg-slate-100 overflow-hidden">
+          <div className="h-1 rounded-sm overflow-hidden" style={{ background: "var(--bg-elevated)" }}>
             <div
-              className={`h-full rounded-sm transition-[width] duration-300 ease-out ${job.status === "failed" ? "bg-red-500" : "bg-blue-500"}`}
-              style={{ width: `${job.progress}%` }}
+              className="h-full rounded-sm transition-[width] duration-300 ease-out"
+              style={{
+                width: `${job.progress}%`,
+                background: job.status === "failed" ? "var(--accent-red)" : "var(--accent-blue)",
+              }}
             />
           </div>
         </div>
@@ -171,24 +186,27 @@ function SSEProvider() {
 
 function PendingCabinetScreen() {
   return (
-    <div className="flex h-screen items-center justify-center bg-slate-50">
+    <div className="flex h-screen items-center justify-center" style={{ background: "var(--bg-deep)" }}>
       <div className="text-center max-w-md px-6">
-        <div className="w-16 h-16 mx-auto mb-6 flex items-center justify-center text-3xl rounded-xl bg-slate-100 border border-slate-200">
+        <div
+          className="w-16 h-16 mx-auto mb-6 flex items-center justify-center text-3xl rounded-xl"
+          style={{ background: "var(--bg-elevated)", border: "1px solid var(--border)" }}
+        >
           ⏳
         </div>
-        <h2 className="text-2xl font-extrabold mb-3 text-slate-900">
+        <h2 className="text-2xl font-extrabold mb-3" style={{ color: "var(--text-primary)" }}>
           Asteapta activarea
         </h2>
-        <p className="text-sm leading-relaxed mb-8 text-slate-500">
+        <p className="text-sm leading-relaxed mb-8" style={{ color: "var(--text-secondary)" }}>
           Contul tau a fost creat cu succes. Asteapta sa fii adaugat intr-un
           cabinet de catre un administrator, sau introdu un cod de cabinet
           pentru a activa contul.
         </p>
-        <div className="p-4 text-left rounded-[10px] bg-white border border-slate-200">
-          <div className="text-[10px] font-bold uppercase mb-2 tracking-wider text-slate-400">
+        <div className="p-4 text-left rounded-[10px]" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
+          <div className="text-[10px] font-bold uppercase mb-2 tracking-wider" style={{ color: "var(--text-muted)" }}>
             Ai un cod de cabinet?
           </div>
-          <p className="text-xs text-slate-500">
+          <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
             Daca ai primit un cod de cabinet de la furnizorul DosarFonduri,
             te rugam sa te deconectezi si sa te inregistrezi din nou folosind
             codul.

@@ -190,47 +190,47 @@ export default function CompaniesPage() {
             />
           )}
           {!loading && !error && filtered.length > 0 && (
-            <div className="space-y-3">
+            <div className="space-y-4">
               {filtered.map(f => {
                 const forma = f.formaJuridica || "";
                 const isProcessing = f.processingStatus === "processing";
                 return (
                   <div
                     key={f.id}
-                    className="rounded-xl p-5 cursor-pointer transition-shadow"
+                    className="rounded-xl p-6 cursor-pointer transition-all"
                     style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}
                     onClick={() => router.push(`/companies/${f.id}`)}
-                    onMouseEnter={e => e.currentTarget.style.boxShadow = "var(--shadow-sm)"}
-                    onMouseLeave={e => e.currentTarget.style.boxShadow = "none"}
+                    onMouseEnter={e => { e.currentTarget.style.boxShadow = "var(--shadow-sm)"; e.currentTarget.style.borderColor = "var(--border-active)"; }}
+                    onMouseLeave={e => { e.currentTarget.style.boxShadow = "none"; e.currentTarget.style.borderColor = "var(--border)"; }}
                   >
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="text-[15px] font-semibold" style={{ color: "var(--text-primary)" }}>{f.denumire}</div>
-                      <div className="flex gap-1.5 flex-wrap shrink-0 ml-3">
+                    <div className="flex items-start justify-between mb-3">
+                      <div>
+                        <div className="text-[18px] font-bold leading-snug" style={{ color: "var(--text-primary)" }}>{f.denumire}</div>
+                        <div className="text-[14px] flex items-center gap-2 flex-wrap mt-1" style={{ color: "var(--text-secondary)" }}>
+                          <span className="font-mono font-semibold" style={{ color: "var(--text-primary)" }}>CUI: {f.cui}</span>
+                          {f.regCom && <><span style={{ color: "var(--text-muted)" }}>&middot;</span><span>{f.regCom}</span></>}
+                        </div>
+                      </div>
+                      <div className="flex gap-2 flex-wrap shrink-0 ml-4">
                         <TypeBadge type={forma || "SRL"} />
                         <StatusBadge status={isProcessing ? "in_progress" : (f.stare || "functiune")} label={isProcessing ? "Se proceseaza..." : undefined} />
                       </div>
                     </div>
-                    <div className="flex flex-col gap-1 mt-1">
-                      <div className="text-[13px] flex items-center gap-2 flex-wrap" style={{ color: "var(--text-secondary)" }}>
-                        <span className="font-mono" style={{ color: "var(--text-primary)" }}>CUI: {f.cui}</span>
-                        {f.regCom && <><span style={{ color: "var(--text-muted)" }}>&middot;</span><span style={{ color: "var(--text-secondary)" }}>{f.regCom}</span></>}
-                      </div>
+                    <div className="flex items-center gap-4 flex-wrap text-[13px]" style={{ color: "var(--text-secondary)" }}>
                       {(f.localitate || f.judet) && (
-                        <div className="text-[12px] flex items-center gap-1" style={{ color: "var(--text-muted)" }}>
-                          <svg className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--text-muted)" }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                        <div className="flex items-center gap-1.5">
+                          <svg className="w-4 h-4 shrink-0" style={{ color: "var(--text-muted)" }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                           <span>{[f.localitate, f.judet].filter(Boolean).join(", ")}</span>
                         </div>
                       )}
                       {f.caen && (
-                        <div className="text-[12px] flex items-center gap-1" style={{ color: "var(--text-muted)" }}>
-                          <span className="font-mono" style={{ color: "var(--text-secondary)" }}>CAEN {f.caen}</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono font-semibold" style={{ color: "var(--text-primary)" }}>CAEN {f.caen}</span>
                           {f.onrcRawData?.caenDesc && <span style={{ color: "var(--text-muted)" }}>&mdash; {f.onrcRawData.caenDesc}</span>}
                         </div>
                       )}
-                      <div className="text-[12px] flex items-center gap-2 flex-wrap" style={{ color: "var(--text-muted)" }}>
-                        {f.anInfiintare && <span>Din {f.anInfiintare}</span>}
-                        {f.capitalSocial && <><span style={{ color: "var(--text-muted)" }}>&middot;</span><span>Capital: {Number(f.capitalSocial).toLocaleString("ro-RO")} RON</span></>}
-                      </div>
+                      {f.anInfiintare && <span>Din {f.anInfiintare}</span>}
+                      {f.capitalSocial && <span className="font-semibold">Capital: {Number(f.capitalSocial).toLocaleString("ro-RO")} RON</span>}
                     </div>
                   </div>
                 );

@@ -374,7 +374,7 @@ function SignupWizard({ onGo }: { onGo: () => void }) {
               <div className="cr">
                 <strong>Rol:</strong> {inviteInfo.role}
               </div>
-              <div className="text-slate-400 text-xs mt-1.5">
+              <div className="text-xs mt-1.5" style={{ color: "var(--text-secondary)" }}>
                 Contul tau a fost creat de un administrator. Seteaza-ti parola si activeaza-l.
               </div>
             </div>

@@ -26,7 +26,7 @@ export function TypeBadge({ type, className = "" }: TypeBadgeProps) {
   const s = TYPE_STYLES[key] || DEFAULT_STYLE;
   return (
     <span
-      className={`inline-flex items-center text-[11px] font-medium px-2.5 py-0.5 rounded-full ${className}`}
+      className={`inline-flex items-center text-[12px] font-semibold px-3 py-1 rounded-full ${className}`}
       style={{ background: s.bg, color: s.color, border: `1px solid ${s.border}` }}
     >
       {type.toUpperCase()}

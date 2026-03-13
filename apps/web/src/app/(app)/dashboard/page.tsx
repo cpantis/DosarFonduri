@@ -106,7 +106,7 @@ export default function DashboardPage() {
         ) : (
           <>
             {/* Stat Cards */}
-            <div className="grid grid-cols-4 gap-4 mb-6 max-[768px]:grid-cols-2">
+            <div className="grid grid-cols-4 gap-5 mb-8 max-[768px]:grid-cols-2">
               <StatCard icon="🏢" label="Firme gestionate" value={stats?.companies ?? "–"} color="blue" />
               <StatCard icon="📁" label="Proiecte active" value={stats?.projects ?? "–"} color="amber" />
               <StatCard icon="📄" label="Documente generate" value={stats?.documents ?? "–"} color="emerald" />
@@ -114,45 +114,33 @@ export default function DashboardPage() {
             </div>
 
             {/* Quick Actions */}
-            <div className="flex gap-3 mb-6">
-              <button
-                className="flex-1 rounded-xl p-4 text-left cursor-pointer transition-all group"
-                style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--accent-blue-border)"; e.currentTarget.style.boxShadow = "var(--shadow-sm)"; }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.boxShadow = "none"; }}
-                onClick={() => router.push("/projects")}
-              >
-                <div className="text-[13px] font-semibold flex items-center gap-2" style={{ color: "var(--text-primary)" }}>📁 <span>Proiect nou</span></div>
-                <div className="text-[11px] mt-1" style={{ color: "var(--text-muted)" }}>Creează un proiect de finanțare</div>
-              </button>
-              <button
-                className="flex-1 rounded-xl p-4 text-left cursor-pointer transition-all group"
-                style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--accent-blue-border)"; e.currentTarget.style.boxShadow = "var(--shadow-sm)"; }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.boxShadow = "none"; }}
-                onClick={() => router.push("/companies")}
-              >
-                <div className="text-[13px] font-semibold flex items-center gap-2" style={{ color: "var(--text-primary)" }}>🏢 <span>Firmă nouă</span></div>
-                <div className="text-[11px] mt-1" style={{ color: "var(--text-muted)" }}>Adaugă firmă din CUI sau ONRC</div>
-              </button>
-              <button
-                className="flex-1 rounded-xl p-4 text-left cursor-pointer transition-all group"
-                style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--accent-blue-border)"; e.currentTarget.style.boxShadow = "var(--shadow-sm)"; }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.boxShadow = "none"; }}
-                onClick={() => router.push("/documents")}
-              >
-                <div className="text-[13px] font-semibold flex items-center gap-2" style={{ color: "var(--text-primary)" }}>📋 <span>Documente</span></div>
-                <div className="text-[11px] mt-1" style={{ color: "var(--text-muted)" }}>Administrează ghiduri și template-uri</div>
-              </button>
+            <div className="flex gap-4 mb-8">
+              {[
+                { icon: "📁", label: "Proiect nou", desc: "Creează un proiect de finanțare", href: "/projects" },
+                { icon: "🏢", label: "Firmă nouă", desc: "Adaugă firmă din CUI sau ONRC", href: "/companies" },
+                { icon: "📋", label: "Documente", desc: "Administrează ghiduri și template-uri", href: "/documents" },
+              ].map(a => (
+                <button
+                  key={a.href}
+                  className="flex-1 rounded-xl p-5 text-left cursor-pointer transition-all"
+                  style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--border-active)"; e.currentTarget.style.boxShadow = "var(--shadow-sm)"; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.boxShadow = "none"; }}
+                  onClick={() => router.push(a.href)}
+                >
+                  <div className="text-[22px] mb-2">{a.icon}</div>
+                  <div className="text-[15px] font-semibold" style={{ color: "var(--text-primary)" }}>{a.label}</div>
+                  <div className="text-[13px] mt-1" style={{ color: "var(--text-secondary)" }}>{a.desc}</div>
+                </button>
+              ))}
             </div>
 
-            <div className="grid grid-cols-[1fr_380px] gap-6 max-[1200px]:grid-cols-1">
+            <div className="grid grid-cols-[1fr_400px] gap-6 max-[1200px]:grid-cols-1">
               {/* LEFT: Projects table */}
               <div className="min-w-0">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-semibold flex items-center gap-2" style={{ color: "var(--text-primary)" }}>📁 Proiecte recente</h2>
-                  <button className="text-[13px] font-semibold cursor-pointer" style={{ color: "var(--accent-blue)" }} onClick={() => router.push("/projects")}>Vezi toate &rarr;</button>
+                <div className="flex items-center justify-between mb-5">
+                  <h2 className="text-[20px] font-bold flex items-center gap-2" style={{ color: "var(--text-primary)" }}>Proiecte recente</h2>
+                  <button className="text-[14px] font-semibold cursor-pointer" style={{ color: "var(--accent-blue)" }} onClick={() => router.push("/projects")}>Vezi toate &rarr;</button>
                 </div>
 
                 <div className="rounded-xl overflow-hidden" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
@@ -192,25 +180,25 @@ export default function DashboardPage() {
                               <StatusBadge status={p.status} />
                             </div>
                             <div>
-                              <div className="h-[5px] rounded-full overflow-hidden w-full" style={{ background: "var(--bg-elevated)" }}>
+                              <div className="h-1.5 rounded-full overflow-hidden w-full" style={{ background: "var(--bg-elevated)" }}>
                                 <div className="h-full rounded-full transition-all duration-300" style={{ width: `${eligPct}%`, background: barColor(eligPct, "elig") }} />
                               </div>
                               <div className="text-[11px] font-mono font-semibold mt-1" style={{ color: "var(--text-secondary)" }}>{p.eligibility}/{p.eligTotal}</div>
                             </div>
                             <div>
-                              <div className="h-[5px] rounded-full overflow-hidden w-full" style={{ background: "var(--bg-elevated)" }}>
+                              <div className="h-1.5 rounded-full overflow-hidden w-full" style={{ background: "var(--bg-elevated)" }}>
                                 <div className="h-full rounded-full transition-all duration-300" style={{ width: `${elemPct}%`, background: barColor(elemPct, "elem") }} />
                               </div>
                               <div className="text-[11px] font-mono font-semibold mt-1" style={{ color: "var(--text-secondary)" }}>{p.elements}/{p.elemTotal}</div>
                             </div>
                             <div>
-                              <div className="h-[5px] rounded-full overflow-hidden w-full" style={{ background: "var(--bg-elevated)" }}>
+                              <div className="h-1.5 rounded-full overflow-hidden w-full" style={{ background: "var(--bg-elevated)" }}>
                                 <div className="h-full rounded-full transition-all duration-300" style={{ width: `${checkPct}%`, background: barColor(checkPct, "elem") }} />
                               </div>
                               <div className="text-[11px] font-mono font-semibold mt-1" style={{ color: "var(--text-secondary)" }}>{p.checkDone}/{p.checkTotal}</div>
                             </div>
                             <div>
-                              <div className="h-[5px] rounded-full overflow-hidden w-full" style={{ background: "var(--bg-elevated)" }}>
+                              <div className="h-1.5 rounded-full overflow-hidden w-full" style={{ background: "var(--bg-elevated)" }}>
                                 <div className="h-full rounded-full transition-all duration-300" style={{ width: `${docsPct}%`, background: barColor(docsPct, "elem") }} />
                               </div>
                               <div className="text-[11px] font-mono font-semibold mt-1" style={{ color: "var(--text-secondary)" }}>{p.docsGenerated}/{p.docsTotal}</div>
@@ -227,8 +215,8 @@ export default function DashboardPage() {
               {/* RIGHT: Deadlines + Activity */}
               <div className="flex flex-col gap-6">
                 {/* Deadlines */}
-                <div className="rounded-xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
-                  <div className="text-sm font-semibold flex items-center gap-2 mb-4" style={{ color: "var(--text-primary)" }}>📅 Termene apropiate</div>
+                <div className="rounded-xl p-6" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
+                  <div className="text-[16px] font-bold flex items-center gap-2 mb-4" style={{ color: "var(--text-primary)" }}>Termene apropiate</div>
                   {(!data?.deadlines || data.deadlines.length === 0) ? (
                     <div className="text-sm italic" style={{ color: "var(--text-muted)" }}>Niciun termen apropiat</div>
                   ) : data.deadlines.map((d, i) => (
@@ -245,8 +233,8 @@ export default function DashboardPage() {
                 </div>
 
                 {/* Activity */}
-                <div className="rounded-xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
-                  <div className="text-sm font-semibold flex items-center gap-2 mb-4" style={{ color: "var(--text-primary)" }}>📋 Activitate recentă</div>
+                <div className="rounded-xl p-6" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
+                  <div className="text-[16px] font-bold flex items-center gap-2 mb-4" style={{ color: "var(--text-primary)" }}>Activitate recentă</div>
                   <div className="max-h-[360px] overflow-y-auto">
                     {(!data?.activity || data.activity.length === 0) ? (
                       <div className="text-sm italic" style={{ color: "var(--text-muted)" }}>Nicio activitate</div>

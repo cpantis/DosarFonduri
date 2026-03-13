@@ -198,17 +198,50 @@ function mapElements(elements: any[]): ElementItem[] {
 
     const sourceMap: Record<string, string> = {
       onrc: "Date ONRC",
+      onrc_auto: "ONRC (auto)",
+      anaf_auto: "ANAF (auto)",
       manual: "Completare manuală",
+      consultant_manual: "Consultant",
       solomon: "Solomon",
+      solomon_chat: "Solomon Chat",
       document: "Document uploadat",
+      document_extracted: "Extras din document",
       calculated: "Calculat automat",
+      derived: "Derivat",
+      ghid: "Ghid finanțare",
     };
+
+    // Resolve key/label: prefer elementDefinition (new anchor), fallback to templateElement
+    const elemDef = el.elementDefinition;
+    const tmplEl = el.templateElement;
+    const key = elemDef?.elementKey || tmplEl?.key || el.elementDefId || el.templateElementId || el.id;
+    const label = elemDef?.displayName || tmplEl?.label || key;
+
+    // Format value for display: JSON objects/arrays should be shown readable
+    let displayValue = el.value;
+    if (displayValue && typeof displayValue === "string") {
+      try {
+        const parsed = JSON.parse(displayValue);
+        if (Array.isArray(parsed)) {
+          displayValue = parsed.map((item: any) =>
+            typeof item === "object" ? Object.values(item).filter(Boolean).join(", ") : String(item)
+          ).join("; ");
+        } else if (typeof parsed === "object" && parsed !== null) {
+          displayValue = Object.entries(parsed)
+            .filter(([, v]) => v != null)
+            .map(([k, v]) => `${k}: ${v}`)
+            .join(", ");
+        }
+      } catch {
+        // Not JSON — keep as is
+      }
+    }
 
     return {
       id: el.id,
-      key: el.templateElement?.key || el.id,
-      label: el.templateElement?.label || "Element",
-      value: el.value,
+      key,
+      label,
+      value: displayValue,
       status,
       confidence: confirmed ? 100 : hasValue ? 85 : 0,
       source: el.source,
@@ -1351,7 +1384,7 @@ export default function ProjectViewPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full bg-slate-50 text-slate-500 text-base font-sans">
+      <div className="flex items-center justify-center h-full text-base font-sans" style={{ background: "var(--bg-deep)", color: "var(--text-muted)" }}>
         Se incarcă proiectul...
       </div>
     );
@@ -1359,7 +1392,7 @@ export default function ProjectViewPage() {
 
   if (!project) {
     return (
-      <div className="flex items-center justify-center h-full bg-slate-50 text-red-500 text-base font-sans">
+      <div className="flex items-center justify-center h-full text-base font-sans" style={{ background: "var(--bg-deep)", color: "var(--accent-red)" }}>
         Proiectul nu a fost gasit.
       </div>
     );
@@ -1374,34 +1407,34 @@ export default function ProjectViewPage() {
         .lock-banner .lb-time{font-size:11px;color:var(--text-muted);margin-left:auto;font-family:'JetBrains Mono',monospace}
         .pv-container{display:flex;height:100%;overflow:hidden;background:var(--bg-deep)}
 
-        .tree-sidebar{width:260px;min-width:260px;background:#1e293b;border-right:1px solid #334155;display:flex;flex-direction:column;overflow-y:auto}
-        .tree-header{padding:20px 16px 14px;border-bottom:1px solid #334155}
-        .tree-header h2{font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.12em;color:#475569;margin-bottom:8px}
-        .project-name{font-size:17px;font-weight:700;color:#f1f5f9;margin-bottom:2px}
-        .project-meta{font-size:12px;color:#94a3b8;font-family:'JetBrains Mono',monospace}
+        .tree-sidebar{width:260px;min-width:260px;background:var(--bg-surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto}
+        .tree-header{padding:20px 16px 14px;border-bottom:1px solid var(--border)}
+        .tree-header h2{font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:.12em;color:var(--text-muted);margin-bottom:8px}
+        .project-name{font-size:17px;font-weight:700;color:var(--text-primary);margin-bottom:2px}
+        .project-meta{font-size:12px;color:var(--text-secondary);font-family:'JetBrains Mono',monospace}
         .project-path{display:flex;flex-wrap:wrap;gap:0;margin-top:8px;font-size:11px;line-height:1.6}
-        .project-path .pp-seg{color:#64748b;white-space:nowrap}
-        .project-path .pp-seg:last-child{color:#60a5fa;font-weight:600}
-        .project-path .pp-sep{color:#475569;margin:0 4px;font-size:9px}
+        .project-path .pp-seg{color:var(--text-muted);white-space:nowrap}
+        .project-path .pp-seg:last-child{color:var(--accent-blue);font-weight:600}
+        .project-path .pp-sep{color:var(--text-muted);margin:0 4px;font-size:9px}
 
         .tree-nav{padding:12px 8px;flex:1}
-        .tree-section-label{font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.12em;color:#475569;padding:12px 10px 6px;margin-top:4px}
+        .tree-section-label{font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:.12em;color:var(--text-muted);padding:12px 10px 6px;margin-top:4px}
         .tree-branch{margin-bottom:2px}
-        .tree-branch-header{display:flex;align-items:center;gap:6px;padding:8px 10px;border-radius:6px;cursor:pointer;font-size:14px;font-weight:600;color:#94a3b8;transition:all .15s;user-select:none}
-        .tree-branch-header:hover{background:rgba(30,41,59,.6);color:#e2e8f0}
-        .tree-leaf{display:flex;align-items:center;gap:8px;padding:7px 10px 7px 34px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:500;color:#94a3b8;transition:all .15s;position:relative;border-left:2px solid transparent;margin-left:6px}
-        .tree-leaf:hover{background:rgba(30,41,59,.4);color:#e2e8f0}
-        .tree-leaf.active{background:#1e293b;color:#ffffff;border-left-color:#3b82f6;background:#0f172a}
+        .tree-branch-header{display:flex;align-items:center;gap:6px;padding:8px 10px;border-radius:6px;cursor:pointer;font-size:14px;font-weight:600;color:var(--text-secondary);transition:all .15s;user-select:none}
+        .tree-branch-header:hover{background:var(--bg-hover);color:var(--text-primary)}
+        .tree-leaf{display:flex;align-items:center;gap:8px;padding:7px 10px 7px 34px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:500;color:var(--text-secondary);transition:all .15s;position:relative;border-left:2px solid transparent;margin-left:6px}
+        .tree-leaf:hover{background:var(--bg-hover);color:var(--text-primary)}
+        .tree-leaf.active{color:var(--text-primary);border-left-color:var(--accent-blue);background:var(--bg-elevated)}
         .tree-leaf.active::before{display:none}
-        .leaf-badge{margin-left:auto;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;font-family:'JetBrains Mono',monospace}
-        .leaf-badge.red{background:rgba(239,68,68,.2);color:#f87171}
-        .leaf-badge.green{background:rgba(16,185,129,.2);color:#34d399}
-        .leaf-badge.blue{background:rgba(59,130,246,.2);color:#60a5fa}
-        .leaf-badge.muted{background:rgba(71,85,105,.3);color:#64748b}
+        .leaf-badge{margin-left:auto;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;font-family:'JetBrains Mono',monospace}
+        .leaf-badge.red{background:rgba(248,113,113,.15);color:var(--accent-red)}
+        .leaf-badge.green{background:rgba(52,211,153,.15);color:var(--accent-green)}
+        .leaf-badge.blue{background:rgba(77,139,255,.15);color:var(--accent-blue)}
+        .leaf-badge.muted{background:var(--bg-elevated);color:var(--text-muted)}
 
-        .tree-back{padding:12px 16px;border-top:1px solid #334155;margin-top:auto}
-        .tree-back-btn{display:flex;align-items:center;gap:6px;font-size:13px;color:#64748b;cursor:pointer;padding:8px 10px;border-radius:6px;transition:all .15s;border:none;background:none;font-family:'Inter',system-ui,sans-serif;width:100%}
-        .tree-back-btn:hover{background:rgba(30,41,59,.4);color:#e2e8f0}
+        .tree-back{padding:12px 16px;border-top:1px solid var(--border);margin-top:auto}
+        .tree-back-btn{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-muted);cursor:pointer;padding:8px 10px;border-radius:6px;transition:all .15s;border:none;background:none;font-family:'Inter',system-ui,sans-serif;width:100%}
+        .tree-back-btn:hover{background:var(--bg-hover);color:var(--text-primary)}
 
         .main-content{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
         .content-header{padding:20px 32px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--bg-surface);min-height:64px}
@@ -1969,9 +2002,9 @@ export default function ProjectViewPage() {
         .cs-table th{padding:8px 10px;text-align:left;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.3px;border-bottom:2px solid var(--border)}
         .cs-table td{padding:6px 10px;border-bottom:1px solid var(--border);color:var(--text-primary)}
         .cs-table .highlight-row{background:rgba(251,191,36,.1)}
-        .cs-table .highlight-row td{font-weight:600;color:#856D0E}
+        .cs-table .highlight-row td{font-weight:600;color:var(--accent-yellow)}
         .cs-table .alt-row{background:var(--bg-elevated)}
-        .cs-table .footer-row{background:#2C3E50}
+        .cs-table .footer-row{background:var(--bg-elevated)}
         .cs-table .footer-row td{color:var(--text-on-accent);font-weight:700;border-bottom:none}
 
         .neemia-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--text-muted);gap:12px}
@@ -1987,7 +2020,7 @@ export default function ProjectViewPage() {
         /* ═══ RESPONSIVE ═══ */
         @media(max-width:1024px){
           .pv-container{flex-direction:column}
-          .tree-sidebar{width:100%!important;min-width:100%!important;max-height:200px;border-right:none;border-bottom:1px solid #334155;flex-direction:row;overflow-x:auto}
+          .tree-sidebar{width:100%!important;min-width:100%!important;max-height:200px;border-right:none;border-bottom:1px solid var(--border);flex-direction:row;overflow-x:auto}
           .tree-header{min-width:220px;padding:12px 16px}
           .tree-nav{display:flex;flex-direction:row;gap:4px;padding:8px;overflow-x:auto;flex-wrap:nowrap;min-width:0}
           .tree-branch{min-width:max-content}
@@ -2189,7 +2222,7 @@ export default function ProjectViewPage() {
                         )}
                       </>
                     ) : (
-                      <div className="text-xs text-slate-400 py-2">
+                      <div className="text-xs text-[var(--text-muted)] py-2">
                         Nu a fost identificat inca. Deschide Solomon pentru a confirma programul de finantare.
                       </div>
                     )}
@@ -2290,7 +2323,7 @@ export default function ProjectViewPage() {
                           <div className="anexe-empty">
                             <div style={{ fontSize: 32, marginBottom: 8 }}>&#128202;</div>
                             <div style={{ fontWeight: 600, marginBottom: 4 }}>Nicio tabelă de referință</div>
-                            <div className="text-xs text-slate-400">Uploadează anexe cu date structurate în folderul Ghiduri (tipul "Anexă cu date") pentru a extrage automat tabelele de referință.</div>
+                            <div className="text-xs text-[var(--text-muted)]">Uploadează anexe cu date structurate în folderul Ghiduri (tipul "Anexă cu date") pentru a extrage automat tabelele de referință.</div>
                           </div>
                         ) : referenceTables.map(rt => (
                           <div
@@ -2366,7 +2399,7 @@ export default function ProjectViewPage() {
                                     </tbody>
                                   </table>
                                   {rows.length > 50 && (
-                                    <div className="text-[11px] text-slate-400 px-3 py-2">
+                                    <div className="text-[11px] text-[var(--text-muted)] px-3 py-2">
                                       ... și încă {rows.length - 50} rânduri
                                     </div>
                                   )}
@@ -2676,7 +2709,7 @@ export default function ProjectViewPage() {
                       <div className="ed-header">Detalii element</div>
                       <div className="ed-field">
                         <div className="ed-label">Key</div>
-                        <div className="font-mono text-[13px] text-slate-400">{el.key}</div>
+                        <div className="font-mono text-[13px] text-[var(--text-muted)]">{el.key}</div>
                       </div>
                       <div className="ed-field">
                         <div className="ed-label">Label</div>
@@ -2704,7 +2737,7 @@ export default function ProjectViewPage() {
                       {el.templates.length > 0 && (
                         <div className="ed-field">
                           <div className="ed-label">Folosit în template-uri</div>
-                          <div className="text-xs text-slate-500">
+                          <div className="text-xs text-[var(--text-secondary)]">
                             {el.templates.join(", ")}
                           </div>
                         </div>
@@ -2721,7 +2754,7 @@ export default function ProjectViewPage() {
                                 </span>
                               </div>
                               {c.rule && <div className="ed-constraint-rule">{c.rule.ruleText || c.rule.description}</div>}
-                              {c.description && <div className="text-[11px] text-slate-400 mt-1">{c.description}</div>}
+                              {c.description && <div className="text-[11px] text-[var(--text-muted)] mt-1">{c.description}</div>}
                               {c.referenceTables && c.referenceTables.length > 0 && (
                                 <div className="ed-constraint-refs">
                                   {c.referenceTables.map((rt: any, rti: number) => (
@@ -2768,8 +2801,8 @@ export default function ProjectViewPage() {
                 <div className="check-progress">
                   <div className="check-ring">
                     <svg width="80" height="80" viewBox="0 0 80 80">
-                      <circle cx="40" cy="40" r="34" fill="none" className="stroke-slate-100" strokeWidth="6" />
-                      <circle cx="40" cy="40" r="34" fill="none" className="stroke-emerald-500" strokeWidth="6"
+                      <circle cx="40" cy="40" r="34" fill="none" stroke="var(--border)" strokeWidth="6" />
+                      <circle cx="40" cy="40" r="34" fill="none" stroke="var(--accent-green)" strokeWidth="6"
                         strokeDasharray={`${2 * Math.PI * 34}`}
                         strokeDashoffset={`${2 * Math.PI * 34 * (1 - (checkTotal > 0 ? checkDone / checkTotal : 0))}`}
                         strokeLinecap="round"
@@ -2871,7 +2904,7 @@ export default function ProjectViewPage() {
                                         </button>
                                       ))}
                                       {neemiaTemplates.length === 0 && (
-                                        <div className="p-2 text-[11px] text-slate-400">Niciun template disponibil</div>
+                                        <div className="p-2 text-[11px] text-[var(--text-muted)]">Niciun template disponibil</div>
                                       )}
                                     </div>
                                   )}
@@ -2905,7 +2938,7 @@ export default function ProjectViewPage() {
                 })}
 
                 {checklistItems.length === 0 && (
-                  <div className="text-center p-10 text-slate-400 text-[13px]">
+                  <div className="text-center p-10 text-[var(--text-muted)] text-[13px]">
                     Niciun document in checklist. Adauga manual sau proceseaza un ghid.
                   </div>
                 )}
@@ -3161,7 +3194,7 @@ export default function ProjectViewPage() {
                           <div className="tc-progress-fill" style={{ width: `${p}%`, background: neemiaProgressColor(p) }} />
                         </div>
                         {tmpl.filledFields > 0 && (
-                          <div className="text-[11px] text-slate-500 mt-1">
+                          <div className="text-[11px] text-[var(--text-secondary)] mt-1">
                             {tmpl.generationMode === "compose"
                               ? `${tmpl.composeSections?.filter(s => s.approved).length || 0}/${tmpl.composeSections?.length || 0} secțiuni aprobate`
                               : `${tmpl.filledFields}/${tmpl.totalFields} câmpuri completate`}
@@ -3231,7 +3264,7 @@ export default function ProjectViewPage() {
                         )}
                         {neemiaVersionsOpen === tmpl.templateDocumentId && neemiaVersions.length === 0 && (
                           <div className="tc-versions-panel">
-                            <div className="py-2 text-xs text-slate-400">Nicio versiune generată.</div>
+                            <div className="py-2 text-xs text-[var(--text-muted)]">Nicio versiune generată.</div>
                           </div>
                         )}
                       </div>

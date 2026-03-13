@@ -361,7 +361,7 @@ export default function SettingsPage() {
 
               <div className="p-3 mt-3 flex items-center gap-3 rounded-md" style={{ background: "var(--bg-elevated)", border: "1px solid var(--border)" }}>
                 <span className="text-xs flex-1" style={{ color: "var(--text-muted)" }}>Cost estimat per conversatie medie (15 mesaje):</span>
-                <span className="text-sm font-bold font-mono" style={{ color: "#fbbf24" }}>
+                <span className="text-sm font-bold font-mono" style={{ color: "var(--accent-yellow)" }}>
                   {config.solomonModel.includes("opus") ? "~$0.35" : config.solomonModel.includes("sonnet") ? "~$0.08" : "~$0.02"}
                 </span>
               </div>
@@ -496,7 +496,7 @@ export default function SettingsPage() {
 
               <div className="p-3 mt-3 flex items-center gap-3 rounded-md" style={{ background: "var(--bg-elevated)", border: "1px solid var(--border)" }}>
                 <span className="text-xs flex-1" style={{ color: "var(--text-muted)" }}>Cost estimat procesare completa ghid (60 pag.):</span>
-                <span className="text-sm font-bold font-mono" style={{ color: "#fbbf24" }}>~$0.30 (~50s)</span>
+                <span className="text-sm font-bold font-mono" style={{ color: "var(--accent-yellow)" }}>~$0.30 (~50s)</span>
               </div>
             </>
           )}
@@ -511,7 +511,7 @@ export default function SettingsPage() {
 
               {apis.map((api) => {
                 const isTesting = testingApi === api.id;
-                const statusColor = api.status === "connected" ? "#34d399" : api.status === "error" ? "#ef4444" : "#f59e0b";
+                const statusColor = api.status === "connected" ? "var(--accent-green)" : api.status === "error" ? "var(--accent-red)" : "var(--accent-yellow)";
                 return (
                   <div key={api.id} className={`api-card ${!api.enabled ? "disabled" : ""}`}>
                     <div className="flex items-center gap-3 mb-2.5">
@@ -549,7 +549,7 @@ export default function SettingsPage() {
                       </div>
                       <div className="p-2 rounded-md" style={{ background: "var(--bg-elevated)", border: "1px solid var(--border)" }}>
                         <div className="text-[10px] font-semibold uppercase mb-0.5" style={{ letterSpacing: ".5px", color: "var(--text-muted)" }}>Ultimul test</div>
-                        <div className="text-xs font-mono" style={{ color: api.lastTestResult?.includes("OK") ? "#34d399" : "var(--text-muted)" }}>
+                        <div className="text-xs font-mono" style={{ color: api.lastTestResult?.includes("OK") ? "var(--accent-green)" : "var(--text-muted)" }}>
                           {api.lastTestResult || "—"}
                         </div>
                       </div>

@@ -313,7 +313,7 @@ export default function ProjectsPage() {
               onAction={() => { setShowCreate(true); setCreateStep(1); setCreateData({ name: "", firmaId: null, folderId: null, program: null, masura: null, sesiune: null }); }}
             />
           ) : viewMode === "cards" ? (
-            <div className="space-y-3">
+            <div className="space-y-4">
               {filtered.map(p => {
                 const prog = p.progress || {};
                 const eligibility = prog.eligibility || { passed: 0, total: 0 };
@@ -324,22 +324,22 @@ export default function ProjectsPage() {
                 const scorePct = overallProgress(p);
                 return (
                   <div
-                    className="rounded-xl p-5 cursor-pointer transition-shadow"
+                    className="rounded-xl p-6 cursor-pointer transition-all"
                     style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}
                     key={p.id}
                     onClick={() => router.push(`/projects/${p.id}`)}
-                    onMouseEnter={e => e.currentTarget.style.boxShadow = "var(--shadow-sm)"}
-                    onMouseLeave={e => e.currentTarget.style.boxShadow = "none"}
+                    onMouseEnter={e => { e.currentTarget.style.boxShadow = "var(--shadow-sm)"; e.currentTarget.style.borderColor = "var(--border-active)"; }}
+                    onMouseLeave={e => { e.currentTarget.style.boxShadow = "none"; e.currentTarget.style.borderColor = "var(--border)"; }}
                   >
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-[15px] font-semibold" style={{ color: "var(--text-primary)" }}>{p.name}</span>
+                        <div className="flex items-center gap-3">
+                          <span className="text-[18px] font-bold" style={{ color: "var(--text-primary)" }}>{p.name}</span>
                           {p.valoare && (
-                            <span className="text-[12px] font-mono font-semibold" style={{ color: "var(--accent-green)" }}>{formatValoare(p.valoare)}</span>
+                            <span className="text-[14px] font-mono font-semibold" style={{ color: "var(--accent-green)" }}>{formatValoare(p.valoare)}</span>
                           )}
                         </div>
-                        <div className="text-[13px] mt-0.5" style={{ color: "var(--text-secondary)" }}>
+                        <div className="text-[14px] mt-1" style={{ color: "var(--text-secondary)" }}>
                           {p.company?.denumire || "—"}
                           {(programPath.masura || programPath.sesiune) && (
                             <span> &middot; {programPath.masura || programPath.program || "—"}</span>
@@ -348,14 +348,14 @@ export default function ProjectsPage() {
                       </div>
                       <div className="flex items-center gap-3 flex-shrink-0">
                         {scorePct > 0 && (
-                          <span className="text-lg font-bold" style={{ color: "var(--text-primary)" }}>{scorePct}%</span>
+                          <span className="text-[22px] font-bold" style={{ color: "var(--text-primary)" }}>{scorePct}%</span>
                         )}
                         <StatusBadge status={p.status} />
                       </div>
                     </div>
 
                     {/* Workflow Progress */}
-                    <div className="grid grid-cols-4 gap-3 mt-3">
+                    <div className="grid grid-cols-4 gap-4 mt-4">
                       {[
                         { label: "Eligibilitate", filled: eligibility.passed, total: eligibility.total, color: "emerald" },
                         { label: "Elemente", filled: elements.filled, total: elements.total, color: "blue" },
@@ -365,11 +365,11 @@ export default function ProjectsPage() {
                         const mp = pct(m.filled, m.total);
                         return (
                           <div key={i}>
-                            <div className="flex items-center justify-between mb-1">
-                              <span className="text-[10px] font-medium" style={{ color: "var(--text-muted)" }}>{m.label}</span>
-                              <span className="text-[10px] font-mono" style={{ color: "var(--text-secondary)" }}>{m.filled}/{m.total}</span>
+                            <div className="flex items-center justify-between mb-1.5">
+                              <span className="text-[12px] font-medium" style={{ color: "var(--text-muted)" }}>{m.label}</span>
+                              <span className="text-[12px] font-mono font-semibold" style={{ color: "var(--text-secondary)" }}>{m.filled}/{m.total}</span>
                             </div>
-                            <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "var(--bg-elevated)" }}>
+                            <div className="h-2 rounded-full overflow-hidden" style={{ background: "var(--bg-elevated)" }}>
                               <div className="h-full rounded-full transition-all duration-300" style={{ width: `${mp}%`, background: progressColorVars[m.color] }} />
                             </div>
                           </div>
@@ -383,7 +383,7 @@ export default function ProjectsPage() {
                       if (currentStage < WORKFLOW_STAGES.length) {
                         const stage = WORKFLOW_STAGES[currentStage];
                         return (
-                          <div className="flex items-center gap-1.5 text-[11px] mt-2" style={{ color: "var(--text-secondary)" }}>
+                          <div className="flex items-center gap-2 text-[13px] mt-3" style={{ color: "var(--text-secondary)" }}>
                             <span>{stage.icon}</span>
                             <span className="font-medium">Etapă curentă: {stage.label}</span>
                           </div>
@@ -393,9 +393,9 @@ export default function ProjectsPage() {
                     })()}
 
                     {/* Footer meta */}
-                    <div className="flex items-center gap-2.5 mt-3 pt-3" style={{ borderTop: "1px solid var(--border)" }}>
-                      {p.lock && <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: "var(--accent-yellow-bg)", color: "var(--accent-yellow)" }}>&#128274; {p.lock.lockedByName}</span>}
-                      <span className="text-[11px] ml-auto font-mono" style={{ color: "var(--text-muted)" }}>{p.updatedAt ? formatRelativeTime(p.updatedAt) : "—"}</span>
+                    <div className="flex items-center gap-2.5 mt-4 pt-3" style={{ borderTop: "1px solid var(--border)" }}>
+                      {p.lock && <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[12px] font-semibold" style={{ background: "var(--accent-yellow-bg)", color: "var(--accent-yellow)" }}>&#128274; {p.lock.lockedByName}</span>}
+                      <span className="text-[12px] ml-auto font-mono" style={{ color: "var(--text-muted)" }}>{p.updatedAt ? formatRelativeTime(p.updatedAt) : "—"}</span>
                     </div>
                   </div>
                 );

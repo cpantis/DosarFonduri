@@ -17,8 +17,7 @@ export function ScoreCircle({
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - (pct / 100) * circumference;
 
-  const color = pct >= 80 ? "text-emerald-500" : pct >= 50 ? "text-blue-500" : pct >= 30 ? "text-amber-500" : "text-red-500";
-  const strokeColor = pct >= 80 ? "#10b981" : pct >= 50 ? "#3b82f6" : pct >= 30 ? "#f59e0b" : "#ef4444";
+  const strokeColor = pct >= 80 ? "var(--accent-green)" : pct >= 50 ? "var(--accent-blue)" : pct >= 30 ? "var(--accent-yellow)" : "var(--accent-red)";
 
   return (
     <div className={`relative inline-flex items-center justify-center ${className}`} style={{ width: size, height: size }}>
@@ -28,7 +27,7 @@ export function ScoreCircle({
           cy={size / 2}
           r={radius}
           fill="none"
-          stroke="#e2e8f0"
+          stroke="var(--border)"
           strokeWidth={strokeWidth}
         />
         <circle
@@ -44,9 +43,9 @@ export function ScoreCircle({
           className="transition-all duration-700"
         />
       </svg>
-      <div className={`absolute text-center ${color}`}>
+      <div className="absolute text-center" style={{ color: strokeColor }}>
         <div className="text-lg font-bold leading-none">{pct}</div>
-        <div className="text-[9px] text-slate-400 font-medium">%</div>
+        <div className="text-[10px] font-medium" style={{ color: "var(--text-muted)" }}>%</div>
       </div>
     </div>
   );

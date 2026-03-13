@@ -74,6 +74,29 @@ async function runMigrations() {
     console.error("Table verification failed:", error);
   }
 
+  // Run extra SQL migrations not tracked by drizzle journal (0004+)
+  try {
+    const extraFiles = fs.readdirSync(migrationsPath)
+      .filter(f => f.endsWith(".sql") && !f.startsWith("0000") && !f.startsWith("0001") && !f.startsWith("0002") && !f.startsWith("0003"))
+      .sort();
+    for (const file of extraFiles) {
+      const sqlContent = fs.readFileSync(path.join(migrationsPath, file), "utf-8");
+      const statements = sqlContent.split(/;(?=\s*(?:--|ALTER|CREATE|DO|INSERT|UPDATE|DROP|$))/i).map(s => s.trim()).filter(s => s && !s.startsWith("--"));
+      for (const stmt of statements) {
+        try {
+          await db.execute(sql.raw(stmt));
+        } catch (e: any) {
+          if (!e.message?.includes("already exists") && !e.message?.includes("duplicate")) {
+            console.warn(`[${file}] warning:`, e.message?.substring(0, 120));
+          }
+        }
+      }
+      console.log(`Extra migration applied: ${file}`);
+    }
+  } catch (error) {
+    console.error("Extra migrations warning:", error);
+  }
+
   // Seed: create initial provider user if none exists
   try {
     const existing = await db.query.providerUsers.findFirst();

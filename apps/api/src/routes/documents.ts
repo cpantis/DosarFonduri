@@ -333,7 +333,9 @@ documentRoutes.post("/folders/:folderId/documents", async (c) => {
 
   const formData = await c.req.formData();
   const file = formData.get("file") as File;
-  const tags = (formData.get("tags") as string || "").split(",").filter(Boolean);
+  const rawTags = formData.get("tags") as string || "";
+  let tags: string[] = [];
+  try { tags = JSON.parse(rawTags); if (!Array.isArray(tags)) tags = []; } catch { tags = rawTags.split(",").filter(Boolean); }
 
   if (!file) return c.json({ error: "Fișier lipsă" }, 400);
 

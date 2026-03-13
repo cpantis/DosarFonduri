@@ -1316,19 +1316,7 @@ export default function DocumentsPage() {
         .doc-detail::-webkit-scrollbar-thumb:hover { background: var(--border-active); }
       `}</style>
 
-      {/* Hidden file input for upload (multiple) */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".pdf,.docx,.xlsx,.xls,.doc,.png,.jpg,.jpeg"
-        multiple
-        style={{ display: "none" }}
-        onChange={e => {
-          const files = e.target.files;
-          if (files && files.length > 0) setUploadFiles(prev => [...prev, ...Array.from(files)]);
-          e.target.value = "";
-        }}
-      />
+      {/* File input moved inside upload modal for reliable click() */}
 
       {/* ─── TOPBAR ─── */}
       <div className="doc-topbar">
@@ -1484,9 +1472,24 @@ export default function DocumentsPage() {
               </div>
             )}
 
-            <div
+            {/* File input inside modal for reliable file picker trigger */}
+            <input
+              ref={fileInputRef}
+              id="doc-upload-input"
+              type="file"
+              accept=".pdf,.docx,.xlsx,.xls,.doc,.png,.jpg,.jpeg"
+              multiple
+              style={{ position: "absolute", width: 0, height: 0, opacity: 0, pointerEvents: "none" }}
+              onChange={e => {
+                const files = e.target.files;
+                if (files && files.length > 0) setUploadFiles(prev => [...prev, ...Array.from(files)]);
+                e.target.value = "";
+              }}
+            />
+            <label
+              htmlFor={uploadFiles.length === 0 ? "doc-upload-input" : undefined}
               className={`doc-upload-zone ${dragOver ? "drag-active" : ""} ${uploadFiles.length > 0 ? "has-file" : ""}`}
-              onClick={() => uploadFiles.length === 0 && fileInputRef.current?.click()}
+              style={{ display: "block" }}
               onDragOver={e => { e.preventDefault(); e.stopPropagation(); setDragOver(true); }}
               onDragLeave={e => { e.preventDefault(); e.stopPropagation(); setDragOver(false); }}
               onDrop={e => {
@@ -1533,7 +1536,7 @@ export default function DocumentsPage() {
                   <div className="doc-upload-zone-sub">PDF, DOCX, XLSX, DOC, PNG, JPG — max 50 MB per fisier. Se pot selecta mai multe.</div>
                 </>
               )}
-            </div>
+            </label>
 
             {/* Upload progress bar */}
             {uploading && (

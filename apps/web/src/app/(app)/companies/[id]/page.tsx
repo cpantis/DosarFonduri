@@ -11,7 +11,7 @@ import { InfoCard } from "@/components/ui/InfoCard";
 import { DataTable } from "@/components/ui/DataTable";
 import { SectionTitle } from "@/components/ui/SectionTitle";
 import { Tabs } from "@/components/ui/Tabs";
-import { BtnSecondary, BtnDanger } from "@/components/ui/Buttons";
+import { BtnPrimary, BtnSecondary, BtnDanger } from "@/components/ui/Buttons";
 import { EmptyState } from "@/components/ui/EmptyState";
 
 /* === HELPERS === */
@@ -202,12 +202,12 @@ export default function CompanyDetailPage() {
   const tabObjects = tabs.map(t => ({ key: t, label: t }));
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="flex flex-col h-full overflow-hidden animate-[fadeIn_.2s_ease-out]">
       {/* LOADING STATE */}
       {loading && (
         <div className="flex-1 flex items-center justify-center flex-col gap-3 text-slate-400">
-          <div className="w-7 h-7 border-2 border-slate-200 border-t-blue-600 rounded-full animate-spin" />
-          <div className="text-sm">Se incarca detaliile firmei...</div>
+          <svg className="w-5 h-5 animate-spin text-blue-600" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+          <div className="text-[13px]">Se încarcă detaliile firmei...</div>
         </div>
       )}
 
@@ -249,30 +249,33 @@ export default function CompanyDetailPage() {
         )}
 
         {/* HEADER */}
-        <div className="bg-white border-b border-slate-200">
+        <div className="bg-white border-b border-slate-200/80">
           <div className="max-w-6xl mx-auto px-8 py-6">
-            <div className="flex items-start justify-between">
-              <div>
+            {/* Breadcrumb */}
+            <nav className="flex items-center gap-1.5 mb-3">
+              <Link href="/companies" className="text-[13px] text-slate-500 hover:text-slate-700 transition-colors no-underline">Firme</Link>
+              <svg className="w-3.5 h-3.5 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+              <span className="text-[13px] text-slate-400">{sel.denumire}</span>
+            </nav>
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
                 <div className="flex items-center gap-3">
-                  <Link href="/companies" className="text-slate-400 hover:text-slate-600 transition-colors">
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
-                  </Link>
-                  <h1 className="text-2xl font-bold text-slate-900 tracking-tight">{sel.denumire}</h1>
+                  <h1 className="text-[24px] font-bold text-slate-900 tracking-tight">{sel.denumire}</h1>
                   <TypeBadge type={sel.forma} />
                   <StatusBadge status={sel.stare || "activ"} />
                 </div>
-                <p className="text-[13px] text-slate-500 mt-1.5 ml-8">
-                  CUI: {sel.cui} &middot; {sel.regCom || "\u2014"}{sel.euid ? ` \u00b7 EUID: ${sel.euid}` : ""}
+                <p className="text-[13px] text-slate-500 mt-1">
+                  <span className="font-mono tabular-nums text-slate-400">CUI: {sel.cui}</span> · {sel.regCom || "\u2014"}{sel.euid ? ` · EUID: ${sel.euid}` : ""}
                 </p>
               </div>
-              <div className="flex items-center gap-2">
-                <BtnSecondary onClick={handleSyncOnrc}>Actualizare CUI</BtnSecondary>
-                <BtnSecondary onClick={() => setShowOnrcUpload(true)}>Upload ONRC</BtnSecondary>
-                <BtnSecondary onClick={() => setShowBilantUpload(true)}>Upload Bilant</BtnSecondary>
-                <BtnDanger onClick={handleDelete}>Sterge</BtnDanger>
+              <div className="flex items-center gap-2 shrink-0">
+                <BtnSecondary size="sm" onClick={handleSyncOnrc}>Actualizare CUI</BtnSecondary>
+                <BtnSecondary size="sm" onClick={() => setShowOnrcUpload(true)}>Upload ONRC</BtnSecondary>
+                <BtnSecondary size="sm" onClick={() => setShowBilantUpload(true)}>Upload Bilanț</BtnSecondary>
+                <BtnDanger size="sm" onClick={handleDelete}>Șterge</BtnDanger>
               </div>
             </div>
-            <div className="mt-6">
+            <div className="mt-5">
               <Tabs tabs={tabObjects} active={activeTab} onChange={setActiveTab} />
             </div>
           </div>
@@ -321,11 +324,11 @@ export default function CompanyDetailPage() {
               )}
             </div>
             {sel.activitatiSecundare && sel.activitatiSecundare.length > 0 && (
-              <div className="bg-white rounded-xl border border-slate-200 p-5 mt-5 mb-2">
+              <div className="bg-white rounded-xl border border-slate-200/80 p-5 mt-5 mb-2">
                 <div className="text-[11px] uppercase tracking-wide font-semibold text-slate-500 mb-3">Activitati secundare ({sel.activitatiSecundare.length})</div>
                 <div className="flex flex-wrap gap-2">
                   {sel.activitatiSecundare.slice(0, 5).map((a: any, i: number) => (
-                    <span key={i} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-slate-200 bg-slate-50 text-[12px] text-slate-500">
+                    <span key={i} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-slate-200/80 bg-slate-50 text-[12px] text-slate-500">
                       <span className="font-mono text-[11px] text-slate-400">{a.cod}</span>
                       {a.den}
                     </span>
@@ -349,7 +352,7 @@ export default function CompanyDetailPage() {
               </InfoCard>
             </div>
             {isSOC(sel.forma) && sel.capitalSocial && (
-              <div className="bg-white rounded-xl border border-slate-200 p-6 mt-6">
+              <div className="bg-white rounded-xl border border-slate-200/80 p-6 mt-6">
                 <div className="text-[14px] font-bold text-slate-900 mb-5">Capital social</div>
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
                   <InfoCard label="Subscris" value={fmt(sel.capitalSocial)} />
@@ -418,7 +421,7 @@ export default function CompanyDetailPage() {
           {/* MEMBRI IF */}
           {activeTab === "Membri IF" && (<>
             <SectionTitle>Reprezentant</SectionTitle>
-            <div className="bg-white rounded-xl border border-slate-200 p-4 flex items-center gap-3 mb-5">
+            <div className="bg-white rounded-xl border border-slate-200/80 p-4 flex items-center gap-3 mb-5">
               <span className="text-lg">&#128084;</span>
               <div className="text-sm font-semibold text-slate-900">{sel.reprezentantIF || "\u2014"}</div>
               <span className="ml-auto text-xs font-mono text-slate-500">Reprezentant IF</span>
@@ -471,7 +474,7 @@ export default function CompanyDetailPage() {
             </div>
             {sel.activitatiSecundare.length > 0 && (<>
               <SectionTitle>Activitati secundare ({sel.activitatiSecundare.length})</SectionTitle>
-              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+              <div className="bg-white rounded-xl border border-slate-200/80 overflow-hidden">
                 {sel.activitatiSecundare.map((a: any, i: number) => (
                   <div
                     key={i}
@@ -496,7 +499,7 @@ export default function CompanyDetailPage() {
               <SectionTitle>Sedii secundare / Puncte de lucru ({sel.sediiSecundare.length})</SectionTitle>
               <div className="space-y-2">
                 {sel.sediiSecundare.map((s: any, i: number) => (
-                  <div key={i} className="bg-white rounded-xl border border-slate-200 p-4 flex items-center gap-3">
+                  <div key={i} className="bg-white rounded-xl border border-slate-200/80 p-4 flex items-center gap-3">
                     <span className="text-lg">&#128205;</span>
                     <div>
                       <div className="text-sm font-semibold text-slate-900">{s.denumire}</div>
@@ -553,7 +556,7 @@ export default function CompanyDetailPage() {
                     <select
                       value={viewYear ?? ""}
                       onChange={e => setSelectedBilantYear(Number(e.target.value))}
-                      className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-[13px] font-mono text-slate-900"
+                      className="px-2.5 py-1.5 rounded-lg border border-slate-200/80 bg-white text-[13px] font-mono text-slate-900"
                     >
                       {anafYears.map((y: number) => <option key={y} value={y}>{y}</option>)}
                     </select>
@@ -564,7 +567,7 @@ export default function CompanyDetailPage() {
               </div>
 
               {/* Summary table all years */}
-              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden mb-6">
+              <div className="bg-white rounded-xl border border-slate-200/80 overflow-hidden mb-6">
                 <table className="w-full">
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-200">
@@ -658,7 +661,7 @@ export default function CompanyDetailPage() {
           {/* JURIDIC */}
           {activeTab === "Juridic" && (<>
             <SectionTitle>Stare juridica</SectionTitle>
-            <div className="bg-white rounded-xl border border-slate-200 p-5 mb-5 space-y-3">
+            <div className="bg-white rounded-xl border border-slate-200/80 p-5 mb-5 space-y-3">
               {[
                 { key: "insolventa", label: "Insolventa", value: sel.insolventa },
                 { key: "dizolvare", label: "Dizolvare", value: sel.dizolvare },
@@ -694,40 +697,33 @@ export default function CompanyDetailPage() {
       {/* ONRC UPLOAD MODAL */}
       {showOnrcUpload && (
         <div
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[100] animate-in fade-in"
+          className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[100]"
           onClick={e => { if (e.target === e.currentTarget) setShowOnrcUpload(false); }}
         >
-          <div className="bg-white border border-slate-200 rounded-2xl w-[480px] max-h-[85vh] overflow-y-auto p-7 animate-in slide-in-from-bottom-4">
+          <div className="bg-white border border-slate-200/80 rounded-2xl w-[480px] max-h-[85vh] overflow-y-auto p-7 shadow-xl animate-[fadeUp_.2s_ease-out]">
             <div className="flex items-center justify-between mb-1">
-              <h2 className="text-lg font-extrabold text-slate-900">Upload Certificat Constatator</h2>
-              <button className="text-slate-400 hover:text-slate-600 text-lg p-1" onClick={() => setShowOnrcUpload(false)}>&times;</button>
+              <h2 className="text-[18px] font-bold text-slate-900">Upload Certificat Constatator</h2>
+              <button className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors" onClick={() => setShowOnrcUpload(false)}>
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
             </div>
             <p className="text-[13px] mb-5 leading-relaxed text-slate-500">
-              Incarca un certificat constatator ONRC (PDF). Datele firmei se vor actualiza automat cu informatiile extrase.
+              Încarcă un certificat constatator ONRC (PDF). Datele firmei se vor actualiza automat cu informațiile extrase.
             </p>
             <input type="file" ref={onrcFileRef} accept=".pdf" className="hidden" onChange={() => {}} />
             <div
-              className="border-2 border-dashed border-slate-200 rounded-xl p-7 text-center mb-5 cursor-pointer hover:border-blue-500 hover:bg-blue-50/30 bg-slate-50 transition-all"
+              className="border-2 border-dashed border-slate-200 rounded-xl p-7 text-center mb-5 cursor-pointer hover:border-blue-300 hover:bg-slate-50/50 transition-all"
               onClick={() => onrcFileRef.current?.click()}
             >
-              <div className="text-2xl mb-1.5">{onrcFileRef.current?.files?.[0] ? "\u2705" : "\ud83d\udcc4"}</div>
-              <div className="text-sm font-semibold text-slate-900">{onrcFileRef.current?.files?.[0]?.name || "Certificat constatator (PDF)"}</div>
-              <div className="text-xs mt-1 text-slate-400">Click pentru a selecta fisierul</div>
+              <div className="text-2xl mb-1.5">{onrcFileRef.current?.files?.[0] ? "✅" : "📄"}</div>
+              <div className="text-[14px] font-medium text-slate-900">{onrcFileRef.current?.files?.[0]?.name || "Certificat constatator (PDF)"}</div>
+              <div className="text-[12px] mt-1 text-slate-400">Click pentru a selecta fișierul</div>
             </div>
-            <div className="flex gap-2.5 justify-end">
-              <button
-                className="px-5 py-2.5 rounded-lg border border-slate-300 bg-white text-sm font-semibold text-slate-500 hover:bg-slate-50 hover:border-slate-400 transition-colors"
-                onClick={() => setShowOnrcUpload(false)}
-              >
-                Anuleaza
-              </button>
-              <button
-                className="px-5 py-2.5 rounded-lg bg-blue-600 text-sm font-bold text-white hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={onrcUploading}
-                onClick={handleOnrcUpload}
-              >
-                {onrcUploading ? <span className="inline-block w-[18px] h-[18px] border-2 border-white/30 border-t-white rounded-full animate-spin" /> : "Actualizeaza datele"}
-              </button>
+            <div className="flex gap-2 justify-end">
+              <BtnSecondary onClick={() => setShowOnrcUpload(false)}>Anulează</BtnSecondary>
+              <BtnPrimary disabled={onrcUploading} onClick={handleOnrcUpload}>
+                {onrcUploading ? <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg> : "Actualizează datele"}
+              </BtnPrimary>
             </div>
           </div>
         </div>
@@ -736,23 +732,25 @@ export default function CompanyDetailPage() {
       {/* BILANT ANAF UPLOAD MODAL */}
       {showBilantUpload && (
         <div
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[100] animate-in fade-in"
+          className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[100]"
           onClick={e => { if (e.target === e.currentTarget) setShowBilantUpload(false); }}
         >
-          <div className="bg-white border border-slate-200 rounded-2xl w-[480px] max-h-[85vh] overflow-y-auto p-7 animate-in slide-in-from-bottom-4">
+          <div className="bg-white border border-slate-200/80 rounded-2xl w-[480px] max-h-[85vh] overflow-y-auto p-7 shadow-xl animate-[fadeUp_.2s_ease-out]">
             <div className="flex items-center justify-between mb-1">
-              <h2 className="text-lg font-extrabold text-slate-900">Upload bilant ANAF</h2>
-              <button className="text-slate-400 hover:text-slate-600 text-lg p-1" onClick={() => setShowBilantUpload(false)}>&times;</button>
+              <h2 className="text-[18px] font-bold text-slate-900">Upload bilanț ANAF</h2>
+              <button className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors" onClick={() => setShowBilantUpload(false)}>
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
             </div>
             <p className="text-[13px] mb-5 leading-relaxed text-slate-500">
-              Incarca un bilant ANAF (PDF descarcat din SPV). Se accepta Formularul 10 (bilant), Formularul 20 (cont profit/pierderi), Formularul 30/40. Datele financiare se extrag automat.
+              Încarcă un bilanț ANAF (PDF descărcat din SPV). Se acceptă Formularul 10 (bilanț), Formularul 20 (cont profit/pierderi), Formularul 30/40. Datele financiare se extrag automat.
             </p>
             <div className="mb-4">
               <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-1.5">An fiscal</label>
               <select
                 value={bilantYear}
                 onChange={e => setBilantYear(Number(e.target.value))}
-                className="px-3.5 py-2.5 rounded-lg border border-slate-200 bg-white text-sm font-mono text-slate-900 w-[140px]"
+                className="px-3.5 py-2.5 rounded-lg border border-slate-200/80 bg-white text-sm font-mono text-slate-900 w-[140px]"
               >
                 {Array.from({ length: 6 }, (_, i) => new Date().getFullYear() - 1 - i).map(y => (
                   <option key={y} value={y}>{y}</option>
@@ -761,27 +759,18 @@ export default function CompanyDetailPage() {
             </div>
             <input type="file" ref={bilantFileRef} accept=".pdf" className="hidden" onChange={() => {}} />
             <div
-              className="border-2 border-dashed border-slate-200 rounded-xl p-7 text-center mb-5 cursor-pointer hover:border-blue-500 hover:bg-blue-50/30 bg-slate-50 transition-all"
+              className="border-2 border-dashed border-slate-200 rounded-xl p-7 text-center mb-5 cursor-pointer hover:border-blue-300 hover:bg-slate-50/50 transition-all"
               onClick={() => bilantFileRef.current?.click()}
             >
-              <div className="text-2xl mb-1.5">{bilantFileRef.current?.files?.[0] ? "\u2705" : "\ud83d\udcca"}</div>
-              <div className="text-sm font-semibold text-slate-900">{bilantFileRef.current?.files?.[0]?.name || "Bilant ANAF (PDF)"}</div>
-              <div className="text-xs mt-1 text-slate-400">Click pentru a selecta fisierul</div>
+              <div className="text-2xl mb-1.5">{bilantFileRef.current?.files?.[0] ? "✅" : "📊"}</div>
+              <div className="text-[14px] font-medium text-slate-900">{bilantFileRef.current?.files?.[0]?.name || "Bilanț ANAF (PDF)"}</div>
+              <div className="text-[12px] mt-1 text-slate-400">Click pentru a selecta fișierul</div>
             </div>
-            <div className="flex gap-2.5 justify-end">
-              <button
-                className="px-5 py-2.5 rounded-lg border border-slate-300 bg-white text-sm font-semibold text-slate-500 hover:bg-slate-50 hover:border-slate-400 transition-colors"
-                onClick={() => setShowBilantUpload(false)}
-              >
-                Anuleaza
-              </button>
-              <button
-                className="px-5 py-2.5 rounded-lg bg-blue-600 text-sm font-bold text-white hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={bilantUploading}
-                onClick={handleBilantUpload}
-              >
-                {bilantUploading ? <span className="inline-block w-[18px] h-[18px] border-2 border-white/30 border-t-white rounded-full animate-spin" /> : "Extrage date financiare"}
-              </button>
+            <div className="flex gap-2 justify-end">
+              <BtnSecondary onClick={() => setShowBilantUpload(false)}>Anulează</BtnSecondary>
+              <BtnPrimary disabled={bilantUploading} onClick={handleBilantUpload}>
+                {bilantUploading ? <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg> : "Extrage date financiare"}
+              </BtnPrimary>
             </div>
           </div>
         </div>

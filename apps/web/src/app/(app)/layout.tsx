@@ -10,6 +10,22 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ToastProvider } from "@/components/shared/Toast";
 import { useSSE } from "@/hooks/useSSE";
 
+/** Human-readable field key labels */
+const FIELD_LABELS: Record<string, string> = {
+  denumire_solicitant: "Denumire", cui: "CUI", nr_inmatriculare: "Nr. Înmatriculare",
+  forma_juridica: "Forma Juridică", caen_principal: "CAEN Principal", adresa_sediu: "Adresa Sediu",
+  localitate: "Localitate", judet: "Județ", stare_firma: "Stare Firmă", capital_social: "Capital Social",
+  data_inregistrare: "Data Înregistrare", furnizor_nume: "Furnizor", total_oferta_eur: "Total Ofertă",
+  banca: "Bancă", sold_disponibil: "Sold Disponibil", data_extras: "Data Extras", iban: "IBAN",
+  tip_document_mediu: "Tip Document", numar_document_mediu: "Nr. Document",
+  ani_activitate_agroalimentara: "Ani Activitate", nr_contract: "Nr. Contract",
+  suprafata_contracte: "Suprafață (ha)", putere_tractoare_existente: "Putere Tractoare (CP)",
+};
+
+function fieldLabel(key: string): string {
+  return FIELD_LABELS[key] || key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+}
+
 function AppShell({ children }: { children: React.ReactNode }) {
   const auth = useAuthState();
   const router = useRouter();
@@ -22,13 +38,17 @@ function AppShell({ children }: { children: React.ReactNode }) {
 
   if (auth.loading) {
     return (
-      <div className="flex h-screen items-center justify-center" style={{ background: "#f0f2f5" }}>
-        <div className="text-center">
-          <div className="w-12 h-12 mx-auto mb-4 flex items-center justify-center text-white text-xl font-extrabold rounded-xl bg-blue-600 shadow-lg shadow-blue-600/30">
+      <div className="flex h-screen items-center justify-center bg-slate-50">
+        <div className="text-center animate-[fadeIn_.3s_ease-out]">
+          <div className="w-10 h-10 mx-auto mb-4 flex items-center justify-center text-white text-[11px] font-bold rounded-lg bg-blue-600 shadow-lg shadow-blue-600/20">
             DF
           </div>
-          <div className="text-sm font-medium" style={{ color: "#94a3b8" }}>
-            Se incarca...
+          <div className="flex items-center gap-2 text-[13px] text-slate-400">
+            <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+            Se încarcă...
           </div>
         </div>
       </div>
@@ -37,7 +57,6 @@ function AppShell({ children }: { children: React.ReactNode }) {
 
   if (!auth.user) return null;
 
-  // If user has no organization, show pending screen
   if (auth.user.status === "pending_cabinet") {
     return (
       <AuthContext.Provider value={auth}>
@@ -51,99 +70,54 @@ function AppShell({ children }: { children: React.ReactNode }) {
       <SSEProvider />
       <div className="flex min-h-screen bg-slate-50" style={{ fontFamily: "'Inter', system-ui, -apple-system, sans-serif" }}>
         <Sidebar />
-        <div className="flex-1 min-w-0 overflow-y-auto">
+        <main className="flex-1 min-w-0 overflow-y-auto">
           {children}
-        </div>
+        </main>
       </div>
     </AuthContext.Provider>
   );
 }
 
-/** Human-readable field key labels */
-const FIELD_LABELS: Record<string, string> = {
-  denumire_solicitant: "Denumire",
-  cui: "CUI",
-  nr_inmatriculare: "Nr. Inmatriculare",
-  forma_juridica: "Forma Juridica",
-  caen_principal: "CAEN Principal",
-  adresa_sediu: "Adresa Sediu",
-  localitate: "Localitate",
-  judet: "Judet",
-  stare_firma: "Stare Firma",
-  capital_social: "Capital Social",
-  data_inregistrare: "Data Inregistrare",
-  furnizor_nume: "Furnizor",
-  total_oferta_eur: "Total Oferta",
-  banca: "Banca",
-  sold_disponibil: "Sold Disponibil",
-  data_extras: "Data Extras",
-  iban: "IBAN",
-  tip_document_mediu: "Tip Document",
-  numar_document_mediu: "Nr. Document",
-  ani_activitate_agroalimentara: "Ani Activitate",
-  nr_contract: "Nr. Contract",
-  suprafata_contracte: "Suprafata (ha)",
-  putere_tractoare_existente: "Putere Tractoare (CP)",
-};
-
-function fieldLabel(key: string): string {
-  return FIELD_LABELS[key] || key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
-}
-
-/** Global SSE connection — connects once at app level */
+/** Global SSE connection */
 function SSEProvider() {
   const { jobProgress, extractionProgress } = useSSE({ enabled: true });
 
-  // Show active job progress + extraction progress indicators
   if (jobProgress.length === 0 && extractionProgress.length === 0) return null;
 
   return (
-    <div className="fixed top-4 right-4 z-[150] flex flex-col gap-2" style={{ maxWidth: 380 }}>
-      {/* Extraction progress cards */}
+    <div className="fixed top-4 right-4 z-[150] flex flex-col gap-2" style={{ maxWidth: 360 }}>
       {extractionProgress.map(ext => (
         <div
           key={`ext-${ext.documentId}`}
-          className="px-4 py-3 rounded-xl text-[13px] font-medium animate-[slideUp_.2s_ease-out]"
-          style={{
-            background: "#ffffff",
-            color: "#0f172a",
-            border: ext.completed ? "1px solid #a7f3d0" : "1px solid #bfdbfe",
-            boxShadow: "0 1px 3px rgba(0,0,0,.1)",
-          }}
+          className={`px-4 py-3 rounded-xl text-[13px] font-medium bg-white border shadow-sm animate-[slideUp_.2s_ease-out] ${
+            ext.completed ? "border-emerald-200" : "border-blue-200"
+          }`}
         >
           <div className="flex items-center gap-2 mb-2">
-            <span className="text-sm" style={{ color: ext.completed ? "#34d399" : "#4d8bff" }}>
-              {ext.completed ? "\u2705" : "\u{1F50D}"}
+            <span className={`text-sm ${ext.completed ? "text-emerald-500" : "text-blue-500"}`}>
+              {ext.completed ? "✅" : "🔍"}
             </span>
-            <span className="truncate flex-1">
+            <span className="truncate flex-1 text-slate-900">
               {ext.completed
-                ? `Extractie completa. ${ext.extractedFields.length} campuri populate.`
-                : `Extrag date... (${ext.extractedFields.length}/${ext.totalFields || "?"} campuri)`}
+                ? `Extracție completă. ${ext.extractedFields.length} câmpuri populate.`
+                : `Extrag date... (${ext.extractedFields.length}/${ext.totalFields || "?"} câmpuri)`}
             </span>
           </div>
-          <div className="text-[11px] mb-1.5" style={{ color: "#94a3b8" }}>
-            {ext.documentName}
-          </div>
-          {/* Per-field progress chips */}
+          <div className="text-[11px] mb-1.5 text-slate-400">{ext.documentName}</div>
           <div className="flex flex-wrap gap-1">
             {ext.extractedFields.slice(-8).map(f => (
-              <span
-                key={f.key}
-                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold animate-[slideUp_.15s_ease-out]"
-                style={{ background: "#ecfdf5", color: "#34d399" }}
-              >
-                {fieldLabel(f.key)} {"\u2713"}
+              <span key={f.key} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-50 text-emerald-600 animate-[slideUp_.15s_ease-out]">
+                {fieldLabel(f.key)} ✓
               </span>
             ))}
           </div>
-          {/* Progress bar */}
           {ext.totalFields > 0 && (
-            <div className="h-1 rounded-sm overflow-hidden mt-1.5" style={{ background: "#f8fafc" }}>
+            <div className="h-1 rounded-full overflow-hidden mt-2 bg-slate-100">
               <div
-                className="h-full rounded-sm transition-[width] duration-300 ease-out"
+                className="h-full rounded-full transition-[width] duration-300 ease-out"
                 style={{
                   width: `${Math.round((ext.extractedFields.length / ext.totalFields) * 100)}%`,
-                  background: ext.completed ? "#34d399" : "#4d8bff",
+                  background: ext.completed ? "#059669" : "#2563eb",
                 }}
               />
             </div>
@@ -151,30 +125,25 @@ function SSEProvider() {
         </div>
       ))}
 
-      {/* Job progress cards */}
       {jobProgress.map(job => (
         <div
           key={job.id}
-          className="px-4 py-3 rounded-xl text-[13px] font-medium animate-[slideUp_.2s_ease-out]"
-          style={{
-            background: "#ffffff",
-            color: "#0f172a",
-            border: job.status === "failed" ? "1px solid #fecaca" : "1px solid #bfdbfe",
-            boxShadow: "0 1px 3px rgba(0,0,0,.1)",
-          }}
+          className={`px-4 py-3 rounded-xl text-[13px] font-medium bg-white border shadow-sm animate-[slideUp_.2s_ease-out] ${
+            job.status === "failed" ? "border-red-200" : "border-blue-200"
+          }`}
         >
           <div className="flex items-center gap-2 mb-1.5">
-            <span style={{ color: job.status === "failed" ? "#f87171" : "#4d8bff" }}>
-              {job.status === "processing" ? "&#9881;" : job.status === "failed" ? "&#10060;" : "&#9989;"}
+            <span className={job.status === "failed" ? "text-red-500" : "text-blue-500"}>
+              {job.status === "processing" ? "⚙️" : job.status === "failed" ? "❌" : "✅"}
             </span>
-            <span className="truncate">{job.message}</span>
+            <span className="truncate text-slate-900">{job.message}</span>
           </div>
-          <div className="h-1 rounded-sm overflow-hidden" style={{ background: "#f8fafc" }}>
+          <div className="h-1 rounded-full overflow-hidden bg-slate-100">
             <div
-              className="h-full rounded-sm transition-[width] duration-300 ease-out"
+              className="h-full rounded-full transition-[width] duration-300 ease-out"
               style={{
                 width: `${job.progress}%`,
-                background: job.status === "failed" ? "#f87171" : "#4d8bff",
+                background: job.status === "failed" ? "#dc2626" : "#2563eb",
               }}
             />
           </div>
@@ -186,29 +155,26 @@ function SSEProvider() {
 
 function PendingCabinetScreen() {
   return (
-    <div className="flex h-screen items-center justify-center" style={{ background: "#f0f2f5" }}>
-      <div className="text-center max-w-md px-6">
-        <div
-          className="w-16 h-16 mx-auto mb-6 flex items-center justify-center text-3xl rounded-xl"
-          style={{ background: "#f8fafc", border: "1px solid #e2e8f0" }}
-        >
+    <div className="flex h-screen items-center justify-center bg-slate-50">
+      <div className="text-center max-w-md px-6 animate-[fadeUp_.5s_ease-out]">
+        <div className="w-14 h-14 mx-auto mb-6 flex items-center justify-center text-2xl rounded-2xl bg-slate-100 border border-slate-200">
           ⏳
         </div>
-        <h2 className="text-2xl font-extrabold mb-3" style={{ color: "#0f172a" }}>
-          Asteapta activarea
+        <h2 className="text-[24px] font-bold text-slate-900 tracking-tight mb-2">
+          Așteaptă activarea
         </h2>
-        <p className="text-sm leading-relaxed mb-8" style={{ color: "#64748b" }}>
-          Contul tau a fost creat cu succes. Asteapta sa fii adaugat intr-un
-          cabinet de catre un administrator, sau introdu un cod de cabinet
+        <p className="text-[13px] text-slate-500 leading-relaxed mb-8">
+          Contul tău a fost creat cu succes. Așteaptă să fii adăugat într-un
+          cabinet de către un administrator, sau introdu un cod de cabinet
           pentru a activa contul.
         </p>
-        <div className="p-4 text-left rounded-[10px]" style={{ background: "#ffffff", border: "1px solid #e2e8f0" }}>
-          <div className="text-[10px] font-bold uppercase mb-2 tracking-wider" style={{ color: "#94a3b8" }}>
+        <div className="p-4 text-left rounded-xl bg-white border border-slate-200">
+          <div className="text-[10px] font-semibold uppercase mb-2 tracking-wider text-slate-400">
             Ai un cod de cabinet?
           </div>
-          <p className="text-xs" style={{ color: "#64748b" }}>
-            Daca ai primit un cod de cabinet de la furnizorul DosarFonduri,
-            te rugam sa te deconectezi si sa te inregistrezi din nou folosind
+          <p className="text-[13px] text-slate-500 leading-relaxed">
+            Dacă ai primit un cod de cabinet de la furnizorul DosarFonduri,
+            te rugăm să te deconectezi și să te înregistrezi din nou folosind
             codul.
           </p>
         </div>

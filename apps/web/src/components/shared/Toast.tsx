@@ -8,6 +8,27 @@ const ToastContext = createContext<{
   toast: (type: ToastType, message: string) => void;
 }>({ toast: () => {} });
 
+const icons: Record<ToastType, string> = {
+  success: "✓",
+  error: "✕",
+  warning: "!",
+  info: "i",
+};
+
+const borderColors: Record<ToastType, string> = {
+  success: "#059669",
+  error: "#dc2626",
+  warning: "#d97706",
+  info: "#2563eb",
+};
+
+const bgColors: Record<ToastType, string> = {
+  success: "#ecfdf5",
+  error: "#fef2f2",
+  warning: "#fffbeb",
+  info: "#eff6ff",
+};
+
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
@@ -38,39 +59,31 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     timersRef.current.set(id, timer);
   }, [dismissToast]);
 
-  const colors: Record<ToastType, string> = {
-    success: "#34d399",
-    error: "#f87171",
-    warning: "#fbbf24",
-    info: "#4d8bff",
-  };
-
-  const borderClasses: Record<ToastType, string> = {
-    success: "border-emerald-500",
-    error: "border-red-500",
-    warning: "border-amber-500",
-    info: "border-blue-500",
-  };
-
   return (
     <ToastContext.Provider value={{ toast }}>
       {children}
       <div className="fixed bottom-4 right-4 z-[200] flex flex-col gap-2" role="status" aria-live="polite">
         {toasts.map(t => (
-          <div key={t.id} className="px-4 py-3 rounded-lg text-sm font-medium"
+          <div
+            key={t.id}
+            className="flex items-center gap-3 px-4 py-3 rounded-xl text-[13px] font-medium bg-white shadow-sm border"
             style={{
-              background: "#ffffff",
-              color: "#0f172a",
-              border: `1px solid #e2e8f0`,
-              borderLeft: `3px solid ${colors[t.type]}`,
-              boxShadow: "0 4px 12px rgba(0,0,0,.15)",
+              borderColor: "rgba(226,232,240,.8)",
+              borderLeftWidth: "3px",
+              borderLeftColor: borderColors[t.type],
               animation: t.dismissing ? "slideDown .2s ease-in forwards" : "slideUp .2s ease-out",
-            }}>
-            {t.message}
+            }}
+          >
+            <span
+              className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0"
+              style={{ background: borderColors[t.type] }}
+            >
+              {icons[t.type]}
+            </span>
+            <span className="text-slate-900">{t.message}</span>
           </div>
         ))}
       </div>
-      <style>{`@keyframes slideDown{from{opacity:1;transform:translateY(0)}to{opacity:0;transform:translateY(8px)}}`}</style>
     </ToastContext.Provider>
   );
 }

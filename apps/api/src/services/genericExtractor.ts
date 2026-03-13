@@ -8,11 +8,25 @@ const anthropic = new Anthropic();
  * a dedicated extractor. Uses Claude Sonnet to identify and extract
  * all relevant structured fields from the document text.
  *
- * This ensures new document types (e.g. from a new guide/program)
- * get useful extraction without requiring code changes.
+ * When vocabulary is provided (from element_definitions), the extractor
+ * maps extracted fields to known keys, ensuring consistent naming and
+ * preventing data loss from key mismatches.
  */
-export async function extractGeneric(text: string, documentType: string): Promise<ExtractionResult> {
+export async function extractGeneric(
+  text: string,
+  documentType: string,
+  vocabulary?: string[],
+): Promise<ExtractionResult> {
   const start = Date.now();
+
+  // Build vocabulary-aware prompt section
+  const vocabSection = vocabulary && vocabulary.length > 0
+    ? `\n\nIMPORTANT — Folosește PREFERENȚIAL aceste chei cunoscute (vocabulary) pentru câmpuri:
+${vocabulary.map(k => `- ${k}`).join("\n")}
+
+Dacă un câmp extras corespunde uneia din cheile de mai sus, folosește EXACT acea cheie.
+Dacă nu găsești o cheie potrivită, poți folosi un field_key nou descriptiv în snake_case.`
+    : "";
 
   const response = await anthropic.messages.create({
     model: "claude-sonnet-4-20250514",
@@ -29,7 +43,7 @@ Reguli:
 - Dacă documentul conține tabele, extrage datele tabulare ca array-uri de obiecte
 - Extrage date, sume, numere, adrese, nume, CUI/CNP, numere de înregistrare
 - NU inventa date — dacă un câmp nu e în document, nu-l include
-- Concentrează-te pe datele relevante pentru un proiect de finanțare`,
+- Concentrează-te pe datele relevante pentru un proiect de finanțare${vocabSection}`,
     messages: [{
       role: "user",
       content: `Extrage toate datele structurate din acest document. Returnează un JSON cu structura:
@@ -60,7 +74,7 @@ ${text.slice(0, 40000)}`,
       fields.push({
         field_key: String(f.key).replace(/[^a-z0-9_]/g, "_").slice(0, 100),
         field_value: f.value,
-        confidence: 0.75, // generic extraction has lower baseline confidence
+        confidence: vocabulary && vocabulary.length > 0 ? 0.80 : 0.75, // higher confidence when vocabulary-guided
         source_page: typeof f.page === "number" ? f.page : null,
         extraction_method: "ai_sonnet",
       });

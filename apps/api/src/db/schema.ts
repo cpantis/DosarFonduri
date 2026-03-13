@@ -20,7 +20,10 @@ export const refUsageEnum = pgEnum("ref_usage", ["validates", "scores", "classif
 export const elementRoleLinkEnum = pgEnum("element_role_link", ["input", "output", "constraint"]);
 export const projectStatusEnum = pgEnum("project_status", ["draft", "in_progress", "review", "submitted", "approved", "rejected"]);
 export const eligibilityStatusEnum = pgEnum("eligibility_status", ["passed", "failed", "pending", "not_applicable"]);
-export const elementSourceEnum = pgEnum("element_source", ["onrc", "solomon", "manual", "calculated", "ghid", "document_extracted"]);
+export const elementSourceEnum = pgEnum("element_source", ["onrc", "solomon", "manual", "calculated", "ghid", "document_extracted", "onrc_auto", "anaf_auto", "solomon_chat", "consultant_manual", "derived"]);
+export const elementCategoryEnum = pgEnum("element_category", ["beneficiary", "farm", "investment", "location", "financial", "legal", "technical", "other"]);
+export const elementDataTypeEnum = pgEnum("element_data_type", ["number", "text", "enum", "boolean", "date", "document_ref", "list_items"]);
+export const placeholderMappedByEnum = pgEnum("placeholder_mapped_by", ["auto", "manual"]);
 export const validationStatusEnum = pgEnum("validation_status", ["pending", "valid", "warning", "invalid"]);
 export const messageRoleEnum = pgEnum("message_role", ["user", "assistant", "system"]);
 export const aiAgentEnum = pgEnum("ai_agent", ["solomon", "neemia", "ghid_rules", "ocr"]);
@@ -271,6 +274,45 @@ export const rules = pgTable("rules", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// === ELEMENT DEFINITIONS (canonical field definitions from guide processing) ===
+// This is the source of truth for what data elements exist per guide.
+// project_elements link to this instead of template_elements.
+// Templates map placeholders to these via template_placeholder_mapping.
+export const elementDefinitions = pgTable("element_definitions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  guideDocumentId: uuid("guide_document_id").references(() => documents.id, { onDelete: "cascade" }).notNull(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  elementKey: varchar("element_key", { length: 255 }).notNull(),
+  displayName: varchar("display_name", { length: 500 }).notNull(),
+  category: elementCategoryEnum("category").notNull().default("other"),
+  dataType: elementDataTypeEnum("data_type").notNull().default("text"),
+  unit: varchar("unit", { length: 50 }),
+  enumValues: jsonb("enum_values").$type<string[]>(),
+  sourcePriority: jsonb("source_priority").$type<string[]>().default(["document_extracted", "solomon_chat", "consultant_manual"]),
+  validationRules: jsonb("validation_rules").$type<{
+    min?: number;
+    max?: number;
+    pattern?: string;
+    required?: boolean;
+    lookupTableId?: string;
+    lookupColumn?: string;
+    crossCheck?: Array<{ elementKey: string; condition: string }>;
+  }>(),
+  usedByRules: jsonb("used_by_rules").$type<string[]>(),
+  usedInTemplates: jsonb("used_in_templates").$type<string[]>(),
+  lookupTableId: uuid("lookup_table_id"),
+  collectionOrder: integer("collection_order").default(0),
+  required: boolean("required").notNull().default(false),
+  helpText: text("help_text"),
+  isDerived: boolean("is_derived").notNull().default(false),
+  derivationFormula: text("derivation_formula"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  guideIdx: index("elem_def_guide_idx").on(table.guideDocumentId),
+  orgIdx: index("elem_def_org_idx").on(table.organizationId),
+  keyGuideIdx: uniqueIndex("elem_def_key_guide_idx").on(table.elementKey, table.guideDocumentId),
+}));
+
 // === GUIDE REFERENCE TABLES (structured data from annexes) ===
 export const guideReferenceTables = pgTable("guide_reference_tables", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -306,15 +348,34 @@ export const ruleReferenceLinks = pgTable("rule_reference_links", {
   tableIdx: index("rule_ref_table_idx").on(table.referenceTableId),
 }));
 
+// === TEMPLATE ↔ ELEMENT DEFINITION MAPPING (for Neemia output) ===
+// Links template placeholders (e.g. {{suprafata}}) to canonical element_definitions.
+// This decouples templates from being the source of truth for field definitions.
+export const templatePlaceholderMapping = pgTable("template_placeholder_mapping", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  templateDocumentId: uuid("template_document_id").references(() => documents.id, { onDelete: "cascade" }).notNull(),
+  placeholderKey: varchar("placeholder_key", { length: 255 }).notNull(),
+  elementDefId: uuid("element_def_id").references(() => elementDefinitions.id, { onDelete: "cascade" }).notNull(),
+  mappedBy: placeholderMappedByEnum("mapped_by").notNull().default("auto"),
+  confidence: decimal("confidence", { precision: 3, scale: 2 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  templateIdx: index("tpl_map_template_idx").on(table.templateDocumentId),
+  elementIdx: index("tpl_map_element_idx").on(table.elementDefId),
+  uniqueMapping: uniqueIndex("tpl_map_unique_idx").on(table.templateDocumentId, table.placeholderKey),
+}));
+
 // === ELEMENT ↔ RULE LINKS ===
 export const elementRuleLinks = pgTable("element_rule_links", {
   id: uuid("id").defaultRandom().primaryKey(),
-  templateElementId: uuid("template_element_id").references(() => templateElements.id, { onDelete: "cascade" }).notNull(),
+  templateElementId: uuid("template_element_id").references(() => templateElements.id, { onDelete: "cascade" }),  // nullable — backward compat
+  elementDefId: uuid("element_def_id").references(() => elementDefinitions.id, { onDelete: "cascade" }),  // NEW anchor
   ruleId: uuid("rule_id").references(() => rules.id, { onDelete: "cascade" }).notNull(),
   role: elementRoleLinkEnum("role").notNull(),
   description: text("description"),
 }, (table) => ({
   elementIdx: index("elem_rule_elem_idx").on(table.templateElementId),
+  elementDefIdx: index("elem_rule_elemdef_idx").on(table.elementDefId),
   ruleIdx: index("elem_rule_rule_idx").on(table.ruleId),
 }));
 
@@ -371,7 +432,8 @@ export const projects = pgTable("projects", {
 export const projectElements = pgTable("project_elements", {
   id: uuid("id").defaultRandom().primaryKey(),
   projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
-  templateElementId: uuid("template_element_id").references(() => templateElements.id).notNull(),
+  templateElementId: uuid("template_element_id").references(() => templateElements.id),  // nullable now — backward compat
+  elementDefId: uuid("element_def_id").references(() => elementDefinitions.id),  // NEW anchor — will become NOT NULL after migration
   value: text("value"),
   source: elementSourceEnum("source").notNull().default("manual"),
   sourceDocumentId: uuid("source_document_id").references(() => documents.id),
@@ -388,6 +450,7 @@ export const projectElements = pgTable("project_elements", {
   updatedAt: timestamp("updated_at").defaultNow().notNull().$onUpdate(() => new Date()),
 }, (table) => ({
   projectIdx: index("proj_el_project_idx").on(table.projectId),
+  elementDefIdx: index("proj_el_elemdef_idx").on(table.elementDefId),
 }));
 
 // === PROJECT ELIGIBILITY ===

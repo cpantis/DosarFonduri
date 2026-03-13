@@ -310,6 +310,7 @@ export default function ProjectViewPage() {
   const chatRef = useRef<HTMLDivElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
   const solomonFileRef = useRef<HTMLInputElement>(null);
+  const [solomonDragOver, setSolomonDragOver] = useState(false);
 
   const [recheckLoading, setRecheckLoading] = useState(false);
 
@@ -1768,7 +1769,11 @@ export default function ProjectViewPage() {
 
         /* Solomon Chat */
         .solomon-layout{display:flex;height:100%;overflow:hidden}
-        .solomon-chat{flex:1;display:flex;flex-direction:column;min-width:0;height:100%;overflow:hidden}
+        .solomon-chat{flex:1;display:flex;flex-direction:column;min-width:0;height:100%;overflow:hidden;position:relative}
+        .solomon-chat.drag-active{outline:2px dashed #4d8bff;outline-offset:-4px;border-radius:8px}
+        .solomon-drop-overlay{position:absolute;inset:0;background:rgba(77,139,255,.08);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:20;pointer-events:none;border-radius:8px}
+        .solomon-drop-icon{font-size:40px;margin-bottom:8px}
+        .solomon-drop-text{font-size:14px;font-weight:600;color:#4d8bff}
         .solomon-toolbar{padding:10px 20px;display:flex;align-items:center;gap:10px;border-bottom:1px solid rgba(226,232,240,.8);background:#ffffff}
         .solomon-avatar{width:32px;height:32px;border-radius:50%;background:#2563eb;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;color:#ffffff;flex-shrink:0}
         .solomon-name-block{display:flex;flex-direction:column;gap:1px}
@@ -2952,7 +2957,24 @@ export default function ProjectViewPage() {
             {activeLeaf === "solomon" && (
               <div className="solomon-layout">
                 {/* Chat area */}
-                <div className="solomon-chat">
+                <div
+                  className={`solomon-chat${solomonDragOver ? " drag-active" : ""}`}
+                  onDragOver={e => { e.preventDefault(); e.stopPropagation(); setSolomonDragOver(true); }}
+                  onDragLeave={e => { e.preventDefault(); e.stopPropagation(); setSolomonDragOver(false); }}
+                  onDrop={e => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setSolomonDragOver(false);
+                    const file = e.dataTransfer.files?.[0];
+                    if (file) handleSolomonUpload(file);
+                  }}
+                >
+                  {solomonDragOver && (
+                    <div className="solomon-drop-overlay">
+                      <div className="solomon-drop-icon">&#128206;</div>
+                      <div className="solomon-drop-text">Elibereaza pentru upload document</div>
+                    </div>
+                  )}
                   {/* Toolbar */}
                   <div className="solomon-toolbar">
                     <div className="solomon-avatar">S</div>
@@ -3048,7 +3070,7 @@ export default function ProjectViewPage() {
                       <input
                         ref={solomonFileRef}
                         type="file"
-                        accept=".pdf,.docx,.xlsx,.doc"
+                        accept=".pdf,.docx,.xlsx,.doc,.png,.jpg,.jpeg"
                         style={{ display: "none" }}
                         onChange={e => {
                           const file = e.target.files?.[0];

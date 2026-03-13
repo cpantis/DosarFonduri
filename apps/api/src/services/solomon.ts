@@ -1147,7 +1147,7 @@ export async function processSolomonMessage(params: {
   organizationId: string;
   userId: string;
   content: string;
-  attachments?: Array<{ fileId: string; fileName: string; mimeType: string; extractedText?: string }>;
+  attachments?: Array<{ fileId: string; fileName: string; mimeType: string; extractedText?: string; documentId?: string }>;
   useETOverride?: boolean;
 }): Promise<ReadableStream> {
   const { conversationId, projectId, organizationId, userId, content, attachments, useETOverride } = params;

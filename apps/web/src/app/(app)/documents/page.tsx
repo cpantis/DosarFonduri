@@ -639,6 +639,8 @@ export default function DocumentsPage() {
   const breadcrumb = selectedFolder ? getBreadcrumb(tree, selectedFolder) || [] : [];
   const selectedNode = selectedFolder ? findNodeById(tree, selectedFolder) : null;
   const isLeafSelected = selectedNode ? LEAF_TYPES.has(selectedNode.type) : false;
+  const isClientFolder = selectedNode ? (selectedNode.type === "clienti_prospecti" || selectedNode.type === "clienti_finali") : false;
+  const canUpload = isLeafSelected && !isClientFolder;
 
   // Stats
   const totalDocs = docs.length;
@@ -805,7 +807,7 @@ export default function DocumentsPage() {
             />
             <kbd className="doc-search-kbd">Ctrl+K</kbd>
           </div>
-          <button className="doc-upload-btn" onClick={() => setShowUpload(true)} disabled={!isLeafSelected} title={!isLeafSelected ? "Selecteaza un folder de tip Ghiduri, Template-uri, Clienti Prospecti sau Clienti Finali" : "Upload document"}>
+          <button className="doc-upload-btn" onClick={() => setShowUpload(true)} disabled={!canUpload} title={isClientFolder ? "Documentele client se uploadeaza prin Solomon in proiect" : !isLeafSelected ? "Selecteaza un folder de tip Ghiduri sau Template-uri" : "Upload document"}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
             </svg>
@@ -892,14 +894,16 @@ export default function DocumentsPage() {
               </>
             ) : (
               <>
-                <div className="doc-empty-title">{isLeafSelected ? "Folder gol" : "Navigheaza mai adanc"}</div>
+                <div className="doc-empty-title">{isClientFolder ? "Documente client" : isLeafSelected ? "Folder gol" : "Navigheaza mai adanc"}</div>
                 <div className="doc-empty-desc">
-                  {isLeafSelected
+                  {isClientFolder
+                    ? <>Documentele client se uploadeaza <strong>prin Solomon</strong> in contextul proiectului.<br />Deschide un proiect si foloseste chat-ul Solomon pentru a uploada certificate, contracte, oferte etc.<br />Documentele procesate apar automat aici.</>
+                    : isLeafSelected
                     ? <>Acest folder nu contine inca documente.<br />Adauga primul document cu butonul de upload.</>
-                    : <>Documentele se adauga doar in folderele de tip<br /><strong>Ghiduri</strong>, <strong>Template-uri</strong>, <strong>Clienti Prospecti</strong> sau <strong>Clienti Finali</strong>.<br />Expandeaza arborele si selecteaza un folder final.</>
+                    : <>Documentele se adauga doar in folderele de tip<br /><strong>Ghiduri</strong> sau <strong>Template-uri</strong>.<br />Documentele client se uploadeaza prin Solomon.<br />Expandeaza arborele si selecteaza un folder final.</>
                   }
                 </div>
-                {isLeafSelected && (
+                {canUpload && (
                   <button className="doc-empty-cta" onClick={() => setShowUpload(true)}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>

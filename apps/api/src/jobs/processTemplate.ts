@@ -145,6 +145,112 @@ Returneaza:
   }
 }
 
+/**
+ * Detect COMPOSE: and TABLE: markers in a DOCX/XLSX template.
+ * These markers indicate sections where Neemia should generate content.
+ * Format: COMPOSE:section_key or TABLE:table_key
+ */
+async function detectComposeSections(buffer: Buffer, fileName: string): Promise<Array<{
+  marker: string;
+  type: "narrative" | "table" | "calculation";
+  label: string;
+}>> {
+  const { execSync } = await import("child_process");
+  const fs = await import("fs");
+  const os = await import("os");
+  const path = await import("path");
+
+  const tmpDir = os.tmpdir();
+  const inputPath = path.join(tmpDir, `compose_${Date.now()}_${fileName}`);
+  fs.writeFileSync(inputPath, buffer);
+
+  const script = `
+import sys, json, re
+
+file_path = sys.argv[1]
+ext = file_path.rsplit('.', 1)[-1].lower()
+
+markers = []
+
+if ext == 'docx':
+    from docx import Document
+    doc = Document(file_path)
+    for para in doc.paragraphs:
+        text = para.text.strip()
+        m = re.match(r'(COMPOSE|TABLE|CALC):([\\w_]+)', text)
+        if m:
+            mtype = m.group(1)
+            mkey = m.group(2)
+            label = mkey.replace('_', ' ').title()
+            section_type = 'narrative' if mtype == 'COMPOSE' else 'table' if mtype == 'TABLE' else 'calculation'
+            markers.append({
+                "marker": f"{mtype}:{mkey}",
+                "type": section_type,
+                "label": label
+            })
+    for table in doc.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                text = cell.text.strip()
+                m = re.match(r'(COMPOSE|TABLE|CALC):([\\w_]+)', text)
+                if m:
+                    mtype = m.group(1)
+                    mkey = m.group(2)
+                    label = mkey.replace('_', ' ').title()
+                    section_type = 'narrative' if mtype == 'COMPOSE' else 'table' if mtype == 'TABLE' else 'calculation'
+                    markers.append({
+                        "marker": f"{mtype}:{mkey}",
+                        "type": section_type,
+                        "label": label
+                    })
+
+elif ext == 'xlsx':
+    import openpyxl
+    wb = openpyxl.load_workbook(file_path, data_only=True)
+    for sheet in wb.sheetnames:
+        ws = wb[sheet]
+        for row in ws.iter_rows(values_only=False):
+            for cell in row:
+                if cell.value and isinstance(cell.value, str):
+                    text = cell.value.strip()
+                    m = re.match(r'(COMPOSE|TABLE|CALC):([\\w_]+)', text)
+                    if m:
+                        mtype = m.group(1)
+                        mkey = m.group(2)
+                        label = mkey.replace('_', ' ').title()
+                        section_type = 'narrative' if mtype == 'COMPOSE' else 'table' if mtype == 'TABLE' else 'calculation'
+                        markers.append({
+                            "marker": f"{mtype}:{mkey}",
+                            "type": section_type,
+                            "label": label
+                        })
+
+# Deduplicate
+seen = set()
+unique = []
+for m in markers:
+    if m['marker'] not in seen:
+        seen.add(m['marker'])
+        unique.append(m)
+
+print(json.dumps(unique))
+`;
+
+  const scriptPath = path.join(tmpDir, `compose_detect_${Date.now()}.py`);
+  fs.writeFileSync(scriptPath, script);
+
+  try {
+    const result = execSync(`python3 ${scriptPath} ${inputPath}`, {
+      encoding: "utf-8",
+      timeout: 30000,
+    });
+    return JSON.parse(result);
+  } finally {
+    try { fs.unlinkSync(inputPath); } catch {}
+    try { fs.unlinkSync(scriptPath); } catch {}
+  }
+}
+
 export const processTemplateWorker = new Worker<ProcessTemplatePayload>(
   "process-template",
   async (job: Job<ProcessTemplatePayload>) => {
@@ -155,6 +261,8 @@ export const processTemplateWorker = new Worker<ProcessTemplatePayload>(
 
       const doc = await db.query.documents.findFirst({ where: eq(documents.id, documentId) });
       if (!doc) throw new Error("Document not found");
+
+      const isCompose = doc.generationMode === "compose";
 
       const { buffer, name } = await getFileBuffer(doc.fileId);
 
@@ -241,6 +349,21 @@ export const processTemplateWorker = new Worker<ProcessTemplatePayload>(
 
       if (uniqueElements.length > 0) {
         await db.insert(templateElements).values(uniqueElements);
+      }
+
+      // For compose mode: detect COMPOSE: and TABLE: markers in the document
+      if (isCompose && (doc.fileType === "docx" || doc.fileType === "xlsx")) {
+        try {
+          const composeSections = await detectComposeSections(buffer, name);
+          if (composeSections.length > 0) {
+            await db.update(documents).set({
+              composeConfig: { sections: composeSections } as any,
+            }).where(eq(documents.id, documentId));
+            console.log(`[processTemplate] Detected ${composeSections.length} compose sections in "${doc.name}"`);
+          }
+        } catch (err) {
+          console.error(`[processTemplate] Compose section detection failed for ${documentId}:`, err);
+        }
       }
 
       // Auto-map template placeholders to element_definitions (if any exist)

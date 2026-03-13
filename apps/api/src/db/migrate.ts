@@ -81,7 +81,9 @@ async function runMigrations() {
       .sort();
     for (const file of extraFiles) {
       const sqlContent = fs.readFileSync(path.join(migrationsPath, file), "utf-8");
-      const statements = sqlContent.split(/;(?=\s*(?:--|ALTER|CREATE|DO|INSERT|UPDATE|DROP|$))/i).map(s => s.trim()).filter(s => s && !s.startsWith("--"));
+      const statements = sqlContent.split(/;(?=\s*(?:--|ALTER|CREATE|DO|INSERT|UPDATE|DROP|$))/i)
+        .map(s => s.replace(/^[\s]*--[^\n]*\n/gm, "").trim())
+        .filter(s => s.length > 0);
       for (const stmt of statements) {
         try {
           await db.execute(sql.raw(stmt));

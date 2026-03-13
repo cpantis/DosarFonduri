@@ -111,7 +111,7 @@ adminRoutes.post("/users", async (c) => {
 
   // Send invitation email via Resend
   const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.RESEND_FROM || "notificari@dosarfonduri.ro";
+  const from = process.env.SENDER_EMAIL || "notificari@dosarfonduri.ro";
   if (apiKey) {
     const signupUrl = `${process.env.APP_URL || "https://app.dosarfonduri.ro"}/login?invited=1&email=${encodeURIComponent(body.email)}`;
     try {

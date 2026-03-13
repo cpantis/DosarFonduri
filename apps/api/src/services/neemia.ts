@@ -457,7 +457,7 @@ export async function validateBeforeGenerate(
 
   // Check unconfirmed elements with source
   const unconfirmedSolomon = projectEls.filter(pe =>
-    pe.value && pe.value.trim() !== "" && !pe.confirmed && pe.source === "solomon"
+    pe.value && pe.value.trim() !== "" && !pe.confirmed && (pe.source === "solomon" || pe.source === "solomon_chat")
   );
   if (unconfirmedSolomon.length > 0) {
     warnings.push(`${unconfirmedSolomon.length} câmpuri completate de Solomon dar neconfirmate de consultant`);
@@ -471,7 +471,7 @@ export async function validateBeforeGenerate(
   }
 
   const unconfirmedOther = projectEls.filter(pe =>
-    pe.value && pe.value.trim() !== "" && !pe.confirmed && pe.source !== "solomon" && pe.source !== "calculated"
+    pe.value && pe.value.trim() !== "" && !pe.confirmed && pe.source !== "solomon" && pe.source !== "solomon_chat" && pe.source !== "calculated"
   );
   if (unconfirmedOther.length > 0) {
     warnings.push(`${unconfirmedOther.length} câmpuri completate dar neconfirmate`);

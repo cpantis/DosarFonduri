@@ -550,10 +550,15 @@ export default function DocumentsPage() {
 
           const { presigned_url, document_id } = await presignedRes.json();
 
-          // Step 2: Upload directly to R2 via presigned URL
+          // Step 2: Upload directly to R2 via presigned URL (or local API fallback)
+          const isLocalUpload = presigned_url.startsWith("/");
           const uploadRes = await fetch(presigned_url, {
             method: "PUT",
-            headers: { "Content-Type": file.type || "application/octet-stream" },
+            headers: {
+              "Content-Type": file.type || "application/octet-stream",
+              ...(isLocalUpload ? authHeaders : {}),
+            },
+            ...(isLocalUpload ? { credentials: "include" as const } : {}),
             body: file,
           });
 

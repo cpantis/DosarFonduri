@@ -183,111 +183,135 @@ export default function ProjectsPage() {
 
       {/* CREATE PROJECT MODAL */}
       {showCreate && (
-        <div className="fixed inset-0 flex items-center justify-center z-[100] bg-black/40 backdrop-blur-sm" onClick={e => e.target === e.currentTarget && setShowCreate(false)}>
-          <div className="bg-white rounded-2xl w-[520px] max-h-[85vh] overflow-y-auto p-7 border border-slate-200/80 shadow-xl animate-[fadeUp_.2s_ease-out]">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-[18px] font-bold text-slate-900">Proiect nou</h2>
-              <button className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors" onClick={() => setShowCreate(false)}>
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+        <div className="fixed inset-0 flex items-center justify-center z-[100] bg-black/30 backdrop-blur-[2px]" onClick={e => e.target === e.currentTarget && setShowCreate(false)}>
+          <div className="bg-white rounded-2xl w-[540px] max-h-[85vh] overflow-y-auto shadow-2xl shadow-black/10 animate-[fadeUp_.2s_ease-out]" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
+
+            {/* Modal header */}
+            <div className="flex items-center justify-between px-7 pt-6 pb-0">
+              <div>
+                <h2 className="text-[17px] font-bold text-slate-800">Proiect nou</h2>
+                <p className="text-[12px] text-slate-400 mt-0.5">Configurează dosarul de finanțare</p>
+              </div>
+              <button className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-300 hover:text-slate-500 transition-colors" onClick={() => setShowCreate(false)}>
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
 
             {/* Stepper */}
-            <div className="flex items-center mb-6">
-              {["Firmă", "Program", "Confirmare"].map((label, i) => {
-                const s = i + 1;
-                return <div key={s} className="contents">
-                  <div className={`flex items-center gap-1.5 text-[12px] font-medium ${createStep === s ? "text-blue-600" : createStep > s ? "text-emerald-600" : "text-slate-400"}`}>
-                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold font-mono transition-all ${
-                      createStep === s ? "bg-blue-600 text-white" :
-                      createStep > s ? "bg-emerald-500 text-white" :
-                      "bg-slate-100 text-slate-400"
-                    }`}>{createStep > s ? "✓" : s}</div>
-                    <span>{label}</span>
-                  </div>
-                  {s < 3 && <div className={`flex-1 h-px mx-3 ${createStep > s ? "bg-emerald-300" : "bg-slate-200"}`} />}
-                </div>;
-              })}
+            <div className="px-7 pt-5 pb-6">
+              <div className="flex items-center">
+                {["Firmă", "Program", "Confirmare"].map((label, i) => {
+                  const s = i + 1;
+                  const isActive = createStep === s;
+                  const isDone = createStep > s;
+                  return <div key={s} className="contents">
+                    <div className="flex items-center gap-2">
+                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[12px] font-bold transition-all ${
+                        isActive ? "bg-blue-500 text-white shadow-sm shadow-blue-500/30" :
+                        isDone ? "bg-emerald-50 text-emerald-500 border border-emerald-200" :
+                        "bg-slate-50 text-slate-400 border border-slate-200"
+                      }`}>{isDone ? <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><polyline points="20 6 9 17 4 12" /></svg> : s}</div>
+                      <span className={`text-[13px] font-medium ${isActive ? "text-slate-800" : isDone ? "text-emerald-600" : "text-slate-400"}`}>{label}</span>
+                    </div>
+                    {s < 3 && <div className={`flex-1 h-px mx-4 ${isDone ? "bg-emerald-200" : "bg-slate-100"}`} />}
+                  </div>;
+                })}
+              </div>
             </div>
 
-            {createStep === 1 && (<>
-              <label className="block text-[11px] font-medium uppercase tracking-wider mb-2 text-slate-400">Selectează firma</label>
-              <div className="grid grid-cols-2 gap-1.5 mb-5">
-                {companies.map(f => (
-                  <div key={f.id}
-                    className={`p-3 rounded-lg cursor-pointer transition-all text-[13px] font-medium border ${createData.firmaId === f.id ? "border-blue-300 bg-blue-50 text-blue-700 ring-2 ring-blue-50" : "border-slate-200/80 bg-white text-slate-700 hover:bg-slate-50"}`}
-                    onClick={() => setCreateData(p => ({ ...p, firmaId: f.id }))}>
-                    🏢 {f.name}
-                  </div>
-                ))}
-              </div>
-              <div className="flex gap-2 justify-end">
-                <BtnSecondary onClick={() => setShowCreate(false)}>Anulează</BtnSecondary>
-                <BtnPrimary icon={<IconArrowRight />} disabled={!createData.firmaId} onClick={() => setCreateStep(2)}>Continuă</BtnPrimary>
-              </div>
-            </>)}
-
-            {createStep === 2 && (<>
-              <label className="block text-[11px] font-medium uppercase tracking-wider mb-2 text-slate-400">Selectează programul și sesiunea</label>
-              <div className="mb-5 space-y-2">
-                {folderTree.map(prog => (
-                  <div key={prog.program}>
-                    <div className="text-[13px] font-semibold mb-1 flex items-center gap-2 text-slate-900">
-                      <span className="w-2 h-2 rounded-full bg-blue-500" /> {prog.program}
+            {/* Step content */}
+            <div className="px-7 pb-7">
+              {createStep === 1 && (<>
+                <label className="block text-[11px] font-semibold uppercase tracking-widest mb-3 text-slate-400">Selectează firma</label>
+                <div className="space-y-1.5 mb-6">
+                  {companies.map(f => (
+                    <div key={f.id}
+                      className={`px-4 py-3 rounded-xl cursor-pointer transition-all text-[13px] font-medium flex items-center gap-3 ${createData.firmaId === f.id ? "bg-blue-50 text-blue-700 ring-2 ring-blue-500/20" : "bg-slate-50/80 text-slate-600 hover:bg-slate-100"}`}
+                      onClick={() => setCreateData(p => ({ ...p, firmaId: f.id }))}>
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-[14px] ${createData.firmaId === f.id ? "bg-blue-100" : "bg-white border border-slate-200"}`}>🏢</div>
+                      {f.name}
+                      {createData.firmaId === f.id && <svg className="w-4 h-4 ml-auto text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><polyline points="20 6 9 17 4 12" /></svg>}
                     </div>
-                    {prog.masuri.map(m => (
-                      <div key={m.name}>
-                        <div className="py-1.5 px-3 pl-7 text-[13px] flex items-center gap-2 text-slate-500">
-                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400" /> {m.name}
-                        </div>
-                        {m.sesiuni.map(s => (
-                          <div key={s.folderId}
-                            className={`py-1.5 px-3 pl-[52px] text-[12px] flex items-center gap-2 cursor-pointer rounded-lg transition-all ${createData.folderId === s.folderId ? "bg-blue-50 text-blue-600 font-medium" : "text-slate-400 hover:text-slate-600 hover:bg-slate-50"}`}
-                            onClick={() => setCreateData(p => ({ ...p, folderId: s.folderId, program: prog.program, masura: m.name, sesiune: s.name }))}>
-                            <span className="w-1 h-1 rounded-full bg-slate-300" /> {s.name}
-                          </div>
-                        ))}
-                      </div>
-                    ))}
-                  </div>
-                ))}
-              </div>
-              <div className="flex gap-2 justify-end">
-                <BtnSecondary icon={<IconArrowLeft />} onClick={() => setCreateStep(1)}>Înapoi</BtnSecondary>
-                <BtnPrimary icon={<IconArrowRight />} disabled={!createData.folderId} onClick={() => setCreateStep(3)}>Continuă</BtnPrimary>
-              </div>
-            </>)}
-
-            {createStep === 3 && (<>
-              <label className="block text-[11px] font-medium uppercase tracking-wider mb-2 text-slate-400">Denumire proiect</label>
-              <input
-                className="w-full px-3.5 py-2.5 rounded-lg text-[14px] outline-none border border-slate-200 bg-white text-slate-900 focus:border-blue-300 focus:ring-2 focus:ring-blue-50 transition-all mb-4"
-                placeholder="ex: Modernizare linie producție..."
-                value={createData.name}
-                onChange={e => setCreateData(p => ({ ...p, name: e.target.value }))}
-                autoFocus
-              />
-
-              <div className="p-4 rounded-xl mb-4 border border-blue-200/60 bg-blue-50/30">
-                <div className="space-y-1.5">
-                  <div className="flex gap-2 text-[13px]"><span className="text-slate-400 w-20 shrink-0">Firmă</span><span className="font-medium text-slate-900">{companies.find(f => f.id === createData.firmaId)?.name}</span></div>
-                  <div className="flex gap-2 text-[13px]"><span className="text-slate-400 w-20 shrink-0">Program</span><span className="font-medium text-slate-900">{createData.program}</span></div>
-                  <div className="flex gap-2 text-[13px]"><span className="text-slate-400 w-20 shrink-0">Măsură</span><span className="font-medium text-slate-900">{createData.masura}</span></div>
-                  <div className="flex gap-2 text-[13px]"><span className="text-slate-400 w-20 shrink-0">Sesiune</span><span className="font-medium text-slate-900">{createData.sesiune}</span></div>
+                  ))}
                 </div>
-              </div>
+                <div className="flex gap-2.5 justify-end pt-2 border-t border-slate-100">
+                  <BtnSecondary onClick={() => setShowCreate(false)}>Anulează</BtnSecondary>
+                  <BtnPrimary icon={<IconArrowRight />} disabled={!createData.firmaId} onClick={() => setCreateStep(2)}>Continuă</BtnPrimary>
+                </div>
+              </>)}
 
-              <p className="text-[12px] text-slate-400 leading-relaxed mb-5">
-                La creare, proiectul va prelua automat ghidurile, template-urile și regulile din sesiunea selectată.
-              </p>
+              {createStep === 2 && (<>
+                <label className="block text-[11px] font-semibold uppercase tracking-widest mb-3 text-slate-400">Selectează programul și sesiunea</label>
+                <div className="mb-6 space-y-1 rounded-xl bg-slate-50/80 p-3">
+                  {folderTree.map(prog => (
+                    <div key={prog.program}>
+                      <div className="text-[13px] font-semibold py-1.5 px-2 flex items-center gap-2.5 text-slate-800">
+                        <div className="w-1.5 h-1.5 rounded-full bg-blue-500" /> {prog.program}
+                      </div>
+                      {prog.masuri.map(m => (
+                        <div key={m.name}>
+                          <div className="py-1 px-2 pl-7 text-[12px] flex items-center gap-2 text-slate-500 font-medium">
+                            <div className="w-1 h-1 rounded-full bg-amber-400" /> {m.name}
+                          </div>
+                          {m.sesiuni.map(s => (
+                            <div key={s.folderId}
+                              className={`py-2 px-3 ml-10 text-[12px] flex items-center gap-2 cursor-pointer rounded-lg transition-all ${createData.folderId === s.folderId ? "bg-white text-blue-600 font-semibold shadow-sm" : "text-slate-400 hover:text-slate-600 hover:bg-white/60"}`}
+                              onClick={() => setCreateData(p => ({ ...p, folderId: s.folderId, program: prog.program, masura: m.name, sesiune: s.name }))}>
+                              {createData.folderId === s.folderId
+                                ? <svg className="w-3.5 h-3.5 text-blue-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><polyline points="20 6 9 17 4 12" /></svg>
+                                : <div className="w-1 h-1 rounded-full bg-slate-300 shrink-0" />
+                              }
+                              {s.name}
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-2.5 justify-end pt-2 border-t border-slate-100">
+                  <BtnSecondary icon={<IconArrowLeft />} onClick={() => setCreateStep(1)}>Înapoi</BtnSecondary>
+                  <BtnPrimary icon={<IconArrowRight />} disabled={!createData.folderId} onClick={() => setCreateStep(3)}>Continuă</BtnPrimary>
+                </div>
+              </>)}
 
-              <div className="flex gap-2 justify-end">
-                <BtnSecondary icon={<IconArrowLeft />} onClick={() => setCreateStep(2)}>Înapoi</BtnSecondary>
-                <BtnPrimary icon={<IconCheck />} disabled={!createData.name.trim() || creating} onClick={handleCreate}>
-                  {creating ? "Se creează..." : "Creează proiect"}
-                </BtnPrimary>
-              </div>
-            </>)}
+              {createStep === 3 && (<>
+                <label className="block text-[11px] font-semibold uppercase tracking-widest mb-2 text-slate-400">Denumire proiect</label>
+                <input
+                  className="w-full px-4 py-3 rounded-xl text-[14px] outline-none border border-slate-200 bg-slate-50/50 text-slate-900 placeholder:text-slate-300 focus:bg-white focus:border-blue-300 focus:ring-2 focus:ring-blue-500/10 transition-all mb-5"
+                  placeholder="ex: Modernizare linie producție..."
+                  value={createData.name}
+                  onChange={e => setCreateData(p => ({ ...p, name: e.target.value }))}
+                  autoFocus
+                />
+
+                <div className="rounded-xl mb-5 bg-slate-50/80 overflow-hidden">
+                  <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 px-4 pt-3 pb-1.5">Rezumat</div>
+                  {[
+                    { label: "Firmă", value: companies.find(f => f.id === createData.firmaId)?.name },
+                    { label: "Program", value: createData.program },
+                    { label: "Măsură", value: createData.masura },
+                    { label: "Sesiune", value: createData.sesiune },
+                  ].map((row, i) => (
+                    <div key={row.label} className={`flex items-center gap-3 px-4 py-2.5 text-[13px] ${i < 3 ? "border-b border-slate-100" : ""}`}>
+                      <span className="text-slate-400 w-16 shrink-0 text-[12px]">{row.label}</span>
+                      <span className="font-medium text-slate-700">{row.value}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <p className="text-[11px] text-slate-400 leading-relaxed mb-5">
+                  La creare, proiectul va prelua automat ghidurile, template-urile și regulile din sesiunea selectată.
+                </p>
+
+                <div className="flex gap-2.5 justify-end pt-2 border-t border-slate-100">
+                  <BtnSecondary icon={<IconArrowLeft />} onClick={() => setCreateStep(2)}>Înapoi</BtnSecondary>
+                  <BtnPrimary icon={<IconCheck />} disabled={!createData.name.trim() || creating} onClick={handleCreate}>
+                    {creating ? "Se creează..." : "Creează proiect"}
+                  </BtnPrimary>
+                </div>
+              </>)}
+            </div>
           </div>
         </div>
       )}

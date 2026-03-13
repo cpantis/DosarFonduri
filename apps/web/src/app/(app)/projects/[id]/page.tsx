@@ -1553,7 +1553,7 @@ export default function ProjectViewPage() {
         .rd-outcome-cond{color:#0f172a;flex:1}
         .rd-outcome-then{color:#94a3b8;flex-shrink:0}
         .rd-outcome-result{color:#34d399;font-weight:600;flex:1}
-        .rd-doc-ref{display:flex;align-items:center;gap:8px;padding:10px 14px;background:#ffffff;border:1px solid #e2e8f0;border-radius:10px}
+        .rd-doc-ref{display:flex;align-items:center;gap:8px;padding:10px 14px;background:#ffffff;border:1px solid rgba(226,232,240,.8);border-radius:12px}
         .rd-doc-icon{font-size:18px}
         .rd-doc-name{font-size:13px;font-weight:600;color:#0f172a;flex:1}
         .rd-doc-page{font-size:11px;font-family:'JetBrains Mono',monospace;color:#94a3b8;padding:2px 8px;background:#f8fafc;border-radius:4px}
@@ -1564,14 +1564,14 @@ export default function ProjectViewPage() {
 
         /* Anexe & Date panel */
         .anexe-panel{display:grid;grid-template-columns:320px 1fr;height:100%;overflow:hidden}
-        .anexe-list{overflow-y:auto;border-right:1px solid #e2e8f0;padding:16px}
+        .anexe-list{overflow-y:auto;border-right:1px solid rgba(226,232,240,.8);padding:16px}
         .anexe-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;text-align:center;color:#64748b}
-        .anexe-card{padding:12px;border:1px solid #e2e8f0;border-radius:10px;cursor:pointer;transition:all .15s;margin-bottom:8px;background:#ffffff}
+        .anexe-card{padding:12px;border:1px solid rgba(226,232,240,.8);border-radius:12px;cursor:pointer;transition:all .15s cubic-bezier(.4,0,.2,1);margin-bottom:8px;background:#ffffff}
         .anexe-card:hover{border-color:#cbd5e1;box-shadow:0 1px 3px rgba(0,0,0,.05)}
-        .anexe-card.active{border-color:#4d8bff;background:rgba(59,130,246,.02);box-shadow:0 0 0 1px rgba(59,130,246,.12)}
+        .anexe-card.active{border-color:#2563eb;background:rgba(37,99,235,.02);box-shadow:0 0 0 1px rgba(37,99,235,.12)}
         .anexe-card-top{display:flex;align-items:center;gap:8px;margin-bottom:6px}
         .anexe-type-badge{font-size:9px;font-weight:700;padding:2px 8px;border-radius:8px;text-transform:uppercase;letter-spacing:.5px}
-        .anexe-type-badge.lookup{color:#4d8bff;background:rgba(77,139,255,.12)}
+        .anexe-type-badge.lookup{color:#2563eb;background:rgba(37,99,235,.12)}
         .anexe-type-badge.classification{color:#a78bfa;background:rgba(167,139,250,.12)}
         .anexe-type-badge.list{color:#34d399;background:rgba(52,211,153,.12)}
         .anexe-type-badge.matrix{color:#fb923c;background:rgba(251,146,60,.12)}

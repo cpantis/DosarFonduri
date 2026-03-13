@@ -1594,15 +1594,15 @@ export default function ProjectViewPage() {
         .anexe-table tr:hover td{background:#f1f5f9}
         .anexe-source-text{border-top:1px solid rgba(226,232,240,.8);padding-top:16px}
         .anexe-source-label{font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;margin-bottom:8px}
-        .anexe-source-quote{font-size:12px;color:#64748b;line-height:1.5;padding:12px;background:#f8fafc;border-radius:6px;border-left:3px solid #4d8bff;font-style:italic}
+        .anexe-source-quote{font-size:12px;color:#64748b;line-height:1.5;padding:12px;background:#f8fafc;border-radius:8px;border-left:3px solid #2563eb;font-style:italic}
 
         /* Element constraints section */
-        .ed-constraints{margin-top:16px;padding-top:12px;border-top:1px solid #e2e8f0}
+        .ed-constraints{margin-top:16px;padding-top:12px;border-top:1px solid rgba(226,232,240,.8)}
         .ed-constraints-title{font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;display:flex;align-items:center;gap:6px}
-        .ed-constraint-card{padding:10px;border:1px solid #e2e8f0;border-radius:6px;margin-bottom:8px;background:#f8fafc}
+        .ed-constraint-card{padding:10px;border:1px solid rgba(226,232,240,.8);border-radius:8px;margin-bottom:8px;background:#f8fafc}
         .ed-constraint-top{display:flex;align-items:center;gap:6px;margin-bottom:4px}
         .ed-constraint-role{font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;text-transform:uppercase;border:1px solid transparent}
-        .ed-constraint-role.input{color:#4d8bff;background:#eff6ff;border-color:#bfdbfe}
+        .ed-constraint-role.input{color:#2563eb;background:#eff6ff;border-color:#bfdbfe}
         .ed-constraint-role.output{color:#34d399;background:#ecfdf5;border-color:#a7f3d0}
         .ed-constraint-role.constraint{color:#f87171;background:#fef2f2;border-color:#fecaca}
         .ed-constraint-rule{font-size:12px;color:#0f172a;line-height:1.4}
@@ -1610,7 +1610,7 @@ export default function ProjectViewPage() {
         .ed-constraint-ref{font-size:10px;color:#a78bfa;background:#f5f3ff;padding:2px 8px;border-radius:6px;border:1px solid #ddd6fe}
 
         /* Solomon validation card */
-        .solomon-validation-card{margin-top:8px;padding:10px 12px;border-radius:10px;border:1px solid #e2e8f0;background:#f8fafc}
+        .solomon-validation-card{margin-top:8px;padding:10px 12px;border-radius:12px;border:1px solid rgba(226,232,240,.8);background:#f8fafc}
         .svc-header{display:flex;align-items:center;gap:6px;margin-bottom:8px;font-size:12px;font-weight:600;color:#64748b}
         .svc-results{display:flex;flex-direction:column;gap:4px}
         .svc-result{display:flex;align-items:flex-start;gap:8px;font-size:11px;padding:4px 0}
@@ -1618,7 +1618,7 @@ export default function ProjectViewPage() {
         .svc-status.passed{background:#34d399}
         .svc-status.failed{background:#f87171}
         .svc-status.warning{background:#fbbf24}
-        .svc-status.info{background:#4d8bff}
+        .svc-status.info{background:#2563eb}
         .svc-text{color:#0f172a;line-height:1.4}
         .svc-ref{font-size:10px;color:#a78bfa;margin-top:2px}
 
@@ -1631,10 +1631,10 @@ export default function ProjectViewPage() {
         /* Elemente */
         .elemente-layout{display:flex;height:100%}
         .elemente-list{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
-        .completitudine-bar{padding:20px 24px;background:#ffffff;border-bottom:1px solid #e2e8f0}
+        .completitudine-bar{padding:20px 24px;background:#ffffff;border-bottom:1px solid rgba(226,232,240,.8)}
         .completitudine-top{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px}
         .cl-label{font-size:15px;font-weight:700;color:#0f172a}
-        .cl-pct{font-size:28px;font-weight:800;font-family:'JetBrains Mono',monospace}
+        .cl-pct{font-size:28px;font-weight:800;font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums}
         .progress-track{height:10px;background:#f0f2f5;border-radius:5px;overflow:hidden;display:flex;gap:2px;margin-bottom:10px}
         .progress-seg{height:100%;border-radius:4px;transition:width .5s}
         .completitudine-legend{display:flex;gap:20px;font-size:12px;color:#64748b}

@@ -5,7 +5,7 @@ import { apiGet, apiPost } from "@/lib/api";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { BtnPrimary, BtnSecondary } from "@/components/ui/Buttons";
+import { BtnPrimary, BtnSecondary, IconPlus, IconArrowLeft, IconArrowRight, IconCheck } from "@/components/ui/Buttons";
 import { SkeletonCard } from "@/components/ui/Skeleton";
 
 const pct = (a: number, b: number) => b > 0 ? Math.round((a / b) * 100) : 0;
@@ -109,7 +109,7 @@ export default function ProjectsPage() {
   return (
     <div className="animate-[fadeIn_.2s_ease-out]">
       <PageHeader title="Proiecte" subtitle="Dosare de finanțare în lucru">
-        <BtnPrimary icon="+" onClick={openCreate}>Proiect nou</BtnPrimary>
+        <BtnPrimary icon={<IconPlus />} onClick={openCreate}>Proiect nou</BtnPrimary>
       </PageHeader>
 
       <div className="max-w-6xl mx-auto px-8 py-6">
@@ -223,7 +223,7 @@ export default function ProjectsPage() {
               </div>
               <div className="flex gap-2 justify-end">
                 <BtnSecondary onClick={() => setShowCreate(false)}>Anulează</BtnSecondary>
-                <BtnPrimary disabled={!createData.firmaId} onClick={() => setCreateStep(2)}>Continuă →</BtnPrimary>
+                <BtnPrimary icon={<IconArrowRight />} disabled={!createData.firmaId} onClick={() => setCreateStep(2)}>Continuă</BtnPrimary>
               </div>
             </>)}
 
@@ -253,8 +253,8 @@ export default function ProjectsPage() {
                 ))}
               </div>
               <div className="flex gap-2 justify-end">
-                <BtnSecondary onClick={() => setCreateStep(1)}>← Înapoi</BtnSecondary>
-                <BtnPrimary disabled={!createData.folderId} onClick={() => setCreateStep(3)}>Continuă →</BtnPrimary>
+                <BtnSecondary icon={<IconArrowLeft />} onClick={() => setCreateStep(1)}>Înapoi</BtnSecondary>
+                <BtnPrimary icon={<IconArrowRight />} disabled={!createData.folderId} onClick={() => setCreateStep(3)}>Continuă</BtnPrimary>
               </div>
             </>)}
 
@@ -282,8 +282,8 @@ export default function ProjectsPage() {
               </p>
 
               <div className="flex gap-2 justify-end">
-                <BtnSecondary onClick={() => setCreateStep(2)}>← Înapoi</BtnSecondary>
-                <BtnPrimary disabled={!createData.name.trim() || creating} onClick={handleCreate}>
+                <BtnSecondary icon={<IconArrowLeft />} onClick={() => setCreateStep(2)}>Înapoi</BtnSecondary>
+                <BtnPrimary icon={<IconCheck />} disabled={!createData.name.trim() || creating} onClick={handleCreate}>
                   {creating ? "Se creează..." : "Creează proiect"}
                 </BtnPrimary>
               </div>

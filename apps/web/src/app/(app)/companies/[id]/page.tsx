@@ -8,7 +8,7 @@ import { apiGet, apiPost, apiDelete, api } from "@/lib/api";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { TypeBadge } from "@/components/ui/TypeBadge";
 import { SectionTitle } from "@/components/ui/SectionTitle";
-import { BtnPrimary, BtnSecondary, BtnDanger } from "@/components/ui/Buttons";
+import { BtnPrimary, BtnSecondary, BtnDanger, IconRefresh, IconUpload, IconTrash } from "@/components/ui/Buttons";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PageHeader } from "@/components/ui/PageHeader";
 
@@ -296,10 +296,10 @@ export default function CompanyDetailPage() {
           breadcrumb={[{ label: "Firme", href: "/companies" }, { label: sel.denumire }]}
           badges={<><TypeBadge type={sel.forma} /><StatusBadge status={sel.stare || "activ"} /></>}
         >
-          <BtnSecondary size="sm" onClick={handleSyncOnrc}>Actualizare CUI</BtnSecondary>
-          <BtnSecondary size="sm" onClick={() => setShowOnrcUpload(true)}>Upload ONRC</BtnSecondary>
-          <BtnSecondary size="sm" onClick={() => setShowBilantUpload(true)}>Upload Bilant</BtnSecondary>
-          <BtnDanger size="sm" onClick={handleDelete}>Sterge</BtnDanger>
+          <BtnSecondary size="sm" icon={<IconRefresh />} onClick={handleSyncOnrc}>Actualizare CUI</BtnSecondary>
+          <BtnSecondary size="sm" icon={<IconUpload />} onClick={() => setShowOnrcUpload(true)}>Reîncarcă certificat</BtnSecondary>
+          <BtnSecondary size="sm" icon={<IconUpload />} onClick={() => setShowBilantUpload(true)}>Upload bilanț</BtnSecondary>
+          <BtnDanger size="sm" icon={<IconTrash />} onClick={handleDelete}>Șterge firma</BtnDanger>
         </PageHeader>
 
         {/* TABS */}
@@ -722,7 +722,7 @@ export default function CompanyDetailPage() {
                   )}
                   {anafYears.length === 1 && <span style={{ fontSize: 14, fontFamily: "'JetBrains Mono', monospace", fontVariantNumeric: "tabular-nums", color: "#64748b" }}>{viewYear}</span>}
                 </div>
-                <BtnSecondary size="sm" onClick={() => setShowBilantUpload(true)}>Upload bilant</BtnSecondary>
+                <BtnSecondary size="sm" icon={<IconUpload />} onClick={() => setShowBilantUpload(true)}>Upload bilanț</BtnSecondary>
               </div>
 
               {/* Summary table */}
@@ -902,8 +902,8 @@ export default function CompanyDetailPage() {
             </div>
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
               <BtnSecondary onClick={() => setShowOnrcUpload(false)}>Anuleaza</BtnSecondary>
-              <BtnPrimary disabled={onrcUploading} onClick={handleOnrcUpload}>
-                {onrcUploading ? <span style={{ display: "inline-block", width: 18, height: 18, border: "2px solid rgba(255,255,255,.3)", borderTopColor: "#ffffff", borderRadius: "50%", animation: "spin .7s linear infinite" }} /> : "Actualizeaza datele"}
+              <BtnPrimary icon={<IconUpload />} disabled={onrcUploading} onClick={handleOnrcUpload}>
+                {onrcUploading ? "Se procesează..." : "Actualizează datele"}
               </BtnPrimary>
             </div>
           </div>
@@ -953,8 +953,8 @@ export default function CompanyDetailPage() {
             </div>
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
               <BtnSecondary onClick={() => setShowBilantUpload(false)}>Anuleaza</BtnSecondary>
-              <BtnPrimary disabled={bilantUploading} onClick={handleBilantUpload}>
-                {bilantUploading ? <span style={{ display: "inline-block", width: 18, height: 18, border: "2px solid rgba(255,255,255,.3)", borderTopColor: "#ffffff", borderRadius: "50%", animation: "spin .7s linear infinite" }} /> : "Extrage date financiare"}
+              <BtnPrimary icon={<IconUpload />} disabled={bilantUploading} onClick={handleBilantUpload}>
+                {bilantUploading ? "Se procesează..." : "Extrage date financiare"}
               </BtnPrimary>
             </div>
           </div>

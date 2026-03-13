@@ -1636,14 +1636,14 @@ export default function ProjectViewPage() {
         .cl-label{font-size:15px;font-weight:700;color:#0f172a}
         .cl-pct{font-size:28px;font-weight:800;font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums}
         .progress-track{height:10px;background:#f0f2f5;border-radius:5px;overflow:hidden;display:flex;gap:2px;margin-bottom:10px}
-        .progress-seg{height:100%;border-radius:4px;transition:width .5s}
+        .progress-seg{height:100%;border-radius:4px;transition:all .15s cubic-bezier(.4,0,.2,1)}
         .completitudine-legend{display:flex;gap:20px;font-size:12px;color:#64748b}
         .legend-item{display:flex;align-items:center;gap:6px}
         .legend-dot{width:8px;height:8px;border-radius:50%}
-        .li-num{font-weight:700;font-family:'JetBrains Mono',monospace;color:#0f172a}
-        .elemente-filter-bar{padding:12px 24px;display:flex;align-items:center;gap:8px;border-bottom:1px solid #e2e8f0;background:#ffffff}
-        .elem-search{padding:7px 14px;border-radius:10px;border:1px solid #e2e8f0;background:#f0f2f5;color:#0f172a;font-size:13px;font-family:'Inter',system-ui,sans-serif;outline:none;width:180px}
-        .elem-search:focus{border-color:#4d8bff}.elem-search::placeholder{color:#94a3b8}
+        .li-num{font-weight:700;font-family:'JetBrains Mono',monospace;color:#0f172a;font-variant-numeric:tabular-nums}
+        .elemente-filter-bar{padding:12px 24px;display:flex;align-items:center;gap:8px;border-bottom:1px solid rgba(226,232,240,.8);background:#ffffff}
+        .elem-search{padding:7px 14px;border-radius:8px;border:1px solid rgba(226,232,240,.8);background:#f0f2f5;color:#0f172a;font-size:13px;font-family:'Inter',system-ui,sans-serif;outline:none;width:180px;transition:all .15s cubic-bezier(.4,0,.2,1)}
+        .elem-search:focus{border-color:#2563eb}.elem-search::placeholder{color:#94a3b8}
         .fp-group{display:flex;background:#f0f2f5;border-radius:10px;padding:3px;gap:2px}
         .fp{padding:5px 14px;border-radius:7px;font-size:12px;font-weight:600;border:none;cursor:pointer;background:transparent;color:#64748b;font-family:'Inter',system-ui,sans-serif;transition:all .15s;white-space:nowrap}
         .fp:hover{color:#0f172a}.fp.on{background:#4d8bff;color:#ffffff;box-shadow:0 1px 3px rgba(37,99,235,.3)}

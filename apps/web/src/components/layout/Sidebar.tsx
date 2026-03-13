@@ -29,11 +29,9 @@ const NAV_ITEMS = [
 export function Sidebar() {
   const pathname = usePathname();
   const { theme, toggle } = useTheme();
-  const { user } = useAuth();
+  const { user, organization } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
-  const [hoveredItem, setHoveredItem] = useState<string | null>(null);
 
-  // Auto-collapse on tablet (<=1024px)
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 1024px)");
     const handler = (e: MediaQueryListEvent) => setCollapsed(e.matches);
@@ -44,102 +42,54 @@ export function Sidebar() {
 
   return (
     <aside
-      className="flex flex-col h-full transition-all duration-200 flex-shrink-0"
-      style={{
-        width: collapsed ? 68 : 250,
-        minWidth: collapsed ? 68 : 250,
-        background: "var(--sidebar-bg)",
-        borderRight: "1px solid var(--sidebar-border)",
-      }}
+      className="flex flex-col h-full bg-slate-900 border-r border-slate-800 flex-shrink-0 transition-all duration-200"
+      style={{ width: collapsed ? 68 : 250, minWidth: collapsed ? 68 : 250 }}
     >
       {/* Logo */}
-      <div
-        className="flex items-center gap-3 flex-shrink-0"
-        style={{
-          padding: collapsed ? "24px 14px" : "24px 22px",
-          borderBottom: "1px solid var(--sidebar-border)",
-          justifyContent: collapsed ? "center" : "flex-start",
-        }}
-      >
-        <div
-          className="flex items-center justify-center text-white font-extrabold flex-shrink-0"
-          style={{
-            width: 38,
-            height: 38,
-            borderRadius: 10,
-            fontSize: 15,
-            background: "var(--accent-blue)",
-            boxShadow: "0 2px 12px rgba(77,139,255,.3)",
-          }}
-        >
+      <div className={`flex items-center gap-3 flex-shrink-0 border-b border-slate-800 ${collapsed ? "px-3.5 py-6 justify-center" : "px-5 py-6"}`}>
+        <div className="w-9 h-9 rounded-[10px] bg-blue-600 flex items-center justify-center text-white font-extrabold text-[15px] flex-shrink-0 shadow-lg shadow-blue-600/30">
           DF
         </div>
         {!collapsed && (
-          <span
-            style={{
-              fontSize: 18,
-              fontWeight: 800,
-              letterSpacing: "-0.4px",
-              color: "#ffffff",
-            }}
-          >
+          <span className="text-lg font-extrabold tracking-tight text-white">
             DosarFonduri
           </span>
         )}
       </div>
 
+      {/* Active company card */}
+      {!collapsed && organization?.name && (
+        <div className="mx-3 mt-3 px-3 py-2.5 rounded-lg bg-slate-800/60 border border-slate-700/50">
+          <div className="text-[10px] uppercase tracking-[0.12em] text-slate-500 font-medium mb-0.5">Cabinet activ</div>
+          <div className="text-[13px] font-semibold text-white truncate">{organization.name}</div>
+        </div>
+      )}
+
       {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto" style={{ padding: collapsed ? "12px 8px" : "16px 12px" }}>
+      <nav className={`flex-1 overflow-y-auto ${collapsed ? "px-2 py-3" : "px-3 py-4"}`}>
         {NAV_ITEMS.map((section) => (
-          <div key={section.section} style={{ marginBottom: 8 }}>
+          <div key={section.section} className="mb-2">
             {!collapsed && (
-              <div
-                style={{
-                  padding: "16px 14px 6px",
-                  fontSize: 10,
-                  fontWeight: 700,
-                  textTransform: "uppercase",
-                  letterSpacing: "1.2px",
-                  color: "var(--sidebar-section)",
-                }}
-              >
+              <div className="px-3 pt-4 pb-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-600">
                 {section.section}
               </div>
             )}
-            {collapsed && <div style={{ paddingTop: 8 }} />}
+            {collapsed && <div className="pt-2" />}
             {section.items.map((item) => {
               const isActive = pathname.startsWith(item.href);
-              const isHovered = hoveredItem === item.href;
               return (
                 <Link
                   key={item.href}
                   href={item.href}
-                  className="flex items-center no-underline"
-                  style={{
-                    borderRadius: 8,
-                    gap: 12,
-                    padding: collapsed ? "11px 0" : "11px 14px",
-                    marginBottom: 2,
-                    justifyContent: collapsed ? "center" : "flex-start",
-                    background: isActive
-                      ? "var(--sidebar-active-bg)"
-                      : isHovered
-                      ? "var(--sidebar-hover)"
-                      : "transparent",
-                    color: isActive
-                      ? "#ffffff"
-                      : isHovered
-                      ? "rgba(255,255,255,.9)"
-                      : "var(--sidebar-text)",
-                    fontWeight: isActive ? 600 : 500,
-                    fontSize: 13.5,
-                    transition: "all .15s",
-                    borderLeft: isActive ? "3px solid var(--accent-blue)" : "3px solid transparent",
-                    position: "relative",
-                  }}
+                  className={`flex items-center no-underline rounded-lg mb-0.5 transition-all duration-150 ${
+                    collapsed ? "justify-center py-2.5" : "gap-3 px-3 py-2.5"
+                  } ${
+                    isActive
+                      ? "bg-slate-800 text-white font-semibold border-l-2 border-blue-500"
+                      : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 border-l-2 border-transparent"
+                  }`}
+                  style={{ fontSize: "13.5px" }}
                   title={item.label}
-                  onMouseEnter={() => setHoveredItem(item.href)}
-                  onMouseLeave={() => setHoveredItem(null)}
                 >
                   <span className="flex-shrink-0 text-center" style={{ width: 22, fontSize: 17 }}>{item.icon}</span>
                   {!collapsed && <span>{item.label}</span>}
@@ -151,21 +101,10 @@ export function Sidebar() {
       </nav>
 
       {/* Collapse toggle */}
-      <div style={{ padding: collapsed ? "4px 10px" : "4px 12px" }}>
+      <div className={collapsed ? "px-2.5 pb-1" : "px-3 pb-1"}>
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="flex items-center justify-center cursor-pointer"
-          style={{
-            width: "100%",
-            padding: "7px 0",
-            borderRadius: 8,
-            color: "rgba(255,255,255,.35)",
-            border: "1px solid var(--sidebar-border)",
-            background: "rgba(255,255,255,.03)",
-            transition: "all .15s",
-            fontFamily: "var(--font-sans)",
-            fontSize: 11,
-          }}
+          className="flex items-center justify-center cursor-pointer w-full py-1.5 rounded-lg text-slate-600 border border-slate-800 bg-slate-800/30 hover:bg-slate-800/60 transition-all text-[11px]"
           title={collapsed ? "Extinde sidebar" : "Restrange sidebar"}
           aria-label={collapsed ? "Extinde sidebar" : "Restrange sidebar"}
           aria-expanded={!collapsed}
@@ -175,66 +114,23 @@ export function Sidebar() {
       </div>
 
       {/* Footer — user info */}
-      <div
-        className="flex items-center"
-        style={{
-          padding: collapsed ? "16px 10px" : "16px 18px",
-          borderTop: "1px solid var(--sidebar-border)",
-          gap: 10,
-          justifyContent: collapsed ? "center" : "flex-start",
-        }}
-      >
-        <div
-          className="flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
-          style={{
-            width: 34,
-            height: 34,
-            borderRadius: "50%",
-            background: "var(--accent-purple)",
-          }}
-        >
+      <div className={`flex items-center border-t border-slate-800 ${collapsed ? "px-2.5 py-4 justify-center" : "px-4 py-4 gap-2.5"}`}>
+        <div className="w-8 h-8 rounded-full bg-purple-600 flex items-center justify-center text-xs font-bold text-white flex-shrink-0">
           {user?.name ? getInitials(user.name) : "?"}
         </div>
         {!collapsed && (
           <>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div
-                className="truncate"
-                style={{
-                  fontSize: 13,
-                  fontWeight: 600,
-                  color: "#ffffff",
-                  lineHeight: 1.3,
-                }}
-              >
+            <div className="flex-1 min-w-0">
+              <div className="text-[13px] font-semibold text-white truncate leading-tight">
                 {user?.name || "..."}
               </div>
-              <div
-                style={{
-                  fontSize: 11,
-                  color: "rgba(255,255,255,.4)",
-                  lineHeight: 1.3,
-                }}
-              >
-                {user?.role === "admin"
-                  ? "Administrator"
-                  : user?.role === "consultant"
-                  ? "Consultant"
-                  : "Vizualizare"}
+              <div className="text-[11px] text-slate-500 leading-tight">
+                {user?.role === "admin" ? "Administrator" : user?.role === "consultant" ? "Consultant" : "Vizualizare"}
               </div>
             </div>
             <button
               onClick={toggle}
-              className="flex items-center justify-center flex-shrink-0 cursor-pointer"
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: "50%",
-                border: "1px solid var(--sidebar-border)",
-                background: "rgba(255,255,255,.05)",
-                transition: "all .15s",
-                fontSize: 15,
-              }}
+              className="flex items-center justify-center flex-shrink-0 cursor-pointer w-8 h-8 rounded-full border border-slate-700 bg-slate-800/50 hover:bg-slate-700 transition-all text-[15px]"
               title={theme === "dark" ? "Comuta la Light Mode" : "Comuta la Dark Mode"}
             >
               {theme === "dark" ? "\u2600\uFE0F" : "\uD83C\uDF19"}

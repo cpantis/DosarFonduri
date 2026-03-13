@@ -18,63 +18,63 @@ export default function LoginPage() {
         .grid-bg { position: absolute; inset: 0; background-image: linear-gradient(rgba(77,139,255,.03) 1px, transparent 1px), linear-gradient(90deg, rgba(77,139,255,.03) 1px, transparent 1px); background-size: 48px 48px; pointer-events: none; }
         .brand-inner { position: relative; z-index: 1; max-width: 520px; animation: fadeUp .8s ease; }
         .logo-row { display: flex; align-items: center; gap: 14px; margin-bottom: 48px; }
-        .logo-icon { width: 48px; height: 48px; border-radius: 12px; background: var(--accent-blue); display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 800; color: #fff; box-shadow: 0 4px 20px rgba(77,139,255,.3); }
+        .logo-icon { width: 48px; height: 48px; border-radius: 12px; background: #4d8bff; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 800; color: #fff; box-shadow: 0 4px 20px rgba(77,139,255,.3); }
         .logo-text { font-size: 24px; font-weight: 800; letter-spacing: -.5px; }
         .headline { font-size: 40px; font-weight: 800; line-height: 1.15; letter-spacing: -1px; margin-bottom: 20px; }
-        .hl-grad { background: linear-gradient(135deg, var(--accent-blue), var(--accent-green)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-        .brand-desc { font-size: 16px; line-height: 1.7; color: var(--text-secondary); margin-bottom: 48px; }
-        .auth-right { width: 520px; min-width: 520px; display: flex; flex-direction: column; justify-content: center; padding: 48px 56px; background: var(--bg-surface); border-left: 1px solid var(--border); position: relative; overflow-y: auto; }
+        .hl-grad { background: linear-gradient(135deg, #4d8bff, #34d399); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+        .brand-desc { font-size: 16px; line-height: 1.7; color: #94a3b8; margin-bottom: 48px; }
+        .auth-right { width: 520px; min-width: 520px; display: flex; flex-direction: column; justify-content: center; padding: 48px 56px; background: #ffffff; border-left: 1px solid #e2e8f0; position: relative; overflow-y: auto; }
         .auth-right.wide { width: 620px; min-width: 620px; }
         .auth-wrap { max-width: 420px; width: 100%; margin: 0 auto; animation: fadeUp .6s ease .1s both; }
         .f-title { font-size: 26px; font-weight: 800; letter-spacing: -.5px; margin-bottom: 6px; }
-        .f-sub { font-size: 14px; color: var(--text-secondary); margin-bottom: 32px; }
+        .f-sub { font-size: 14px; color: #64748b; margin-bottom: 32px; }
         .fg { margin-bottom: 18px; }
-        .fl { display: block; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .8px; color: var(--text-muted); margin-bottom: 7px; }
+        .fl { display: block; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .8px; color: #94a3b8; margin-bottom: 7px; }
         .fi-wrap { position: relative; }
-        .fi { width: 100%; padding: 12px 16px; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--bg-deep); color: var(--text-primary); font-size: 15px; font-family: var(--font-sans); outline: none; transition: border-color .2s, box-shadow .2s; }
-        .fi:focus { border-color: var(--accent-blue); box-shadow: 0 0 0 3px rgba(77,139,255,.12); }
-        .fi::placeholder { color: var(--text-muted); }
-        .fi.mono { font-family: var(--font-mono); font-size: 14px; letter-spacing: 1px; }
-        .fi.ok { border-color: var(--accent-green); }
-        .fi.err { border-color: var(--accent-red); }
-        .f-hint { font-size: 12px; margin-top: 5px; color: var(--text-muted); }
-        .f-hint.ok { color: var(--accent-green); }
-        .f-hint.err { color: var(--accent-red); }
-        .pw-toggle { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 4px; font-size: 13px; font-family: var(--font-sans); }
-        .pw-toggle:hover { color: var(--text-primary); }
+        .fi { width: 100%; padding: 12px 16px; border-radius: 10px; border: 1px solid #e2e8f0; background: #f8fafc; color: #0f172a; font-size: 15px; font-family: 'Inter', system-ui, sans-serif; outline: none; transition: border-color .2s, box-shadow .2s; }
+        .fi:focus { border-color: #4d8bff; box-shadow: 0 0 0 3px rgba(77,139,255,.12); }
+        .fi::placeholder { color: #94a3b8; }
+        .fi.mono { font-family: 'JetBrains Mono', monospace; font-size: 14px; letter-spacing: 1px; }
+        .fi.ok { border-color: #34d399; }
+        .fi.err { border-color: #f87171; }
+        .f-hint { font-size: 12px; margin-top: 5px; color: #94a3b8; }
+        .f-hint.ok { color: #34d399; }
+        .f-hint.err { color: #f87171; }
+        .pw-toggle { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #94a3b8; cursor: pointer; padding: 4px; font-size: 13px; font-family: 'Inter', system-ui, sans-serif; }
+        .pw-toggle:hover { color: #0f172a; }
         .f-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
-        .remember { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-secondary); cursor: pointer; }
-        .remember input { accent-color: var(--accent-blue); width: 16px; height: 16px; }
-        .f-link { font-size: 13px; color: var(--accent-blue); font-weight: 500; cursor: pointer; text-decoration: none; }
+        .remember { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #64748b; cursor: pointer; }
+        .remember input { accent-color: #4d8bff; width: 16px; height: 16px; }
+        .f-link { font-size: 13px; color: #4d8bff; font-weight: 500; cursor: pointer; text-decoration: none; }
         .f-link:hover { color: #6da3ff; }
-        .btn-p { width: 100%; padding: 14px; border-radius: var(--r-md); border: none; background: var(--accent-blue); color: #fff; font-size: 15px; font-weight: 700; font-family: var(--font-sans); cursor: pointer; transition: all .2s; display: flex; align-items: center; justify-content: center; gap: 8px; }
+        .btn-p { width: 100%; padding: 14px; border-radius: 10px; border: none; background: #4d8bff; color: #fff; font-size: 15px; font-weight: 700; font-family: 'Inter', system-ui, sans-serif; cursor: pointer; transition: all .2s; display: flex; align-items: center; justify-content: center; gap: 8px; }
         .btn-p:hover:not(:disabled) { background: #5d9bff; box-shadow: 0 4px 20px rgba(77,139,255,.3); transform: translateY(-1px); }
         .btn-p:disabled { opacity: .5; cursor: not-allowed; }
-        .btn-s { width: 100%; padding: 12px; border-radius: var(--r-md); border: 1px solid var(--border); background: transparent; color: var(--text-secondary); font-size: 14px; font-weight: 600; font-family: var(--font-sans); cursor: pointer; transition: all .15s; }
-        .btn-s:hover { border-color: var(--border-active); background: var(--bg-hover); color: var(--text-primary); }
-        .sw-row { text-align: center; margin-top: 28px; font-size: 14px; color: var(--text-muted); }
-        .sw-link { color: var(--accent-blue); font-weight: 600; cursor: pointer; }
+        .btn-s { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #e2e8f0; background: transparent; color: #64748b; font-size: 14px; font-weight: 600; font-family: 'Inter', system-ui, sans-serif; cursor: pointer; transition: all .15s; }
+        .btn-s:hover { border-color: #cbd5e1; background: #f1f5f9; color: #0f172a; }
+        .sw-row { text-align: center; margin-top: 28px; font-size: 14px; color: #94a3b8; }
+        .sw-link { color: #4d8bff; font-weight: 600; cursor: pointer; }
         .sw-link:hover { color: #6da3ff; }
-        .auth-foot { position: absolute; bottom: 20px; left: 56px; right: 56px; text-align: center; font-size: 11px; color: var(--text-muted); }
+        .auth-foot { position: absolute; bottom: 20px; left: 56px; right: 56px; text-align: center; font-size: 11px; color: #94a3b8; }
         .wz-bar { display: flex; align-items: center; margin-bottom: 32px; }
-        .wz-s { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--text-muted); transition: color .2s; }
-        .wz-s.on { color: var(--accent-blue); }
-        .wz-s.done { color: var(--accent-green); }
-        .wz-n { width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; font-family: var(--font-mono); transition: all .2s; }
-        .wz-s.on .wz-n { border-color: var(--accent-blue); background: var(--accent-blue); color: #fff; }
-        .wz-s.done .wz-n { border-color: var(--accent-green); background: var(--accent-green); color: #fff; }
-        .wz-line { flex: 1; height: 2px; background: var(--border); margin: 0 12px; }
-        .wz-line.done { background: var(--accent-green); }
+        .wz-s { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: #94a3b8; transition: color .2s; }
+        .wz-s.on { color: #4d8bff; }
+        .wz-s.done { color: #34d399; }
+        .wz-n { width: 28px; height: 28px; border-radius: 50%; border: 2px solid #e2e8f0; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; font-family: 'JetBrains Mono', monospace; transition: all .2s; }
+        .wz-s.on .wz-n { border-color: #4d8bff; background: #4d8bff; color: #fff; }
+        .wz-s.done .wz-n { border-color: #34d399; background: #34d399; color: #fff; }
+        .wz-line { flex: 1; height: 2px; background: #e2e8f0; margin: 0 12px; }
+        .wz-line.done { background: #34d399; }
         .step-c { animation: fadeUp .4s ease; }
         .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-        .skip { font-size: 13px; color: var(--text-muted); cursor: pointer; text-align: center; margin-top: 12px; }
-        .skip:hover { color: var(--text-secondary); }
-        .cui-ok { padding: 16px; border-radius: var(--r-md); border: 1px solid var(--accent-green); background: rgba(52,211,153,.04); margin-top: 12px; }
-        .cui-ok .cn { font-size: 16px; font-weight: 700; color: var(--accent-green); margin-bottom: 6px; }
-        .cui-ok .cr { font-size: 13px; color: var(--text-secondary); margin-bottom: 3px; display: flex; gap: 8px; }
-        .cui-ok .cr strong { color: var(--text-primary); font-weight: 600; min-width: 60px; }
-        .cui-err { padding: 12px 16px; border-radius: var(--r-md); border: 1px solid var(--accent-red); background: rgba(248,113,113,.04); margin-top: 12px; font-size: 13px; color: var(--accent-red); }
-        .cui-load { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--bg-elevated); margin-top: 12px; font-size: 13px; color: var(--text-secondary); }
+        .skip { font-size: 13px; color: #94a3b8; cursor: pointer; text-align: center; margin-top: 12px; }
+        .skip:hover { color: #64748b; }
+        .cui-ok { padding: 16px; border-radius: 10px; border: 1px solid #34d399; background: rgba(52,211,153,.04); margin-top: 12px; }
+        .cui-ok .cn { font-size: 16px; font-weight: 700; color: #34d399; margin-bottom: 6px; }
+        .cui-ok .cr { font-size: 13px; color: #64748b; margin-bottom: 3px; display: flex; gap: 8px; }
+        .cui-ok .cr strong { color: #0f172a; font-weight: 600; min-width: 60px; }
+        .cui-err { padding: 12px 16px; border-radius: 10px; border: 1px solid #f87171; background: rgba(248,113,113,.04); margin-top: 12px; font-size: 13px; color: #f87171; }
+        .cui-load { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-radius: 10px; border: 1px solid #e2e8f0; background: #f8fafc; margin-top: 12px; font-size: 13px; color: #64748b; }
         @media(max-width:1024px) { .auth-brand { display: none; } .auth-right, .auth-right.wide { width: 100%; min-width: auto; border-left: none; } }
       `}</style>
 
@@ -374,7 +374,7 @@ function SignupWizard({ onGo }: { onGo: () => void }) {
               <div className="cr">
                 <strong>Rol:</strong> {inviteInfo.role}
               </div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 6 }}>
+              <div className="text-slate-400 text-xs mt-1.5">
                 Contul tau a fost creat de un administrator. Seteaza-ti parola si activeaza-l.
               </div>
             </div>
@@ -417,9 +417,9 @@ function SignupWizard({ onGo }: { onGo: () => void }) {
               <strong>Email:</strong> {email}
             </div>
           </div>
-          <p style={{ fontSize: 14, color: "var(--text-secondary)", marginBottom: 20, lineHeight: 1.6 }}>
+          <p className="text-sm text-slate-500 mb-5 leading-relaxed">
             Contul tau va fi activat si vei fi adaugat in organizatia{" "}
-            <strong style={{ color: "var(--text-primary)" }}>{inviteInfo?.organizationName}</strong>.
+            <strong className="text-slate-900">{inviteInfo?.organizationName}</strong>.
           </p>
           <div style={{ display: "flex", gap: 10 }}>
             <button className="btn-s" onClick={() => setStep(1)}>
@@ -437,16 +437,9 @@ function SignupWizard({ onGo }: { onGo: () => void }) {
         <div className="step-c">
           {wantCo === null ? (
             <>
-              <p
-                style={{
-                  fontSize: 15,
-                  color: "var(--text-secondary)",
-                  marginBottom: 24,
-                  lineHeight: 1.6,
-                }}
-              >
+              <p className="text-[15px] text-slate-500 mb-6 leading-relaxed">
                 Doresti sa inregistrezi o{" "}
-                <strong style={{ color: "var(--text-primary)" }}>
+                <strong className="text-slate-900">
                   firma de consultanta
                 </strong>
                 ? Vei putea invita consultanti si gestiona proiecte.
@@ -532,12 +525,11 @@ function SignupWizard({ onGo }: { onGo: () => void }) {
                   )}
                   <div className="cr">
                     <strong>Stare:</strong>{" "}
-                    <span style={{
-                      color: cuiRes.status?.toLowerCase().includes("activ")
-                        ? "var(--accent-green)"
-                        : "var(--accent-red)",
-                      fontWeight: 600,
-                    }}>
+                    <span className={
+                      cuiRes.status?.toLowerCase().includes("activ")
+                        ? "text-emerald-500 font-semibold"
+                        : "text-red-500 font-semibold"
+                    }>
                       {cuiRes.status}
                     </span>
                   </div>
@@ -577,23 +569,10 @@ function SignupWizard({ onGo }: { onGo: () => void }) {
 
       {step === 3 && (
         <div className="step-c">
-          <p
-            style={{
-              fontSize: 14,
-              color: "var(--text-secondary)",
-              marginBottom: 6,
-              lineHeight: 1.6,
-            }}
-          >
+          <p className="text-sm text-slate-500 mb-1.5 leading-relaxed">
             Introdu codul de cabinet primit de la furnizorul DosarFonduri.
           </p>
-          <p
-            style={{
-              fontSize: 12,
-              color: "var(--text-muted)",
-              marginBottom: 20,
-            }}
-          >
+          <p className="text-xs text-slate-400 mb-5">
             Codul activeaza contul tau si stabileste planul, numarul de
             utilizatori si perioada de acces.
           </p>
@@ -636,107 +615,42 @@ function SignupWizard({ onGo }: { onGo: () => void }) {
           )}
 
           {codeRes && codeRes !== "error" && (
-            <div className="cui-ok" style={{ borderColor: "var(--accent-blue)" }}>
-              <div className="cn" style={{ color: "var(--accent-blue)" }}>
+            <div className="cui-ok border-blue-500">
+              <div className="cn text-blue-600">
                 ✓ Cod valid
               </div>
               <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: 8,
-                  marginTop: 10,
-                }}
+                className="grid grid-cols-2 gap-2 mt-2.5"
               >
-                <div
-                  style={{
-                    padding: "8px 10px",
-                    background: "var(--bg-deep)",
-                    borderRadius: "var(--r-sm)",
-                    border: "1px solid var(--border)",
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: 10,
-                      fontWeight: 600,
-                      textTransform: "uppercase",
-                      letterSpacing: ".5px",
-                      color: "var(--text-muted)",
-                      marginBottom: 2,
-                    }}
-                  >
+                <div className="p-2 bg-slate-50 rounded-md border border-slate-200">
+                  <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-0.5">
                     Plan
                   </div>
-                  <div
-                    style={{
-                      fontSize: 14,
-                      fontWeight: 700,
-                      color: "var(--accent-blue)",
-                    }}
-                  >
+                  <div className="text-sm font-bold text-blue-600">
                     {codeRes.plan}
                   </div>
                 </div>
-                <div
-                  style={{
-                    padding: "8px 10px",
-                    background: "var(--bg-deep)",
-                    borderRadius: "var(--r-sm)",
-                    border: "1px solid var(--border)",
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: 10,
-                      fontWeight: 600,
-                      textTransform: "uppercase",
-                      letterSpacing: ".5px",
-                      color: "var(--text-muted)",
-                      marginBottom: 2,
-                    }}
-                  >
+                <div className="p-2 bg-slate-50 rounded-md border border-slate-200">
+                  <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-0.5">
                     Trial
                   </div>
-                  <div
-                    style={{
-                      fontSize: 14,
-                      fontWeight: 700,
-                      color: "var(--accent-green)",
-                    }}
-                  >
+                  <div className="text-sm font-bold text-emerald-500">
                     {codeRes.trialDays} zile
                   </div>
                 </div>
-                <div
-                  style={{
-                    padding: "8px 10px",
-                    background: "var(--bg-deep)",
-                    borderRadius: "var(--r-sm)",
-                    border: "1px solid var(--border)",
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: 10,
-                      fontWeight: 600,
-                      textTransform: "uppercase",
-                      letterSpacing: ".5px",
-                      color: "var(--text-muted)",
-                      marginBottom: 2,
-                    }}
-                  >
+                <div className="p-2 bg-slate-50 rounded-md border border-slate-200">
+                  <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-0.5">
                     Utilizatori max
                   </div>
-                  <div style={{ fontSize: 14, fontWeight: 700 }}>
+                  <div className="text-sm font-bold">
                     {codeRes.maxUsers}
                   </div>
                 </div>
               </div>
               {codeRes.companyName && (
-                <div style={{ marginTop: 10, fontSize: 13, color: "var(--text-secondary)" }}>
-                  Destinat: <strong style={{ color: "var(--text-primary)" }}>{codeRes.companyName}</strong>
-                  {codeRes.cui && <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, marginLeft: 6, color: "var(--text-muted)" }}>CUI {codeRes.cui}</span>}
+                <div className="mt-2.5 text-[13px] text-slate-500">
+                  Destinat: <strong className="text-slate-900">{codeRes.companyName}</strong>
+                  {codeRes.cui && <span className="font-mono text-xs ml-1.5 text-slate-400">CUI {codeRes.cui}</span>}
                 </div>
               )}
               {codeRes.cui && cui && cui.replace(/\D/g, "") !== codeRes.cui && (

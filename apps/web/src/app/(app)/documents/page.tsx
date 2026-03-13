@@ -75,11 +75,11 @@ interface DocItem {
 const TYPE_ICONS: Record<string, string> = { PDF: "\u{1F4D5}", DOCX: "\u{1F4D8}", XLSX: "\u{1F4D7}", DOC: "\u{1F4D8}", PNG: "\u{1F5BC}", JPG: "\u{1F5BC}" };
 
 const STATUS_MAP: Record<string, { label: string; color: string; bg: string; icon: string }> = {
-  procesat: { label: "Procesat AI", color: "var(--accent-green)", bg: "rgba(52,211,153,0.12)", icon: "\u2713" },
-  neprocesat: { label: "Neprocesat", color: "var(--accent-yellow)", bg: "rgba(251,191,36,0.12)", icon: "\u23F3" },
-  template: { label: "Template", color: "var(--accent-blue)", bg: "rgba(77,139,255,0.12)", icon: "\u{1F4DD}" },
-  "referință": { label: "Referință", color: "var(--accent-purple)", bg: "rgba(167,139,250,0.12)", icon: "\u{1F4CC}" },
-  eroare: { label: "Eroare", color: "var(--accent-red)", bg: "rgba(248,113,113,0.12)", icon: "\u26A0" },
+  procesat: { label: "Procesat AI", color: "#059669", bg: "#ecfdf5", icon: "\u2713" },
+  neprocesat: { label: "Neprocesat", color: "#64748b", bg: "#f1f5f9", icon: "\u23F3" },
+  template: { label: "Template", color: "#1d4ed8", bg: "#eff6ff", icon: "\u{1F4DD}" },
+  "referință": { label: "Referință", color: "#7c3aed", bg: "#f5f3ff", icon: "\u{1F4CC}" },
+  eroare: { label: "Eroare", color: "#dc2626", bg: "#fef2f2", icon: "\u26A0" },
 };
 
 const DOCUMENT_TYPE_LABELS: Record<string, string> = {
@@ -812,7 +812,7 @@ export default function DocumentsPage() {
           /* Welcome state — no folder selected */
           <div className="doc-welcome">
             <div className="doc-welcome-icon">
-              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.6 }}>
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" className="stroke-blue-600 opacity-60">
                 <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
               </svg>
             </div>
@@ -872,7 +872,7 @@ export default function DocumentsPage() {
           /* Empty folder state */
           <div className="doc-empty-rich">
             <div className="doc-empty-illustration">
-              <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.4 }}>
+              <svg width="56" height="56" viewBox="0 0 24 24" fill="none" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" className="stroke-slate-400 opacity-40">
                 <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/>
               </svg>
             </div>
@@ -993,7 +993,7 @@ export default function DocumentsPage() {
           {selDoc.reguliExtrase > 0 && (
             <div className="doc-detail-cell">
               <div className="doc-detail-cell-label">Reguli extrase</div>
-              <div className="doc-detail-cell-value mono" style={{ color: "var(--accent-green)" }}>
+              <div className="doc-detail-cell-value mono text-emerald-500">
                 {selDoc.reguliExtrase} reguli
               </div>
             </div>
@@ -1001,7 +1001,7 @@ export default function DocumentsPage() {
           {selDoc.campuri != null && selDoc.campuri > 0 && (
             <div className="doc-detail-cell">
               <div className="doc-detail-cell-label">Campuri template</div>
-              <div className="doc-detail-cell-value mono" style={{ color: "var(--accent-blue)" }}>
+              <div className="doc-detail-cell-value mono text-blue-600">
                 {selDoc.campuri} campuri
               </div>
             </div>
@@ -1015,7 +1015,7 @@ export default function DocumentsPage() {
           {selDoc.classificationConfidence != null && (
             <div className="doc-detail-cell">
               <div className="doc-detail-cell-label">Incredere clasificare</div>
-              <div className="doc-detail-cell-value mono" style={{ color: selDoc.classificationConfidence >= 0.8 ? "var(--accent-green)" : selDoc.classificationConfidence >= 0.5 ? "var(--accent-yellow)" : "var(--accent-red)" }}>
+              <div className={`doc-detail-cell-value mono ${selDoc.classificationConfidence >= 0.8 ? "text-emerald-500" : selDoc.classificationConfidence >= 0.5 ? "text-amber-500" : "text-red-500"}`}>
                 {Math.round(selDoc.classificationConfidence * 100)}%
               </div>
             </div>
@@ -1041,11 +1041,11 @@ export default function DocumentsPage() {
       {selDoc.extractedFields.length > 0 && (
         <div className="doc-detail-section">
           <div className="doc-detail-stitle">Date extrase ({selDoc.extractedFields.length} campuri)</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 200, overflowY: "auto" }}>
+          <div className="flex flex-col gap-1 max-h-[200px] overflow-y-auto">
             {selDoc.extractedFields.map((f, i) => (
-              <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 10px", background: "var(--bg-deep)", borderRadius: "var(--r-sm)", border: "1px solid var(--border)", fontSize: 12 }}>
-                <span style={{ color: "var(--text-muted)", fontWeight: 600, maxWidth: "45%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.field_key.replace(/_/g, " ")}</span>
-                <span style={{ color: "var(--text-primary)", fontFamily: "var(--font-mono)", fontSize: 11, maxWidth: "50%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "right" }}>
+              <div key={i} className="flex justify-between items-center px-2.5 py-1.5 bg-slate-50 rounded-md border border-slate-200 text-xs">
+                <span className="text-slate-400 font-semibold max-w-[45%] overflow-hidden text-ellipsis whitespace-nowrap">{f.field_key.replace(/_/g, " ")}</span>
+                <span className="text-slate-900 font-mono text-[11px] max-w-[50%] overflow-hidden text-ellipsis whitespace-nowrap text-right">
                   {typeof f.field_value === "object" ? JSON.stringify(f.field_value).slice(0, 40) : String(f.field_value).slice(0, 40)}
                 </span>
               </div>
@@ -1078,7 +1078,7 @@ export default function DocumentsPage() {
   ) : (
     <div className="doc-detail doc-detail-empty">
       <div className="doc-detail-empty-inner">
-        <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.35 }}>
+        <svg width="44" height="44" viewBox="0 0 24 24" fill="none" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" className="stroke-slate-400 opacity-35">
           <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/>
         </svg>
         <div className="doc-empty-title" style={{ fontSize: 14, marginTop: 12 }}>Niciun document selectat</div>
@@ -1102,204 +1102,204 @@ export default function DocumentsPage() {
         @keyframes docProgressStripe { 0% { background-position: 0 0 } 100% { background-position: 40px 0 } }
 
         /* ─── Topbar ─── */
-        .doc-topbar { padding: 18px 32px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 16px; background: var(--bg-surface); flex-shrink: 0; }
+        .doc-topbar { padding: 18px 32px; border-bottom: 1px solid #e0e4ea; display: flex; align-items: center; gap: 16px; background: #ffffff; flex-shrink: 0; }
         .doc-topbar-title { font-size: 22px; font-weight: 800; flex: 1; letter-spacing: -.4px; display: flex; align-items: center; gap: 10px; }
-        .doc-topbar-title-icon { width: 30px; height: 30px; border-radius: var(--r-sm); background: rgba(77,139,255,.1); display: flex; align-items: center; justify-content: center; font-size: 15px; }
+        .doc-topbar-title-icon { width: 30px; height: 30px; border-radius: 6px; background: rgba(77,139,255,.1); display: flex; align-items: center; justify-content: center; font-size: 15px; }
         .doc-topbar-stats { display: flex; gap: 16px; }
-        .doc-topbar-stat { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); }
-        .doc-topbar-stat-num { font-family: var(--font-mono); font-weight: 700; color: var(--text-secondary); font-size: 13px; }
+        .doc-topbar-stat { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #8892a8; }
+        .doc-topbar-stat-num { font-family: 'JetBrains Mono', monospace; font-weight: 700; color: #5a6478; font-size: 13px; }
 
         /* ─── Tree panel ─── */
-        .doc-tree-panel { display: flex; flex-direction: column; overflow: hidden; background: var(--bg-surface); height: 100%; }
-        .doc-tree-header { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+        .doc-tree-panel { display: flex; flex-direction: column; overflow: hidden; background: #ffffff; height: 100%; }
+        .doc-tree-header { padding: 12px 16px; border-bottom: 1px solid #e0e4ea; display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
         .doc-tree-header-icon { font-size: 14px; opacity: .6; }
-        .doc-tree-header-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: var(--text-muted); flex: 1; }
+        .doc-tree-header-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: #8892a8; flex: 1; }
         .doc-tree-scroll { flex: 1; overflow-y: auto; padding: 6px 0; }
 
-        .doc-tree-item { display: flex; align-items: center; gap: 6px; padding: 5px 10px; cursor: pointer; font-size: 13px; color: var(--text-secondary); transition: all .15s; position: relative; }
-        .doc-tree-item:hover { background: var(--bg-hover); color: var(--text-primary); }
-        .doc-tree-item.active { background: rgba(77,139,255,.08); color: var(--accent-blue); font-weight: 600; }
-        .doc-tree-item.active::before { content: ''; position: absolute; left: 0; top: 4px; bottom: 4px; width: 3px; background: var(--accent-blue); border-radius: 0 2px 2px 0; }
-        .doc-tree-arrow { width: 14px; font-size: 10px; color: var(--text-muted); flex-shrink: 0; text-align: center; transition: transform .2s ease; display: inline-block; }
+        .doc-tree-item { display: flex; align-items: center; gap: 6px; padding: 5px 10px; cursor: pointer; font-size: 13px; color: #5a6478; transition: all .15s; position: relative; }
+        .doc-tree-item:hover { background: #eef0f4; color: #1a1e28; }
+        .doc-tree-item.active { background: rgba(77,139,255,.08); color: #4d8bff; font-weight: 600; }
+        .doc-tree-item.active::before { content: ''; position: absolute; left: 0; top: 4px; bottom: 4px; width: 3px; background: #4d8bff; border-radius: 0 2px 2px 0; }
+        .doc-tree-arrow { width: 14px; font-size: 10px; color: #8892a8; flex-shrink: 0; text-align: center; transition: transform .2s ease; display: inline-block; }
         .doc-tree-arrow.expanded { transform: rotate(90deg); }
         .doc-tree-icon { font-size: 14px; flex-shrink: 0; }
         .doc-tree-dot { border-radius: 50%; flex-shrink: 0; box-shadow: 0 0 0 2px rgba(255,255,255,.05); }
         .doc-tree-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .doc-tree-label-program { font-weight: 700; font-size: 14px; color: var(--text-primary); }
+        .doc-tree-label-program { font-weight: 700; font-size: 14px; color: #1a1e28; }
         .doc-tree-label-masura { font-weight: 600; font-size: 13px; color: #C9A84C; }
-        .doc-tree-label-sesiune { font-weight: 500; font-size: 13px; color: var(--text-secondary); }
-        .doc-tree-count { font-size: 10px; font-family: var(--font-mono); font-weight: 700; color: var(--text-muted); background: var(--bg-elevated); padding: 1px 6px; border-radius: 8px; }
-        .doc-tree-rename { flex: 1; padding: 2px 6px; border-radius: 3px; border: 1px solid var(--accent-blue); background: var(--bg-deep); color: var(--text-primary); font-size: 13px; font-family: var(--font-sans); outline: none; min-width: 0; }
-        .doc-tree-guide { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--border); opacity: .5; }
+        .doc-tree-label-sesiune { font-weight: 500; font-size: 13px; color: #5a6478; }
+        .doc-tree-count { font-size: 10px; font-family: 'JetBrains Mono', monospace; font-weight: 700; color: #8892a8; background: #f8f9fb; padding: 1px 6px; border-radius: 8px; }
+        .doc-tree-rename { flex: 1; padding: 2px 6px; border-radius: 3px; border: 1px solid #4d8bff; background: #f0f2f5; color: #1a1e28; font-size: 13px; font-family: 'Inter', system-ui, sans-serif; outline: none; min-width: 0; }
+        .doc-tree-guide { position: absolute; top: 0; bottom: 0; width: 1px; background: #e0e4ea; opacity: .5; }
         .doc-tree-children { position: relative; }
-        .doc-tree-add-btn { margin: 8px 12px; padding: 7px 12px; border-radius: var(--r-sm); border: 1px dashed var(--border); background: transparent; color: var(--text-muted); font-size: 12px; font-weight: 600; cursor: pointer; font-family: var(--font-sans); text-align: center; transition: all .2s; }
-        .doc-tree-add-btn:hover { border-color: var(--accent-blue); color: var(--accent-blue); background: rgba(77,139,255,.04); }
+        .doc-tree-add-btn { margin: 8px 12px; padding: 7px 12px; border-radius: 6px; border: 1px dashed #e0e4ea; background: transparent; color: #8892a8; font-size: 12px; font-weight: 600; cursor: pointer; font-family: 'Inter', system-ui, sans-serif; text-align: center; transition: all .2s; }
+        .doc-tree-add-btn:hover { border-color: #4d8bff; color: #4d8bff; background: rgba(77,139,255,.04); }
 
         /* ─── Context menu ─── */
-        .doc-ctx-menu { position: fixed; z-index: 200; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--r-md); padding: 4px; min-width: 180px; box-shadow: 0 8px 32px rgba(0,0,0,.5); animation: docCtxIn .12s ease; }
-        .doc-ctx-item { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: var(--r-sm); cursor: pointer; font-size: 13px; color: var(--text-secondary); transition: all .1s; border: none; background: none; width: 100%; text-align: left; font-family: var(--font-sans); }
-        .doc-ctx-item:hover { background: var(--bg-hover); color: var(--text-primary); }
-        .doc-ctx-item.danger { color: var(--accent-red); }
+        .doc-ctx-menu { position: fixed; z-index: 200; background: #f8f9fb; border: 1px solid #e0e4ea; border-radius: 10px; padding: 4px; min-width: 180px; box-shadow: 0 8px 32px rgba(0,0,0,.5); animation: docCtxIn .12s ease; }
+        .doc-ctx-item { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; color: #5a6478; transition: all .1s; border: none; background: none; width: 100%; text-align: left; font-family: 'Inter', system-ui, sans-serif; }
+        .doc-ctx-item:hover { background: #eef0f4; color: #1a1e28; }
+        .doc-ctx-item.danger { color: #f87171; }
         .doc-ctx-item.danger:hover { background: rgba(248,113,113,.08); }
-        .doc-ctx-sep { height: 1px; background: var(--border); margin: 4px 8px; }
+        .doc-ctx-sep { height: 1px; background: #e0e4ea; margin: 4px 8px; }
 
         /* ─── Document list panel ─── */
         .doc-list-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; height: 100%; }
-        .doc-list-bar { padding: 10px 20px; border-bottom: 1px solid var(--border); background: var(--bg-surface); flex-shrink: 0; }
+        .doc-list-bar { padding: 10px 20px; border-bottom: 1px solid #e0e4ea; background: #ffffff; flex-shrink: 0; }
         .doc-breadcrumb { display: flex; align-items: center; gap: 0; font-size: 12px; margin-bottom: 8px; min-height: 18px; }
-        .doc-bc-seg { color: var(--text-muted); transition: color .15s; }
-        .doc-bc-active { color: var(--accent-blue); font-weight: 600; }
-        .doc-bc-sep { color: var(--border-active); margin: 0 6px; font-size: 10px; }
+        .doc-bc-seg { color: #8892a8; transition: color .15s; }
+        .doc-bc-active { color: #4d8bff; font-weight: 600; }
+        .doc-bc-sep { color: #c8cdd6; margin: 0 6px; font-size: 10px; }
         .doc-toolbar { display: flex; align-items: center; gap: 10px; }
 
         /* Search with icon */
         .doc-search-wrap { position: relative; display: flex; align-items: center; flex: 1; max-width: 280px; }
-        .doc-search-icon { position: absolute; left: 10px; color: var(--text-muted); pointer-events: none; transition: color .2s; }
-        .doc-search-wrap:focus-within .doc-search-icon { color: var(--accent-blue); }
-        .doc-search-input { width: 100%; padding: 7px 14px 7px 32px; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--bg-deep); color: var(--text-primary); font-size: 13px; font-family: var(--font-sans); outline: none; transition: all .2s; }
-        .doc-search-input:focus { border-color: var(--accent-blue); box-shadow: 0 0 0 3px rgba(77,139,255,.1); }
-        .doc-search-input::placeholder { color: var(--text-muted); }
-        .doc-search-kbd { position: absolute; right: 8px; font-size: 10px; font-family: var(--font-mono); color: var(--text-muted); background: var(--bg-elevated); padding: 1px 5px; border-radius: 3px; border: 1px solid var(--border); pointer-events: none; opacity: .7; }
+        .doc-search-icon { position: absolute; left: 10px; color: #8892a8; pointer-events: none; transition: color .2s; }
+        .doc-search-wrap:focus-within .doc-search-icon { color: #4d8bff; }
+        .doc-search-input { width: 100%; padding: 7px 14px 7px 32px; border-radius: 10px; border: 1px solid #e0e4ea; background: #f0f2f5; color: #1a1e28; font-size: 13px; font-family: 'Inter', system-ui, sans-serif; outline: none; transition: all .2s; }
+        .doc-search-input:focus { border-color: #4d8bff; box-shadow: 0 0 0 3px rgba(77,139,255,.1); }
+        .doc-search-input::placeholder { color: #8892a8; }
+        .doc-search-kbd { position: absolute; right: 8px; font-size: 10px; font-family: 'JetBrains Mono', monospace; color: #8892a8; background: #f8f9fb; padding: 1px 5px; border-radius: 3px; border: 1px solid #e0e4ea; pointer-events: none; opacity: .7; }
         .doc-search-wrap:focus-within .doc-search-kbd { opacity: 0; }
 
-        .doc-upload-btn { display: flex; align-items: center; gap: 6px; padding: 7px 16px; border-radius: var(--r-md); border: none; background: var(--accent-blue); color: #fff; font-size: 13px; font-weight: 700; cursor: pointer; font-family: var(--font-sans); margin-left: auto; box-shadow: 0 2px 12px rgba(77,139,255,.25); transition: all .15s; white-space: nowrap; }
+        .doc-upload-btn { display: flex; align-items: center; gap: 6px; padding: 7px 16px; border-radius: 10px; border: none; background: #4d8bff; color: #fff; font-size: 13px; font-weight: 700; cursor: pointer; font-family: 'Inter', system-ui, sans-serif; margin-left: auto; box-shadow: 0 2px 12px rgba(77,139,255,.25); transition: all .15s; white-space: nowrap; }
         .doc-upload-btn:hover:not(:disabled) { background: #5d9bff; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(77,139,255,.35); }
         .doc-upload-btn:active:not(:disabled) { transform: translateY(0); }
         .doc-upload-btn:disabled { opacity: .4; cursor: not-allowed; }
         .doc-list-scroll { flex: 1; overflow-y: auto; padding: 12px 20px; display: flex; flex-direction: column; gap: 6px; }
 
         /* ─── Document card ─── */
-        .doc-card { display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--bg-surface); cursor: pointer; transition: all .18s; animation: docSlideIn .25s ease both; }
-        .doc-card:hover { border-color: var(--border-active); background: var(--bg-elevated); transform: translateX(2px); }
-        .doc-card.active { border-color: var(--accent-blue); background: rgba(77,139,255,.04); box-shadow: 0 0 0 1px rgba(77,139,255,.15); }
+        .doc-card { display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-radius: 10px; border: 1px solid #e0e4ea; background: #ffffff; cursor: pointer; transition: all .18s; animation: docSlideIn .25s ease both; }
+        .doc-card:hover { border-color: #c8cdd6; background: #f8f9fb; transform: translateX(2px); }
+        .doc-card.active { border-color: #4d8bff; background: rgba(77,139,255,.04); box-shadow: 0 0 0 1px rgba(77,139,255,.15); }
         .doc-card-icon { font-size: 26px; flex-shrink: 0; }
         .doc-card-info { flex: 1; min-width: 0; }
         .doc-card-name { font-size: 13px; font-weight: 700; margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .doc-card-meta { font-size: 11px; color: var(--text-muted); display: flex; gap: 8px; flex-wrap: wrap; }
+        .doc-card-meta { font-size: 11px; color: #8892a8; display: flex; gap: 8px; flex-wrap: wrap; }
         .doc-card-meta span { display: flex; align-items: center; gap: 3px; }
         .doc-card-tags { display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap; }
-        .doc-card-tag { font-size: 10px; padding: 1px 6px; border-radius: 8px; background: var(--bg-elevated); color: var(--text-muted); border: 1px solid var(--border); }
+        .doc-card-tag { font-size: 10px; padding: 1px 6px; border-radius: 8px; background: #f8f9fb; color: #8892a8; border: 1px solid #e0e4ea; }
         .doc-card-status { flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
         .doc-status-badge { font-size: 10px; font-weight: 700; padding: 3px 10px; border-radius: 10px; display: flex; align-items: center; gap: 4px; white-space: nowrap; }
-        .doc-stat-num { font-size: 11px; font-family: var(--font-mono); color: var(--text-muted); }
+        .doc-stat-num { font-size: 11px; font-family: 'JetBrains Mono', monospace; color: #8892a8; }
 
         /* ─── Detail panel ─── */
-        .doc-detail { background: var(--bg-surface); display: flex; flex-direction: column; overflow-y: auto; height: 100%; }
+        .doc-detail { background: #ffffff; display: flex; flex-direction: column; overflow-y: auto; height: 100%; }
         .doc-detail-empty { align-items: center; justify-content: center; }
         .doc-detail-empty-inner { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 40px 20px; text-align: center; }
-        .doc-detail-header { padding: 20px; border-bottom: 1px solid var(--border); position: relative; animation: docFadeIn .3s ease; }
-        .doc-detail-close { position: absolute; top: 14px; right: 14px; background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 16px; width: 28px; height: 28px; border-radius: var(--r-sm); display: flex; align-items: center; justify-content: center; transition: all .15s; }
-        .doc-detail-close:hover { color: var(--text-primary); background: var(--bg-hover); }
+        .doc-detail-header { padding: 20px; border-bottom: 1px solid #e0e4ea; position: relative; animation: docFadeIn .3s ease; }
+        .doc-detail-close { position: absolute; top: 14px; right: 14px; background: none; border: none; color: #8892a8; cursor: pointer; font-size: 16px; width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; transition: all .15s; }
+        .doc-detail-close:hover { color: #1a1e28; background: #eef0f4; }
         .doc-detail-icon { font-size: 36px; margin-bottom: 8px; }
         .doc-detail-name { font-size: 16px; font-weight: 800; margin-bottom: 4px; line-height: 1.3; }
-        .doc-detail-type { font-size: 12px; font-family: var(--font-mono); color: var(--text-secondary); }
-        .doc-detail-section { padding: 16px 20px; border-bottom: 1px solid var(--border); animation: docFadeIn .4s ease; }
-        .doc-detail-stitle { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: var(--text-muted); margin-bottom: 10px; }
+        .doc-detail-type { font-size: 12px; font-family: 'JetBrains Mono', monospace; color: #5a6478; }
+        .doc-detail-section { padding: 16px 20px; border-bottom: 1px solid #e0e4ea; animation: docFadeIn .4s ease; }
+        .doc-detail-stitle { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: #8892a8; margin-bottom: 10px; }
         .doc-detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-        .doc-detail-cell { padding: 8px 10px; background: var(--bg-deep); border-radius: var(--r-sm); border: 1px solid var(--border); transition: border-color .15s; }
-        .doc-detail-cell:hover { border-color: var(--border-active); }
-        .doc-detail-cell-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); margin-bottom: 2px; }
-        .doc-detail-cell-value { font-size: 13px; font-weight: 600; color: var(--text-primary); }
-        .doc-detail-cell-value.mono { font-family: var(--font-mono); }
+        .doc-detail-cell { padding: 8px 10px; background: #f0f2f5; border-radius: 6px; border: 1px solid #e0e4ea; transition: border-color .15s; }
+        .doc-detail-cell:hover { border-color: #c8cdd6; }
+        .doc-detail-cell-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; color: #8892a8; margin-bottom: 2px; }
+        .doc-detail-cell-value { font-size: 13px; font-weight: 600; color: #1a1e28; }
+        .doc-detail-cell-value.mono { font-family: 'JetBrains Mono', monospace; }
         .doc-detail-tags { display: flex; gap: 5px; flex-wrap: wrap; }
-        .doc-detail-tag { font-size: 11px; padding: 3px 10px; border-radius: var(--r-sm); background: var(--bg-deep); border: 1px solid var(--border); color: var(--text-secondary); transition: all .15s; cursor: default; }
-        .doc-detail-tag:hover { border-color: var(--accent-blue); color: var(--accent-blue); }
+        .doc-detail-tag { font-size: 11px; padding: 3px 10px; border-radius: 6px; background: #f0f2f5; border: 1px solid #e0e4ea; color: #5a6478; transition: all .15s; cursor: default; }
+        .doc-detail-tag:hover { border-color: #4d8bff; color: #4d8bff; }
         .doc-detail-actions { display: flex; gap: 8px; padding: 16px 20px; margin-top: auto; }
-        .doc-detail-btn { flex: 1; padding: 9px; border-radius: var(--r-sm); border: 1px solid var(--border); background: transparent; color: var(--text-secondary); font-size: 12px; font-weight: 600; cursor: pointer; font-family: var(--font-sans); transition: all .15s; display: flex; align-items: center; justify-content: center; gap: 5px; }
-        .doc-detail-btn:hover { border-color: var(--border-active); color: var(--text-primary); background: var(--bg-hover); }
-        .doc-detail-btn.primary { border-color: var(--accent-blue); color: var(--accent-blue); }
+        .doc-detail-btn { flex: 1; padding: 9px; border-radius: 6px; border: 1px solid #e0e4ea; background: transparent; color: #5a6478; font-size: 12px; font-weight: 600; cursor: pointer; font-family: 'Inter', system-ui, sans-serif; transition: all .15s; display: flex; align-items: center; justify-content: center; gap: 5px; }
+        .doc-detail-btn:hover { border-color: #c8cdd6; color: #1a1e28; background: #eef0f4; }
+        .doc-detail-btn.primary { border-color: #4d8bff; color: #4d8bff; }
         .doc-detail-btn.primary:hover { background: rgba(77,139,255,.08); }
-        .doc-detail-btn.danger { color: var(--accent-red); border-color: rgba(248,113,113,.25); }
+        .doc-detail-btn.danger { color: #f87171; border-color: rgba(248,113,113,.25); }
         .doc-detail-btn.danger:hover { background: rgba(248,113,113,.06); }
 
         /* ─── Rich empty states ─── */
         .doc-empty-rich { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 40px 24px; flex: 1; animation: docFadeIn .4s ease; }
         .doc-empty-illustration { margin-bottom: 16px; }
         .doc-empty-folder-stack { position: relative; width: 64px; height: 52px; }
-        .doc-empty-folder { position: absolute; border-radius: 4px 4px 6px 6px; border: 1px solid var(--border); }
-        .doc-empty-folder.f1 { width: 56px; height: 38px; bottom: 0; left: 4px; background: var(--bg-elevated); }
-        .doc-empty-folder.f2 { width: 48px; height: 34px; bottom: 4px; left: 8px; background: var(--bg-hover); opacity: .7; }
-        .doc-empty-folder.f3 { width: 40px; height: 30px; bottom: 8px; left: 12px; background: var(--bg-surface); opacity: .4; border-style: dashed; }
-        .doc-empty-title { font-size: 15px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; }
-        .doc-empty-desc { font-size: 12px; color: var(--text-muted); line-height: 1.6; max-width: 240px; margin-bottom: 16px; }
-        .doc-empty-cta { display: inline-flex; align-items: center; gap: 6px; padding: 8px 18px; border-radius: var(--r-md); border: none; background: var(--accent-blue); color: #fff; font-size: 13px; font-weight: 700; cursor: pointer; font-family: var(--font-sans); transition: all .15s; box-shadow: 0 2px 12px rgba(77,139,255,.25); }
+        .doc-empty-folder { position: absolute; border-radius: 4px 4px 6px 6px; border: 1px solid #e0e4ea; }
+        .doc-empty-folder.f1 { width: 56px; height: 38px; bottom: 0; left: 4px; background: #f8f9fb; }
+        .doc-empty-folder.f2 { width: 48px; height: 34px; bottom: 4px; left: 8px; background: #eef0f4; opacity: .7; }
+        .doc-empty-folder.f3 { width: 40px; height: 30px; bottom: 8px; left: 12px; background: #ffffff; opacity: .4; border-style: dashed; }
+        .doc-empty-title { font-size: 15px; font-weight: 700; color: #1a1e28; margin-bottom: 6px; }
+        .doc-empty-desc { font-size: 12px; color: #8892a8; line-height: 1.6; max-width: 240px; margin-bottom: 16px; }
+        .doc-empty-cta { display: inline-flex; align-items: center; gap: 6px; padding: 8px 18px; border-radius: 10px; border: none; background: #4d8bff; color: #fff; font-size: 13px; font-weight: 700; cursor: pointer; font-family: 'Inter', system-ui, sans-serif; transition: all .15s; box-shadow: 0 2px 12px rgba(77,139,255,.25); }
         .doc-empty-cta:hover { background: #5d9bff; transform: translateY(-1px); }
-        .doc-empty-cta-secondary { display: inline-flex; align-items: center; gap: 6px; padding: 7px 16px; border-radius: var(--r-md); border: 1px solid var(--border); background: transparent; color: var(--text-secondary); font-size: 13px; font-weight: 600; cursor: pointer; font-family: var(--font-sans); transition: all .15s; }
-        .doc-empty-cta-secondary:hover { border-color: var(--border-active); color: var(--text-primary); }
+        .doc-empty-cta-secondary { display: inline-flex; align-items: center; gap: 6px; padding: 7px 16px; border-radius: 10px; border: 1px solid #e0e4ea; background: transparent; color: #5a6478; font-size: 13px; font-weight: 600; cursor: pointer; font-family: 'Inter', system-ui, sans-serif; transition: all .15s; }
+        .doc-empty-cta-secondary:hover { border-color: #c8cdd6; color: #1a1e28; }
 
         /* ─── Welcome state ─── */
         .doc-welcome { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; text-align: center; padding: 40px 24px; animation: docFadeIn .5s ease; }
         .doc-welcome-icon { margin-bottom: 12px; }
-        .doc-welcome-title { font-size: 18px; font-weight: 800; color: var(--text-primary); margin-bottom: 6px; }
-        .doc-welcome-desc { font-size: 13px; color: var(--text-muted); line-height: 1.5; max-width: 300px; margin-bottom: 24px; }
+        .doc-welcome-title { font-size: 18px; font-weight: 800; color: #1a1e28; margin-bottom: 6px; }
+        .doc-welcome-desc { font-size: 13px; color: #8892a8; line-height: 1.5; max-width: 300px; margin-bottom: 24px; }
         .doc-welcome-tips { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 280px; }
-        .doc-welcome-tip { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: var(--r-sm); background: var(--bg-elevated); border: 1px solid var(--border); font-size: 12px; color: var(--text-secondary); text-align: left; transition: all .2s; }
-        .doc-welcome-tip:hover { border-color: var(--border-active); background: var(--bg-hover); }
+        .doc-welcome-tip { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 6px; background: #f8f9fb; border: 1px solid #e0e4ea; font-size: 12px; color: #5a6478; text-align: left; transition: all .2s; }
+        .doc-welcome-tip:hover { border-color: #c8cdd6; background: #eef0f4; }
         .doc-welcome-tip-icon { font-size: 16px; flex-shrink: 0; }
 
         /* ─── Skeleton ─── */
         .doc-skeleton-wrap { display: flex; flex-direction: column; gap: 4px; padding: 8px 0; }
         .doc-skel-row { display: flex; align-items: center; gap: 8px; padding: 6px 10px; animation: docPulse 1.5s ease infinite; }
-        .doc-skel-dot { height: 8px; border-radius: 50%; background: var(--border); flex-shrink: 0; }
-        .doc-skel-bar { height: 12px; border-radius: 4px; background: var(--border); }
-        .doc-skel-card { display: flex; align-items: center; gap: 14px; padding: 14px 18px; border-radius: var(--r-md); border: 1px solid var(--border); animation: docPulse 1.5s ease infinite; }
-        .doc-skel-icon { width: 32px; height: 32px; border-radius: var(--r-sm); background: var(--border); flex-shrink: 0; }
+        .doc-skel-dot { height: 8px; border-radius: 50%; background: #e0e4ea; flex-shrink: 0; }
+        .doc-skel-bar { height: 12px; border-radius: 4px; background: #e0e4ea; }
+        .doc-skel-card { display: flex; align-items: center; gap: 14px; padding: 14px 18px; border-radius: 10px; border: 1px solid #e0e4ea; animation: docPulse 1.5s ease infinite; }
+        .doc-skel-icon { width: 32px; height: 32px; border-radius: 6px; background: #e0e4ea; flex-shrink: 0; }
 
         /* ─── Upload modal ─── */
-        .doc-overlay { position: fixed; inset: 0; background: var(--overlay-bg); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; z-index: 100; animation: docFadeIn .2s; }
-        .doc-modal { background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--r-lg); width: 520px; max-width: calc(100vw - 40px); padding: 28px; animation: docSlideUp .3s ease; }
+        .doc-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; z-index: 100; animation: docFadeIn .2s; }
+        .doc-modal { background: #ffffff; border: 1px solid #e0e4ea; border-radius: 14px; width: 520px; max-width: calc(100vw - 40px); padding: 28px; animation: docSlideUp .3s ease; }
         .doc-modal-title { font-size: 20px; font-weight: 800; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; }
-        .doc-modal-close { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 18px; width: 32px; height: 32px; border-radius: var(--r-sm); display: flex; align-items: center; justify-content: center; transition: all .15s; }
-        .doc-modal-close:hover { color: var(--text-primary); background: var(--bg-hover); }
-        .doc-modal-sub { font-size: 14px; color: var(--text-secondary); margin-bottom: 20px; }
-        .doc-upload-zone { border: 2px dashed var(--border); border-radius: var(--r-md); padding: 32px 20px; text-align: center; margin-bottom: 16px; cursor: pointer; transition: all .25s; position: relative; }
-        .doc-upload-zone:hover { border-color: var(--accent-blue); background: rgba(77,139,255,.03); }
-        .doc-upload-zone.drag-active { border-color: var(--accent-blue); background: rgba(77,139,255,.06); box-shadow: 0 0 0 4px rgba(77,139,255,.1); }
-        .doc-upload-zone.has-file { border-color: var(--accent-green); border-style: solid; background: rgba(52,211,153,.04); }
+        .doc-modal-close { background: none; border: none; color: #8892a8; cursor: pointer; font-size: 18px; width: 32px; height: 32px; border-radius: 6px; display: flex; align-items: center; justify-content: center; transition: all .15s; }
+        .doc-modal-close:hover { color: #1a1e28; background: #eef0f4; }
+        .doc-modal-sub { font-size: 14px; color: #5a6478; margin-bottom: 20px; }
+        .doc-upload-zone { border: 2px dashed #e0e4ea; border-radius: 10px; padding: 32px 20px; text-align: center; margin-bottom: 16px; cursor: pointer; transition: all .25s; position: relative; }
+        .doc-upload-zone:hover { border-color: #4d8bff; background: rgba(77,139,255,.03); }
+        .doc-upload-zone.drag-active { border-color: #4d8bff; background: rgba(77,139,255,.06); box-shadow: 0 0 0 4px rgba(77,139,255,.1); }
+        .doc-upload-zone.has-file { border-color: #34d399; border-style: solid; background: rgba(52,211,153,.04); }
         .doc-upload-zone-icon { font-size: 28px; margin-bottom: 6px; }
         .doc-upload-zone-title { font-size: 14px; font-weight: 600; margin-bottom: 3px; }
-        .doc-upload-zone-sub { font-size: 12px; color: var(--text-muted); }
-        .doc-upload-zone-remove { position: absolute; top: 8px; right: 8px; background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text-muted); width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 12px; transition: all .15s; }
-        .doc-upload-zone-remove:hover { color: var(--accent-red); border-color: var(--accent-red); }
+        .doc-upload-zone-sub { font-size: 12px; color: #8892a8; }
+        .doc-upload-zone-remove { position: absolute; top: 8px; right: 8px; background: #f8f9fb; border: 1px solid #e0e4ea; color: #8892a8; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 12px; transition: all .15s; }
+        .doc-upload-zone-remove:hover { color: #f87171; border-color: #f87171; }
         .doc-upload-type-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 16px; }
-        .doc-upload-type { padding: 12px; border-radius: var(--r-sm); border: 1px solid var(--border); cursor: pointer; transition: all .15s; text-align: center; background: transparent; font-family: var(--font-sans); }
-        .doc-upload-type:hover { border-color: var(--border-active); background: var(--bg-hover); }
-        .doc-upload-type.on { border-color: var(--accent-blue); background: rgba(77,139,255,.06); }
+        .doc-upload-type { padding: 12px; border-radius: 6px; border: 1px solid #e0e4ea; cursor: pointer; transition: all .15s; text-align: center; background: transparent; font-family: 'Inter', system-ui, sans-serif; }
+        .doc-upload-type:hover { border-color: #c8cdd6; background: #eef0f4; }
+        .doc-upload-type.on { border-color: #4d8bff; background: rgba(77,139,255,.06); }
         .doc-upload-type-icon { font-size: 20px; margin-bottom: 4px; }
-        .doc-upload-type-label { font-size: 12px; font-weight: 600; color: var(--text-secondary); }
-        .doc-upload-type-desc { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+        .doc-upload-type-label { font-size: 12px; font-weight: 600; color: #5a6478; }
+        .doc-upload-type-desc { font-size: 10px; color: #8892a8; margin-top: 2px; }
 
         /* Upload type auto-detected info */
-        .doc-upload-type-info { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border-radius: var(--r-md); border: 1px solid rgba(77,139,255,.2); background: rgba(77,139,255,.04); margin-bottom: 16px; }
+        .doc-upload-type-info { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border-radius: 10px; border: 1px solid rgba(77,139,255,.2); background: rgba(77,139,255,.04); margin-bottom: 16px; }
         .doc-upload-type-info-icon { font-size: 24px; flex-shrink: 0; margin-top: 2px; }
-        .doc-upload-type-info-label { font-size: 13px; color: var(--text-primary); margin-bottom: 2px; }
-        .doc-upload-type-info-label strong { color: var(--accent-blue); }
-        .doc-upload-type-info-desc { font-size: 11px; color: var(--text-muted); line-height: 1.4; }
+        .doc-upload-type-info-label { font-size: 13px; color: #1a1e28; margin-bottom: 2px; }
+        .doc-upload-type-info-label strong { color: #4d8bff; }
+        .doc-upload-type-info-desc { font-size: 11px; color: #8892a8; line-height: 1.4; }
 
         .doc-upload-ghid-subtype { margin-bottom: 16px; }
-        .doc-upload-ghid-subtype-label { font-size: 13px; color: var(--text-secondary); margin-bottom: 10px; font-weight: 500; }
+        .doc-upload-ghid-subtype-label { font-size: 13px; color: #5a6478; margin-bottom: 10px; font-weight: 500; }
         .doc-upload-ghid-subtype-options { display: flex; flex-direction: column; gap: 8px; }
-        .doc-upload-ghid-option { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--bg-elevated); cursor: pointer; text-align: left; transition: all .15s; }
-        .doc-upload-ghid-option:hover { border-color: var(--border-active); background: var(--bg-hover); }
-        .doc-upload-ghid-option.active { border-color: var(--accent-blue); background: rgba(77,139,255,.06); box-shadow: 0 0 0 1px rgba(77,139,255,.2); }
+        .doc-upload-ghid-option { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border-radius: 10px; border: 1px solid #e0e4ea; background: #f8f9fb; cursor: pointer; text-align: left; transition: all .15s; }
+        .doc-upload-ghid-option:hover { border-color: #c8cdd6; background: #eef0f4; }
+        .doc-upload-ghid-option.active { border-color: #4d8bff; background: rgba(77,139,255,.06); box-shadow: 0 0 0 1px rgba(77,139,255,.2); }
         .doc-upload-ghid-option-icon { font-size: 22px; flex-shrink: 0; margin-top: 2px; }
-        .doc-upload-ghid-option-title { font-size: 13px; font-weight: 600; color: var(--text-primary); margin-bottom: 2px; }
-        .doc-upload-ghid-option.active .doc-upload-ghid-option-title { color: var(--accent-blue); }
-        .doc-upload-ghid-option-desc { font-size: 11px; color: var(--text-muted); line-height: 1.4; }
+        .doc-upload-ghid-option-title { font-size: 13px; font-weight: 600; color: #1a1e28; margin-bottom: 2px; }
+        .doc-upload-ghid-option.active .doc-upload-ghid-option-title { color: #4d8bff; }
+        .doc-upload-ghid-option-desc { font-size: 11px; color: #8892a8; line-height: 1.4; }
 
         /* Upload progress */
-        .doc-upload-progress { height: 4px; border-radius: 2px; background: var(--bg-elevated); overflow: hidden; margin-bottom: 16px; }
-        .doc-upload-progress-bar { height: 100%; border-radius: 2px; background: linear-gradient(90deg, var(--accent-blue), #7aa8ff); transition: width .3s ease; position: relative; }
+        .doc-upload-progress { height: 4px; border-radius: 2px; background: #f8f9fb; overflow: hidden; margin-bottom: 16px; }
+        .doc-upload-progress-bar { height: 100%; border-radius: 2px; background: linear-gradient(90deg, #4d8bff, #7aa8ff); transition: width .3s ease; position: relative; }
         .doc-upload-progress-bar.active { background-image: linear-gradient(45deg, rgba(255,255,255,.15) 25%, transparent 25%, transparent 50%, rgba(255,255,255,.15) 50%, rgba(255,255,255,.15) 75%, transparent 75%, transparent); background-size: 40px 40px; animation: docProgressStripe 1s linear infinite; }
 
         /* Error box */
-        .doc-upload-error { padding: 10px 14px; margin-bottom: 12px; border-radius: var(--r-sm); background: rgba(248,113,113,.08); border: 1px solid rgba(248,113,113,.2); color: var(--accent-red); font-size: 13px; display: flex; align-items: center; gap: 8px; animation: docFadeIn .2s ease; }
+        .doc-upload-error { padding: 10px 14px; margin-bottom: 12px; border-radius: 6px; background: rgba(248,113,113,.08); border: 1px solid rgba(248,113,113,.2); color: #f87171; font-size: 13px; display: flex; align-items: center; gap: 8px; animation: docFadeIn .2s ease; }
 
-        .doc-btn-primary { padding: 10px 20px; border-radius: var(--r-md); border: none; background: var(--accent-blue); color: #fff; font-size: 14px; font-weight: 700; font-family: var(--font-sans); cursor: pointer; transition: all .15s; }
+        .doc-btn-primary { padding: 10px 20px; border-radius: 10px; border: none; background: #4d8bff; color: #fff; font-size: 14px; font-weight: 700; font-family: 'Inter', system-ui, sans-serif; cursor: pointer; transition: all .15s; }
         .doc-btn-primary:hover:not(:disabled) { background: #5d9bff; }
         .doc-btn-primary:disabled { opacity: .5; cursor: not-allowed; }
-        .doc-btn-secondary { padding: 10px 20px; border-radius: var(--r-md); border: 1px solid var(--border); background: transparent; color: var(--text-secondary); font-size: 14px; font-weight: 600; font-family: var(--font-sans); cursor: pointer; transition: all .15s; }
-        .doc-btn-secondary:hover { border-color: var(--border-active); color: var(--text-primary); }
+        .doc-btn-secondary { padding: 10px 20px; border-radius: 10px; border: 1px solid #e0e4ea; background: transparent; color: #5a6478; font-size: 14px; font-weight: 600; font-family: 'Inter', system-ui, sans-serif; cursor: pointer; transition: all .15s; }
+        .doc-btn-secondary:hover { border-color: #c8cdd6; color: #1a1e28; }
 
         /* ─── Scrollbar ─── */
         .doc-tree-scroll::-webkit-scrollbar,
@@ -1310,10 +1310,10 @@ export default function DocumentsPage() {
         .doc-detail::-webkit-scrollbar-track { background: transparent; }
         .doc-tree-scroll::-webkit-scrollbar-thumb,
         .doc-list-scroll::-webkit-scrollbar-thumb,
-        .doc-detail::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+        .doc-detail::-webkit-scrollbar-thumb { background: #e0e4ea; border-radius: 3px; }
         .doc-tree-scroll::-webkit-scrollbar-thumb:hover,
         .doc-list-scroll::-webkit-scrollbar-thumb:hover,
-        .doc-detail::-webkit-scrollbar-thumb:hover { background: var(--border-active); }
+        .doc-detail::-webkit-scrollbar-thumb:hover { background: #c8cdd6; }
       `}</style>
 
       {/* File input moved inside upload modal for reliable click() */}
@@ -1329,10 +1329,10 @@ export default function DocumentsPage() {
             <span className="doc-topbar-stat-num">{totalDocs}</span> documente
           </div>
           <div className="doc-topbar-stat">
-            <span className="doc-topbar-stat-num" style={{ color: "var(--accent-green)" }}>{procesate}</span> procesate
+            <span className="doc-topbar-stat-num text-emerald-500">{procesate}</span> procesate
           </div>
           <div className="doc-topbar-stat">
-            <span className="doc-topbar-stat-num" style={{ color: "var(--accent-blue)" }}>{templates}</span> template-uri
+            <span className="doc-topbar-stat-num text-blue-600">{templates}</span> template-uri
           </div>
         </div>
       </div>
@@ -1421,7 +1421,7 @@ export default function DocumentsPage() {
               <button className="doc-modal-close" onClick={() => { setShowUpload(false); setUploadFiles([]); setUploadError(null); setUploadProgress(0); setUploadWarnings([]); }}>{"\u2715"}</button>
             </div>
             <div className="doc-modal-sub">
-              Destinatie: <strong style={{ color: "var(--text-primary)" }}>{breadcrumb.length > 0 ? breadcrumb.join(" \u203A ") : "Selecteaza un folder"}</strong>
+              Destinatie: <strong className="text-slate-900">{breadcrumb.length > 0 ? breadcrumb.join(" \u203A ") : "Selecteaza un folder"}</strong>
             </div>
 
             {/* Auto-detected type from folder — shown as info pill, not a selector */}
@@ -1511,7 +1511,7 @@ export default function DocumentsPage() {
                     {formatFileSize(uploadFiles.reduce((sum, f) => sum + f.size, 0))} total {"\u00B7"} Gata de upload
                   </div>
                   {uploadFiles.length > 1 && (
-                    <div style={{ marginTop: 8, fontSize: 11, color: "var(--text-muted)", textAlign: "left", maxHeight: 80, overflow: "auto" }}>
+                    <div className="mt-2 text-[11px] text-slate-400 text-left max-h-[80px] overflow-auto">
                       {uploadFiles.map((f, i) => (
                         <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "1px 0" }}>
                           <span>{f.name}</span>
@@ -1521,7 +1521,7 @@ export default function DocumentsPage() {
                     </div>
                   )}
                   <button
-                    style={{ marginTop: 8, fontSize: 12, color: "var(--accent-blue)", background: "none", border: "none", cursor: "pointer", fontFamily: "var(--font-sans)" }}
+                    className="mt-2 text-xs text-blue-600 bg-transparent border-none cursor-pointer font-sans"
                     onClick={e => { e.stopPropagation(); fileInputRef.current?.click(); }}
                   >
                     + Adauga mai multe
@@ -1558,7 +1558,7 @@ export default function DocumentsPage() {
             )}
 
             {uploadWarnings.length > 0 && (
-              <div style={{ padding: "10px 14px", marginBottom: 12, borderRadius: "var(--r-sm)", background: "rgba(251,191,36,.08)", border: "1px solid rgba(251,191,36,.2)", color: "var(--accent-yellow)", fontSize: 12, lineHeight: 1.5 }}>
+              <div className="px-3.5 py-2.5 mb-3 rounded-md bg-amber-500/[0.08] border border-amber-500/20 text-amber-500 text-xs leading-normal">
                 {uploadWarnings.map((w, i) => <div key={i}>{w}</div>)}
               </div>
             )}

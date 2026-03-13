@@ -2,7 +2,7 @@
 @import "../styles/tokens.css";
 
 @theme {
-  --font-sans: 'DM Sans', system-ui, sans-serif;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
 }
 
@@ -13,11 +13,11 @@
 }
 
 body {
-  font-family: var(--font-sans);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
   font-size: 14px;
   line-height: 1.5;
-  background: var(--bg-deep);
-  color: var(--text-primary);
+  background: #f0f2f5;
+  color: #1a1e28;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -49,26 +49,26 @@ body {
 
 /* ═══ Selection ═══ */
 ::selection {
-  background: rgba(77,139,255,.2);
-  color: var(--text-primary);
+  background: rgba(37,99,235,.15);
+  color: #1a1e28;
 }
 
 /* ═══ Focus visible ═══ */
 :focus-visible {
-  outline: 2px solid var(--accent-blue);
+  outline: 2px solid #2563eb;
   outline-offset: 2px;
 }
 
-/* ═══ Input/select/textarea light mode fix ═══ */
+/* ═══ Input/select/textarea ═══ */
 input, select, textarea {
-  color: var(--text-primary);
+  color: #1a1e28;
 }
 
 input::placeholder, textarea::placeholder {
-  color: var(--text-muted);
+  color: #8892a8;
 }
 
 select option {
-  background: var(--bg-surface);
-  color: var(--text-primary);
+  background: #ffffff;
+  color: #1a1e28;
 }

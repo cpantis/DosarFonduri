@@ -18,8 +18,8 @@ const fmtNum = (v: number | string | null | undefined) => {
   return isNaN(n) ? String(v) : n.toLocaleString("ro-RO");
 };
 const formaColor = (cod: string) => {
-  if (isPF(cod)) return { bg: "rgba(251,146,60,0.12)", color: "var(--accent-orange)" };
-  return { bg: "rgba(77,139,255,0.12)", color: "var(--accent-blue)" };
+  if (isPF(cod)) return { bg: "rgba(251,146,60,0.12)", color: "#fb923c" };
+  return { bg: "rgba(77,139,255,0.12)", color: "#2563eb" };
 };
 
 /** Map API company detail to the shapes expected by JSX */
@@ -194,75 +194,75 @@ export default function CompanyDetailPage() {
     <>
       <style>{`
         .cd-page{display:flex;flex-direction:column;height:100%;overflow:hidden}
-        .cd-back{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--text-secondary);text-decoration:none;transition:color .15s;padding:0;background:none;border:none;cursor:pointer;font-family:var(--font-sans)}
-        .cd-back:hover{color:var(--accent-blue)}
-        .cd-header{padding:24px 32px;border-bottom:1px solid var(--border);background:var(--bg-surface);flex-shrink:0}
+        .cd-back{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:#64748b;text-decoration:none;transition:color .15s;padding:0;background:none;border:none;cursor:pointer;font-family:'Inter',system-ui,sans-serif}
+        .cd-back:hover{color:#2563eb}
+        .cd-header{padding:24px 32px;border-bottom:1px solid #e2e8f0;background:#ffffff;flex-shrink:0}
         .cd-header-top{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;margin-bottom:8px}
-        .cd-name{font-size:22px;font-weight:800;color:var(--text-primary);letter-spacing:-.3px;margin:0 0 4px}
-        .cd-sub{font-size:13px;font-family:var(--font-mono);color:var(--text-secondary);margin-bottom:10px}
+        .cd-name{font-size:22px;font-weight:800;color:#0f172a;letter-spacing:-.3px;margin:0 0 4px}
+        .cd-sub{font-size:13px;font-family:ui-monospace,SFMono-Regular,monospace;color:#64748b;margin-bottom:10px}
         .cd-badges{display:flex;gap:6px;flex-wrap:wrap}
         .cd-badge{font-size:11px;font-weight:700;padding:3px 10px;border-radius:12px;white-space:nowrap}
         .cd-actions{display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;align-items:flex-start}
-        .cd-act{padding:7px 14px;border-radius:var(--r-sm);border:1px solid var(--border);background:transparent;color:var(--text-secondary);font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font-sans);transition:all .15s;display:flex;align-items:center;gap:5px;white-space:nowrap}
-        .cd-act:hover{border-color:var(--border-active);color:var(--text-primary);background:var(--bg-hover)}
-        .cd-act.danger{color:var(--accent-red);border-color:rgba(248,113,113,.25)}.cd-act.danger:hover{background:rgba(248,113,113,.06)}
+        .cd-act{padding:7px 14px;border-radius:6px;border:1px solid #e2e8f0;background:transparent;color:#64748b;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',system-ui,sans-serif;transition:all .15s;display:flex;align-items:center;gap:5px;white-space:nowrap}
+        .cd-act:hover{border-color:#cbd5e1;color:#0f172a;background:#f1f5f9}
+        .cd-act.danger{color:#ef4444;border-color:rgba(248,113,113,.25)}.cd-act.danger:hover{background:rgba(248,113,113,.06)}
 
-        .cd-tabs{display:flex;border-bottom:1px solid var(--border);padding:0 32px;background:var(--bg-surface);flex-shrink:0;overflow-x:auto;gap:0}
-        .cd-tab{padding:11px 18px;font-size:14px;font-weight:600;color:var(--text-secondary);cursor:pointer;border-bottom:2px solid transparent;transition:all .15s;font-family:var(--font-sans);background:none;border-top:none;border-left:none;border-right:none;white-space:nowrap}
-        .cd-tab:hover{color:var(--text-primary)}.cd-tab.on{color:var(--accent-blue);border-bottom-color:var(--accent-blue)}
+        .cd-tabs{display:flex;border-bottom:1px solid #e2e8f0;padding:0 32px;background:#ffffff;flex-shrink:0;overflow-x:auto;gap:0}
+        .cd-tab{padding:11px 18px;font-size:14px;font-weight:600;color:#64748b;cursor:pointer;border-bottom:2px solid transparent;transition:all .15s;font-family:'Inter',system-ui,sans-serif;background:none;border-top:none;border-left:none;border-right:none;white-space:nowrap}
+        .cd-tab:hover{color:#0f172a}.cd-tab.on{color:#2563eb;border-bottom-color:#2563eb}
 
         .cd-body{flex:1;overflow-y:auto;padding:24px 32px}
         .cd-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:20px}
         .cd-grid.c2{grid-template-columns:1fr 1fr}.cd-grid.c4{grid-template-columns:repeat(4,1fr)}
-        .cd-card{padding:16px 18px;background:var(--bg-deep);border-radius:var(--r-md);border:1px solid var(--border)}
+        .cd-card{padding:16px 18px;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0}
         .cd-card.full{grid-column:1/-1}.cd-card.span2{grid-column:span 2}
-        .cd-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:4px}
-        .cd-val{font-size:15px;font-weight:600;color:var(--text-primary)}.cd-val.mono{font-family:var(--font-mono)}
-        .cd-val.green{color:var(--accent-green)}.cd-val.red{color:var(--accent-red)}
-        .cd-val.sub{font-size:12px;color:var(--text-muted);font-weight:400;margin-top:3px}
+        .cd-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:#94a3b8;margin-bottom:4px}
+        .cd-val{font-size:15px;font-weight:600;color:#0f172a}.cd-val.mono{font-family:ui-monospace,SFMono-Regular,monospace}
+        .cd-val.green{color:#10b981}.cd-val.red{color:#ef4444}
+        .cd-val.sub{font-size:12px;color:#94a3b8;font-weight:400;margin-top:3px}
 
-        .cd-mention{padding:14px 16px;background:var(--bg-deep);border-radius:var(--r-md);border-left:3px solid var(--accent-blue);margin-bottom:20px}
-        .cd-mention-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:4px}
-        .cd-mention-text{font-size:13px;color:var(--text-secondary);line-height:1.6}
+        .cd-mention{padding:14px 16px;background:#f8fafc;border-radius:10px;border-left:3px solid #2563eb;margin-bottom:20px}
+        .cd-mention-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:#94a3b8;margin-bottom:4px}
+        .cd-mention-text{font-size:13px;color:#64748b;line-height:1.6}
 
-        .cd-stitle{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text-muted);margin:20px 0 10px}
-        .cd-assoc{display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:var(--r-md);border:1px solid var(--border);background:var(--bg-elevated);margin-bottom:6px}
-        .cd-assoc-name{font-size:14px;font-weight:600;flex:1}.cd-assoc-detail{font-size:13px;color:var(--text-secondary);font-family:var(--font-mono)}
+        .cd-stitle{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#94a3b8;margin:20px 0 10px}
+        .cd-assoc{display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:10px;border:1px solid #e2e8f0;background:#f8fafc;margin-bottom:6px}
+        .cd-assoc-name{font-size:14px;font-weight:600;flex:1}.cd-assoc-detail{font-size:13px;color:#64748b;font-family:ui-monospace,SFMono-Regular,monospace}
 
-        .cd-warn{padding:12px 16px;border-radius:var(--r-md);border:1px solid var(--accent-red);background:rgba(248,113,113,.04);margin-bottom:8px;font-size:14px;color:var(--accent-red);display:flex;align-items:center;gap:8px}
-        .cd-ok{padding:12px 16px;border-radius:var(--r-md);border:1px solid var(--accent-green);background:rgba(52,211,153,.04);margin-bottom:8px;font-size:14px;color:var(--accent-green);display:flex;align-items:center;gap:8px}
+        .cd-warn{padding:12px 16px;border-radius:10px;border:1px solid #ef4444;background:rgba(248,113,113,.04);margin-bottom:8px;font-size:14px;color:#ef4444;display:flex;align-items:center;gap:8px}
+        .cd-ok{padding:12px 16px;border-radius:10px;border:1px solid #10b981;background:rgba(52,211,153,.04);margin-bottom:8px;font-size:14px;color:#10b981;display:flex;align-items:center;gap:8px}
 
         .cd-fin-table{width:100%;border-collapse:collapse;font-size:13px}
-        .cd-fin-table th{text-align:left;padding:8px 12px;font-weight:600;color:var(--text-muted);border-bottom:1px solid var(--border);font-size:11px;text-transform:uppercase;letter-spacing:.5px}
-        .cd-fin-table td{padding:8px 12px;border-bottom:1px solid var(--border);font-family:var(--font-mono);color:var(--text-secondary)}
-        .cd-fin-table td.green{color:var(--accent-green)}.cd-fin-table td.red{color:var(--accent-red)}
+        .cd-fin-table th{text-align:left;padding:8px 12px;font-weight:600;color:#94a3b8;border-bottom:1px solid #e2e8f0;font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+        .cd-fin-table td{padding:8px 12px;border-bottom:1px solid #e2e8f0;font-family:ui-monospace,SFMono-Regular,monospace;color:#64748b}
+        .cd-fin-table td.green{color:#10b981}.cd-fin-table td.red{color:#ef4444}
 
-        .cd-empty{display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;color:var(--text-muted);padding:60px 20px}
+        .cd-empty{display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;color:#94a3b8;padding:60px 20px}
         .cd-empty-icon{font-size:44px;opacity:.5}.cd-empty-text{font-size:14px}
 
-        .cd-overlay{position:fixed;inset:0;background:var(--overlay-bg);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:100;animation:cdFadeIn .2s}
+        .cd-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.5);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:100;animation:cdFadeIn .2s}
         @keyframes cdFadeIn{from{opacity:0}to{opacity:1}}
-        .cd-modal{background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--r-lg);width:480px;max-height:85vh;overflow-y:auto;padding:28px;animation:cdSlideUp .3s ease}
+        .cd-modal{background:#ffffff;border:1px solid #e2e8f0;border-radius:14px;width:480px;max-height:85vh;overflow-y:auto;padding:28px;animation:cdSlideUp .3s ease}
         @keyframes cdSlideUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
         .cd-modal-title{font-size:18px;font-weight:800;margin-bottom:4px;display:flex;align-items:center;justify-content:space-between}
-        .cd-modal-close{background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:18px;padding:4px}.cd-modal-close:hover{color:var(--text-primary)}
+        .cd-modal-close{background:none;border:none;color:#94a3b8;cursor:pointer;font-size:18px;padding:4px}.cd-modal-close:hover{color:#0f172a}
 
-        .cd-upload-zone{border:2px dashed var(--border);border-radius:var(--r-md);padding:28px 20px;text-align:center;margin-bottom:16px;transition:all .2s;cursor:pointer}
-        .cd-upload-zone:hover{border-color:var(--accent-blue);background:rgba(77,139,255,.03)}
-        .cd-upload-zone .uz-icon{font-size:24px;margin-bottom:6px}.cd-upload-zone .uz-title{font-size:14px;font-weight:600;margin-bottom:3px}.cd-upload-zone .uz-sub{font-size:12px;color:var(--text-muted)}
+        .cd-upload-zone{border:2px dashed #e2e8f0;border-radius:10px;padding:28px 20px;text-align:center;margin-bottom:16px;transition:all .2s;cursor:pointer}
+        .cd-upload-zone:hover{border-color:#2563eb;background:rgba(77,139,255,.03)}
+        .cd-upload-zone .uz-icon{font-size:24px;margin-bottom:6px}.cd-upload-zone .uz-title{font-size:14px;font-weight:600;margin-bottom:3px}.cd-upload-zone .uz-sub{font-size:12px;color:#94a3b8}
 
-        .cd-btn-p{padding:10px 20px;border-radius:var(--r-md);border:none;background:var(--accent-blue);color:#fff;font-size:14px;font-weight:700;font-family:var(--font-sans);cursor:pointer;transition:all .15s}
+        .cd-btn-p{padding:10px 20px;border-radius:10px;border:none;background:#2563eb;color:#fff;font-size:14px;font-weight:700;font-family:'Inter',system-ui,sans-serif;cursor:pointer;transition:all .15s}
         .cd-btn-p:hover{background:#5d9bff}.cd-btn-p:disabled{opacity:.5;cursor:not-allowed}
-        .cd-btn-s{padding:10px 20px;border-radius:var(--r-md);border:1px solid var(--border);background:transparent;color:var(--text-secondary);font-size:14px;font-weight:600;font-family:var(--font-sans);cursor:pointer}
-        .cd-btn-s:hover{border-color:var(--border-active);color:var(--text-primary)}
+        .cd-btn-s{padding:10px 20px;border-radius:10px;border:1px solid #e2e8f0;background:transparent;color:#64748b;font-size:14px;font-weight:600;font-family:'Inter',system-ui,sans-serif;cursor:pointer}
+        .cd-btn-s:hover{border-color:#cbd5e1;color:#0f172a}
 
         .cd-spinner{width:18px;height:18px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:cdSpin .7s linear infinite;display:inline-block}
         @keyframes cdSpin{to{transform:rotate(360deg)}}
-        .cd-spinner-dark{border-color:var(--border);border-top-color:var(--accent-blue)}
+        .cd-spinner-dark{border-color:#e2e8f0;border-top-color:#2563eb}
 
         .cd-body::-webkit-scrollbar{width:5px}
         .cd-body::-webkit-scrollbar-track{background:transparent}
-        .cd-body::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+        .cd-body::-webkit-scrollbar-thumb{background:#e2e8f0;border-radius:3px}
       `}</style>
 
       <div className="cd-page">
@@ -277,7 +277,7 @@ export default function CompanyDetailPage() {
         {/* ERROR STATE */}
         {!loading && error && (
           <div className="cd-empty" style={{ flex: 1 }}>
-            <div className="cd-empty-text" style={{ color: "var(--accent-red)" }}>{error}</div>
+            <div className="cd-empty-text" style={{ color: "#ef4444" }}>{error}</div>
             <button className="cd-btn-s" onClick={fetchDetail} style={{ marginTop: 8 }}>Reincearca</button>
             <Link href="/companies" className="cd-back" style={{ marginTop: 12 }}>&larr; Inapoi la lista</Link>
           </div>
@@ -287,14 +287,14 @@ export default function CompanyDetailPage() {
         {!loading && !error && sel && (<>
           {/* PROCESSING BANNER */}
           {sel.processingStatus === "processing" && (
-            <div style={{ padding: "14px 32px", background: "rgba(77,139,255,0.06)", borderBottom: "1px solid var(--accent-blue)", display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
+            <div style={{ padding: "14px 32px", background: "rgba(77,139,255,0.06)", borderBottom: "1px solid #3b82f6", display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
               <span className="cd-spinner cd-spinner-dark" style={{ width: 18, height: 18 }} />
-              <span style={{ fontSize: 14, fontWeight: 600, color: "var(--accent-blue)" }}>Se proceseaza documentul... Datele firmei se actualizeaza automat.</span>
+              <span style={{ fontSize: 14, fontWeight: 600, color: "#2563eb" }}>Se proceseaza documentul... Datele firmei se actualizeaza automat.</span>
             </div>
           )}
           {sel.processingStatus === "error" && (
-            <div style={{ padding: "14px 32px", background: "rgba(248,113,113,0.06)", borderBottom: "1px solid var(--accent-red)", display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
-              <span style={{ fontSize: 14, fontWeight: 600, color: "var(--accent-red)" }}>Eroare la procesare: {sel.processingError || "Eroare necunoscuta"}</span>
+            <div style={{ padding: "14px 32px", background: "rgba(248,113,113,0.06)", borderBottom: "1px solid #ef4444", display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
+              <span style={{ fontSize: 14, fontWeight: 600, color: "#ef4444" }}>Eroare la procesare: {sel.processingError || "Eroare necunoscuta"}</span>
               <button className="cd-btn-s" style={{ marginLeft: "auto", padding: "6px 14px", fontSize: 12 }} onClick={() => setShowOnrcUpload(true)}>Reincearca upload</button>
             </div>
           )}
@@ -309,9 +309,9 @@ export default function CompanyDetailPage() {
                 <h1 className="cd-name">{sel.denumire}</h1>
                 <div className="cd-sub">CUI: {sel.cui} &middot; {sel.regCom || "\u2014"}</div>
                 <div className="cd-badges">
-                  <span className="cd-badge" style={sel.stare === "radiata" ? { background: "rgba(248,113,113,.12)", color: "var(--accent-red)" } : { background: "rgba(52,211,153,.12)", color: "var(--accent-green)" }}>{sel.stare}</span>
+                  <span className="cd-badge" style={sel.stare === "radiata" ? { background: "rgba(248,113,113,.12)", color: "#ef4444" } : { background: "rgba(52,211,153,.12)", color: "#10b981" }}>{sel.stare}</span>
                   <span className="cd-badge" style={formaColor(sel.forma)}>{sel.forma}</span>
-                  <span className="cd-badge" style={{ background: "var(--bg-elevated)", color: "var(--text-muted)" }}>CAEN {sel.caen || "\u2014"}</span>
+                  <span className="cd-badge" style={{ background: "#f8fafc", color: "#94a3b8" }}>CAEN {sel.caen || "\u2014"}</span>
                 </div>
               </div>
               <div className="cd-actions">
@@ -337,7 +337,7 @@ export default function CompanyDetailPage() {
             {activeTab === "General" && (<>
               <div className="cd-grid">
                 <div className="cd-card span2"><div className="cd-label">Forma juridica</div><div className="cd-val">{FORME_JURIDICE.find(fj => fj.cod === sel.forma)?.label || sel.forma}</div></div>
-                <div className="cd-card"><div className="cd-label">Stare</div><div className="cd-val"><span className="cd-badge" style={sel.stare === "radiata" ? { background: "rgba(248,113,113,.12)", color: "var(--accent-red)" } : { background: "rgba(52,211,153,.12)", color: "var(--accent-green)" }}>{sel.stare}</span></div></div>
+                <div className="cd-card"><div className="cd-label">Stare</div><div className="cd-val"><span className="cd-badge" style={sel.stare === "radiata" ? { background: "rgba(248,113,113,.12)", color: "#ef4444" } : { background: "rgba(52,211,153,.12)", color: "#10b981" }}>{sel.stare}</span></div></div>
                 <div className="cd-card span2"><div className="cd-label">Adresa</div><div className="cd-val">{sel.adresa || "\u2014"}</div><div className="cd-val sub">{sel.localitate || ""}{sel.localitate && sel.judet ? ", " : ""}{sel.judet || ""} {sel.codPostal || ""}</div></div>
                 <div className="cd-card"><div className="cd-label">Telefon</div><div className="cd-val mono">{sel.telefon || "\u2014"}</div></div>
                 {sel.email && <div className="cd-card"><div className="cd-label">Email</div><div className="cd-val mono" style={{ fontSize: 13 }}>{sel.email}</div></div>}
@@ -366,7 +366,7 @@ export default function CompanyDetailPage() {
                 {sel.asociatiPJ.map((a: any, i: number) => (
                   <div className="cd-assoc" key={i}>
                     <span style={{ fontSize: 18 }}>&#127970;</span>
-                    <div className="cd-assoc-name">{a.denumire}<div style={{ fontSize: 12, color: "var(--text-muted)" }}>{a.calitate} &middot; {a.tara}</div></div>
+                    <div className="cd-assoc-name">{a.denumire}<div style={{ fontSize: 12, color: "#94a3b8" }}>{a.calitate} &middot; {a.tara}</div></div>
                     <div className="cd-assoc-detail">{a.cotaBeneficii}%</div>
                     <div className="cd-assoc-detail">{a.aport}</div>
                   </div>
@@ -376,7 +376,7 @@ export default function CompanyDetailPage() {
               {sel.asociatiPF.map((a: any, i: number) => (
                 <div className="cd-assoc" key={i}>
                   <span style={{ fontSize: 18 }}>&#128100;</span>
-                  <div className="cd-assoc-name">{a.nume}<div style={{ fontSize: 12, color: "var(--text-muted)" }}>{a.calitate} &middot; {a.cetatenie}</div></div>
+                  <div className="cd-assoc-name">{a.nume}<div style={{ fontSize: 12, color: "#94a3b8" }}>{a.calitate} &middot; {a.cetatenie}</div></div>
                   <div className="cd-assoc-detail">{a.cotaBeneficii}%</div>
                   <div className="cd-assoc-detail">{a.partiSociale || a.actiuni} {sel.forma === "SA" ? "actiuni" : "p.s."}</div>
                   <div className="cd-assoc-detail">{a.aport}</div>
@@ -406,7 +406,7 @@ export default function CompanyDetailPage() {
               {(sel.membriIF || []).map((m: any, i: number) => (
                 <div className="cd-assoc" key={i}>
                   <span style={{ fontSize: 18 }}>&#128100;</span>
-                  <div className="cd-assoc-name">{m.nume}<div style={{ fontSize: 12, color: "var(--text-muted)" }}>{m.calitate}</div></div>
+                  <div className="cd-assoc-name">{m.nume}<div style={{ fontSize: 12, color: "#94a3b8" }}>{m.calitate}</div></div>
                   <div className="cd-assoc-detail">{m.gradRudenie}</div>
                   <div className="cd-assoc-detail">{m.cetatenie}</div>
                 </div>
@@ -419,7 +419,7 @@ export default function CompanyDetailPage() {
               {sel.administratori.map((a: any, i: number) => (
                 <div className="cd-assoc" key={i}>
                   <span style={{ fontSize: 18 }}>&#128084;</span>
-                  <div className="cd-assoc-name">{a.nume}<div style={{ fontSize: 12, color: "var(--text-muted)" }}>{a.functie}</div></div>
+                  <div className="cd-assoc-name">{a.nume}<div style={{ fontSize: 12, color: "#94a3b8" }}>{a.functie}</div></div>
                   <div className="cd-assoc-detail">Puteri: {a.puteri}</div>
                   <div className="cd-assoc-detail">Mandat: {a.durataMandatLabel}</div>
                 </div>
@@ -427,7 +427,7 @@ export default function CompanyDetailPage() {
               {sel.cenzori && sel.cenzori.length > 0 && (<>
                 <div className="cd-stitle">Cenzori / Auditori</div>
                 {sel.cenzori.map((c: any, i: number) => (
-                  <div className="cd-assoc" key={i}><span style={{ fontSize: 18 }}>&#128269;</span><div className="cd-assoc-name">{c.nume}<div style={{ fontSize: 12, color: "var(--text-muted)" }}>{c.calitate}</div></div><div className="cd-assoc-detail">{c.nrAutorizare}</div></div>
+                  <div className="cd-assoc" key={i}><span style={{ fontSize: 18 }}>&#128269;</span><div className="cd-assoc-name">{c.nume}<div style={{ fontSize: 12, color: "#94a3b8" }}>{c.calitate}</div></div><div className="cd-assoc-detail">{c.nrAutorizare}</div></div>
                 ))}
               </>)}
             </>)}
@@ -451,7 +451,7 @@ export default function CompanyDetailPage() {
               {sel.sediiSecundare && sel.sediiSecundare.length > 0 && (<>
                 <div className="cd-stitle">Sedii secundare / Puncte de lucru ({sel.sediiSecundare.length})</div>
                 {sel.sediiSecundare.map((s: any, i: number) => (
-                  <div className="cd-assoc" key={i}><span style={{ fontSize: 18 }}>&#128205;</span><div className="cd-assoc-name">{s.denumire}<div style={{ fontSize: 12, color: "var(--text-muted)" }}>{s.adresa}</div></div></div>
+                  <div className="cd-assoc" key={i}><span style={{ fontSize: 18 }}>&#128205;</span><div className="cd-assoc-name">{s.denumire}<div style={{ fontSize: 12, color: "#94a3b8" }}>{s.adresa}</div></div></div>
                 ))}
               </>)}
             </>)}
@@ -478,7 +478,7 @@ export default function CompanyDetailPage() {
                       </tr>
                     ))}</tbody>
                   </table>
-                  <div style={{ marginTop: 14, fontSize: 12, color: "var(--text-muted)" }}>Sursa: Date publice ONRC / termene.ro</div>
+                  <div style={{ marginTop: 14, fontSize: 12, color: "#94a3b8" }}>Sursa: Date publice ONRC / termene.ro</div>
                 </>
               ) : (
                 <div className="cd-empty">
@@ -507,12 +507,12 @@ export default function CompanyDetailPage() {
                       <select
                         value={viewYear ?? ""}
                         onChange={e => setSelectedBilantYear(Number(e.target.value))}
-                        style={{ padding: "5px 10px", borderRadius: "var(--r-sm)", border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-primary)", fontSize: 13, fontFamily: "var(--font-mono)" }}
+                        style={{ padding: "5px 10px", borderRadius: "6px", border: "1px solid #e2e8f0", background: "#f8fafc", color: "#0f172a", fontSize: 13, fontFamily: "ui-monospace, SFMono-Regular, monospace" }}
                       >
                         {anafYears.map((y: number) => <option key={y} value={y}>{y}</option>)}
                       </select>
                     )}
-                    {anafYears.length === 1 && <span style={{ fontSize: 14, fontFamily: "var(--font-mono)", color: "var(--text-secondary)" }}>{viewYear}</span>}
+                    {anafYears.length === 1 && <span style={{ fontSize: 14, fontFamily: "ui-monospace, SFMono-Regular, monospace", color: "#64748b" }}>{viewYear}</span>}
                   </div>
                   <button className="cd-act" onClick={() => setShowBilantUpload(true)}>Upload bilant</button>
                 </div>
@@ -572,7 +572,7 @@ export default function CompanyDetailPage() {
                   </div>
                 </>)}
 
-                <div style={{ marginTop: 14, fontSize: 12, color: "var(--text-muted)" }}>Sursa: Bilant ANAF uploadat</div>
+                <div style={{ marginTop: 14, fontSize: 12, color: "#94a3b8" }}>Sursa: Bilant ANAF uploadat</div>
               </>) : (
                 <div className="cd-empty">
                   <div className="cd-empty-icon">&#128202;</div>
@@ -606,7 +606,7 @@ export default function CompanyDetailPage() {
         <div className="cd-overlay" onClick={e => { if (e.target === e.currentTarget) setShowOnrcUpload(false); }}>
           <div className="cd-modal">
             <div className="cd-modal-title">Upload Certificat Constatator<button className="cd-modal-close" onClick={() => setShowOnrcUpload(false)}>&times;</button></div>
-            <div style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 18, lineHeight: 1.6 }}>
+            <div style={{ fontSize: 13, color: "#64748b", marginBottom: 18, lineHeight: 1.6 }}>
               Incarca un certificat constatator ONRC (PDF). Datele firmei se vor actualiza automat cu informatiile extrase.
             </div>
             <input type="file" ref={onrcFileRef} accept=".pdf" style={{ display: "none" }} onChange={() => {}} />
@@ -630,15 +630,15 @@ export default function CompanyDetailPage() {
         <div className="cd-overlay" onClick={e => { if (e.target === e.currentTarget) setShowBilantUpload(false); }}>
           <div className="cd-modal">
             <div className="cd-modal-title">Upload bilant ANAF<button className="cd-modal-close" onClick={() => setShowBilantUpload(false)}>&times;</button></div>
-            <div style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 18, lineHeight: 1.6 }}>
+            <div style={{ fontSize: 13, color: "#64748b", marginBottom: 18, lineHeight: 1.6 }}>
               Incarca un bilant ANAF (PDF descarcat din SPV). Se accepta Formularul 10 (bilant), Formularul 20 (cont profit/pierderi), Formularul 30/40. Datele financiare se extrag automat.
             </div>
             <div style={{ marginBottom: 16 }}>
-              <label style={{ display: "block", fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".5px", color: "var(--text-muted)", marginBottom: 6 }}>An fiscal</label>
+              <label style={{ display: "block", fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".5px", color: "#94a3b8", marginBottom: 6 }}>An fiscal</label>
               <select
                 value={bilantYear}
                 onChange={e => setBilantYear(Number(e.target.value))}
-                style={{ padding: "10px 14px", borderRadius: "var(--r-md)", border: "1px solid var(--border)", background: "var(--bg-deep)", color: "var(--text-primary)", fontSize: 14, fontFamily: "var(--font-mono)", width: 140 }}
+                style={{ padding: "10px 14px", borderRadius: "10px", border: "1px solid #e2e8f0", background: "#f8fafc", color: "#0f172a", fontSize: 14, fontFamily: "ui-monospace, SFMono-Regular, monospace", width: 140 }}
               >
                 {Array.from({ length: 6 }, (_, i) => new Date().getFullYear() - 1 - i).map(y => (
                   <option key={y} value={y}>{y}</option>

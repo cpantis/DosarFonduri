@@ -215,6 +215,7 @@ async function prefillFromCompany(projectId: string, company: any) {
 
   // Get template element keys for each project element
   for (const el of elements) {
+    if (!el.templateElementId) continue;
     const templateEl = await db.query.templateElements.findFirst({
       where: eq(templateElements.id, el.templateElementId),
     });
@@ -318,9 +319,9 @@ projectRoutes.get("/:id", async (c) => {
 
   // Enrich elements with template element data
   const enrichedElements = await Promise.all(elements.map(async (el) => {
-    const templateEl = await db.query.templateElements.findFirst({
+    const templateEl = el.templateElementId ? await db.query.templateElements.findFirst({
       where: eq(templateElements.id, el.templateElementId),
-    });
+    }) : null;
     return { ...el, templateElement: templateEl };
   }));
 
@@ -401,9 +402,9 @@ projectRoutes.put("/:id/elements/:eid", async (c) => {
   }
 
   // 3. SSE: element validated
-  const templateEl = await db.query.templateElements.findFirst({
+  const templateEl = updated.templateElementId ? await db.query.templateElements.findFirst({
     where: eq(templateElements.id, updated.templateElementId),
-  });
+  }) : null;
   publishElementValidated(id, {
     elementId: eid,
     elementKey: templateEl?.key || "",

@@ -230,6 +230,7 @@ export async function computeProjectScores(projectId: string): Promise<{
 
   const elementMap = new Map<string, string | null>();
   for (const el of elements) {
+    if (!el.templateElementId) continue;
     const tmplEl = await db.query.templateElements.findFirst({
       where: eq(templateElements.id, el.templateElementId),
     });

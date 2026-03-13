@@ -68,9 +68,9 @@ export async function validateBudget(projectId: string): Promise<{
   });
 
   const enrichedElements = await Promise.all(elements.map(async (el) => {
-    const templateEl = await db.query.templateElements.findFirst({
+    const templateEl = el.templateElementId ? await db.query.templateElements.findFirst({
       where: eq(templateElements.id, el.templateElementId),
-    });
+    }) : null;
     return { ...el, templateElement: templateEl };
   }));
 

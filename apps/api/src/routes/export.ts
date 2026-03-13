@@ -23,9 +23,9 @@ exportRoutes.get("/projects", async (c) => {
     });
 
     const elementsWithLabels = await Promise.all(elements.map(async (e) => {
-      const te = await db.query.templateElements.findFirst({
+      const te = e.templateElementId ? await db.query.templateElements.findFirst({
         where: eq(templateElements.id, e.templateElementId),
-      });
+      }) : null;
       return {
         key: te?.key,
         label: te?.label,

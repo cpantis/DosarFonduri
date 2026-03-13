@@ -176,6 +176,7 @@ async function validateCrossElements(
 
   const elementMap = new Map<string, { value: string | null; id: string }>();
   for (const el of allElements) {
+    if (!el.templateElementId) continue;
     const tmplEl = await db.query.templateElements.findFirst({
       where: eq(templateElements.id, el.templateElementId),
     });
@@ -421,6 +422,10 @@ export async function validateElement(
     where: eq(projectElements.id, projectElementId),
   });
   if (!element) {
+    return { status: "pending", details: {} };
+  }
+
+  if (!element.templateElementId) {
     return { status: "pending", details: {} };
   }
 

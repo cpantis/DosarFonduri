@@ -106,7 +106,7 @@ export async function buildComposeContext(
     where: eq(projectElements.projectId, projectId),
   });
 
-  const tmplElIds = [...new Set(projEls.map(pe => pe.templateElementId))];
+  const tmplElIds = [...new Set(projEls.map(pe => pe.templateElementId).filter((id): id is string => id != null))];
   const allTmplEls = tmplElIds.length > 0
     ? await db.query.templateElements.findMany({
         where: inArray(templateElements.id, tmplElIds),
@@ -117,6 +117,7 @@ export async function buildComposeContext(
   // Build elements map with metadata
   const elements: ComposeContext["elements"] = {};
   for (const pe of projEls) {
+    if (!pe.templateElementId) continue;
     const te = tmplElMap.get(pe.templateElementId);
     if (te && pe.value) {
       elements[te.key] = {

@@ -136,7 +136,7 @@ export default function CompaniesPage() {
       const formData = new FormData();
       formData.append("file", uploadFile);
       formData.append("formaJuridica", addForma);
-      const result = await api<any>("/api/companies", { method: "POST", body: formData });
+      const result = await api<any>("/api/companies", { method: "POST", body: formData, timeout: 120_000 });
       await fetchCompanies();
       setShowAdd(false);
       setUploadFile(null);
@@ -256,7 +256,10 @@ export default function CompaniesPage() {
             {filtered.map(f => {
               const forma = f.formaJuridica || "";
               const fc = formaColor(forma);
-              const stareColor = f.stare === "radiata"
+              const isProcessing = f.processingStatus === "processing";
+              const stareColor = isProcessing
+                ? { bg: "rgba(77,139,255,.12)", color: "var(--accent-blue)" }
+                : f.stare === "radiata"
                 ? { bg: "rgba(248,113,113,.12)", color: "var(--accent-red)" }
                 : { bg: "rgba(52,211,153,.12)", color: "var(--accent-green)" };
               return (
@@ -265,7 +268,7 @@ export default function CompaniesPage() {
                   <div className="fc-info">
                     <div className="fc-name">{f.denumire}</div>
                     <div className="fc-badges">
-                      <span className="fc-badge" style={stareColor}>{f.stare || "activ"}</span>
+                      <span className="fc-badge" style={stareColor}>{isProcessing ? "Se proceseaza..." : f.stare || "activ"}</span>
                       <span className="fc-badge" style={fc}>{FORME_JURIDICE.find(fj => fj.cod === forma)?.short || forma}</span>
                       {f.caen && <span className="fc-badge" style={{ background: "var(--bg-elevated)", color: "var(--text-muted)" }}>CAEN {f.caen}</span>}
                     </div>

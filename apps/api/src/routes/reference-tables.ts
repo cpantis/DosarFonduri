@@ -154,7 +154,14 @@ referenceTableRoutes.delete("/tables/:id", async (c) => {
 
 // List links for a rule
 referenceTableRoutes.get("/rules/:ruleId/reference-links", async (c) => {
+  const auth = c.get("auth") as AuthContext;
   const ruleId = c.req.param("ruleId");
+
+  // Verify rule belongs to org
+  const rule = await db.query.rules.findFirst({
+    where: and(eq(rules.id, ruleId), eq(rules.organizationId, auth.organizationId!)),
+  });
+  if (!rule) return c.json({ error: "Rule not found" }, 404);
 
   const links = await db.query.ruleReferenceLinks.findMany({
     where: eq(ruleReferenceLinks.ruleId, ruleId),
@@ -173,7 +180,14 @@ referenceTableRoutes.get("/rules/:ruleId/reference-links", async (c) => {
 
 // List links for a reference table
 referenceTableRoutes.get("/tables/:tableId/rule-links", async (c) => {
+  const auth = c.get("auth") as AuthContext;
   const tableId = c.req.param("tableId");
+
+  // Verify table belongs to org
+  const table = await db.query.guideReferenceTables.findFirst({
+    where: and(eq(guideReferenceTables.id, tableId), eq(guideReferenceTables.organizationId, auth.organizationId!)),
+  });
+  if (!table) return c.json({ error: "Table not found" }, 404);
 
   const links = await db.query.ruleReferenceLinks.findMany({
     where: eq(ruleReferenceLinks.referenceTableId, tableId),
@@ -191,7 +205,19 @@ referenceTableRoutes.get("/tables/:tableId/rule-links", async (c) => {
 
 // Create rule-reference link
 referenceTableRoutes.post("/rule-reference-links", async (c) => {
+  const auth = c.get("auth") as AuthContext;
   const body = await c.req.json();
+
+  // Verify both rule and table belong to org
+  const rule = await db.query.rules.findFirst({
+    where: and(eq(rules.id, body.ruleId), eq(rules.organizationId, auth.organizationId!)),
+  });
+  if (!rule) return c.json({ error: "Rule not found" }, 404);
+
+  const table = await db.query.guideReferenceTables.findFirst({
+    where: and(eq(guideReferenceTables.id, body.referenceTableId), eq(guideReferenceTables.organizationId, auth.organizationId!)),
+  });
+  if (!table) return c.json({ error: "Reference table not found" }, 404);
 
   const [link] = await db.insert(ruleReferenceLinks).values({
     ruleId: body.ruleId,
@@ -205,7 +231,20 @@ referenceTableRoutes.post("/rule-reference-links", async (c) => {
 
 // Delete rule-reference link
 referenceTableRoutes.delete("/rule-reference-links/:id", async (c) => {
+  const auth = c.get("auth") as AuthContext;
   const id = c.req.param("id");
+
+  // Verify the link's rule belongs to org
+  const link = await db.query.ruleReferenceLinks.findFirst({
+    where: eq(ruleReferenceLinks.id, id),
+  });
+  if (!link) return c.json({ error: "Link not found" }, 404);
+
+  const rule = await db.query.rules.findFirst({
+    where: and(eq(rules.id, link.ruleId), eq(rules.organizationId, auth.organizationId!)),
+  });
+  if (!rule) return c.json({ error: "Not authorized" }, 403);
+
   await db.delete(ruleReferenceLinks).where(eq(ruleReferenceLinks.id, id));
   return c.json({ ok: true });
 });
@@ -214,7 +253,19 @@ referenceTableRoutes.delete("/rule-reference-links/:id", async (c) => {
 
 // List links for an element
 referenceTableRoutes.get("/elements/:elementId/rule-links", async (c) => {
+  const auth = c.get("auth") as AuthContext;
   const elementId = c.req.param("elementId");
+
+  // Verify element belongs to org (via document)
+  const element = await db.query.templateElements.findFirst({
+    where: eq(templateElements.id, elementId),
+  });
+  if (!element) return c.json({ error: "Element not found" }, 404);
+
+  const doc = await db.query.documents.findFirst({
+    where: and(eq(documents.id, element.documentId), eq(documents.organizationId, auth.organizationId!)),
+  });
+  if (!doc) return c.json({ error: "Not authorized" }, 403);
 
   const links = await db.query.elementRuleLinks.findMany({
     where: eq(elementRuleLinks.templateElementId, elementId),
@@ -245,7 +296,25 @@ referenceTableRoutes.get("/elements/:elementId/rule-links", async (c) => {
 
 // Create element-rule link
 referenceTableRoutes.post("/element-rule-links", async (c) => {
+  const auth = c.get("auth") as AuthContext;
   const body = await c.req.json();
+
+  // Verify rule belongs to org
+  const rule = await db.query.rules.findFirst({
+    where: and(eq(rules.id, body.ruleId), eq(rules.organizationId, auth.organizationId!)),
+  });
+  if (!rule) return c.json({ error: "Rule not found" }, 404);
+
+  // Verify element belongs to org (via document)
+  const element = await db.query.templateElements.findFirst({
+    where: eq(templateElements.id, body.templateElementId),
+  });
+  if (!element) return c.json({ error: "Element not found" }, 404);
+
+  const doc = await db.query.documents.findFirst({
+    where: and(eq(documents.id, element.documentId), eq(documents.organizationId, auth.organizationId!)),
+  });
+  if (!doc) return c.json({ error: "Not authorized" }, 403);
 
   const [link] = await db.insert(elementRuleLinks).values({
     templateElementId: body.templateElementId,
@@ -259,7 +328,20 @@ referenceTableRoutes.post("/element-rule-links", async (c) => {
 
 // Delete element-rule link
 referenceTableRoutes.delete("/element-rule-links/:id", async (c) => {
+  const auth = c.get("auth") as AuthContext;
   const id = c.req.param("id");
+
+  // Verify the link's rule belongs to org
+  const link = await db.query.elementRuleLinks.findFirst({
+    where: eq(elementRuleLinks.id, id),
+  });
+  if (!link) return c.json({ error: "Link not found" }, 404);
+
+  const rule = await db.query.rules.findFirst({
+    where: and(eq(rules.id, link.ruleId), eq(rules.organizationId, auth.organizationId!)),
+  });
+  if (!rule) return c.json({ error: "Not authorized" }, 403);
+
   await db.delete(elementRuleLinks).where(eq(elementRuleLinks.id, id));
   return c.json({ ok: true });
 });
@@ -270,11 +352,16 @@ referenceTableRoutes.post("/validate-element", async (c) => {
   const auth = c.get("auth") as AuthContext;
   const { elementId, value, projectId } = await c.req.json();
 
-  // Get element
+  // Get element and verify org ownership
   const element = await db.query.templateElements.findFirst({
     where: eq(templateElements.id, elementId),
   });
   if (!element) return c.json({ error: "Element not found" }, 404);
+
+  const doc = await db.query.documents.findFirst({
+    where: and(eq(documents.id, element.documentId), eq(documents.organizationId, auth.organizationId!)),
+  });
+  if (!doc) return c.json({ error: "Not authorized" }, 403);
 
   // Get linked rules via element_rule_links
   const elemLinks = await db.query.elementRuleLinks.findMany({

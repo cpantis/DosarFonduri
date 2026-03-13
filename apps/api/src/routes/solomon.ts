@@ -1,8 +1,8 @@
 import type { AppEnv } from "../types/hono";
 import { Hono } from "hono";
 import { db } from "../db";
-import { solomonConversations, solomonMessages } from "../db/schema";
-import { eq } from "drizzle-orm";
+import { solomonConversations, solomonMessages, projects } from "../db/schema";
+import { eq, and } from "drizzle-orm";
 import { AuthContext } from "../middleware/auth";
 import { processSolomonMessage, processInlineRefine, generateSolomonGreeting } from "../services/solomon";
 import { uploadFile } from "../services/storage";
@@ -11,10 +11,31 @@ import { orgConfig } from "../db/schema";
 
 export const solomonRoutes = new Hono<AppEnv>();
 
+// Helper: verify project belongs to the user's organization
+async function verifyProjectOrg(projectId: string, organizationId: string) {
+  return db.query.projects.findFirst({
+    where: and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)),
+  });
+}
+
+// Helper: verify conversation belongs to the user's organization (via project)
+async function verifyConversationOrg(convId: string, organizationId: string) {
+  const conv = await db.query.solomonConversations.findFirst({
+    where: eq(solomonConversations.id, convId),
+  });
+  if (!conv) return null;
+  const project = await verifyProjectOrg(conv.projectId, organizationId);
+  if (!project) return null;
+  return conv;
+}
+
 // Create conversation
 solomonRoutes.post("/projects/:projectId/conversations", async (c) => {
   const auth = c.get("auth") as AuthContext;
   const projectId = c.req.param("projectId");
+
+  const project = await verifyProjectOrg(projectId, auth.organizationId!);
+  if (!project) return c.json({ error: "Project not found" }, 404);
 
   const config = await db.query.orgConfig.findFirst({
     where: (cfg, { eq }) => eq(cfg.organizationId, auth.organizationId!),
@@ -43,7 +64,11 @@ solomonRoutes.post("/projects/:projectId/conversations", async (c) => {
 
 // List conversations
 solomonRoutes.get("/projects/:projectId/conversations", async (c) => {
+  const auth = c.get("auth") as AuthContext;
   const projectId = c.req.param("projectId");
+
+  const project = await verifyProjectOrg(projectId, auth.organizationId!);
+  if (!project) return c.json({ error: "Project not found" }, 404);
 
   const convs = await db.query.solomonConversations.findMany({
     where: eq(solomonConversations.projectId, projectId),
@@ -58,9 +83,7 @@ solomonRoutes.post("/conversations/:convId/messages", async (c) => {
   const auth = c.get("auth") as AuthContext;
   const convId = c.req.param("convId");
 
-  const conv = await db.query.solomonConversations.findFirst({
-    where: eq(solomonConversations.id, convId),
-  });
+  const conv = await verifyConversationOrg(convId, auth.organizationId!);
   if (!conv) return c.json({ error: "Conversation not found" }, 404);
 
   const { content, useET } = await c.req.json();
@@ -88,9 +111,7 @@ solomonRoutes.post("/conversations/:convId/upload", async (c) => {
   const auth = c.get("auth") as AuthContext;
   const convId = c.req.param("convId");
 
-  const conv = await db.query.solomonConversations.findFirst({
-    where: eq(solomonConversations.id, convId),
-  });
+  const conv = await verifyConversationOrg(convId, auth.organizationId!);
   if (!conv) return c.json({ error: "Conversation not found" }, 404);
 
   const formData = await c.req.formData();
@@ -140,9 +161,7 @@ solomonRoutes.post("/conversations/:convId/refine", async (c) => {
   const auth = c.get("auth") as AuthContext;
   const convId = c.req.param("convId");
 
-  const conv = await db.query.solomonConversations.findFirst({
-    where: eq(solomonConversations.id, convId),
-  });
+  const conv = await verifyConversationOrg(convId, auth.organizationId!);
   if (!conv) return c.json({ error: "Conversation not found" }, 404);
 
   const { selectedText, instruction } = await c.req.json();
@@ -168,24 +187,31 @@ solomonRoutes.post("/conversations/:convId/refine", async (c) => {
 
 // Switch model for conversation
 solomonRoutes.put("/conversations/:convId/model", async (c) => {
+  const auth = c.get("auth") as AuthContext;
   const convId = c.req.param("convId");
   const { model } = await c.req.json();
 
   const validModels = ["claude-sonnet-4-20250514", "claude-opus-4-6"];
   if (!validModels.includes(model)) return c.json({ error: "Model invalid" }, 400);
 
+  const conv = await verifyConversationOrg(convId, auth.organizationId!);
+  if (!conv) return c.json({ error: "Conversation not found" }, 404);
+
   const [updated] = await db.update(solomonConversations)
     .set({ model })
     .where(eq(solomonConversations.id, convId))
     .returning();
 
-  if (!updated) return c.json({ error: "Conversation not found" }, 404);
   return c.json(updated);
 });
 
 // Message history
 solomonRoutes.get("/conversations/:convId/messages", async (c) => {
+  const auth = c.get("auth") as AuthContext;
   const convId = c.req.param("convId");
+
+  const conv = await verifyConversationOrg(convId, auth.organizationId!);
+  if (!conv) return c.json({ error: "Conversation not found" }, 404);
 
   const messages = await db.query.solomonMessages.findMany({
     where: eq(solomonMessages.conversationId, convId),

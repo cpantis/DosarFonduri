@@ -1,27 +1,29 @@
 "use client";
 
-const STATUS_STYLES: Record<string, string> = {
-  "funcțiune": "bg-emerald-50 text-emerald-700 border border-emerald-200",
-  "functiune": "bg-emerald-50 text-emerald-700 border border-emerald-200",
-  "active": "bg-emerald-50 text-emerald-700 border border-emerald-200",
-  "activ": "bg-emerald-50 text-emerald-700 border border-emerald-200",
-  "radiată": "bg-red-50 text-red-700 border border-red-200",
-  "radiata": "bg-red-50 text-red-700 border border-red-200",
-  "dizolvată": "bg-red-50 text-red-700 border border-red-200",
-  "dizolvata": "bg-red-50 text-red-700 border border-red-200",
-  "lichidare": "bg-red-50 text-red-700 border border-red-200",
-  "draft": "bg-slate-100 text-slate-600 border border-slate-200",
-  "în lucru": "bg-blue-50 text-blue-700 border border-blue-200",
-  "in_progress": "bg-blue-50 text-blue-700 border border-blue-200",
-  "review": "bg-amber-50 text-amber-700 border border-amber-200",
-  "submitted": "bg-indigo-50 text-indigo-700 border border-indigo-200",
-  "complet": "bg-emerald-50 text-emerald-700 border border-emerald-200",
-  "approved": "bg-emerald-50 text-emerald-700 border border-emerald-200",
-  "blocat": "bg-red-50 text-red-700 border border-red-200",
-  "rejected": "bg-red-50 text-red-700 border border-red-200",
-  "invited": "bg-amber-50 text-amber-700 border border-amber-200",
-  "disabled": "bg-slate-100 text-slate-500 border border-slate-200",
+const STATUS_STYLES: Record<string, { bg: string; color: string; border: string }> = {
+  "funcțiune": { bg: "var(--accent-green-bg)", color: "var(--accent-green)", border: "var(--accent-green-border)" },
+  "functiune": { bg: "var(--accent-green-bg)", color: "var(--accent-green)", border: "var(--accent-green-border)" },
+  "active": { bg: "var(--accent-green-bg)", color: "var(--accent-green)", border: "var(--accent-green-border)" },
+  "activ": { bg: "var(--accent-green-bg)", color: "var(--accent-green)", border: "var(--accent-green-border)" },
+  "radiată": { bg: "var(--accent-red-bg)", color: "var(--accent-red)", border: "var(--accent-red-border)" },
+  "radiata": { bg: "var(--accent-red-bg)", color: "var(--accent-red)", border: "var(--accent-red-border)" },
+  "dizolvată": { bg: "var(--accent-red-bg)", color: "var(--accent-red)", border: "var(--accent-red-border)" },
+  "dizolvata": { bg: "var(--accent-red-bg)", color: "var(--accent-red)", border: "var(--accent-red-border)" },
+  "lichidare": { bg: "var(--accent-red-bg)", color: "var(--accent-red)", border: "var(--accent-red-border)" },
+  "draft": { bg: "var(--bg-elevated)", color: "var(--text-secondary)", border: "var(--border)" },
+  "în lucru": { bg: "var(--accent-blue-bg)", color: "var(--accent-blue)", border: "var(--accent-blue-border)" },
+  "in_progress": { bg: "var(--accent-blue-bg)", color: "var(--accent-blue)", border: "var(--accent-blue-border)" },
+  "review": { bg: "var(--accent-yellow-bg)", color: "var(--accent-yellow)", border: "var(--accent-yellow-border)" },
+  "submitted": { bg: "var(--accent-blue-bg)", color: "var(--accent-blue)", border: "var(--accent-blue-border)" },
+  "complet": { bg: "var(--accent-green-bg)", color: "var(--accent-green)", border: "var(--accent-green-border)" },
+  "approved": { bg: "var(--accent-green-bg)", color: "var(--accent-green)", border: "var(--accent-green-border)" },
+  "blocat": { bg: "var(--accent-red-bg)", color: "var(--accent-red)", border: "var(--accent-red-border)" },
+  "rejected": { bg: "var(--accent-red-bg)", color: "var(--accent-red)", border: "var(--accent-red-border)" },
+  "invited": { bg: "var(--accent-yellow-bg)", color: "var(--accent-yellow)", border: "var(--accent-yellow-border)" },
+  "disabled": { bg: "var(--bg-elevated)", color: "var(--text-muted)", border: "var(--border)" },
 };
+
+const DEFAULT_STYLE = { bg: "var(--bg-elevated)", color: "var(--text-secondary)", border: "var(--border)" };
 
 const STATUS_LABELS: Record<string, string> = {
   "functiune": "Funcțiune",
@@ -44,10 +46,13 @@ interface StatusBadgeProps {
 
 export function StatusBadge({ status, label, className = "" }: StatusBadgeProps) {
   const key = status.toLowerCase();
-  const style = STATUS_STYLES[key] || "bg-slate-100 text-slate-600 border border-slate-200";
+  const s = STATUS_STYLES[key] || DEFAULT_STYLE;
   const displayLabel = label || STATUS_LABELS[key] || status;
   return (
-    <span className={`inline-flex items-center text-[11px] font-medium px-2.5 py-0.5 rounded-full ${style} ${className}`}>
+    <span
+      className={`inline-flex items-center text-[11px] font-medium px-2.5 py-0.5 rounded-full ${className}`}
+      style={{ background: s.bg, color: s.color, border: `1px solid ${s.border}` }}
+    >
       {displayLabel}
     </span>
   );

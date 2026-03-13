@@ -25,6 +25,7 @@ export interface ListaFirmeCompany {
   // Activitate
   nace: string;
   naceDescription: string;
+  naceSecondary: Array<{ cod: string; den: string }>;
   foundedDate: string;
 
   // Locație
@@ -78,6 +79,8 @@ function buildInfoPayload(cui: string): Record<string, string> {
     LegalForm: "",
     VAT: "",
     NACE: "",
+    NACEDescription: "",
+    NACESecondary: "",
     Date: "",
     County: "",
     City: "",
@@ -161,6 +164,7 @@ function transformResponse(raw: any, cui: string): ListaFirmeCompany {
 
     nace: raw.NACE || "",
     naceDescription: raw.NACEDescription || raw.NACEDesc || "",
+    naceSecondary: parseNACESecondary(raw.NACESecondary),
     foundedDate: raw.Date || "",
 
     county: raw.County || "",
@@ -189,6 +193,24 @@ function parseFinancial(val: any): number | null {
   if (val === undefined || val === null || val === "") return null;
   const n = typeof val === "string" ? parseFloat(val.replace(/[^\d.-]/g, "")) : Number(val);
   return isNaN(n) ? null : n;
+}
+
+function parseNACESecondary(data: any): Array<{ cod: string; den: string }> {
+  if (!data) return [];
+  if (typeof data === "string") {
+    // Format: "0111 - Description; 0112 - Description" or just "0111; 0112"
+    return data.split(";").filter(Boolean).map(s => {
+      const parts = s.trim().split(/\s*[-–]\s*/);
+      return { cod: parts[0]?.trim() || "", den: parts.slice(1).join(" - ").trim() || "" };
+    });
+  }
+  if (Array.isArray(data)) {
+    return data.map((item: any) => {
+      if (typeof item === "string") return { cod: item, den: "" };
+      return { cod: item.Code || item.NACE || item.cod || "", den: item.Description || item.Name || item.den || "" };
+    });
+  }
+  return [];
 }
 
 function parseAdministrators(data: any): Array<{ name: string; role: string; since: string }> {

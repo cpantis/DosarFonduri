@@ -1,12 +1,12 @@
 "use client";
 
-const COLOR_MAP: Record<string, string> = {
-  blue: "bg-blue-100 text-blue-600",
-  amber: "bg-amber-100 text-amber-600",
-  emerald: "bg-emerald-100 text-emerald-600",
-  red: "bg-red-100 text-red-600",
-  purple: "bg-purple-100 text-purple-600",
-  indigo: "bg-indigo-100 text-indigo-600",
+const COLOR_MAP: Record<string, { bg: string; text: string }> = {
+  blue: { bg: "var(--accent-blue-bg)", text: "var(--accent-blue)" },
+  amber: { bg: "var(--accent-yellow-bg)", text: "var(--accent-yellow)" },
+  emerald: { bg: "var(--accent-green-bg)", text: "var(--accent-green)" },
+  red: { bg: "var(--accent-red-bg)", text: "var(--accent-red)" },
+  purple: { bg: "var(--accent-purple-bg)", text: "var(--accent-purple)" },
+  indigo: { bg: "var(--accent-blue-bg)", text: "var(--accent-blue)" },
 };
 
 interface StatCardProps {
@@ -17,14 +17,14 @@ interface StatCardProps {
 }
 
 export function StatCard({ icon, label, value, color = "blue" }: StatCardProps) {
-  const iconStyle = COLOR_MAP[color] || COLOR_MAP.blue;
+  const c = COLOR_MAP[color] || COLOR_MAP.blue;
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-6">
-      <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-xl ${iconStyle}`}>
+    <div className="rounded-xl p-6" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
+      <div className="w-12 h-12 rounded-xl flex items-center justify-center text-xl" style={{ background: c.bg, color: c.text }}>
         {icon}
       </div>
-      <div className="text-4xl font-bold text-slate-900 mt-3">{value}</div>
-      <div className="text-sm text-slate-500 mt-1">{label}</div>
+      <div className="text-4xl font-bold mt-3" style={{ color: "var(--text-primary)" }}>{value}</div>
+      <div className="text-sm mt-1" style={{ color: "var(--text-secondary)" }}>{label}</div>
     </div>
   );
 }

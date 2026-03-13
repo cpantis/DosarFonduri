@@ -28,31 +28,28 @@ interface AuditEntry {
   createdAt: string;
 }
 
-const ROLES: Record<string, { label: string; badgeClass: string; textClass: string; perms: string[] }> = {
+const ROLES: Record<string, { label: string; color: string; perms: string[] }> = {
   admin: {
     label: "Administrator",
-    badgeClass: "bg-blue-50 text-blue-700",
-    textClass: "text-blue-700",
+    color: "var(--accent-blue)",
     perms: ["Toate permisiunile", "Gestionare utilizatori", "Configurari", "Stergere proiecte", "Export date", "Facturare"],
   },
   consultant: {
     label: "Consultant",
-    badgeClass: "bg-emerald-50 text-emerald-700",
-    textClass: "text-emerald-700",
+    color: "var(--accent-green)",
     perms: ["Creare/editare proiecte", "Solomon & Neemia", "Upload documente", "Validare elemente", "Export proiecte proprii"],
   },
   viewer: {
     label: "Vizualizare",
-    badgeClass: "bg-slate-100 text-slate-600",
-    textClass: "text-slate-600",
+    color: "var(--text-secondary)",
     perms: ["Vizualizare proiecte", "Vizualizare documente", "Fara editare", "Fara upload"],
   },
 };
 
-const AVATAR_COLORS: Record<string, string> = {
-  admin: "bg-purple-500",
-  consultant: "bg-blue-500",
-  viewer: "bg-emerald-500",
+const AVATAR_BG: Record<string, string> = {
+  admin: "#a78bfa",
+  consultant: "#4d8bff",
+  viewer: "#34d399",
 };
 
 const AUDIT_ICONS: Record<string, string> = {
@@ -86,16 +83,11 @@ function timeAgo(dateStr: string | null): string {
 
 // Color maps for distribution bars (using inline styles since these are dynamic)
 const AGENT_COLORS: Record<string, string> = { solomon: "#4d8bff", neemia: "#a78bfa", ocr: "#fb923c", ghid_rules: "#fbbf24" };
-const AGENT_DOT_CLASS: Record<string, string> = { solomon: "bg-blue-500", neemia: "bg-purple-400", ocr: "bg-orange-400", ghid_rules: "bg-yellow-400" };
+const AGENT_DOT_COLORS: Record<string, string> = { solomon: "#4d8bff", neemia: "#a78bfa", ocr: "#fb923c", ghid_rules: "#fbbf24" };
 const MODEL_COLORS: Record<string, string> = {
   "claude-haiku-4-5-20251001": "#34d399",
   "claude-sonnet-4-20250514": "#4d8bff",
   "claude-opus-4-6": "#a78bfa",
-};
-const MODEL_DOT_CLASS: Record<string, string> = {
-  "claude-haiku-4-5-20251001": "bg-emerald-400",
-  "claude-sonnet-4-20250514": "bg-blue-500",
-  "claude-opus-4-6": "bg-purple-400",
 };
 
 export default function AdminPage() {
@@ -194,18 +186,16 @@ export default function AdminPage() {
     return (
       <>
         <PageHeader title="Admin" />
-        <div className="flex-1 flex items-center justify-center bg-slate-50">
+        <div className="flex-1 flex items-center justify-center" style={{ background: "var(--bg-elevated)" }}>
           <div className="text-center">
             <div className="text-4xl mb-4">🔒</div>
-            <div className="text-lg font-bold mb-2 text-slate-900">Acces restrictionat</div>
-            <div className="text-[13px] text-slate-500">Doar administratorii au acces la acest panou.</div>
+            <div className="text-lg font-bold mb-2" style={{ color: "var(--text-primary)" }}>Acces restrictionat</div>
+            <div className="text-[13px]" style={{ color: "var(--text-secondary)" }}>Doar administratorii au acces la acest panou.</div>
           </div>
         </div>
       </>
     );
   }
-
-  const selUser = users.find((u) => u.id === selectedUser);
 
   return (
     <>
@@ -213,40 +203,57 @@ export default function AdminPage() {
       <PageHeader title="Admin" />
 
       {/* Tabs */}
-      <div className="flex border-b border-slate-200 px-8 bg-white flex-shrink-0">
+      <div
+        className="flex px-8 flex-shrink-0"
+        style={{ borderBottom: "1px solid var(--border)", background: "var(--bg-surface)" }}
+      >
         {TABS.map((t) => (
           <button
             key={t.id}
-            className={`px-5 py-3 text-[13px] font-semibold cursor-pointer border-b-2 transition-all flex items-center gap-2 bg-transparent border-t-0 border-l-0 border-r-0 ${
+            className="px-5 py-3 text-[13px] font-semibold cursor-pointer border-b-2 transition-all flex items-center gap-2 bg-transparent border-t-0 border-l-0 border-r-0"
+            style={
               activeTab === t.id
-                ? "text-blue-600 border-blue-600 font-medium"
-                : "text-slate-600 border-transparent hover:text-slate-900"
-            }`}
+                ? { color: "var(--accent-blue)", borderColor: "var(--accent-blue)" }
+                : { color: "var(--text-secondary)", borderColor: "transparent" }
+            }
             onClick={() => setActiveTab(t.id)}
           >
             {t.icon} {t.label}
             {t.id === "users" && users.length > 0 && (
-              <span className="text-[11px] font-mono bg-slate-100 px-[7px] py-px rounded-lg text-slate-500">{users.length}</span>
+              <span
+                className="text-[11px] font-mono px-[7px] py-px rounded-lg"
+                style={{ background: "var(--bg-elevated)", color: "var(--text-secondary)" }}
+              >
+                {users.length}
+              </span>
             )}
             {t.id === "audit" && auditTotal > 0 && (
-              <span className="text-[11px] font-mono bg-slate-100 px-[7px] py-px rounded-lg text-slate-500">{auditTotal}</span>
+              <span
+                className="text-[11px] font-mono px-[7px] py-px rounded-lg"
+                style={{ background: "var(--bg-elevated)", color: "var(--text-secondary)" }}
+              >
+                {auditTotal}
+              </span>
             )}
           </button>
         ))}
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto px-8 py-6 max-w-7xl bg-slate-50">
+      <div className="flex-1 overflow-y-auto px-8 py-6 max-w-7xl" style={{ background: "var(--bg-elevated)" }}>
 
         {/* ═══ UTILIZATORI ═══ */}
         {activeTab === "users" && (
           <>
             <div className="flex items-center gap-3 mb-5">
-              <div className="text-lg font-semibold text-slate-900 flex-1">
+              <div className="text-lg font-semibold flex-1" style={{ color: "var(--text-primary)" }}>
                 Echipa — {users.length} utilizatori
               </div>
               <button
-                className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded-lg text-[13px] flex items-center gap-1.5 cursor-pointer transition-all border-none shadow-sm"
+                className="font-medium px-4 py-2 rounded-lg text-[13px] flex items-center gap-1.5 cursor-pointer transition-all border-none shadow-sm"
+                style={{ background: "var(--accent-blue)", color: "#fff" }}
+                onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.88")}
+                onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
                 onClick={() => { setShowInvite(true); setInviteEmail(""); setInviteRole("consultant"); }}
               >
                 + Invita consultant
@@ -259,22 +266,45 @@ export default function AdminPage() {
               return (
                 <div key={u.id}>
                   <div
-                    className={`flex items-center gap-4 px-5 py-4 rounded-xl border bg-white mb-2 cursor-pointer transition-all ${
+                    className="flex items-center gap-4 px-5 py-4 rounded-xl mb-2 cursor-pointer transition-all"
+                    style={
                       isActive
-                        ? "border-blue-400 bg-blue-50/30"
-                        : "border-slate-200 hover:bg-slate-50 hover:border-slate-300"
-                    }`}
+                        ? {
+                            border: "1px solid var(--accent-blue)",
+                            background: "var(--bg-surface)",
+                          }
+                        : {
+                            border: "1px solid var(--border)",
+                            background: "var(--bg-surface)",
+                          }
+                    }
+                    onMouseEnter={(e) => {
+                      if (!isActive) {
+                        (e.currentTarget as HTMLDivElement).style.borderColor = "var(--border-active)";
+                        (e.currentTarget as HTMLDivElement).style.background = "var(--bg-hover)";
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isActive) {
+                        (e.currentTarget as HTMLDivElement).style.borderColor = "var(--border)";
+                        (e.currentTarget as HTMLDivElement).style.background = "var(--bg-surface)";
+                      }
+                    }}
                     onClick={() => setSelectedUser(isActive ? null : u.id)}
                   >
                     <div
-                      className={`w-[42px] h-[42px] rounded-full flex items-center justify-center text-[15px] font-bold text-white flex-shrink-0 ${AVATAR_COLORS[u.role] || "bg-blue-500"}`}
+                      className="w-[42px] h-[42px] rounded-full flex items-center justify-center text-[15px] font-bold flex-shrink-0"
+                      style={{ background: AVATAR_BG[u.role] || "#4d8bff", color: "#fff" }}
                     >
                       {getInitials(u.name)}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="text-[13px] font-semibold text-slate-900 flex items-center gap-2">
+                      <div className="text-[13px] font-semibold flex items-center gap-2" style={{ color: "var(--text-primary)" }}>
                         {u.name}
-                        <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 ${role.badgeClass}`}>
+                        <span
+                          className="text-[10px] font-semibold rounded-full px-2 py-0.5"
+                          style={{ color: role.color, background: `${role.color}18` }}
+                        >
                           {role.label}
                         </span>
                         <StatusBadge
@@ -282,53 +312,72 @@ export default function AdminPage() {
                           label={u.status === "active" ? "activ" : u.status === "invited" ? "invitat" : u.status}
                         />
                       </div>
-                      <div className="text-xs mt-0.5 font-mono text-slate-400">
+                      <div className="text-xs mt-0.5 font-mono" style={{ color: "var(--text-muted)" }}>
                         {u.email}
                       </div>
-                      <div className="flex gap-3 mt-1 text-[11px] text-slate-400">
+                      <div className="flex gap-3 mt-1 text-[11px]" style={{ color: "var(--text-muted)" }}>
                         <span>Adaugat: {new Date(u.createdAt).toLocaleDateString("ro-RO")}</span>
                       </div>
                     </div>
                     <div className="text-right flex-shrink-0">
-                      <div className="text-lg font-extrabold font-mono text-slate-900">{u.projectCount}</div>
-                      <div className="text-[10px] text-slate-400">proiecte</div>
-                      <div className="text-[11px] mt-1 font-mono text-slate-400">
+                      <div className="text-lg font-extrabold font-mono" style={{ color: "var(--text-primary)" }}>{u.projectCount}</div>
+                      <div className="text-[10px]" style={{ color: "var(--text-muted)" }}>proiecte</div>
+                      <div className="text-[11px] mt-1 font-mono" style={{ color: "var(--text-muted)" }}>
                         {timeAgo(u.lastActiveAt)}
                       </div>
                     </div>
                   </div>
 
                   {isActive && (
-                    <div className="p-5 rounded-xl border border-blue-300 bg-blue-50/20 mt-2 mb-2">
-                      <div className="text-lg font-extrabold text-slate-900 mb-1">{u.name}</div>
-                      <div className="text-[13px] mb-3 font-mono text-slate-500">{u.email}</div>
+                    <div
+                      className="p-5 rounded-xl mt-2 mb-2"
+                      style={{ border: "1px solid var(--accent-blue)", background: "var(--bg-surface)" }}
+                    >
+                      <div className="text-lg font-extrabold mb-1" style={{ color: "var(--text-primary)" }}>{u.name}</div>
+                      <div className="text-[13px] mb-3 font-mono" style={{ color: "var(--text-secondary)" }}>{u.email}</div>
                       <div className="grid grid-cols-3 gap-2.5 mb-4">
-                        <div className="p-2.5 bg-slate-50 rounded-md border border-slate-200">
-                          <div className="text-[11px] uppercase tracking-wide text-slate-500 font-medium mb-0.5">Rol</div>
-                          <div className={`text-[13px] font-semibold ${role.textClass}`}>{role.label}</div>
+                        <div
+                          className="p-2.5 rounded-md"
+                          style={{ background: "var(--bg-elevated)", border: "1px solid var(--border)" }}
+                        >
+                          <div className="text-[11px] uppercase tracking-wide font-medium mb-0.5" style={{ color: "var(--text-secondary)" }}>Rol</div>
+                          <div className="text-[13px] font-semibold" style={{ color: role.color }}>{role.label}</div>
                         </div>
-                        <div className="p-2.5 bg-slate-50 rounded-md border border-slate-200">
-                          <div className="text-[11px] uppercase tracking-wide text-slate-500 font-medium mb-0.5">Proiecte active</div>
-                          <div className="text-[13px] font-semibold text-slate-900">{u.projectCount}</div>
+                        <div
+                          className="p-2.5 rounded-md"
+                          style={{ background: "var(--bg-elevated)", border: "1px solid var(--border)" }}
+                        >
+                          <div className="text-[11px] uppercase tracking-wide font-medium mb-0.5" style={{ color: "var(--text-secondary)" }}>Proiecte active</div>
+                          <div className="text-[13px] font-semibold" style={{ color: "var(--text-primary)" }}>{u.projectCount}</div>
                         </div>
-                        <div className="p-2.5 bg-slate-50 rounded-md border border-slate-200">
-                          <div className="text-[11px] uppercase tracking-wide text-slate-500 font-medium mb-0.5">Ultima activitate</div>
-                          <div className="text-xs font-semibold text-slate-900">{timeAgo(u.lastActiveAt)}</div>
+                        <div
+                          className="p-2.5 rounded-md"
+                          style={{ background: "var(--bg-elevated)", border: "1px solid var(--border)" }}
+                        >
+                          <div className="text-[11px] uppercase tracking-wide font-medium mb-0.5" style={{ color: "var(--text-secondary)" }}>Ultima activitate</div>
+                          <div className="text-xs font-semibold" style={{ color: "var(--text-primary)" }}>{timeAgo(u.lastActiveAt)}</div>
                         </div>
                       </div>
-                      <div className="text-[11px] uppercase tracking-wide text-slate-500 font-medium mb-2">
+                      <div className="text-[11px] uppercase tracking-wide font-medium mb-2" style={{ color: "var(--text-secondary)" }}>
                         Permisiuni ({role.label})
                       </div>
                       <div className="flex flex-wrap gap-1.5 mb-4">
                         {role.perms.map((p, i) => (
-                          <span key={i} className="text-[11px] px-2.5 py-1 rounded-md bg-slate-50 border border-slate-200 text-slate-500">
+                          <span
+                            key={i}
+                            className="text-[11px] px-2.5 py-1 rounded-md"
+                            style={{ background: "var(--bg-elevated)", border: "1px solid var(--border)", color: "var(--text-secondary)" }}
+                          >
                             {p}
                           </span>
                         ))}
                       </div>
                       <div className="flex gap-2">
                         <button
-                          className="bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 rounded-lg px-4 py-2 text-xs font-semibold flex items-center gap-1 cursor-pointer transition-all"
+                          className="rounded-lg px-4 py-2 text-xs font-semibold flex items-center gap-1 cursor-pointer transition-all"
+                          style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", color: "var(--text-primary)" }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = "var(--bg-surface)")}
                           onClick={() => {
                             const next = u.role === "admin" ? "consultant" : u.role === "consultant" ? "viewer" : "admin";
                             handleChangeRole(u.id, next);
@@ -338,14 +387,20 @@ export default function AdminPage() {
                         </button>
                         {u.status === "invited" && (
                           <button
-                            className="bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 rounded-lg px-4 py-2 text-xs font-semibold flex items-center gap-1 cursor-pointer transition-all"
+                            className="rounded-lg px-4 py-2 text-xs font-semibold flex items-center gap-1 cursor-pointer transition-all"
+                            style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", color: "var(--text-primary)" }}
+                            onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
+                            onMouseLeave={(e) => (e.currentTarget.style.background = "var(--bg-surface)")}
                           >
                             Retrimite invitatie
                           </button>
                         )}
                         {u.id !== user?.id && (
                           <button
-                            className="bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 rounded-lg px-4 py-2 text-xs font-semibold flex items-center gap-1 cursor-pointer transition-all"
+                            className="rounded-lg px-4 py-2 text-xs font-semibold flex items-center gap-1 cursor-pointer transition-all"
+                            style={{ background: `${("var(--accent-red)" as string)}18`, color: "var(--accent-red)", border: "1px solid var(--accent-red)" }}
+                            onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.8")}
+                            onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
                             onClick={() => handleToggleStatus(u.id, u.status)}
                           >
                             {u.status === "disabled" ? "Activeaza" : "Dezactiveaza"}
@@ -359,7 +414,7 @@ export default function AdminPage() {
             })}
 
             {users.length === 0 && !loading && (
-              <div className="text-center py-10 text-slate-400">
+              <div className="text-center py-10" style={{ color: "var(--text-muted)" }}>
                 Niciun utilizator gasit.
               </div>
             )}
@@ -371,13 +426,19 @@ export default function AdminPage() {
           <>
             {/* Summary cards */}
             <div className="grid grid-cols-5 gap-3 mb-6">
-              <div className="bg-white rounded-xl border border-slate-200 p-5">
-                <div className="text-[11px] uppercase tracking-wide text-slate-500 font-medium mb-1.5">Total luna curenta</div>
-                <div className="text-2xl font-bold font-mono tracking-tight text-slate-900">
+              <div
+                className="rounded-xl p-5"
+                style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}
+              >
+                <div className="text-[11px] uppercase tracking-wide font-medium mb-1.5" style={{ color: "var(--text-secondary)" }}>Total luna curenta</div>
+                <div className="text-2xl font-bold font-mono tracking-tight" style={{ color: "var(--text-primary)" }}>
                   ${(costs?.totalMonth || 0).toFixed(2)}
                 </div>
                 {costs && (
-                  <div className={`text-xs font-semibold mt-1 ${costs.totalMonth > costs.totalPrevMonth ? "text-red-500" : "text-emerald-500"}`}>
+                  <div
+                    className="text-xs font-semibold mt-1"
+                    style={{ color: costs.totalMonth > costs.totalPrevMonth ? "var(--accent-red)" : "var(--accent-green)" }}
+                  >
                     {costs.totalMonth > costs.totalPrevMonth ? "↑" : "↓"} ${Math.abs(costs.totalMonth - costs.totalPrevMonth).toFixed(2)} vs. luna trecuta
                   </div>
                 )}
@@ -386,14 +447,18 @@ export default function AdminPage() {
                 const agentData = costs?.byAgent?.find((a: any) => a.agent === agent);
                 const labels: Record<string, string> = { solomon: "Solomon (Expert Fonduri)", neemia: "Neemia (Generare Dosar)", ocr: "OCR", ghid_rules: "Ghid Reguli" };
                 return (
-                  <div key={agent} className="bg-white rounded-xl border border-slate-200 p-5">
-                    <div className="text-[11px] uppercase tracking-wide text-slate-500 font-medium mb-1.5">
+                  <div
+                    key={agent}
+                    className="rounded-xl p-5"
+                    style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}
+                  >
+                    <div className="text-[11px] uppercase tracking-wide font-medium mb-1.5" style={{ color: "var(--text-secondary)" }}>
                       {labels[agent] || agent}
                     </div>
-                    <div className="text-2xl font-bold font-mono tracking-tight text-slate-900">
+                    <div className="text-2xl font-bold font-mono tracking-tight" style={{ color: "var(--text-primary)" }}>
                       ${Number(agentData?.totalCost || 0).toFixed(2)}
                     </div>
-                    <div className="text-xs mt-1 text-slate-400">
+                    <div className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
                       {costs?.totalMonth > 0 ? Math.round((Number(agentData?.totalCost || 0) / costs.totalMonth) * 100) : 0}% din total
                     </div>
                   </div>
@@ -404,19 +469,22 @@ export default function AdminPage() {
             {/* Distribution bar */}
             {costs && costs.totalMonth > 0 && (
               <div className="mb-6">
-                <div className="text-[11px] uppercase tracking-wide text-slate-500 font-medium mb-2">Distributie cost per agent</div>
-                <div className="flex overflow-hidden h-3 rounded-md bg-slate-100">
+                <div className="text-[11px] uppercase tracking-wide font-medium mb-2" style={{ color: "var(--text-secondary)" }}>Distributie cost per agent</div>
+                <div className="flex overflow-hidden h-3 rounded-md" style={{ background: "var(--bg-elevated)" }}>
                   {costs.byAgent?.map((a: any) => {
                     const pct = (Number(a.totalCost) / costs.totalMonth) * 100;
                     return <div key={a.agent} className="transition-all duration-400" style={{ width: `${pct}%`, background: AGENT_COLORS[a.agent] || "#5a6478" }} />;
                   })}
                 </div>
-                <div className="flex gap-4 mt-1.5 text-[11px] text-slate-400">
+                <div className="flex gap-4 mt-1.5 text-[11px]" style={{ color: "var(--text-muted)" }}>
                   {costs.byAgent?.map((a: any) => {
                     const labels: Record<string, string> = { solomon: "Solomon", neemia: "Neemia", ocr: "OCR", ghid_rules: "Ghid Reguli" };
                     return (
                       <span key={a.agent} className="flex items-center gap-1">
-                        <span className={`inline-block w-2 h-2 rounded-full ${AGENT_DOT_CLASS[a.agent] || "bg-slate-400"}`} />
+                        <span
+                          className="inline-block w-2 h-2 rounded-full"
+                          style={{ background: AGENT_DOT_COLORS[a.agent] || "var(--text-muted)" }}
+                        />
                         {labels[a.agent] || a.agent}
                       </span>
                     );
@@ -428,14 +496,14 @@ export default function AdminPage() {
             {/* Distribution by model */}
             {costs?.byModel && costs.byModel.length > 0 && (
               <div className="mb-6">
-                <div className="text-[11px] uppercase tracking-wide text-slate-500 font-medium mb-2">Cost per model AI</div>
-                <div className="flex overflow-hidden h-3 rounded-md bg-slate-100">
+                <div className="text-[11px] uppercase tracking-wide font-medium mb-2" style={{ color: "var(--text-secondary)" }}>Cost per model AI</div>
+                <div className="flex overflow-hidden h-3 rounded-md" style={{ background: "var(--bg-elevated)" }}>
                   {costs.byModel.map((m: any) => {
                     const pct = (Number(m.totalCost) / costs.totalMonth) * 100;
                     return <div key={m.model} className="transition-all duration-400" style={{ width: `${pct}%`, background: MODEL_COLORS[m.model] || "#fb923c" }} />;
                   })}
                 </div>
-                <div className="flex gap-4 mt-1.5 text-[11px] text-slate-400">
+                <div className="flex gap-4 mt-1.5 text-[11px]" style={{ color: "var(--text-muted)" }}>
                   {costs.byModel.map((m: any) => {
                     const modelNames: Record<string, string> = {
                       "claude-haiku-4-5-20251001": "Haiku",
@@ -444,7 +512,10 @@ export default function AdminPage() {
                     };
                     return (
                       <span key={m.model} className="flex items-center gap-1">
-                        <span className={`inline-block w-2 h-2 rounded-full ${MODEL_DOT_CLASS[m.model] || "bg-orange-400"}`} />
+                        <span
+                          className="inline-block w-2 h-2 rounded-full"
+                          style={{ background: MODEL_COLORS[m.model] || "#fb923c" }}
+                        />
                         {modelNames[m.model] || m.model} — ${Number(m.totalCost).toFixed(2)} ({Number(m.totalCalls)} apeluri)
                       </span>
                     );
@@ -456,16 +527,16 @@ export default function AdminPage() {
             {/* Daily chart */}
             {costs?.daily && costs.daily.length > 0 && (
               <div className="mb-6">
-                <div className="text-[11px] uppercase tracking-wide text-slate-500 font-medium mb-2.5">Evolutie zilnica</div>
+                <div className="text-[11px] uppercase tracking-wide font-medium mb-2.5" style={{ color: "var(--text-secondary)" }}>Evolutie zilnica</div>
                 <div className="flex items-end gap-1.5 h-20 px-1">
                   {costs.daily.map((d: any, i: number) => {
                     const maxCost = Math.max(...costs.daily.map((x: any) => Number(x.totalCost)));
                     const h = maxCost > 0 ? (Number(d.totalCost) / maxCost) * 100 : 0;
                     return (
                       <div key={i} className="flex flex-col items-center gap-1 flex-1">
-                        <span className="text-[10px] font-mono text-slate-400">${Number(d.totalCost).toFixed(2)}</span>
-                        <div className="w-full bg-blue-500 rounded-t transition-all duration-300" style={{ height: `${h}%`, minHeight: 4 }} />
-                        <span className="text-[9px] text-slate-400">{d.date}</span>
+                        <span className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>${Number(d.totalCost).toFixed(2)}</span>
+                        <div className="w-full rounded-t transition-all duration-300" style={{ height: `${h}%`, minHeight: 4, background: "var(--accent-blue)" }} />
+                        <span className="text-[9px]" style={{ color: "var(--text-muted)" }}>{d.date}</span>
                       </div>
                     );
                   })}
@@ -476,26 +547,31 @@ export default function AdminPage() {
             {/* Per project table */}
             {costs?.byProject && costs.byProject.length > 0 && (
               <>
-                <div className="text-[11px] uppercase tracking-wide text-slate-500 font-medium mb-2.5">Cost detaliat per proiect</div>
-                <div className="border border-slate-200 rounded-xl overflow-hidden bg-white">
+                <div className="text-[11px] uppercase tracking-wide font-medium mb-2.5" style={{ color: "var(--text-secondary)" }}>Cost detaliat per proiect</div>
+                <div className="rounded-xl overflow-hidden" style={{ border: "1px solid var(--border)", background: "var(--bg-surface)" }}>
                   <table className="w-full border-collapse text-[13px]">
                     <thead>
-                      <tr className="bg-slate-50">
-                        <th className="px-4 py-2.5 font-medium text-slate-500 text-[11px] uppercase tracking-wide text-left border-b border-slate-200">Proiect</th>
-                        <th className="px-4 py-2.5 font-medium text-slate-500 text-[11px] uppercase tracking-wide text-center border-b border-slate-200">Agent</th>
-                        <th className="px-4 py-2.5 font-medium text-slate-500 text-[11px] uppercase tracking-wide text-center border-b border-slate-200">Apeluri</th>
-                        <th className="px-4 py-2.5 font-medium text-slate-500 text-[11px] uppercase tracking-wide text-center border-b border-slate-200">Cost</th>
+                      <tr style={{ background: "var(--bg-elevated)" }}>
+                        <th className="px-4 py-2.5 font-medium text-[11px] uppercase tracking-wide text-left" style={{ color: "var(--text-secondary)", borderBottom: "1px solid var(--border)" }}>Proiect</th>
+                        <th className="px-4 py-2.5 font-medium text-[11px] uppercase tracking-wide text-center" style={{ color: "var(--text-secondary)", borderBottom: "1px solid var(--border)" }}>Agent</th>
+                        <th className="px-4 py-2.5 font-medium text-[11px] uppercase tracking-wide text-center" style={{ color: "var(--text-secondary)", borderBottom: "1px solid var(--border)" }}>Apeluri</th>
+                        <th className="px-4 py-2.5 font-medium text-[11px] uppercase tracking-wide text-center" style={{ color: "var(--text-secondary)", borderBottom: "1px solid var(--border)" }}>Cost</th>
                       </tr>
                     </thead>
                     <tbody>
                       {costs.byProject.map((p: any, i: number) => (
-                        <tr key={i} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                        <tr
+                          key={i}
+                          style={{ borderBottom: "1px solid var(--border)" }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = "")}
+                        >
                           <td className="px-4 py-2.5 text-left">
-                            <div className="font-semibold text-[13px] text-slate-900">{p.projectName || "N/A"}</div>
+                            <div className="font-semibold text-[13px]" style={{ color: "var(--text-primary)" }}>{p.projectName || "N/A"}</div>
                           </td>
-                          <td className="px-4 py-2.5 font-mono text-slate-500 text-center">{p.agent}</td>
-                          <td className="px-4 py-2.5 font-mono text-slate-500 text-center">{p.totalCalls}</td>
-                          <td className="px-4 py-2.5 font-extrabold text-amber-500 font-mono text-center">${Number(p.totalCost).toFixed(2)}</td>
+                          <td className="px-4 py-2.5 font-mono text-center" style={{ color: "var(--text-secondary)" }}>{p.agent}</td>
+                          <td className="px-4 py-2.5 font-mono text-center" style={{ color: "var(--text-secondary)" }}>{p.totalCalls}</td>
+                          <td className="px-4 py-2.5 font-extrabold font-mono text-center" style={{ color: "var(--accent-yellow)" }}>${Number(p.totalCost).toFixed(2)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -505,7 +581,7 @@ export default function AdminPage() {
             )}
 
             {(!costs || costs.totalMonth === 0) && (
-              <div className="text-center py-10 text-slate-400">
+              <div className="text-center py-10" style={{ color: "var(--text-muted)" }}>
                 Niciun cost AI inregistrat luna aceasta.
               </div>
             )}
@@ -516,8 +592,8 @@ export default function AdminPage() {
         {activeTab === "audit" && (
           <>
             <div className="flex items-center gap-2.5 mb-4">
-              <div className="text-lg font-semibold text-slate-900 flex-1">Jurnal activitate</div>
-              <div className="flex bg-slate-100 rounded-lg p-0.5 gap-px">
+              <div className="text-lg font-semibold flex-1" style={{ color: "var(--text-primary)" }}>Jurnal activitate</div>
+              <div className="flex rounded-lg p-0.5 gap-px" style={{ background: "var(--bg-elevated)" }}>
                 {[
                   { id: "all", label: "Toate" },
                   { id: "create", label: "Creare" },
@@ -527,11 +603,18 @@ export default function AdminPage() {
                 ].map((f) => (
                   <button
                     key={f.id}
-                    className={`px-2.5 py-1 rounded-md text-[11px] font-semibold border-none cursor-pointer transition-all ${
+                    className="px-2.5 py-1 rounded-md text-[11px] font-semibold border-none cursor-pointer transition-all"
+                    style={
                       auditFilter === f.id
-                        ? "bg-blue-600 text-white"
-                        : "bg-transparent text-slate-400 hover:text-slate-500"
-                    }`}
+                        ? { background: "var(--accent-blue)", color: "#fff" }
+                        : { background: "transparent", color: "var(--text-muted)" }
+                    }
+                    onMouseEnter={(e) => {
+                      if (auditFilter !== f.id) (e.currentTarget.style.color = "var(--text-secondary)");
+                    }}
+                    onMouseLeave={(e) => {
+                      if (auditFilter !== f.id) (e.currentTarget.style.color = "var(--text-muted)");
+                    }}
                     onClick={() => setAuditFilter(f.id)}
                   >
                     {f.label}
@@ -542,19 +625,28 @@ export default function AdminPage() {
 
             <div className="flex flex-col gap-0.5">
               {auditLogs.map((a) => (
-                <div key={a.id} className="flex items-start gap-3 px-4 py-3 rounded-md transition-colors hover:bg-slate-50 border-b border-slate-100">
-                  <div className="w-8 h-8 flex items-center justify-center text-sm flex-shrink-0 rounded-md bg-slate-100 border border-slate-200 text-slate-500">
+                <div
+                  key={a.id}
+                  className="flex items-start gap-3 px-4 py-3 rounded-md transition-colors"
+                  style={{ borderBottom: "1px solid var(--border)" }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "")}
+                >
+                  <div
+                    className="w-8 h-8 flex items-center justify-center text-sm flex-shrink-0 rounded-md"
+                    style={{ background: "var(--bg-elevated)", border: "1px solid var(--border)", color: "var(--text-secondary)" }}
+                  >
                     {AUDIT_ICONS[a.action] || "📋"}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm text-slate-700 font-medium mb-px">{a.action}</div>
-                    <div className="text-xs text-slate-500">
+                    <div className="text-sm font-medium mb-px" style={{ color: "var(--text-primary)" }}>{a.action}</div>
+                    <div className="text-xs" style={{ color: "var(--text-secondary)" }}>
                       {a.entityType && `${a.entityType}`}
                       {a.details && typeof a.details === "object" && a.details.description && ` — ${a.details.description}`}
                     </div>
                     <div className="flex gap-2 mt-0.5">
-                      <span className="text-[11px] text-slate-400">👤 {a.userName || "System"}</span>
-                      <span className="font-mono text-[12px] text-slate-500">{timeAgo(a.createdAt)}</span>
+                      <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>👤 {a.userName || "System"}</span>
+                      <span className="font-mono text-[12px]" style={{ color: "var(--text-secondary)" }}>{timeAgo(a.createdAt)}</span>
                     </div>
                   </div>
                 </div>
@@ -562,7 +654,7 @@ export default function AdminPage() {
             </div>
 
             {auditLogs.length === 0 && (
-              <div className="text-center py-10 text-slate-400">
+              <div className="text-center py-10" style={{ color: "var(--text-muted)" }}>
                 Nicio activitate inregistrata.
               </div>
             )}
@@ -573,25 +665,32 @@ export default function AdminPage() {
       {/* ═══ INVITE MODAL ═══ */}
       {showInvite && (
         <div
-          className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[100] animate-[fadeIn_0.2s]"
+          className="fixed inset-0 backdrop-blur-sm flex items-center justify-center z-[100] animate-[fadeIn_0.2s]"
+          style={{ background: "rgba(0,0,0,0.4)" }}
           onClick={(e) => e.target === e.currentTarget && setShowInvite(false)}
         >
-          <div className="bg-white rounded-xl border border-slate-200 p-6 w-[460px] animate-[slideUp_0.3s_ease]">
+          <div
+            className="rounded-xl p-6 w-[460px] animate-[slideUp_0.3s_ease]"
+            style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}
+          >
             <div className="flex justify-between items-center mb-1">
-              <div className="text-xl font-extrabold text-slate-900">Invita consultant</div>
+              <div className="text-xl font-extrabold" style={{ color: "var(--text-primary)" }}>Invita consultant</div>
               <button
-                className="text-lg cursor-pointer bg-transparent border-none text-slate-400 hover:text-slate-600"
+                className="text-lg cursor-pointer bg-transparent border-none"
+                style={{ color: "var(--text-muted)" }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = "var(--text-secondary)")}
+                onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
                 onClick={() => setShowInvite(false)}
               >
                 ✕
               </button>
             </div>
-            <div className="text-[13px] mb-5 text-slate-500">
+            <div className="text-[13px] mb-5" style={{ color: "var(--text-secondary)" }}>
               Trimite o invitatie pe email. Consultantul va primi un link de activare cont.
             </div>
 
             <div className="mb-4">
-              <label className="block text-[11px] uppercase tracking-wide text-slate-500 font-medium mb-1.5">
+              <label className="block text-[11px] uppercase tracking-wide font-medium mb-1.5" style={{ color: "var(--text-secondary)" }}>
                 Email
               </label>
               <input
@@ -599,27 +698,47 @@ export default function AdminPage() {
                 placeholder="consultant.nou@firma.ro"
                 value={inviteEmail}
                 onChange={(e) => setInviteEmail(e.target.value)}
-                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white outline-none text-slate-900"
+                className="w-full rounded-lg px-3 py-2 text-sm outline-none"
+                style={{
+                  border: "1px solid var(--border)",
+                  background: "var(--bg-surface)",
+                  color: "var(--text-primary)",
+                }}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = "var(--accent-blue)";
+                  e.currentTarget.style.boxShadow = "0 0 0 1px var(--accent-blue)";
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = "var(--border)";
+                  e.currentTarget.style.boxShadow = "none";
+                }}
               />
             </div>
 
             <div className="mb-4">
-              <label className="block text-[11px] uppercase tracking-wide text-slate-500 font-medium mb-1.5">
+              <label className="block text-[11px] uppercase tracking-wide font-medium mb-1.5" style={{ color: "var(--text-secondary)" }}>
                 Rol
               </label>
               <div className="grid grid-cols-3 gap-2">
                 {Object.entries(ROLES).map(([key, role]) => (
                   <div
                     key={key}
-                    className={`py-3 px-2.5 text-center cursor-pointer transition-all rounded-lg border-2 ${
+                    className="py-3 px-2.5 text-center cursor-pointer transition-all rounded-lg"
+                    style={
                       inviteRole === key
-                        ? "border-blue-500 bg-blue-50/30"
-                        : "border-slate-200 bg-slate-50 hover:border-slate-300"
-                    }`}
+                        ? { border: "2px solid var(--accent-blue)", background: "var(--bg-elevated)" }
+                        : { border: "2px solid var(--border)", background: "var(--bg-elevated)" }
+                    }
+                    onMouseEnter={(e) => {
+                      if (inviteRole !== key) (e.currentTarget as HTMLDivElement).style.borderColor = "var(--border-active)";
+                    }}
+                    onMouseLeave={(e) => {
+                      if (inviteRole !== key) (e.currentTarget as HTMLDivElement).style.borderColor = "var(--border)";
+                    }}
                     onClick={() => setInviteRole(key)}
                   >
-                    <div className={`text-[13px] font-bold mb-0.5 ${role.textClass}`}>{role.label}</div>
-                    <div className="text-[10px] leading-tight text-slate-400">{role.perms.slice(0, 2).join(", ")}</div>
+                    <div className="text-[13px] font-bold mb-0.5" style={{ color: role.color }}>{role.label}</div>
+                    <div className="text-[10px] leading-tight" style={{ color: "var(--text-muted)" }}>{role.perms.slice(0, 2).join(", ")}</div>
                   </div>
                 ))}
               </div>
@@ -627,13 +746,19 @@ export default function AdminPage() {
 
             <div className="flex gap-2.5 justify-end mt-4">
               <button
-                className="bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 rounded-lg px-5 py-2.5 text-sm font-semibold cursor-pointer"
+                className="rounded-lg px-5 py-2.5 text-sm font-semibold cursor-pointer"
+                style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", color: "var(--text-primary)" }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "var(--bg-surface)")}
                 onClick={() => setShowInvite(false)}
               >
                 Anuleaza
               </button>
               <button
-                className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-5 py-2.5 rounded-lg text-sm cursor-pointer border-none disabled:opacity-40"
+                className="font-medium px-5 py-2.5 rounded-lg text-sm cursor-pointer border-none disabled:opacity-40"
+                style={{ background: "var(--accent-blue)", color: "#fff" }}
+                onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.88")}
+                onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
                 disabled={!inviteEmail.includes("@")}
                 onClick={handleInvite}
               >

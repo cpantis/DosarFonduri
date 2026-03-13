@@ -15,8 +15,8 @@
 body {
   font-size: 14px;
   line-height: 1.5;
-  background: #f8fafc; /* bg-slate-50 */
-  color: #1a1e28;
+  background: var(--bg-deep);
+  color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -48,26 +48,26 @@ body {
 
 /* ═══ Selection ═══ */
 ::selection {
-  background: rgba(37,99,235,.15);
-  color: #1a1e28;
+  background: var(--accent-blue-bg, rgba(37,99,235,.15));
+  color: var(--text-primary);
 }
 
 /* ═══ Focus visible ═══ */
 :focus-visible {
-  outline: 2px solid #2563eb;
+  outline: 2px solid var(--accent-blue);
   outline-offset: 2px;
 }
 
 /* ═══ Input/select/textarea ═══ */
 input, select, textarea {
-  color: #1a1e28;
+  color: var(--text-primary);
 }
 
 input::placeholder, textarea::placeholder {
-  color: #8892a8;
+  color: var(--text-muted);
 }
 
 select option {
-  background: #ffffff;
-  color: #1a1e28;
+  background: var(--bg-surface);
+  color: var(--text-primary);
 }

@@ -49,7 +49,7 @@ function adaptCompanyResult(data: Awaited<ReturnType<typeof extractCompanyFromDo
   if (data.regCom) fields.push({ field_key: "nr_inmatriculare", field_value: data.regCom, confidence: 0.9, source_page: 1, extraction_method: "ai_sonnet" });
   if (data.formaJuridica) fields.push({ field_key: "forma_juridica", field_value: data.formaJuridica, confidence: 0.9, source_page: 1, extraction_method: "ai_sonnet" });
   if (data.caenPrincipal) fields.push({ field_key: "caen_principal", field_value: data.caenPrincipal, confidence: 0.9, source_page: null, extraction_method: "ai_sonnet" });
-  if (data.caenSecundare?.length) fields.push({ field_key: "caen_secundare", field_value: data.caenSecundare, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
+  if (data.activitatiSecundare?.length) fields.push({ field_key: "caen_secundare", field_value: data.activitatiSecundare, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
   if (data.adresa) fields.push({ field_key: "adresa_sediu", field_value: data.adresa, confidence: 0.9, source_page: null, extraction_method: "ai_sonnet" });
   if (data.localitate) fields.push({ field_key: "localitate", field_value: data.localitate, confidence: 0.9, source_page: null, extraction_method: "ai_sonnet" });
   if (data.judet) fields.push({ field_key: "judet", field_value: data.judet, confidence: 0.9, source_page: null, extraction_method: "ai_sonnet" });

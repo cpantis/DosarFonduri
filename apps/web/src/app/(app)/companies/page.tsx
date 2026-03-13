@@ -127,10 +127,11 @@ export default function CompaniesPage() {
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (file) setUploadFile(file); };
 
   return (
-    <div className="min-h-full bg-slate-50">
+    <div className="min-h-full" style={{ background: "var(--bg-deep)" }}>
       <PageHeader title="Firme">
         <button
-          className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-4 py-2 text-sm font-medium transition-colors cursor-pointer"
+          className="rounded-lg px-4 py-2 text-sm font-medium transition-colors cursor-pointer"
+          style={{ background: "var(--accent-blue)", color: "var(--text-on-accent)" }}
           onClick={() => { setShowAdd(true); setCui(""); setCuiRes(null); setAddMode("auto"); setAddForma("SRL"); setUploadFile(null); setCuiSearchResults([]); }}
         >+ Adaugă firmă</button>
       </PageHeader>
@@ -139,12 +140,13 @@ export default function CompaniesPage() {
         {/* TOOLBAR */}
         <div className="flex items-center gap-3 mb-6 flex-wrap">
           <input
-            className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-[13px] text-slate-700 placeholder:text-slate-400 focus:border-blue-300 focus:ring-1 focus:ring-blue-100 outline-none transition-colors w-80"
+            className="rounded-lg px-3 py-2 text-[13px] outline-none transition-colors w-80"
+            style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", color: "var(--text-primary)" }}
             placeholder="Cauta firma, CUI, CAEN, judet, forma..."
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
-          <div className="flex bg-slate-100 rounded-lg p-0.5 gap-0.5">
+          <div className="flex rounded-lg p-0.5 gap-0.5" style={{ background: "var(--bg-elevated)" }}>
             {[
               { key: "all", label: "Toate" },
               { key: "activ", label: "Active" },
@@ -154,30 +156,30 @@ export default function CompaniesPage() {
             ].map(item => (
               <button
                 key={item.key}
-                className={`px-3.5 py-1.5 rounded-md text-[12px] font-semibold border-none cursor-pointer transition-colors whitespace-nowrap ${
-                  filter === item.key
-                    ? "bg-blue-600 text-white"
-                    : "bg-transparent text-slate-500 hover:text-slate-700"
-                }`}
+                className="px-3.5 py-1.5 rounded-md text-[12px] font-semibold border-none cursor-pointer transition-colors whitespace-nowrap"
+                style={filter === item.key
+                  ? { background: "var(--accent-blue)", color: "var(--text-on-accent)" }
+                  : { background: "transparent", color: "var(--text-secondary)" }
+                }
                 onClick={() => setFilter(item.key)}
               >{item.label}</button>
             ))}
           </div>
-          {!loading && <span className="text-[13px] text-slate-500 font-medium ml-auto">{filtered.length} firme</span>}
+          {!loading && <span className="text-[13px] font-medium ml-auto" style={{ color: "var(--text-secondary)" }}>{filtered.length} firme</span>}
         </div>
 
         {/* COMPANY CARDS */}
         <div className="flex-1">
           {loading && (
-            <div className="flex flex-col items-center justify-center py-20 text-slate-400 gap-3">
-              <span className="inline-block w-7 h-7 border-2 border-slate-200 border-t-blue-600 rounded-full animate-spin" />
+            <div className="flex flex-col items-center justify-center py-20 gap-3" style={{ color: "var(--text-muted)" }}>
+              <span className="inline-block w-7 h-7 rounded-full animate-spin" style={{ border: "2px solid var(--border)", borderTopColor: "var(--accent-blue)" }} />
               <div className="text-[14px] text-center">Se incarca firmele...</div>
             </div>
           )}
           {error && (
-            <div className="flex flex-col items-center justify-center py-20 text-slate-400 gap-3">
-              <div className="text-[14px] text-center text-red-500">{error}</div>
-              <button className="bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 rounded-lg px-4 py-2 text-[13px] font-medium mt-2 cursor-pointer" onClick={fetchCompanies}>Reincearca</button>
+            <div className="flex flex-col items-center justify-center py-20 gap-3" style={{ color: "var(--text-muted)" }}>
+              <div className="text-[14px] text-center" style={{ color: "var(--accent-red)" }}>{error}</div>
+              <button className="rounded-lg px-4 py-2 text-[13px] font-medium mt-2 cursor-pointer" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", color: "var(--text-primary)" }} onClick={fetchCompanies}>Reincearca</button>
             </div>
           )}
           {!loading && !error && filtered.length === 0 && (
@@ -195,21 +197,40 @@ export default function CompaniesPage() {
                 return (
                   <div
                     key={f.id}
-                    className="bg-white rounded-xl border border-slate-200 p-5 hover:shadow-sm cursor-pointer transition-shadow"
+                    className="rounded-xl p-5 cursor-pointer transition-shadow"
+                    style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}
                     onClick={() => router.push(`/companies/${f.id}`)}
+                    onMouseEnter={e => e.currentTarget.style.boxShadow = "var(--shadow-sm)"}
+                    onMouseLeave={e => e.currentTarget.style.boxShadow = "none"}
                   >
                     <div className="flex items-start justify-between mb-2">
-                      <div className="text-[15px] font-semibold text-slate-900">{f.denumire}</div>
+                      <div className="text-[15px] font-semibold" style={{ color: "var(--text-primary)" }}>{f.denumire}</div>
                       <div className="flex gap-1.5 flex-wrap shrink-0 ml-3">
                         <TypeBadge type={forma || "SRL"} />
                         <StatusBadge status={isProcessing ? "in_progress" : (f.stare || "functiune")} label={isProcessing ? "Se proceseaza..." : undefined} />
                       </div>
                     </div>
-                    <div className="text-[13px] text-slate-500 flex gap-3 flex-wrap">
-                      <span>CUI: {f.cui}</span>
-                      {f.caen && <span>CAEN: {f.caen}</span>}
-                      {f.judet && <span>{f.judet}</span>}
-                      {f.anInfiintare && <span>Din {f.anInfiintare}</span>}
+                    <div className="flex flex-col gap-1 mt-1">
+                      <div className="text-[13px] flex items-center gap-2 flex-wrap" style={{ color: "var(--text-secondary)" }}>
+                        <span className="font-mono" style={{ color: "var(--text-primary)" }}>CUI: {f.cui}</span>
+                        {f.regCom && <><span style={{ color: "var(--text-muted)" }}>&middot;</span><span style={{ color: "var(--text-secondary)" }}>{f.regCom}</span></>}
+                      </div>
+                      {(f.localitate || f.judet) && (
+                        <div className="text-[12px] flex items-center gap-1" style={{ color: "var(--text-muted)" }}>
+                          <svg className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--text-muted)" }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                          <span>{[f.localitate, f.judet].filter(Boolean).join(", ")}</span>
+                        </div>
+                      )}
+                      {f.caen && (
+                        <div className="text-[12px] flex items-center gap-1" style={{ color: "var(--text-muted)" }}>
+                          <span className="font-mono" style={{ color: "var(--text-secondary)" }}>CAEN {f.caen}</span>
+                          {f.onrcRawData?.caenDesc && <span style={{ color: "var(--text-muted)" }}>&mdash; {f.onrcRawData.caenDesc}</span>}
+                        </div>
+                      )}
+                      <div className="text-[12px] flex items-center gap-2 flex-wrap" style={{ color: "var(--text-muted)" }}>
+                        {f.anInfiintare && <span>Din {f.anInfiintare}</span>}
+                        {f.capitalSocial && <><span style={{ color: "var(--text-muted)" }}>&middot;</span><span>Capital: {Number(f.capitalSocial).toLocaleString("ro-RO")} RON</span></>}
+                      </div>
                     </div>
                   </div>
                 );
@@ -221,60 +242,71 @@ export default function CompaniesPage() {
 
       {/* ADD MODAL */}
       {showAdd && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[100] animate-[fadeIn_0.2s]" onClick={e => { if (e.target === e.currentTarget) setShowAdd(false); }}>
-          <div className="bg-white border border-slate-200 rounded-2xl w-[560px] max-h-[85vh] overflow-y-auto p-8 animate-[slideUp_0.3s_ease]">
-            <div className="text-xl font-bold text-slate-900 mb-1.5 flex items-center justify-between">
+        <div className="fixed inset-0 flex items-center justify-center z-[100] animate-[fadeIn_0.2s]" style={{ background: "var(--overlay-bg)", backdropFilter: "blur(4px)" }} onClick={e => { if (e.target === e.currentTarget) setShowAdd(false); }}>
+          <div className="rounded-2xl w-[560px] max-h-[85vh] overflow-y-auto p-8 animate-[slideUp_0.3s_ease]" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
+            <div className="text-xl font-bold mb-1.5 flex items-center justify-between" style={{ color: "var(--text-primary)" }}>
               Adauga firma
-              <button className="bg-transparent border-none text-slate-400 cursor-pointer text-xl p-1 hover:text-slate-700" onClick={() => setShowAdd(false)}>&times;</button>
+              <button className="bg-transparent border-none cursor-pointer text-xl p-1" style={{ color: "var(--text-muted)" }} onClick={() => setShowAdd(false)}>&times;</button>
             </div>
-            <div className="flex rounded-lg border border-slate-200 overflow-hidden mb-5">
+            <div className="flex rounded-lg overflow-hidden mb-5" style={{ border: "1px solid var(--border)" }}>
               <button
-                className={`flex-1 py-3 text-[13px] font-semibold cursor-pointer border-none border-r border-slate-200 flex items-center justify-center gap-1.5 transition-colors ${
-                  addMode === "auto" ? "bg-blue-600 text-white" : "bg-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50"
-                }`}
+                className="flex-1 py-3 text-[13px] font-semibold cursor-pointer border-none flex items-center justify-center gap-1.5 transition-colors"
+                style={addMode === "auto"
+                  ? { background: "var(--accent-blue)", color: "var(--text-on-accent)" }
+                  : { background: "transparent", color: "var(--text-secondary)" }
+                }
                 onClick={() => setAddMode("auto")}
               >Automat (CUI)</button>
               <button
-                className={`flex-1 py-3 text-[13px] font-semibold cursor-pointer border-none flex items-center justify-center gap-1.5 transition-colors ${
-                  addMode === "manual" ? "bg-blue-600 text-white" : "bg-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50"
-                }`}
+                className="flex-1 py-3 text-[13px] font-semibold cursor-pointer border-none flex items-center justify-center gap-1.5 transition-colors"
+                style={addMode === "manual"
+                  ? { background: "var(--accent-blue)", color: "var(--text-on-accent)" }
+                  : { background: "transparent", color: "var(--text-secondary)" }
+                }
                 onClick={() => setAddMode("manual")}
               >Manual (Upload ONRC)</button>
             </div>
 
             {addMode === "auto" ? (<>
-              <div className="text-[13px] text-slate-500 mb-3.5 leading-relaxed">
+              <div className="text-[13px] mb-3.5 leading-relaxed" style={{ color: "var(--text-secondary)" }}>
                 Cauta dupa CUI sau denumire firma. Datele se preiau automat de la ListaFirme.ro / ONRC.
               </div>
               <div className="flex gap-2.5 mb-3.5 relative">
                 <input
-                  className={`flex-1 bg-white border rounded-lg px-3 py-2 text-[13px] text-slate-700 placeholder:text-slate-400 focus:border-blue-300 focus:ring-1 focus:ring-blue-100 outline-none font-mono transition-colors ${
-                    cuiRes && cuiRes !== "error" ? "border-emerald-400" : cuiRes === "error" ? "border-red-400" : "border-slate-200"
-                  }`}
+                  className="flex-1 rounded-lg px-3 py-2 text-[13px] font-mono outline-none transition-colors"
+                  style={{
+                    background: "var(--bg-surface)",
+                    color: "var(--text-primary)",
+                    border: cuiRes && cuiRes !== "error" ? "1px solid var(--accent-green)" : cuiRes === "error" ? "1px solid var(--accent-red)" : "1px solid var(--border)",
+                  }}
                   placeholder="CUI sau denumire firma..."
                   value={cui}
                   onChange={e => { setCui(e.target.value); setCuiRes(null); searchCUI(e.target.value); }}
                   onKeyDown={e => e.key === "Enter" && checkCui()}
                 />
                 <button
-                  className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded-lg text-[14px] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="font-medium px-4 py-2 rounded-lg text-[14px] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{ background: "var(--accent-blue)", color: "var(--text-on-accent)" }}
                   onClick={checkCui}
                   disabled={cuiLoad || cui.replace(/\D/g, "").length < 4}
                 >
-                  {cuiLoad ? <span className="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : "Adauga"}
+                  {cuiLoad ? <span className="inline-block w-4 h-4 rounded-full animate-spin" style={{ border: "2px solid rgba(255,255,255,.3)", borderTopColor: "#fff" }} /> : "Adauga"}
                 </button>
               </div>
 
               {cuiSearchResults.length > 0 && !cuiRes && (
-                <div className="border border-slate-200 rounded-lg bg-white overflow-hidden mb-2.5">
-                  {cuiSearching && <div className="px-4 py-2 text-[11px] text-slate-400">Se cauta...</div>}
+                <div className="rounded-lg overflow-hidden mb-2.5" style={{ border: "1px solid var(--border)", background: "var(--bg-surface)" }}>
+                  {cuiSearching && <div className="px-4 py-2 text-[11px]" style={{ color: "var(--text-muted)" }}>Se cauta...</div>}
                   {cuiSearchResults.map((r: any, idx: number) => (
                     <div key={idx}
-                      className="px-4 py-3 cursor-pointer border-b border-slate-200 transition-colors text-[13px] hover:bg-slate-50"
+                      className="px-4 py-3 cursor-pointer transition-colors text-[13px]"
+                      style={{ borderBottom: "1px solid var(--border)" }}
+                      onMouseEnter={e => e.currentTarget.style.background = "var(--bg-hover)"}
+                      onMouseLeave={e => e.currentTarget.style.background = "transparent"}
                       onClick={() => { const code = r.fiscalCode || r.taxCode || ""; setCui(code); setCuiSearchResults([]); addFromListaFirme(code); }}
                     >
-                      <div className="font-semibold text-slate-900">{r.name}</div>
-                      <div className="text-[11px] text-slate-400 flex gap-3 mt-0.5">
+                      <div className="font-semibold" style={{ color: "var(--text-primary)" }}>{r.name}</div>
+                      <div className="text-[11px] flex gap-3 mt-0.5" style={{ color: "var(--text-muted)" }}>
                         <span className="font-mono">CUI: {r.fiscalCode || r.taxCode || "\u2014"}</span>
                         {r.county && <span>{r.county}</span>}
                       </div>
@@ -284,82 +316,84 @@ export default function CompaniesPage() {
               )}
 
               {cuiLoad && (
-                <div className="flex items-center gap-2.5 p-3.5 rounded-lg border border-slate-200 bg-slate-50 mb-3.5 text-[13px] text-slate-500">
-                  <span className="inline-block w-4 h-4 border-2 border-slate-200 border-t-blue-600 rounded-full animate-spin" /> Se verifica si se adauga firma...
+                <div className="flex items-center gap-2.5 p-3.5 rounded-lg mb-3.5 text-[13px]" style={{ border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-secondary)" }}>
+                  <span className="inline-block w-4 h-4 rounded-full animate-spin" style={{ border: "2px solid var(--border)", borderTopColor: "var(--accent-blue)" }} /> Se verifica si se adauga firma...
                 </div>
               )}
               {cuiRes && cuiRes !== "error" && (
-                <div className="p-4 rounded-lg border border-emerald-300 bg-emerald-50/40 mb-3.5">
-                  <div className="text-[16px] font-bold text-emerald-600 mb-1.5">{cuiRes.denumire}</div>
-                  <div className="text-[13px] text-slate-500 mb-0.5 leading-relaxed"><strong className="text-slate-900 font-semibold mr-2">Adresa:</strong>{cuiRes.adresa}</div>
-                  <div className="text-[13px] text-slate-500 mb-0.5 leading-relaxed"><strong className="text-slate-900 font-semibold mr-2">CAEN:</strong>{cuiRes.caen}</div>
-                  <div className="text-[13px] text-slate-500 mb-0.5 leading-relaxed"><strong className="text-slate-900 font-semibold mr-2">Stare:</strong><span className="text-emerald-600">{cuiRes.stare}</span></div>
+                <div className="p-4 rounded-lg mb-3.5" style={{ border: "1px solid var(--accent-green-border)", background: "var(--accent-green-bg)" }}>
+                  <div className="text-[16px] font-bold mb-1.5" style={{ color: "var(--accent-green)" }}>{cuiRes.denumire}</div>
+                  <div className="text-[13px] mb-0.5 leading-relaxed" style={{ color: "var(--text-secondary)" }}><strong className="font-semibold mr-2" style={{ color: "var(--text-primary)" }}>Adresa:</strong>{cuiRes.adresa}</div>
+                  <div className="text-[13px] mb-0.5 leading-relaxed" style={{ color: "var(--text-secondary)" }}><strong className="font-semibold mr-2" style={{ color: "var(--text-primary)" }}>CAEN:</strong>{cuiRes.caen}</div>
+                  <div className="text-[13px] mb-0.5 leading-relaxed" style={{ color: "var(--text-secondary)" }}><strong className="font-semibold mr-2" style={{ color: "var(--text-primary)" }}>Stare:</strong><span style={{ color: "var(--accent-green)" }}>{cuiRes.stare}</span></div>
                 </div>
               )}
-              {cuiRes === "error" && <div className="p-3.5 rounded-lg border border-red-300 bg-red-50/40 mb-3.5 text-[13px] text-red-600">CUI-ul nu a fost gasit sau a aparut o eroare.</div>}
+              {cuiRes === "error" && <div className="p-3.5 rounded-lg mb-3.5 text-[13px]" style={{ border: "1px solid var(--accent-red-border)", background: "var(--accent-red-bg)", color: "var(--accent-red)" }}>CUI-ul nu a fost gasit sau a aparut o eroare.</div>}
               <div className="flex gap-2.5 justify-end">
-                <button className="bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 rounded-lg px-4 py-2 text-[14px] font-medium cursor-pointer" onClick={() => setShowAdd(false)}>Anuleaza</button>
-                <button className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded-lg text-[14px] transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled={!cuiRes || cuiRes === "error"} onClick={() => setShowAdd(false)}>Inchide</button>
+                <button className="rounded-lg px-4 py-2 text-[14px] font-medium cursor-pointer" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", color: "var(--text-primary)" }} onClick={() => setShowAdd(false)}>Anuleaza</button>
+                <button className="font-medium px-4 py-2 rounded-lg text-[14px] transition-colors disabled:opacity-50 disabled:cursor-not-allowed" style={{ background: "var(--accent-blue)", color: "var(--text-on-accent)" }} disabled={!cuiRes || cuiRes === "error"} onClick={() => setShowAdd(false)}>Inchide</button>
               </div>
             </>) : (<>
-              <div className="text-[14px] text-slate-500 mb-5 leading-relaxed">Incarca documentul ONRC si agentii vor face restul:</div>
-              <div className="text-[12px] text-slate-500 mb-4 px-3.5 py-2.5 bg-slate-50 rounded-md text-center">Upload &rarr; OCR automat &rarr; Extragere date &rarr; Validare &rarr; Stocare</div>
+              <div className="text-[14px] mb-5 leading-relaxed" style={{ color: "var(--text-secondary)" }}>Incarca documentul ONRC si agentii vor face restul:</div>
+              <div className="text-[12px] mb-4 px-3.5 py-2.5 rounded-md text-center" style={{ background: "var(--bg-elevated)", color: "var(--text-secondary)" }}>Upload &rarr; OCR automat &rarr; Extragere date &rarr; Validare &rarr; Stocare</div>
 
-              <div className="text-[11px] uppercase tracking-wide text-slate-500 font-medium mt-3.5 mb-2">Societati comerciale</div>
+              <div className="text-[11px] uppercase tracking-wide font-medium mt-3.5 mb-2" style={{ color: "var(--text-secondary)" }}>Societati comerciale</div>
               <div className="grid grid-cols-3 gap-2 mb-5">
                 {FORME_JURIDICE.filter(f => f.group === "SOC").map(f => (
                   <div
                     key={f.cod}
-                    className={`py-2.5 px-3 rounded-md border cursor-pointer text-center transition-colors text-[12px] ${
-                      addForma === f.cod
-                        ? "border-blue-400 bg-blue-50"
-                        : "border-slate-200 bg-slate-50 hover:border-slate-300"
-                    }`}
+                    className="py-2.5 px-3 rounded-md cursor-pointer text-center transition-colors text-[12px]"
+                    style={addForma === f.cod
+                      ? { border: "1px solid var(--accent-blue-border)", background: "var(--accent-blue-bg)" }
+                      : { border: "1px solid var(--border)", background: "var(--bg-elevated)" }
+                    }
                     onClick={() => setAddForma(f.cod)}
                   >
-                    <div className="font-bold font-mono text-[13px] text-slate-900 mb-0.5">{f.short}</div>
-                    <div className="text-[10px] text-slate-400 leading-tight">{f.label}</div>
+                    <div className="font-bold font-mono text-[13px] mb-0.5" style={{ color: "var(--text-primary)" }}>{f.short}</div>
+                    <div className="text-[10px] leading-tight" style={{ color: "var(--text-muted)" }}>{f.label}</div>
                   </div>
                 ))}
               </div>
 
-              <div className="text-[11px] uppercase tracking-wide text-slate-500 font-medium mt-3.5 mb-2">Persoane fizice / Intreprinderi</div>
+              <div className="text-[11px] uppercase tracking-wide font-medium mt-3.5 mb-2" style={{ color: "var(--text-secondary)" }}>Persoane fizice / Intreprinderi</div>
               <div className="grid grid-cols-3 gap-2 mb-5">
                 {FORME_JURIDICE.filter(f => f.group === "PF").map(f => (
                   <div
                     key={f.cod}
-                    className={`py-2.5 px-3 rounded-md border cursor-pointer text-center transition-colors text-[12px] ${
-                      addForma === f.cod
-                        ? "border-blue-400 bg-blue-50"
-                        : "border-slate-200 bg-slate-50 hover:border-slate-300"
-                    }`}
+                    className="py-2.5 px-3 rounded-md cursor-pointer text-center transition-colors text-[12px]"
+                    style={addForma === f.cod
+                      ? { border: "1px solid var(--accent-blue-border)", background: "var(--accent-blue-bg)" }
+                      : { border: "1px solid var(--border)", background: "var(--bg-elevated)" }
+                    }
                     onClick={() => setAddForma(f.cod)}
                   >
-                    <div className="font-bold font-mono text-[13px] text-slate-900 mb-0.5">{f.short}</div>
-                    <div className="text-[10px] text-slate-400 leading-tight">{f.label}</div>
+                    <div className="font-bold font-mono text-[13px] mb-0.5" style={{ color: "var(--text-primary)" }}>{f.short}</div>
+                    <div className="text-[10px] leading-tight" style={{ color: "var(--text-muted)" }}>{f.label}</div>
                   </div>
                 ))}
               </div>
 
               <input type="file" ref={fileInputRef} accept=".pdf" className="hidden" onChange={handleFileSelect} />
               <div
-                className="border-2 border-dashed border-slate-200 rounded-lg py-8 px-5 text-center mb-4 transition-colors cursor-pointer hover:border-blue-400 hover:bg-blue-50/30"
+                className="border-2 border-dashed rounded-lg py-8 px-5 text-center mb-4 transition-colors cursor-pointer"
+                style={{ borderColor: "var(--border)" }}
                 onClick={() => fileInputRef.current?.click()}
                 onDragOver={e => e.preventDefault()}
                 onDrop={handleFileDrop}
               >
                 <div className="text-[28px] mb-2">{uploadFile ? "\u2705" : "\u{1F4C4}"}</div>
-                <div className="text-[14px] font-semibold text-slate-700 mb-1">{uploadFile ? uploadFile.name : "Certificat constatator / Document ONRC"}</div>
-                <div className="text-[12px] text-slate-400">{uploadFile ? `${(uploadFile.size / 1024 / 1024).toFixed(1)} MB` : "Click sau trage fisierul aici (PDF, max 10MB)"}</div>
+                <div className="text-[14px] font-semibold mb-1" style={{ color: "var(--text-primary)" }}>{uploadFile ? uploadFile.name : "Certificat constatator / Document ONRC"}</div>
+                <div className="text-[12px]" style={{ color: "var(--text-muted)" }}>{uploadFile ? `${(uploadFile.size / 1024 / 1024).toFixed(1)} MB` : "Click sau trage fisierul aici (PDF, max 10MB)"}</div>
               </div>
 
               <div className="flex gap-2.5 justify-end">
-                <button className="bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 rounded-lg px-4 py-2 text-[14px] font-medium cursor-pointer" onClick={() => setShowAdd(false)}>Anuleaza</button>
+                <button className="rounded-lg px-4 py-2 text-[14px] font-medium cursor-pointer" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", color: "var(--text-primary)" }} onClick={() => setShowAdd(false)}>Anuleaza</button>
                 <button
-                  className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded-lg text-[14px] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="font-medium px-4 py-2 rounded-lg text-[14px] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{ background: "var(--accent-blue)", color: "var(--text-on-accent)" }}
                   disabled={!uploadFile || uploadLoading}
                   onClick={handleManualUpload}
-                >{uploadLoading ? <span className="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : "Proceseaza si creeaza firma"}</button>
+                >{uploadLoading ? <span className="inline-block w-4 h-4 rounded-full animate-spin" style={{ border: "2px solid rgba(255,255,255,.3)", borderTopColor: "#fff" }} /> : "Proceseaza si creeaza firma"}</button>
               </div>
             </>)}
           </div>

@@ -8,14 +8,14 @@ import { EmptyState } from "@/components/shared/EmptyState";
 
 /* ═══ HELPERS ═══ */
 
-const STATUS_DOT: Record<string, string> = {
-  draft: "bg-slate-400",
-  in_progress: "bg-blue-500",
-  review: "bg-amber-500",
-  submitted: "bg-emerald-500",
-};
-
 const pct = (a: number, b: number) => b > 0 ? Math.round((a / b) * 100) : 0;
+
+const progressColorVars: Record<string, string> = {
+  emerald: "var(--accent-green)",
+  blue: "var(--accent-blue)",
+  purple: "var(--accent-purple)",
+  orange: "var(--accent-orange)",
+};
 
 // Workflow stage definitions
 const WORKFLOW_STAGES = [
@@ -39,14 +39,13 @@ function getWorkflowStage(p: any): { currentStage: number; stageProgress: number
   const tplPct = pct(templates.done, templates.total);
 
   const stageProgress = [
-    eligPct,                                    // Eligibilitate
-    elemPct,                                    // Scriere (elements filled)
-    Math.round((docsPct + tplPct) / 2),        // Documente (docs + templates)
-    p.status === "review" || p.status === "submitted" || p.status === "approved" ? 100 : 0, // Verificare
-    p.status === "submitted" || p.status === "approved" ? 100 : 0,                          // Depunere
+    eligPct,
+    elemPct,
+    Math.round((docsPct + tplPct) / 2),
+    p.status === "review" || p.status === "submitted" || p.status === "approved" ? 100 : 0,
+    p.status === "submitted" || p.status === "approved" ? 100 : 0,
   ];
 
-  // Determine current stage
   if (p.status === "approved") return { currentStage: 5, stageProgress };
   if (p.status === "submitted") return { currentStage: 4, stageProgress };
   if (p.status === "review") return { currentStage: 3, stageProgress };
@@ -205,83 +204,94 @@ export default function ProjectsPage() {
     }
   };
 
+  const statusDots: Record<string, string> = {
+    draft: "var(--text-muted)",
+    in_progress: "var(--accent-blue)",
+    review: "var(--accent-yellow)",
+    submitted: "var(--accent-green)",
+  };
+
   return (
-    <div className="min-h-full bg-slate-50 flex flex-col">
+    <div className="min-h-full flex flex-col" style={{ background: "var(--bg-deep)" }}>
       {/* PageHeader */}
       <PageHeader title="Proiecte">
         <button
-          className="bg-blue-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-blue-700 cursor-pointer transition-colors"
+          className="rounded-lg px-4 py-2 text-sm font-medium cursor-pointer transition-colors"
+          style={{ background: "var(--accent-blue)", color: "var(--text-on-accent)" }}
           onClick={() => { setShowCreate(true); setCreateStep(1); setCreateData({ name: "", firmaId: null, folderId: null, program: null, masura: null, sesiune: null }); }}
         >+ Proiect nou</button>
       </PageHeader>
 
       <div className="px-8 py-6 flex-1 flex flex-col">
         {/* Stats pills */}
-        <div className="flex gap-3 pb-4 border-b border-slate-200 flex-shrink-0">
-          <div
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[12px] font-semibold cursor-pointer transition-all duration-150 border ${statusFilter === "all" ? "border-blue-300 bg-blue-50/60 text-slate-900" : "border-transparent text-slate-500 hover:bg-slate-50"}`}
-            onClick={() => setStatusFilter("all")}
-          >
-            <span className="font-mono font-bold">{stats.total}</span> Total
-          </div>
-          <div
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[12px] font-semibold cursor-pointer transition-all duration-150 border ${statusFilter === "draft" ? "border-blue-300 bg-blue-50/60 text-slate-900" : "border-transparent text-slate-500 hover:bg-slate-50"}`}
-            onClick={() => setStatusFilter("draft")}
-          >
-            <span className="w-2 h-2 rounded-full bg-slate-400" />
-            <span className="font-mono font-bold">{stats.draft}</span> Ciornă
-          </div>
-          <div
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[12px] font-semibold cursor-pointer transition-all duration-150 border ${statusFilter === "in_progress" ? "border-blue-300 bg-blue-50/60 text-slate-900" : "border-transparent text-slate-500 hover:bg-slate-50"}`}
-            onClick={() => setStatusFilter("in_progress")}
-          >
-            <span className="w-2 h-2 rounded-full bg-blue-500" />
-            <span className="font-mono font-bold">{stats.inProgress}</span> În lucru
-          </div>
-          <div
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[12px] font-semibold cursor-pointer transition-all duration-150 border ${statusFilter === "review" ? "border-blue-300 bg-blue-50/60 text-slate-900" : "border-transparent text-slate-500 hover:bg-slate-50"}`}
-            onClick={() => setStatusFilter("review")}
-          >
-            <span className="w-2 h-2 rounded-full bg-amber-500" />
-            <span className="font-mono font-bold">{stats.review}</span> Verificare
-          </div>
-          <div
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[12px] font-semibold cursor-pointer transition-all duration-150 border ${statusFilter === "submitted" ? "border-blue-300 bg-blue-50/60 text-slate-900" : "border-transparent text-slate-500 hover:bg-slate-50"}`}
-            onClick={() => setStatusFilter("submitted")}
-          >
-            <span className="w-2 h-2 rounded-full bg-emerald-500" />
-            <span className="font-mono font-bold">{stats.submitted}</span> Depus
-          </div>
+        <div className="flex gap-3 pb-4 flex-shrink-0" style={{ borderBottom: "1px solid var(--border)" }}>
+          {[
+            { key: "all", label: "Total", count: stats.total, dot: null },
+            { key: "draft", label: "Ciornă", count: stats.draft, dot: statusDots.draft },
+            { key: "in_progress", label: "În lucru", count: stats.inProgress, dot: statusDots.in_progress },
+            { key: "review", label: "Verificare", count: stats.review, dot: statusDots.review },
+            { key: "submitted", label: "Depus", count: stats.submitted, dot: statusDots.submitted },
+          ].map(item => (
+            <div
+              key={item.key}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[12px] font-semibold cursor-pointer transition-all duration-150"
+              style={statusFilter === item.key
+                ? { border: "1px solid var(--accent-blue-border)", background: "var(--accent-blue-bg)", color: "var(--text-primary)" }
+                : { border: "1px solid transparent", color: "var(--text-secondary)" }
+              }
+              onClick={() => setStatusFilter(item.key)}
+            >
+              {item.dot && <span className="w-2 h-2 rounded-full" style={{ background: item.dot }} />}
+              <span className="font-mono font-bold">{item.count}</span> {item.label}
+            </div>
+          ))}
         </div>
 
         {/* Toolbar */}
         <div className="flex items-center gap-2.5 py-3 flex-shrink-0">
           <input
-            className="w-72 bg-white border border-slate-200 rounded-lg px-3 py-2 text-[13px] text-slate-700 outline-none transition-colors duration-200 focus:border-blue-500 placeholder:text-slate-400"
+            className="w-72 rounded-lg px-3 py-2 text-[13px] outline-none transition-colors duration-200"
+            style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", color: "var(--text-primary)" }}
             placeholder="Caută proiect, firmă, program..."
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
-          <div className="flex bg-slate-100 rounded-lg p-0.5 gap-px">
+          <div className="flex rounded-lg p-0.5 gap-px" style={{ background: "var(--bg-elevated)" }}>
             <button
-              className={`px-2.5 py-1 rounded-md text-[11px] font-semibold border-none cursor-pointer transition-all duration-150 ${programFilter === "all" ? "bg-white shadow-sm text-slate-900" : "bg-transparent text-slate-500 hover:text-slate-700"}`}
+              className="px-2.5 py-1 rounded-md text-[11px] font-semibold border-none cursor-pointer transition-all duration-150"
+              style={programFilter === "all"
+                ? { background: "var(--bg-surface)", boxShadow: "var(--shadow-sm)", color: "var(--text-primary)" }
+                : { background: "transparent", color: "var(--text-secondary)" }
+              }
               onClick={() => setProgramFilter("all")}
             >Toate</button>
             {[...new Set(projects.map(p => p.programPath?.program).filter(Boolean))].map(pr => (
               <button
                 key={pr}
-                className={`px-2.5 py-1 rounded-md text-[11px] font-semibold border-none cursor-pointer transition-all duration-150 ${programFilter === pr ? "bg-white shadow-sm text-slate-900" : "bg-transparent text-slate-500 hover:text-slate-700"}`}
+                className="px-2.5 py-1 rounded-md text-[11px] font-semibold border-none cursor-pointer transition-all duration-150"
+                style={programFilter === pr
+                  ? { background: "var(--bg-surface)", boxShadow: "var(--shadow-sm)", color: "var(--text-primary)" }
+                  : { background: "transparent", color: "var(--text-secondary)" }
+                }
                 onClick={() => setProgramFilter(pr)}
               >{pr}</button>
             ))}
           </div>
-          <div className="flex ml-auto bg-slate-100 rounded-md p-0.5 gap-px">
+          <div className="flex ml-auto rounded-md p-0.5 gap-px" style={{ background: "var(--bg-elevated)" }}>
             <button
-              className={`px-2.5 py-1.5 rounded border-none cursor-pointer text-sm transition-all duration-150 ${viewMode === "cards" ? "bg-white shadow-sm text-slate-900" : "bg-transparent text-slate-400 hover:bg-slate-50"}`}
+              className="px-2.5 py-1.5 rounded border-none cursor-pointer text-sm transition-all duration-150"
+              style={viewMode === "cards"
+                ? { background: "var(--bg-surface)", boxShadow: "var(--shadow-sm)", color: "var(--text-primary)" }
+                : { background: "transparent", color: "var(--text-muted)" }
+              }
               onClick={() => setViewMode("cards")} title="Carduri"
             >&#9638;</button>
             <button
-              className={`px-2.5 py-1.5 rounded border-none cursor-pointer text-sm transition-all duration-150 ${viewMode === "table" ? "bg-white shadow-sm text-slate-900" : "bg-transparent text-slate-400 hover:bg-slate-50"}`}
+              className="px-2.5 py-1.5 rounded border-none cursor-pointer text-sm transition-all duration-150"
+              style={viewMode === "table"
+                ? { background: "var(--bg-surface)", boxShadow: "var(--shadow-sm)", color: "var(--text-primary)" }
+                : { background: "transparent", color: "var(--text-muted)" }
+              }
               onClick={() => setViewMode("table")} title="Tabel"
             >&#9776;</button>
           </div>
@@ -290,7 +300,7 @@ export default function ProjectsPage() {
         {/* Content */}
         <div className="flex-1 overflow-y-auto pt-2 pb-8">
           {loading ? (
-            <div className="text-center py-16 text-slate-400">
+            <div className="text-center py-16" style={{ color: "var(--text-muted)" }}>
               <div className="text-[40px] opacity-50 mb-2">&#8987;</div>
               <div className="text-sm">Se încarcă proiectele...</div>
             </div>
@@ -306,20 +316,30 @@ export default function ProjectsPage() {
             <div className="space-y-3">
               {filtered.map(p => {
                 const prog = p.progress || {};
+                const eligibility = prog.eligibility || { passed: 0, total: 0 };
                 const elements = prog.elements || { filled: 0, total: 0 };
+                const docs = prog.docs || { done: 0, total: 0 };
+                const templates = prog.templates || { done: 0, total: 0 };
                 const programPath = p.programPath || {};
-                const elemPct = pct(elements.filled, elements.total);
                 const scorePct = overallProgress(p);
                 return (
                   <div
-                    className="bg-white rounded-xl border border-slate-200 p-5 cursor-pointer transition-shadow hover:shadow-sm"
+                    className="rounded-xl p-5 cursor-pointer transition-shadow"
+                    style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}
                     key={p.id}
                     onClick={() => router.push(`/projects/${p.id}`)}
+                    onMouseEnter={e => e.currentTarget.style.boxShadow = "var(--shadow-sm)"}
+                    onMouseLeave={e => e.currentTarget.style.boxShadow = "none"}
                   >
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex-1 min-w-0">
-                        <div className="text-[15px] font-semibold text-slate-900">{p.name}</div>
-                        <div className="text-[13px] text-slate-500 mt-0.5">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[15px] font-semibold" style={{ color: "var(--text-primary)" }}>{p.name}</span>
+                          {p.valoare && (
+                            <span className="text-[12px] font-mono font-semibold" style={{ color: "var(--accent-green)" }}>{formatValoare(p.valoare)}</span>
+                          )}
+                        </div>
+                        <div className="text-[13px] mt-0.5" style={{ color: "var(--text-secondary)" }}>
                           {p.company?.denumire || "—"}
                           {(programPath.masura || programPath.sesiune) && (
                             <span> &middot; {programPath.masura || programPath.program || "—"}</span>
@@ -328,40 +348,62 @@ export default function ProjectsPage() {
                       </div>
                       <div className="flex items-center gap-3 flex-shrink-0">
                         {scorePct > 0 && (
-                          <span className="text-lg font-bold text-slate-900">{scorePct}%</span>
+                          <span className="text-lg font-bold" style={{ color: "var(--text-primary)" }}>{scorePct}%</span>
                         )}
                         <StatusBadge status={p.status} />
                       </div>
                     </div>
 
-                    {/* Progress bar: elements */}
-                    {elements.total > 0 && (
-                      <div className="mt-3">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-[11px] text-slate-500">Elemente completate</span>
-                          <span className="text-[11px] font-mono text-slate-400">{elements.filled}/{elements.total}</span>
-                        </div>
-                        <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
-                          <div
-                            className="h-full rounded-full bg-gradient-to-r from-blue-500 to-emerald-500 transition-[width] duration-300"
-                            style={{ width: `${elemPct}%` }}
-                          />
-                        </div>
-                      </div>
-                    )}
+                    {/* Workflow Progress */}
+                    <div className="grid grid-cols-4 gap-3 mt-3">
+                      {[
+                        { label: "Eligibilitate", filled: eligibility.passed, total: eligibility.total, color: "emerald" },
+                        { label: "Elemente", filled: elements.filled, total: elements.total, color: "blue" },
+                        { label: "Documente", filled: docs.done, total: docs.total, color: "purple" },
+                        { label: "Template-uri", filled: templates.done, total: templates.total, color: "orange" },
+                      ].filter(m => m.total > 0).map((m, i) => {
+                        const mp = pct(m.filled, m.total);
+                        return (
+                          <div key={i}>
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-[10px] font-medium" style={{ color: "var(--text-muted)" }}>{m.label}</span>
+                              <span className="text-[10px] font-mono" style={{ color: "var(--text-secondary)" }}>{m.filled}/{m.total}</span>
+                            </div>
+                            <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "var(--bg-elevated)" }}>
+                              <div className="h-full rounded-full transition-all duration-300" style={{ width: `${mp}%`, background: progressColorVars[m.color] }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Workflow stage indicator */}
+                    {(() => {
+                      const { currentStage } = getWorkflowStage(p);
+                      if (currentStage < WORKFLOW_STAGES.length) {
+                        const stage = WORKFLOW_STAGES[currentStage];
+                        return (
+                          <div className="flex items-center gap-1.5 text-[11px] mt-2" style={{ color: "var(--text-secondary)" }}>
+                            <span>{stage.icon}</span>
+                            <span className="font-medium">Etapă curentă: {stage.label}</span>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
 
                     {/* Footer meta */}
-                    <div className="flex items-center gap-2.5 mt-3 pt-3 border-t border-slate-100">
-                      {p.lock && <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-600">&#128274; {p.lock.lockedByName}</span>}
-                      <span className="text-[11px] text-slate-400 ml-auto font-mono">{p.updatedAt ? formatRelativeTime(p.updatedAt) : "—"}</span>
+                    <div className="flex items-center gap-2.5 mt-3 pt-3" style={{ borderTop: "1px solid var(--border)" }}>
+                      {p.lock && <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: "var(--accent-yellow-bg)", color: "var(--accent-yellow)" }}>&#128274; {p.lock.lockedByName}</span>}
+                      <span className="text-[11px] ml-auto font-mono" style={{ color: "var(--text-muted)" }}>{p.updatedAt ? formatRelativeTime(p.updatedAt) : "—"}</span>
                     </div>
                   </div>
                 );
               })}
             </div>
           ) : (
-            <div className="w-full border border-slate-200 rounded-xl overflow-hidden bg-white">
-              <div className="grid grid-cols-[1fr_140px_90px_100px_100px_100px_90px] items-center px-4 py-2.5 border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+            <div className="w-full rounded-xl overflow-hidden" style={{ border: "1px solid var(--border)", background: "var(--bg-surface)" }}>
+              <div className="grid grid-cols-[1fr_140px_90px_100px_100px_100px_90px] items-center px-4 py-2.5 text-[10px] font-bold uppercase tracking-wide" style={{ borderBottom: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-secondary)" }}>
                 <div>Proiect / Firmă</div>
                 <div>Program</div>
                 <div>Status</div>
@@ -378,38 +420,41 @@ export default function ProjectsPage() {
                 const programPath = p.programPath || {};
                 return (
                   <div
-                    className="grid grid-cols-[1fr_140px_90px_100px_100px_100px_90px] items-center px-4 py-2.5 border-b border-slate-100 last:border-b-0 transition-colors duration-150 cursor-pointer hover:bg-slate-50"
+                    className="grid grid-cols-[1fr_140px_90px_100px_100px_100px_90px] items-center px-4 py-2.5 transition-colors duration-150 cursor-pointer"
+                    style={{ borderBottom: "1px solid var(--border)" }}
                     key={p.id}
                     onClick={() => router.push(`/projects/${p.id}`)}
+                    onMouseEnter={e => e.currentTarget.style.background = "var(--bg-hover)"}
+                    onMouseLeave={e => e.currentTarget.style.background = "transparent"}
                   >
                     <div>
-                      <div className="text-[13px] font-semibold text-slate-900">
+                      <div className="text-[13px] font-semibold" style={{ color: "var(--text-primary)" }}>
                         {p.name}
-                        {p.lock && <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-600 ml-2">&#128274;</span>}
+                        {p.lock && <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold ml-2" style={{ background: "var(--accent-yellow-bg)", color: "var(--accent-yellow)" }}>&#128274;</span>}
                       </div>
-                      <div className="text-[11px] text-slate-400">{p.company?.denumire || "—"}</div>
+                      <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>{p.company?.denumire || "—"}</div>
                     </div>
-                    <div className="text-[11px] text-slate-500 font-mono">{programPath.masura || "—"}</div>
+                    <div className="text-[11px] font-mono" style={{ color: "var(--text-secondary)" }}>{programPath.masura || "—"}</div>
                     <div><StatusBadge status={p.status} /></div>
                     <div>
-                      <div className="h-1 rounded-sm bg-slate-100 overflow-hidden w-full">
-                        <div className={`h-full rounded-sm transition-[width] duration-400 ${pct(eligibility.passed, eligibility.total) === 100 ? "bg-emerald-500" : "bg-amber-400"}`} style={{ width: `${pct(eligibility.passed, eligibility.total)}%` }} />
+                      <div className="h-1 rounded-sm overflow-hidden w-full" style={{ background: "var(--bg-elevated)" }}>
+                        <div className="h-full rounded-sm transition-[width] duration-400" style={{ width: `${pct(eligibility.passed, eligibility.total)}%`, background: pct(eligibility.passed, eligibility.total) === 100 ? "var(--accent-green)" : "var(--accent-yellow)" }} />
                       </div>
-                      <div className="text-[10px] font-mono text-slate-400 mt-0.5">{eligibility.passed}/{eligibility.total}</div>
+                      <div className="text-[10px] font-mono mt-0.5" style={{ color: "var(--text-muted)" }}>{eligibility.passed}/{eligibility.total}</div>
                     </div>
                     <div>
-                      <div className="h-1 rounded-sm bg-slate-100 overflow-hidden w-full">
-                        <div className="h-full rounded-sm transition-[width] duration-400 bg-blue-500" style={{ width: `${pct(elements.filled, elements.total)}%` }} />
+                      <div className="h-1 rounded-sm overflow-hidden w-full" style={{ background: "var(--bg-elevated)" }}>
+                        <div className="h-full rounded-sm transition-[width] duration-400" style={{ width: `${pct(elements.filled, elements.total)}%`, background: "var(--accent-blue)" }} />
                       </div>
-                      <div className="text-[10px] font-mono text-slate-400 mt-0.5">{elements.filled}/{elements.total}</div>
+                      <div className="text-[10px] font-mono mt-0.5" style={{ color: "var(--text-muted)" }}>{elements.filled}/{elements.total}</div>
                     </div>
                     <div>
-                      <div className="h-1 rounded-sm bg-slate-100 overflow-hidden w-full">
-                        <div className="h-full rounded-sm transition-[width] duration-400 bg-orange-400" style={{ width: `${pct(docs.done, docs.total)}%` }} />
+                      <div className="h-1 rounded-sm overflow-hidden w-full" style={{ background: "var(--bg-elevated)" }}>
+                        <div className="h-full rounded-sm transition-[width] duration-400" style={{ width: `${pct(docs.done, docs.total)}%`, background: "var(--accent-orange)" }} />
                       </div>
-                      <div className="text-[10px] font-mono text-slate-400 mt-0.5">{docs.done}/{docs.total}</div>
+                      <div className="text-[10px] font-mono mt-0.5" style={{ color: "var(--text-muted)" }}>{docs.done}/{docs.total}</div>
                     </div>
-                    <div className="text-[11px] text-slate-400">{p.updatedAt ? formatRelativeTime(p.updatedAt) : "—"}</div>
+                    <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>{p.updatedAt ? formatRelativeTime(p.updatedAt) : "—"}</div>
                   </div>
                 );
               })}
@@ -421,28 +466,29 @@ export default function ProjectsPage() {
       {/* ═══ CREATE PROJECT MODAL ═══ */}
       {showCreate && (
         <div
-          className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[100] animate-[fadeIn_0.2s]"
+          className="fixed inset-0 flex items-center justify-center z-[100] animate-[fadeIn_0.2s]"
+          style={{ background: "var(--overlay-bg)", backdropFilter: "blur(4px)" }}
           onClick={e => e.target === e.currentTarget && setShowCreate(false)}
         >
-          <div className="bg-white border border-slate-200 rounded-2xl w-[540px] max-h-[85vh] overflow-y-auto p-7 animate-[slideUp_0.3s_ease]">
-            <div className="text-xl font-extrabold text-slate-900 mb-1 flex justify-between items-center">
+          <div className="rounded-2xl w-[540px] max-h-[85vh] overflow-y-auto p-7 animate-[slideUp_0.3s_ease]" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
+            <div className="text-xl font-extrabold mb-1 flex justify-between items-center" style={{ color: "var(--text-primary)" }}>
               Proiect nou
-              <button className="bg-transparent border-none text-slate-400 cursor-pointer text-lg hover:text-slate-700" onClick={() => setShowCreate(false)}>&#10005;</button>
+              <button className="bg-transparent border-none cursor-pointer text-lg" style={{ color: "var(--text-muted)" }} onClick={() => setShowCreate(false)}>&#10005;</button>
             </div>
 
             <div className="flex items-center mb-6">
               {["Firmă", "Program", "Confirmare"].map((label, i) => {
                 const s = i + 1;
                 return <div key={s} className="contents">
-                  <div className={`flex items-center gap-1.5 text-[12px] font-semibold ${createStep === s ? "text-blue-600" : createStep > s ? "text-emerald-500" : "text-slate-400"}`}>
-                    <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center text-[11px] font-bold font-mono ${
-                      createStep === s ? "border-blue-600 bg-blue-600 text-white" :
-                      createStep > s ? "border-emerald-500 bg-emerald-500 text-white" :
-                      "border-slate-300"
-                    }`}>{createStep > s ? "✓" : s}</div>
+                  <div className="flex items-center gap-1.5 text-[12px] font-semibold" style={{ color: createStep === s ? "var(--accent-blue)" : createStep > s ? "var(--accent-green)" : "var(--text-muted)" }}>
+                    <div className="w-6 h-6 rounded-full border-2 flex items-center justify-center text-[11px] font-bold font-mono" style={
+                      createStep === s ? { borderColor: "var(--accent-blue)", background: "var(--accent-blue)", color: "var(--text-on-accent)" } :
+                      createStep > s ? { borderColor: "var(--accent-green)", background: "var(--accent-green)", color: "var(--text-on-accent)" } :
+                      { borderColor: "var(--border)" }
+                    }>{createStep > s ? "✓" : s}</div>
                     <span>{label}</span>
                   </div>
-                  {s < 3 && <div className={`flex-1 h-0.5 mx-2.5 ${createStep > s ? "bg-emerald-500" : "bg-slate-200"}`} />}
+                  {s < 3 && <div className="flex-1 h-0.5 mx-2.5" style={{ background: createStep > s ? "var(--accent-green)" : "var(--border)" }} />}
                 </div>;
               })}
             </div>
@@ -450,11 +496,15 @@ export default function ProjectsPage() {
             {/* Step 1: Select firma */}
             {createStep === 1 && (<>
               <div className="mb-4">
-                <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1.5">Selectează firma</label>
+                <label className="block text-[11px] font-semibold uppercase tracking-wide mb-1.5" style={{ color: "var(--text-secondary)" }}>Selectează firma</label>
                 <div className="grid grid-cols-2 gap-2">
                   {companies.map(f => (
                     <div key={f.id}
-                      className={`p-3 rounded-md border cursor-pointer transition-all duration-150 text-[13px] font-semibold ${createData.firmaId === f.id ? "border-blue-500 bg-blue-50/60 text-blue-600" : "border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300"}`}
+                      className="p-3 rounded-md cursor-pointer transition-all duration-150 text-[13px] font-semibold"
+                      style={createData.firmaId === f.id
+                        ? { border: "1px solid var(--accent-blue)", background: "var(--accent-blue-bg)", color: "var(--accent-blue)" }
+                        : { border: "1px solid var(--border)", background: "var(--bg-elevated)", color: "var(--text-primary)" }
+                      }
                       onClick={() => setCreateData(p => ({ ...p, firmaId: f.id }))}>
                       &#127970; {f.name}
                     </div>
@@ -462,30 +512,34 @@ export default function ProjectsPage() {
                 </div>
               </div>
               <div className="flex gap-2.5 justify-end mt-5">
-                <button className="px-4 py-2 rounded-lg bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 text-sm font-semibold cursor-pointer" onClick={() => setShowCreate(false)}>Anulează</button>
-                <button className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed" disabled={!createData.firmaId} onClick={() => setCreateStep(2)}>Continuă &rarr;</button>
+                <button className="px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", color: "var(--text-primary)" }} onClick={() => setShowCreate(false)}>Anulează</button>
+                <button className="px-4 py-2 rounded-lg text-sm font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed" style={{ background: "var(--accent-blue)", color: "var(--text-on-accent)" }} disabled={!createData.firmaId} onClick={() => setCreateStep(2)}>Continuă &rarr;</button>
               </div>
             </>)}
 
             {/* Step 2: Select program path */}
             {createStep === 2 && (<>
               <div className="mb-4">
-                <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1.5">Selectează programul și sesiunea</label>
+                <label className="block text-[11px] font-semibold uppercase tracking-wide mb-1.5" style={{ color: "var(--text-secondary)" }}>Selectează programul și sesiunea</label>
                 {folderTree.map(prog => (
                   <div className="mb-3" key={prog.program}>
-                    <div className="text-[13px] font-bold text-slate-900 mb-1.5 flex items-center gap-1.5">
-                      <span className="w-2.5 h-2.5 rounded-full bg-blue-500" /> {prog.program}
+                    <div className="text-[13px] font-bold mb-1.5 flex items-center gap-1.5" style={{ color: "var(--text-primary)" }}>
+                      <span className="w-2.5 h-2.5 rounded-full" style={{ background: "var(--accent-blue)" }} /> {prog.program}
                     </div>
                     {prog.masuri.map(m => (
                       <div key={m.name}>
-                        <div className="py-2 px-3 pl-7 text-[13px] text-slate-500 flex items-center gap-1.5 cursor-pointer rounded-md transition-all duration-150 hover:bg-slate-50 hover:text-slate-700">
-                          <span className="w-1.5 h-1.5 rounded-full bg-orange-400" /> {m.name}
+                        <div className="py-2 px-3 pl-7 text-[13px] flex items-center gap-1.5 cursor-pointer rounded-md transition-all duration-150" style={{ color: "var(--text-secondary)" }}>
+                          <span className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--accent-orange)" }} /> {m.name}
                         </div>
                         {m.sesiuni.map(s => (
                           <div key={s.folderId}
-                            className={`py-1.5 px-3 pl-[52px] text-[12px] flex items-center gap-1.5 cursor-pointer rounded-md transition-all duration-150 ${createData.folderId === s.folderId ? "bg-blue-50/60 text-blue-600 font-semibold" : "text-slate-400 hover:bg-slate-50 hover:text-slate-500"}`}
+                            className="py-1.5 px-3 pl-[52px] text-[12px] flex items-center gap-1.5 cursor-pointer rounded-md transition-all duration-150"
+                            style={createData.folderId === s.folderId
+                              ? { background: "var(--accent-blue-bg)", color: "var(--accent-blue)", fontWeight: 600 }
+                              : { color: "var(--text-muted)" }
+                            }
                             onClick={() => setCreateData(p => ({ ...p, folderId: s.folderId, program: prog.program, masura: m.name, sesiune: s.name }))}>
-                            <span className="w-1 h-1 rounded-full bg-slate-300" /> {s.name}
+                            <span className="w-1 h-1 rounded-full" style={{ background: "var(--text-muted)" }} /> {s.name}
                           </div>
                         ))}
                       </div>
@@ -494,17 +548,18 @@ export default function ProjectsPage() {
                 ))}
               </div>
               <div className="flex gap-2.5 justify-end mt-5">
-                <button className="px-4 py-2 rounded-lg bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 text-sm font-semibold cursor-pointer" onClick={() => setCreateStep(1)}>&larr; Înapoi</button>
-                <button className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed" disabled={!createData.folderId} onClick={() => setCreateStep(3)}>Continuă &rarr;</button>
+                <button className="px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", color: "var(--text-primary)" }} onClick={() => setCreateStep(1)}>&larr; Înapoi</button>
+                <button className="px-4 py-2 rounded-lg text-sm font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed" style={{ background: "var(--accent-blue)", color: "var(--text-on-accent)" }} disabled={!createData.folderId} onClick={() => setCreateStep(3)}>Continuă &rarr;</button>
               </div>
             </>)}
 
             {/* Step 3: Name + confirm */}
             {createStep === 3 && (<>
               <div className="mb-4">
-                <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1.5">Denumire proiect</label>
+                <label className="block text-[11px] font-semibold uppercase tracking-wide mb-1.5" style={{ color: "var(--text-secondary)" }}>Denumire proiect</label>
                 <input
-                  className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 bg-white text-slate-900 text-sm outline-none focus:border-blue-500 placeholder:text-slate-400"
+                  className="w-full px-3.5 py-2.5 rounded-lg text-sm outline-none"
+                  style={{ border: "1px solid var(--border)", background: "var(--bg-surface)", color: "var(--text-primary)" }}
                   placeholder="ex: Modernizare linie producție..."
                   value={createData.name}
                   onChange={e => setCreateData(p => ({ ...p, name: e.target.value }))}
@@ -512,20 +567,20 @@ export default function ProjectsPage() {
                 />
               </div>
 
-              <div className="p-4 rounded-xl border border-blue-200 bg-blue-50/30 mb-4">
-                <div className="flex gap-2 text-[13px] mb-1"><span className="text-slate-400 min-w-[80px]">Firmă:</span><span className="text-slate-900 font-semibold">{companies.find(f => f.id === createData.firmaId)?.name}</span></div>
-                <div className="flex gap-2 text-[13px] mb-1"><span className="text-slate-400 min-w-[80px]">Program:</span><span className="text-slate-900 font-semibold">{createData.program}</span></div>
-                <div className="flex gap-2 text-[13px] mb-1"><span className="text-slate-400 min-w-[80px]">Măsură:</span><span className="text-slate-900 font-semibold">{createData.masura}</span></div>
-                <div className="flex gap-2 text-[13px]"><span className="text-slate-400 min-w-[80px]">Sesiune:</span><span className="text-slate-900 font-semibold">{createData.sesiune}</span></div>
+              <div className="p-4 rounded-xl mb-4" style={{ border: "1px solid var(--accent-blue-border)", background: "var(--accent-blue-bg)" }}>
+                <div className="flex gap-2 text-[13px] mb-1"><span className="min-w-[80px]" style={{ color: "var(--text-muted)" }}>Firmă:</span><span className="font-semibold" style={{ color: "var(--text-primary)" }}>{companies.find(f => f.id === createData.firmaId)?.name}</span></div>
+                <div className="flex gap-2 text-[13px] mb-1"><span className="min-w-[80px]" style={{ color: "var(--text-muted)" }}>Program:</span><span className="font-semibold" style={{ color: "var(--text-primary)" }}>{createData.program}</span></div>
+                <div className="flex gap-2 text-[13px] mb-1"><span className="min-w-[80px]" style={{ color: "var(--text-muted)" }}>Măsură:</span><span className="font-semibold" style={{ color: "var(--text-primary)" }}>{createData.masura}</span></div>
+                <div className="flex gap-2 text-[13px]"><span className="min-w-[80px]" style={{ color: "var(--text-muted)" }}>Sesiune:</span><span className="font-semibold" style={{ color: "var(--text-primary)" }}>{createData.sesiune}</span></div>
               </div>
 
-              <div className="text-[12px] text-slate-400 mb-4 leading-relaxed">
+              <div className="text-[12px] mb-4 leading-relaxed" style={{ color: "var(--text-muted)" }}>
                 La creare, proiectul va prelua automat ghidurile, template-urile și regulile din sesiunea selectată. Solomon va fi disponibil pentru pregătirea și verificarea conformității dosarului.
               </div>
 
               <div className="flex gap-2.5 justify-end mt-5">
-                <button className="px-4 py-2 rounded-lg bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 text-sm font-semibold cursor-pointer" onClick={() => setCreateStep(2)}>&larr; Înapoi</button>
-                <button className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed" disabled={!createData.name.trim() || creating} onClick={handleCreate}>
+                <button className="px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", color: "var(--text-primary)" }} onClick={() => setCreateStep(2)}>&larr; Înapoi</button>
+                <button className="px-4 py-2 rounded-lg text-sm font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed" style={{ background: "var(--accent-blue)", color: "var(--text-on-accent)" }} disabled={!createData.name.trim() || creating} onClick={handleCreate}>
                   {creating ? "Se creează..." : "Creează proiect"}
                 </button>
               </div>

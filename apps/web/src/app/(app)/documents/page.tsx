@@ -1044,9 +1044,9 @@ export default function DocumentsPage() {
           <div className="doc-detail-stitle">Date extrase ({selDoc.extractedFields.length} campuri)</div>
           <div className="flex flex-col gap-1 max-h-[200px] overflow-y-auto">
             {selDoc.extractedFields.map((f, i) => (
-              <div key={i} className="flex justify-between items-center px-2.5 py-1.5 bg-slate-50 rounded-md border border-slate-200 text-xs">
-                <span className="text-slate-400 font-semibold max-w-[45%] overflow-hidden text-ellipsis whitespace-nowrap">{f.field_key.replace(/_/g, " ")}</span>
-                <span className="text-slate-900 font-mono text-[11px] max-w-[50%] overflow-hidden text-ellipsis whitespace-nowrap text-right">
+              <div key={i} className="flex justify-between items-center px-2.5 py-1.5 rounded-md text-xs" style={{ background: "var(--bg-elevated)", border: "1px solid var(--border)" }}>
+                <span className="font-semibold max-w-[45%] overflow-hidden text-ellipsis whitespace-nowrap" style={{ color: "var(--text-muted)" }}>{f.field_key.replace(/_/g, " ")}</span>
+                <span className="font-mono text-[11px] max-w-[50%] overflow-hidden text-ellipsis whitespace-nowrap text-right" style={{ color: "var(--text-primary)" }}>
                   {typeof f.field_value === "object" ? JSON.stringify(f.field_value).slice(0, 40) : String(f.field_value).slice(0, 40)}
                 </span>
               </div>
@@ -1314,14 +1314,14 @@ export default function DocumentsPage() {
       {/* ─── TOPBAR ─── */}
       <PageHeader title="Documente">
         <div className="flex items-center gap-4">
-          <div className="flex items-center gap-1.5 text-xs text-slate-500">
-            <span className="font-mono font-bold text-sm text-slate-700">{totalDocs}</span> documente
+          <div className="flex items-center gap-1.5 text-xs" style={{ color: "var(--text-secondary)" }}>
+            <span className="font-mono font-bold text-sm" style={{ color: "var(--text-primary)" }}>{totalDocs}</span> documente
           </div>
-          <div className="flex items-center gap-1.5 text-xs text-slate-500">
-            <span className="font-mono font-bold text-sm text-emerald-600">{procesate}</span> procesate
+          <div className="flex items-center gap-1.5 text-xs" style={{ color: "var(--text-secondary)" }}>
+            <span className="font-mono font-bold text-sm" style={{ color: "var(--accent-green)" }}>{procesate}</span> procesate
           </div>
-          <div className="flex items-center gap-1.5 text-xs text-slate-500">
-            <span className="font-mono font-bold text-sm text-blue-600">{templates}</span> template-uri
+          <div className="flex items-center gap-1.5 text-xs" style={{ color: "var(--text-secondary)" }}>
+            <span className="font-mono font-bold text-sm" style={{ color: "var(--accent-blue)" }}>{templates}</span> template-uri
           </div>
         </div>
       </PageHeader>
@@ -1410,7 +1410,7 @@ export default function DocumentsPage() {
               <button className="doc-modal-close" onClick={() => { setShowUpload(false); setUploadFiles([]); setUploadError(null); setUploadProgress(0); setUploadWarnings([]); }}>{"\u2715"}</button>
             </div>
             <div className="doc-modal-sub">
-              Destinatie: <strong className="text-slate-900">{breadcrumb.length > 0 ? breadcrumb.join(" \u203A ") : "Selecteaza un folder"}</strong>
+              Destinatie: <strong style={{ color: "var(--text-primary)" }}>{breadcrumb.length > 0 ? breadcrumb.join(" \u203A ") : "Selecteaza un folder"}</strong>
             </div>
 
             {/* Auto-detected type from folder — shown as info pill, not a selector */}
@@ -1500,7 +1500,7 @@ export default function DocumentsPage() {
                     {formatFileSize(uploadFiles.reduce((sum, f) => sum + f.size, 0))} total {"\u00B7"} Gata de upload
                   </div>
                   {uploadFiles.length > 1 && (
-                    <div className="mt-2 text-[11px] text-slate-400 text-left max-h-[80px] overflow-auto">
+                    <div className="mt-2 text-[11px] text-left max-h-[80px] overflow-auto" style={{ color: "var(--text-muted)" }}>
                       {uploadFiles.map((f, i) => (
                         <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "1px 0" }}>
                           <span>{f.name}</span>

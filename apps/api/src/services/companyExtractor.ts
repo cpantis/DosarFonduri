@@ -48,7 +48,9 @@ export interface ExtractedCompanyData {
     activeCirculante?: number;
   }>;
   caenPrincipal?: string;
-  caenSecundare?: string[];
+  caenDesc?: string;
+  activitatiSecundare?: Array<{ cod: string; den: string }>;
+  sediiSecundare?: Array<{ denumire: string; adresa: string }>;
 }
 
 export async function extractCompanyFromDocument(pdfText: string): Promise<ExtractedCompanyData | null> {
@@ -109,7 +111,14 @@ Returnează JSON cu structura:
     { "year": 2023, "cifraAfaceri": 33883844, "profitBrut": 6567414, "profitNet": 5294485, "angajati": 124, "capitaluriProprii": 27376475 }
   ],
   "caenPrincipal": "0220",
-  "caenSecundare": ["0111", "0112"]
+  "caenDesc": "Exploatare forestieră",
+  "activitatiSecundare": [
+    { "cod": "0111", "den": "Cultivarea cerealelor (exclusiv orez), plantelor leguminoase și a plantelor producătoare de semințe oleaginoase" },
+    { "cod": "0112", "den": "Cultivarea orezului" }
+  ],
+  "sediiSecundare": [
+    { "denumire": "Punct de lucru 1", "adresa": "Str. Example, Nr. 10, Oraș, Județ" }
+  ]
 }
 
 TEXT DOCUMENT:

@@ -725,7 +725,11 @@ companyRoutes.post("/from-listafirme", async (c) => {
     caen: lfData.nace || undefined,
     stare: (lfData.status || "").toLowerCase().includes("radia") ? "radiata" as const : "functiune" as const,
     anInfiintare: foundedYear && !isNaN(foundedYear) ? foundedYear : undefined,
-    onrcRawData: lfData.raw,
+    onrcRawData: {
+      ...lfData.raw,
+      caenDesc: lfData.naceDescription || "",
+      activitatiSecundare: lfData.naceSecondary || [],
+    },
     lastSyncedAt: new Date(),
     createdBy: auth.userId,
   }).returning();

@@ -1,18 +1,20 @@
 "use client";
 
-const TYPE_STYLES: Record<string, string> = {
-  srl: "bg-blue-50 text-blue-700 border-blue-200",
-  pfa: "bg-purple-50 text-purple-700 border-purple-200",
-  sa: "bg-indigo-50 text-indigo-700 border-indigo-200",
-  ii: "bg-teal-50 text-teal-700 border-teal-200",
-  if: "bg-teal-50 text-teal-700 border-teal-200",
-  snc: "bg-cyan-50 text-cyan-700 border-cyan-200",
-  scs: "bg-cyan-50 text-cyan-700 border-cyan-200",
-  sca: "bg-cyan-50 text-cyan-700 border-cyan-200",
-  sc: "bg-slate-100 text-slate-700 border-slate-200",
-  ra: "bg-orange-50 text-orange-700 border-orange-200",
-  sa_bvb: "bg-indigo-50 text-indigo-700 border-indigo-200",
+const TYPE_STYLES: Record<string, { bg: string; color: string; border: string }> = {
+  srl: { bg: "var(--accent-blue-bg)", color: "var(--accent-blue)", border: "var(--accent-blue-border)" },
+  pfa: { bg: "var(--accent-purple-bg)", color: "var(--accent-purple)", border: "var(--accent-purple-border)" },
+  sa: { bg: "var(--accent-blue-bg)", color: "var(--accent-blue)", border: "var(--accent-blue-border)" },
+  ii: { bg: "var(--accent-green-bg)", color: "var(--accent-green)", border: "var(--accent-green-border)" },
+  if: { bg: "var(--accent-green-bg)", color: "var(--accent-green)", border: "var(--accent-green-border)" },
+  snc: { bg: "var(--accent-blue-bg)", color: "var(--accent-blue)", border: "var(--accent-blue-border)" },
+  scs: { bg: "var(--accent-blue-bg)", color: "var(--accent-blue)", border: "var(--accent-blue-border)" },
+  sca: { bg: "var(--accent-blue-bg)", color: "var(--accent-blue)", border: "var(--accent-blue-border)" },
+  sc: { bg: "var(--bg-elevated)", color: "var(--text-secondary)", border: "var(--border)" },
+  ra: { bg: "var(--accent-orange-bg)", color: "var(--accent-orange)", border: "var(--accent-orange-border)" },
+  sa_bvb: { bg: "var(--accent-blue-bg)", color: "var(--accent-blue)", border: "var(--accent-blue-border)" },
 };
+
+const DEFAULT_STYLE = { bg: "var(--bg-elevated)", color: "var(--text-secondary)", border: "var(--border)" };
 
 interface TypeBadgeProps {
   type: string;
@@ -21,9 +23,12 @@ interface TypeBadgeProps {
 
 export function TypeBadge({ type, className = "" }: TypeBadgeProps) {
   const key = type.toLowerCase();
-  const style = TYPE_STYLES[key] || "bg-slate-100 text-slate-700 border-slate-200";
+  const s = TYPE_STYLES[key] || DEFAULT_STYLE;
   return (
-    <span className={`inline-flex items-center text-[11px] font-medium px-2.5 py-0.5 rounded-full border ${style} ${className}`}>
+    <span
+      className={`inline-flex items-center text-[11px] font-medium px-2.5 py-0.5 rounded-full ${className}`}
+      style={{ background: s.bg, color: s.color, border: `1px solid ${s.border}` }}
+    >
       {type.toUpperCase()}
     </span>
   );

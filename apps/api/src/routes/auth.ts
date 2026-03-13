@@ -67,24 +67,51 @@ authRoutes.post("/signup", async (c) => {
 
     // Create organization — prefer: code.companyName (provider-set) > body.companyName (listafirme) > fallback
     const orgName = code.companyName || body.companyName || (body.name + " Cabinet");
-    const [org] = await db.insert(organizations).values({
-      name: orgName,
-      code: code.code,
-      plan: code.plan,
-      maxUsers: code.maxUsers,
-      trialEndsAt: new Date(Date.now() + code.trialDays * 86400000),
-      status: code.trialDays > 0 ? "trial" : "active",
-    }).returning();
+
+    let org: any;
+    try {
+      const [created] = await db.insert(organizations).values({
+        name: orgName,
+        code: code.code,
+        plan: code.plan,
+        maxUsers: code.maxUsers,
+        trialEndsAt: new Date(Date.now() + code.trialDays * 86400000),
+        status: code.trialDays > 0 ? "trial" : "active",
+      }).returning();
+      org = created;
+    } catch (orgErr: any) {
+      console.error("[signup] Org insert failed:", orgErr.message);
+      // Check if org already exists with this code (partial previous signup)
+      if (orgErr.message?.includes("unique") || orgErr.message?.includes("duplicate")) {
+        const existingOrg = await db.query.organizations.findFirst({
+          where: eq(organizations.code, code.code),
+        });
+        if (existingOrg) {
+          org = existingOrg;
+        } else {
+          return c.json({ error: `Eroare la crearea cabinetului: ${orgErr.message}` }, 500);
+        }
+      } else {
+        return c.json({ error: `Eroare la crearea cabinetului: ${orgErr.message}` }, 500);
+      }
+    }
 
     // Create user as admin
-    const [user] = await db.insert(users).values({
-      email: body.email,
-      name: body.name,
-      passwordHash,
-      organizationId: org.id,
-      role: "admin",
-      status: "active",
-    }).returning();
+    let user: any;
+    try {
+      const [created] = await db.insert(users).values({
+        email: body.email,
+        name: body.name,
+        passwordHash,
+        organizationId: org.id,
+        role: "admin",
+        status: "active",
+      }).returning();
+      user = created;
+    } catch (userErr: any) {
+      console.error("[signup] User insert failed:", userErr.message);
+      return c.json({ error: `Eroare la crearea utilizatorului: ${userErr.message}` }, 500);
+    }
 
     // Mark code as used
     await db.update(cabinetCodes).set({

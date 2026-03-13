@@ -298,66 +298,67 @@ export default function CompanyDetailPage() {
         </div>
 
         {/* TAB CONTENT */}
-        <div className="flex-1 overflow-y-auto px-8 py-6" style={{ background: "var(--bg-elevated)" }}>
+        <div className="flex-1 overflow-y-auto px-8 py-8" style={{ background: "var(--bg-deep)" }}>
 
           {/* GENERAL */}
           {activeTab === "General" && (<>
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-5">
-              <div className="rounded-xl border p-4 col-span-2" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
-                <CardLabel label="Forma juridica" value={FORME_JURIDICE.find(fj => fj.cod === sel.forma)?.label || sel.forma} />
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-5 mb-6">
+              <div className="rounded-xl border p-5 col-span-2" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
+                <CardLabel label="Forma juridica" value={FORME_JURIDICE.find(fj => fj.cod === sel.forma)?.label || sel.forma} size="lg" />
               </div>
-              <div className="rounded-xl border p-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
+              <div className="rounded-xl border p-5" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
                 <CardLabel label="Stare" value={<StatusBadge status={sel.stare || "activ"} label={sel.stare} />} />
               </div>
-              <div className="rounded-xl border p-4 col-span-2" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
+              <div className="rounded-xl border p-5 col-span-2" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
                 <CardLabel
                   label="Adresa"
                   value={
                     <>
                       <div>{sel.adresa || "\u2014"}</div>
-                      <div className="text-xs font-normal mt-1" style={{ color: "var(--text-muted)" }}>
+                      <div className="text-[13px] font-normal mt-1" style={{ color: "var(--text-muted)" }}>
                         {sel.localitate || ""}{sel.localitate && sel.judet ? ", " : ""}{sel.judet || ""} {sel.codPostal || ""}
                       </div>
                     </>
                   }
+                  size="lg"
                 />
               </div>
-              <div className="rounded-xl border p-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
-                <CardLabel label="Telefon" value={sel.telefon || "\u2014"} mono />
+              <div className="rounded-xl border p-5" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
+                <CardLabel label="Telefon" value={sel.telefon || "\u2014"} mono size="lg" />
               </div>
               {sel.email && (
-                <div className="rounded-xl border p-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
+                <div className="rounded-xl border p-5" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
                   <CardLabel label="Email" value={sel.email} mono />
                 </div>
               )}
               {sel.website && (
-                <div className="rounded-xl border p-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
+                <div className="rounded-xl border p-5" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
                   <CardLabel label="Website" value={<a href={sel.website.startsWith('http') ? sel.website : `https://${sel.website}`} target="_blank" rel="noopener noreferrer" className="hover:underline" style={{ color: "var(--accent-blue)" }}>{sel.website}</a>} />
                 </div>
               )}
-              <div className="rounded-xl border p-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
-                <CardLabel label={getFieldLabel("durata_label", sel.forma)} value={sel.durata || "\u2014"} />
+              <div className="rounded-xl border p-5" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
+                <CardLabel label={getFieldLabel("durata_label", sel.forma)} value={sel.durata || "\u2014"} size="lg" />
               </div>
-              <div className="rounded-xl border p-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
+              <div className="rounded-xl border p-5" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
                 <CardLabel label="An infiintare" value={sel.anInfiintare || "\u2014"} mono />
               </div>
-              <div className="rounded-xl border p-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
+              <div className="rounded-xl border p-5" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
                 <CardLabel label="CAEN" value={`${sel.caen || "\u2014"} — ${sel.caenDesc}`} />
               </div>
               {sel.regCom && (
-                <div className="rounded-xl border p-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
-                  <CardLabel label="Reg. Com." value={sel.regCom} mono />
+                <div className="rounded-xl border p-5" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
+                  <CardLabel label="Nr. Reg. Com." value={sel.regCom} mono size="lg" />
                 </div>
               )}
               {sel.euid && (
-                <div className="rounded-xl border p-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
+                <div className="rounded-xl border p-5" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
                   <CardLabel label="EUID" value={sel.euid} mono />
                 </div>
               )}
             </div>
             {sel.activitatiSecundare && sel.activitatiSecundare.length > 0 && (
-              <div className="rounded-xl border p-4 mt-4 mb-1" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
-                <div className="text-[11px] uppercase tracking-wide font-medium mb-2" style={{ color: "var(--text-secondary)" }}>Activitati secundare ({sel.activitatiSecundare.length})</div>
+              <div className="rounded-xl border p-5 mt-5 mb-2" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
+                <div className="text-[12px] uppercase tracking-wide font-semibold mb-3" style={{ color: "var(--text-secondary)" }}>Activitati secundare ({sel.activitatiSecundare.length})</div>
                 <div className="flex flex-wrap gap-2">
                   {sel.activitatiSecundare.slice(0, 5).map((a: any, i: number) => (
                     <span key={i} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-[12px]" style={{ color: "var(--text-secondary)", background: "var(--bg-elevated)", borderColor: "var(--border)" }}>
@@ -374,37 +375,32 @@ export default function CompanyDetailPage() {
               </div>
             )}
             {isPF(sel.forma) && sel.patrimoniu_afectat && (
-              <div className="rounded-xl border border-l-[3px] border-l-blue-500 p-4 mb-5" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
-                <div className="text-[11px] uppercase tracking-wide font-medium mb-1" style={{ color: "var(--text-secondary)" }}>Patrimoniu de afectatiune</div>
-                <div className="text-[13px] leading-relaxed" style={{ color: "var(--text-secondary)" }}>{sel.patrimoniu_afectat}</div>
+              <div className="rounded-xl p-5 mb-6" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderLeft: "3px solid var(--accent-blue)" }}>
+                <div className="text-[12px] uppercase tracking-wide font-semibold mb-1.5" style={{ color: "var(--text-secondary)" }}>Patrimoniu de afectatiune</div>
+                <div className="text-[14px] leading-relaxed" style={{ color: "var(--text-primary)" }}>{sel.patrimoniu_afectat}</div>
               </div>
             )}
-            <div className="rounded-xl border border-l-[3px] border-l-blue-500 p-4 mb-5" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
-              <div className="text-[11px] uppercase tracking-wide font-medium mb-1" style={{ color: "var(--text-secondary)" }}>Ultima mentiune</div>
-              <div className="text-[13px] leading-relaxed" style={{ color: "var(--text-secondary)" }}>{sel.ultimaMentiune}</div>
+            <div className="rounded-xl p-5 mb-6" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", borderLeft: "3px solid var(--accent-blue)" }}>
+              <div className="text-[12px] uppercase tracking-wide font-semibold mb-1.5" style={{ color: "var(--text-secondary)" }}>Ultima mentiune</div>
+              <div className="text-[14px] leading-relaxed" style={{ color: "var(--text-primary)" }}>{sel.ultimaMentiune}</div>
             </div>
             {isSOC(sel.forma) && sel.capitalSocial && (<>
-              <div className="text-xs font-bold uppercase tracking-wider mt-5 mb-3" style={{ color: "var(--text-muted)" }}>Capital social</div>
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="rounded-xl border p-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
-                  <CardLabel label="Subscris" value={fmt(sel.capitalSocial)} mono />
-                </div>
-                <div className="rounded-xl border p-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
-                  <CardLabel label={getFieldLabel("parti_actiuni", sel.forma)} value={sel.partiSociale || sel.actiuni || "\u2014"} mono />
-                </div>
-                <div className="rounded-xl border p-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
-                  <CardLabel label={getFieldLabel("valoare_parte", sel.forma)} value={fmt(sel.valoareParte || sel.valoareActiune)} mono />
-                </div>
-                <div className="rounded-xl border p-4" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
+              <div className="rounded-xl border p-6 mb-6" style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
+                <div className="text-[14px] font-bold mb-5" style={{ color: "var(--text-primary)" }}>Capital social</div>
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
+                  <CardLabel label="Subscris" value={fmt(sel.capitalSocial)} mono size="lg" />
+                  <CardLabel label={getFieldLabel("parti_actiuni", sel.forma)} value={sel.partiSociale || sel.actiuni || "\u2014"} mono size="lg" />
+                  <CardLabel label={getFieldLabel("valoare_parte", sel.forma)} value={fmt(sel.valoareParte || sel.valoareActiune)} mono size="lg" />
                   <CardLabel
-                    label="Natura capital"
+                    label="Natura"
                     value={
-                      <span className="text-xs">
+                      <>
                         privat autohton {sel.natura?.privatAutohton || sel.natura?.privat_autohton || 0}%
                         {((sel.natura?.privatStrain ?? sel.natura?.privat_strain ?? 0) > 0) ? `, strain ${sel.natura?.privatStrain || sel.natura?.privat_strain}%` : ""}
                         {((sel.natura?.stat ?? 0) > 0) ? `, stat ${sel.natura!.stat}%` : ""}
-                      </span>
+                      </>
                     }
+                    size="lg"
                   />
                 </div>
               </div>

@@ -11,17 +11,17 @@ export function ProgressBar2({
   className?: string;
 }) {
   const pct = max > 0 ? Math.min(100, Math.round((value / max) * 100)) : 0;
-  const gradients: Record<string, string> = {
-    scoring: "bg-gradient-to-r from-blue-500 to-emerald-500",
-    collection: "bg-gradient-to-r from-blue-500 to-violet-500",
-    simple: "bg-blue-500",
+  const fills: Record<string, string> = {
+    scoring: "var(--accent-blue)",
+    collection: "var(--accent-purple)",
+    simple: "var(--accent-blue)",
   };
-  const fill = gradients[variant] || gradients.simple;
+  const fillColor = fills[variant] || fills.simple;
   return (
-    <div className={`bg-slate-100 rounded-full h-2 overflow-hidden ${className}`}>
+    <div className={`rounded-full h-2 overflow-hidden ${className}`} style={{ background: "var(--bg-elevated)" }}>
       <div
-        className={`h-full rounded-full transition-all duration-500 ${fill}`}
-        style={{ width: `${pct}%` }}
+        className="h-full rounded-full transition-all duration-500"
+        style={{ width: `${pct}%`, background: fillColor }}
       />
     </div>
   );

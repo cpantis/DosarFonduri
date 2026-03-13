@@ -36,21 +36,24 @@ export function SlideOver({ open, onClose, title, width = "400px", children }: S
       />
       {/* Panel */}
       <div
-        className="fixed top-0 right-0 h-full z-50 border-l border-slate-200 shadow-2xl transition-transform overflow-y-auto bg-white"
+        className="fixed top-0 right-0 h-full z-50 shadow-2xl transition-transform overflow-y-auto"
         style={{
           width,
           maxWidth: "90vw",
+          background: "var(--bg-surface)",
+          borderLeft: "1px solid var(--border)",
         }}
       >
         {title && (
-          <div className="flex items-center gap-3 p-4 border-b border-slate-200">
+          <div className="flex items-center gap-3 p-4" style={{ borderBottom: "1px solid var(--border)" }}>
             <button
               onClick={onClose}
-              className="transition-colors text-slate-400 hover:text-slate-900"
+              className="transition-colors cursor-pointer border-none bg-transparent"
+              style={{ color: "var(--text-secondary)" }}
             >
               &#8592;
             </button>
-            <h3 className="font-bold text-slate-900">{title}</h3>
+            <h3 className="font-bold" style={{ color: "var(--text-primary)" }}>{title}</h3>
           </div>
         )}
         {children}

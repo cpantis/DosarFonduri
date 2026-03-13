@@ -53,7 +53,7 @@ authRoutes.post("/signup", async (c) => {
       where: eq(cabinetCodes.code, body.cabinetCode.toUpperCase()),
     });
     if (!code || code.organizationId) return c.json({ error: "Cod invalid sau deja folosit" }, 400);
-    if (code.expiresAt < new Date()) return c.json({ error: "Cod expirat" }, 400);
+    if (!code.isActive) return c.json({ error: "Cod dezactivat" }, 400);
 
     // CUI handshake: if the code is tied to a CUI, the signup CUI must match
     if (code.cui) {
@@ -275,8 +275,8 @@ authRoutes.post("/validate-code", async (c) => {
   if (!cabinetCode || cabinetCode.organizationId) {
     return c.json({ valid: false, error: "Cod invalid sau deja folosit" });
   }
-  if (cabinetCode.expiresAt < new Date()) {
-    return c.json({ valid: false, error: "Cod expirat" });
+  if (!cabinetCode.isActive) {
+    return c.json({ valid: false, error: "Cod dezactivat" });
   }
 
   return c.json({

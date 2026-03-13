@@ -5,7 +5,8 @@ import { apiGet, apiPost } from "@/lib/api";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { BtnPrimary } from "@/components/ui/Buttons";
+import { BtnPrimary, BtnSecondary } from "@/components/ui/Buttons";
+import { SkeletonCard } from "@/components/ui/Skeleton";
 
 const pct = (a: number, b: number) => b > 0 ? Math.round((a / b) * 100) : 0;
 
@@ -18,10 +19,10 @@ function formatRelativeTime(dateStr: string): string {
   const diffDays = Math.floor(diffMs / 86400000);
 
   if (diffMin < 1) return "Acum";
-  if (diffMin < 60) return `Acum ${diffMin} min`;
-  if (diffHours < 24) return `Acum ${diffHours} ore`;
+  if (diffMin < 60) return `${diffMin} min`;
+  if (diffHours < 24) return `${diffHours}h`;
   if (diffDays === 1) return "Ieri";
-  if (diffDays < 7) return `Acum ${diffDays} zile`;
+  if (diffDays < 7) return `${diffDays} zile`;
   return date.toLocaleDateString("ro-RO", { day: "numeric", month: "short", year: "numeric" });
 }
 
@@ -32,17 +33,8 @@ function formatValoare(val: string | null | undefined): string {
   return new Intl.NumberFormat("ro-RO").format(num) + " EUR";
 }
 
-interface FolderNode {
-  id: string;
-  name: string;
-  type?: string;
-  children?: FolderNode[];
-}
-
-interface ProgramTree {
-  program: string;
-  masuri: { name: string; sesiuni: { name: string; folderId: string }[] }[];
-}
+interface FolderNode { id: string; name: string; type?: string; children?: FolderNode[]; }
+interface ProgramTree { program: string; masuri: { name: string; sesiuni: { name: string; folderId: string }[] }[]; }
 
 function buildProgramTree(folders: FolderNode[]): ProgramTree[] {
   const tree: ProgramTree[] = [];
@@ -70,7 +62,6 @@ export default function ProjectsPage() {
   const [createStep, setCreateStep] = useState(1);
   const [createData, setCreateData] = useState<{ name: string; firmaId: string | null; folderId: string | null; program: string | null; masura: string | null; sesiune: string | null }>({ name: "", firmaId: null, folderId: null, program: null, masura: null, sesiune: null });
   const [creating, setCreating] = useState(false);
-
   const [projects, setProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [companies, setCompanies] = useState<any[]>([]);
@@ -79,38 +70,28 @@ export default function ProjectsPage() {
   useEffect(() => {
     setLoading(true);
     apiGet("/api/projects")
-      .then((data: any) => {
-        setProjects(Array.isArray(data) ? data : data.projects || []);
-      })
+      .then((data: any) => { setProjects(Array.isArray(data) ? data : data.projects || []); })
       .catch(() => setProjects([]))
       .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
     if (!showCreate) return;
-    apiGet("/api/companies")
-      .then((data: any) => {
-        const list = Array.isArray(data) ? data : data.companies || [];
-        setCompanies(list.map((c: any) => ({ id: c.id, name: c.denumire || c.name })));
-      })
-      .catch(() => setCompanies([]));
-    apiGet("/api/documents/folders")
-      .then((data: any) => {
-        const folders = Array.isArray(data) ? data : data.folders || [];
-        setFolderTree(buildProgramTree(folders));
-      })
-      .catch(() => setFolderTree([]));
+    apiGet("/api/companies").then((data: any) => {
+      const list = Array.isArray(data) ? data : data.companies || [];
+      setCompanies(list.map((c: any) => ({ id: c.id, name: c.denumire || c.name })));
+    }).catch(() => setCompanies([]));
+    apiGet("/api/documents/folders").then((data: any) => {
+      const folders = Array.isArray(data) ? data : data.folders || [];
+      setFolderTree(buildProgramTree(folders));
+    }).catch(() => setFolderTree([]));
   }, [showCreate]);
 
   const handleCreate = async () => {
     if (!createData.name.trim() || !createData.firmaId || !createData.folderId) return;
     setCreating(true);
     try {
-      const result: any = await apiPost("/api/projects", {
-        name: createData.name.trim(),
-        companyId: createData.firmaId,
-        folderId: createData.folderId,
-      });
+      const result: any = await apiPost("/api/projects", { name: createData.name.trim(), companyId: createData.firmaId, folderId: createData.folderId });
       setShowCreate(false);
       router.push(`/projects/${result.id}`);
     } catch (err) {
@@ -119,49 +100,78 @@ export default function ProjectsPage() {
     }
   };
 
+  const openCreate = () => {
+    setShowCreate(true);
+    setCreateStep(1);
+    setCreateData({ name: "", firmaId: null, folderId: null, program: null, masura: null, sesiune: null });
+  };
+
   return (
-    <>
+    <div className="animate-[fadeIn_.2s_ease-out]">
       <PageHeader title="Proiecte" subtitle="Dosare de finanțare în lucru">
-        <BtnPrimary icon="+" onClick={() => { setShowCreate(true); setCreateStep(1); setCreateData({ name: "", firmaId: null, folderId: null, program: null, masura: null, sesiune: null }); }}>Proiect nou</BtnPrimary>
+        <BtnPrimary icon="+" onClick={openCreate}>Proiect nou</BtnPrimary>
       </PageHeader>
 
       <div className="max-w-6xl mx-auto px-8 py-6">
         {loading ? (
-          <div className="text-center py-16 text-slate-400">
-            <div className="text-sm">Se încarcă proiectele...</div>
+          <div className="space-y-3">
+            <SkeletonCard /><SkeletonCard /><SkeletonCard />
           </div>
         ) : projects.length === 0 ? (
-          <EmptyState icon="📁" title="Niciun proiect încă" description="Creează un proiect nou pentru a începe pregătirea dosarului." actionLabel="Creează primul proiect" onAction={() => { setShowCreate(true); setCreateStep(1); setCreateData({ name: "", firmaId: null, folderId: null, program: null, masura: null, sesiune: null }); }} />
+          <EmptyState icon="📁" title="Niciun proiect încă" description="Creează un proiect nou pentru a începe pregătirea dosarului." actionLabel="Creează primul proiect" onAction={openCreate} />
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-2">
             {projects.map(p => {
               const prog = p.progress || {};
               const eligibility = prog.eligibility || { passed: 0, total: 0 };
               const elements = prog.elements || { filled: 0, total: 0 };
               const programPath = p.programPath || {};
+              const eligPct = pct(eligibility.passed, eligibility.total);
+              const elemPct = pct(elements.filled, elements.total);
               return (
                 <div
                   key={p.id}
-                  className="bg-white rounded-xl border border-slate-200 p-5 hover:shadow-sm hover:border-slate-300 transition-all cursor-pointer"
+                  className="bg-white rounded-xl border border-slate-200/80 p-5 hover:shadow-sm hover:border-slate-300/80 transition-all cursor-pointer group"
                   onClick={() => router.push(`/projects/${p.id}`)}
                 >
                   <div className="flex items-center justify-between">
-                    <div>
+                    <div className="min-w-0">
                       <div className="flex items-center gap-2.5">
-                        <span className="text-[15px] font-semibold text-slate-900">{p.name}</span>
+                        <span className="text-[15px] font-semibold text-slate-900 group-hover:text-blue-600 transition-colors">{p.name}</span>
                         <StatusBadge status={p.status} />
-                        {p.valoare && <span className="text-[13px] font-mono font-semibold text-emerald-600">{formatValoare(p.valoare)}</span>}
+                        {p.valoare && <span className="text-[13px] font-mono font-semibold text-emerald-600 tabular-nums">{formatValoare(p.valoare)}</span>}
                       </div>
                       <div className="text-[13px] text-slate-500 mt-1 flex items-center gap-2">
                         <span>{p.company?.denumire || "—"}</span>
-                        {programPath.masura && <><span className="text-slate-300">·</span><span>{programPath.masura}</span></>}
-                        {p.updatedAt && <><span className="text-slate-300">·</span><span>{formatRelativeTime(p.updatedAt)}</span></>}
+                        {programPath.masura && <><span className="text-slate-200">·</span><span className="text-slate-400">{programPath.masura}</span></>}
+                        {p.updatedAt && <><span className="text-slate-200">·</span><span className="text-slate-400">{formatRelativeTime(p.updatedAt)}</span></>}
                       </div>
                     </div>
-                    <div className="flex items-center gap-4 text-[12px] text-slate-500">
-                      {eligibility.total > 0 && <span>Elig. {eligibility.passed}/{eligibility.total}</span>}
-                      {elements.total > 0 && <span>Elem. {elements.filled}/{elements.total}</span>}
-                      <svg className="w-5 h-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                    <div className="flex items-center gap-5 shrink-0">
+                      {/* Progress indicators */}
+                      {eligibility.total > 0 && (
+                        <div className="text-right">
+                          <div className="text-[11px] text-slate-400 mb-1">Eligibilitate</div>
+                          <div className="flex items-center gap-2">
+                            <div className="w-16 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                              <div className="h-full rounded-full transition-all" style={{ width: `${eligPct}%`, background: eligPct >= 80 ? "#059669" : eligPct >= 50 ? "#2563eb" : "#d97706" }} />
+                            </div>
+                            <span className="text-[12px] font-medium text-slate-600 tabular-nums">{eligibility.passed}/{eligibility.total}</span>
+                          </div>
+                        </div>
+                      )}
+                      {elements.total > 0 && (
+                        <div className="text-right">
+                          <div className="text-[11px] text-slate-400 mb-1">Elemente</div>
+                          <div className="flex items-center gap-2">
+                            <div className="w-16 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                              <div className="h-full rounded-full transition-all" style={{ width: `${elemPct}%`, background: elemPct >= 80 ? "#059669" : elemPct >= 50 ? "#2563eb" : "#d97706" }} />
+                            </div>
+                            <span className="text-[12px] font-medium text-slate-600 tabular-nums">{elements.filled}/{elements.total}</span>
+                          </div>
+                        </div>
+                      )}
+                      <svg className="w-4 h-4 text-slate-300 group-hover:text-slate-400 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                     </div>
                   </div>
                 </div>
@@ -173,69 +183,66 @@ export default function ProjectsPage() {
 
       {/* CREATE PROJECT MODAL */}
       {showCreate && (
-        <div
-          className="fixed inset-0 flex items-center justify-center z-[100]"
-          style={{ background: "rgba(0,0,0,0.4)", backdropFilter: "blur(4px)" }}
-          onClick={e => e.target === e.currentTarget && setShowCreate(false)}
-        >
-          <div className="bg-white rounded-2xl w-[540px] max-h-[85vh] overflow-y-auto p-7 border border-slate-200">
-            <div className="text-xl font-extrabold mb-1 flex justify-between items-center text-slate-900">
-              Proiect nou
-              <button className="bg-transparent border-none cursor-pointer text-lg text-slate-400" onClick={() => setShowCreate(false)}>&#10005;</button>
+        <div className="fixed inset-0 flex items-center justify-center z-[100] bg-black/40 backdrop-blur-sm" onClick={e => e.target === e.currentTarget && setShowCreate(false)}>
+          <div className="bg-white rounded-2xl w-[520px] max-h-[85vh] overflow-y-auto p-7 border border-slate-200/80 shadow-xl animate-[fadeUp_.2s_ease-out]">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-[18px] font-bold text-slate-900">Proiect nou</h2>
+              <button className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors" onClick={() => setShowCreate(false)}>
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
             </div>
 
+            {/* Stepper */}
             <div className="flex items-center mb-6">
               {["Firmă", "Program", "Confirmare"].map((label, i) => {
                 const s = i + 1;
                 return <div key={s} className="contents">
-                  <div className={`flex items-center gap-1.5 text-[12px] font-semibold ${createStep === s ? "text-blue-600" : createStep > s ? "text-emerald-600" : "text-slate-400"}`}>
-                    <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center text-[11px] font-bold font-mono ${
-                      createStep === s ? "border-blue-600 bg-blue-600 text-white" :
-                      createStep > s ? "border-emerald-500 bg-emerald-500 text-white" :
-                      "border-slate-200"
+                  <div className={`flex items-center gap-1.5 text-[12px] font-medium ${createStep === s ? "text-blue-600" : createStep > s ? "text-emerald-600" : "text-slate-400"}`}>
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold font-mono transition-all ${
+                      createStep === s ? "bg-blue-600 text-white" :
+                      createStep > s ? "bg-emerald-500 text-white" :
+                      "bg-slate-100 text-slate-400"
                     }`}>{createStep > s ? "✓" : s}</div>
                     <span>{label}</span>
                   </div>
-                  {s < 3 && <div className={`flex-1 h-0.5 mx-2.5 ${createStep > s ? "bg-emerald-500" : "bg-slate-200"}`} />}
+                  {s < 3 && <div className={`flex-1 h-px mx-3 ${createStep > s ? "bg-emerald-300" : "bg-slate-200"}`} />}
                 </div>;
               })}
             </div>
 
             {createStep === 1 && (<>
-              <div className="mb-4">
-                <label className="block text-[11px] font-semibold uppercase tracking-wide mb-1.5 text-slate-500">Selectează firma</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {companies.map(f => (
-                    <div key={f.id}
-                      className={`p-3 rounded-md cursor-pointer transition-all duration-150 text-[13px] font-semibold border ${createData.firmaId === f.id ? "border-blue-400 bg-blue-50 text-blue-700" : "border-slate-200 bg-slate-50 text-slate-900"}`}
-                      onClick={() => setCreateData(p => ({ ...p, firmaId: f.id }))}>
-                      &#127970; {f.name}
-                    </div>
-                  ))}
-                </div>
+              <label className="block text-[11px] font-medium uppercase tracking-wider mb-2 text-slate-400">Selectează firma</label>
+              <div className="grid grid-cols-2 gap-1.5 mb-5">
+                {companies.map(f => (
+                  <div key={f.id}
+                    className={`p-3 rounded-lg cursor-pointer transition-all text-[13px] font-medium border ${createData.firmaId === f.id ? "border-blue-300 bg-blue-50 text-blue-700 ring-2 ring-blue-50" : "border-slate-200/80 bg-white text-slate-700 hover:bg-slate-50"}`}
+                    onClick={() => setCreateData(p => ({ ...p, firmaId: f.id }))}>
+                    🏢 {f.name}
+                  </div>
+                ))}
               </div>
-              <div className="flex gap-2.5 justify-end mt-5">
-                <button className="px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer bg-white border border-slate-300 text-slate-700" onClick={() => setShowCreate(false)}>Anulează</button>
-                <button className="px-4 py-2 rounded-lg text-sm font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed bg-blue-600 text-white" disabled={!createData.firmaId} onClick={() => setCreateStep(2)}>Continuă &rarr;</button>
+              <div className="flex gap-2 justify-end">
+                <BtnSecondary onClick={() => setShowCreate(false)}>Anulează</BtnSecondary>
+                <BtnPrimary disabled={!createData.firmaId} onClick={() => setCreateStep(2)}>Continuă →</BtnPrimary>
               </div>
             </>)}
 
             {createStep === 2 && (<>
-              <div className="mb-4">
-                <label className="block text-[11px] font-semibold uppercase tracking-wide mb-1.5 text-slate-500">Selectează programul și sesiunea</label>
+              <label className="block text-[11px] font-medium uppercase tracking-wider mb-2 text-slate-400">Selectează programul și sesiunea</label>
+              <div className="mb-5 space-y-2">
                 {folderTree.map(prog => (
-                  <div className="mb-3" key={prog.program}>
-                    <div className="text-[13px] font-bold mb-1.5 flex items-center gap-1.5 text-slate-900">
-                      <span className="w-2.5 h-2.5 rounded-full bg-blue-500" /> {prog.program}
+                  <div key={prog.program}>
+                    <div className="text-[13px] font-semibold mb-1 flex items-center gap-2 text-slate-900">
+                      <span className="w-2 h-2 rounded-full bg-blue-500" /> {prog.program}
                     </div>
                     {prog.masuri.map(m => (
                       <div key={m.name}>
-                        <div className="py-2 px-3 pl-7 text-[13px] flex items-center gap-1.5 cursor-pointer rounded-md text-slate-500">
+                        <div className="py-1.5 px-3 pl-7 text-[13px] flex items-center gap-2 text-slate-500">
                           <span className="w-1.5 h-1.5 rounded-full bg-amber-400" /> {m.name}
                         </div>
                         {m.sesiuni.map(s => (
                           <div key={s.folderId}
-                            className={`py-1.5 px-3 pl-[52px] text-[12px] flex items-center gap-1.5 cursor-pointer rounded-md transition-all ${createData.folderId === s.folderId ? "bg-blue-50 text-blue-600 font-semibold" : "text-slate-400"}`}
+                            className={`py-1.5 px-3 pl-[52px] text-[12px] flex items-center gap-2 cursor-pointer rounded-lg transition-all ${createData.folderId === s.folderId ? "bg-blue-50 text-blue-600 font-medium" : "text-slate-400 hover:text-slate-600 hover:bg-slate-50"}`}
                             onClick={() => setCreateData(p => ({ ...p, folderId: s.folderId, program: prog.program, masura: m.name, sesiune: s.name }))}>
                             <span className="w-1 h-1 rounded-full bg-slate-300" /> {s.name}
                           </div>
@@ -245,45 +252,45 @@ export default function ProjectsPage() {
                   </div>
                 ))}
               </div>
-              <div className="flex gap-2.5 justify-end mt-5">
-                <button className="px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer bg-white border border-slate-300 text-slate-700" onClick={() => setCreateStep(1)}>&larr; Înapoi</button>
-                <button className="px-4 py-2 rounded-lg text-sm font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed bg-blue-600 text-white" disabled={!createData.folderId} onClick={() => setCreateStep(3)}>Continuă &rarr;</button>
+              <div className="flex gap-2 justify-end">
+                <BtnSecondary onClick={() => setCreateStep(1)}>← Înapoi</BtnSecondary>
+                <BtnPrimary disabled={!createData.folderId} onClick={() => setCreateStep(3)}>Continuă →</BtnPrimary>
               </div>
             </>)}
 
             {createStep === 3 && (<>
-              <div className="mb-4">
-                <label className="block text-[11px] font-semibold uppercase tracking-wide mb-1.5 text-slate-500">Denumire proiect</label>
-                <input
-                  className="w-full px-3.5 py-2.5 rounded-lg text-sm outline-none border border-slate-200 bg-white text-slate-900"
-                  placeholder="ex: Modernizare linie producție..."
-                  value={createData.name}
-                  onChange={e => setCreateData(p => ({ ...p, name: e.target.value }))}
-                  autoFocus
-                />
+              <label className="block text-[11px] font-medium uppercase tracking-wider mb-2 text-slate-400">Denumire proiect</label>
+              <input
+                className="w-full px-3.5 py-2.5 rounded-lg text-[14px] outline-none border border-slate-200 bg-white text-slate-900 focus:border-blue-300 focus:ring-2 focus:ring-blue-50 transition-all mb-4"
+                placeholder="ex: Modernizare linie producție..."
+                value={createData.name}
+                onChange={e => setCreateData(p => ({ ...p, name: e.target.value }))}
+                autoFocus
+              />
+
+              <div className="p-4 rounded-xl mb-4 border border-blue-200/60 bg-blue-50/30">
+                <div className="space-y-1.5">
+                  <div className="flex gap-2 text-[13px]"><span className="text-slate-400 w-20 shrink-0">Firmă</span><span className="font-medium text-slate-900">{companies.find(f => f.id === createData.firmaId)?.name}</span></div>
+                  <div className="flex gap-2 text-[13px]"><span className="text-slate-400 w-20 shrink-0">Program</span><span className="font-medium text-slate-900">{createData.program}</span></div>
+                  <div className="flex gap-2 text-[13px]"><span className="text-slate-400 w-20 shrink-0">Măsură</span><span className="font-medium text-slate-900">{createData.masura}</span></div>
+                  <div className="flex gap-2 text-[13px]"><span className="text-slate-400 w-20 shrink-0">Sesiune</span><span className="font-medium text-slate-900">{createData.sesiune}</span></div>
+                </div>
               </div>
 
-              <div className="p-4 rounded-xl mb-4 border border-blue-200 bg-blue-50">
-                <div className="flex gap-2 text-[13px] mb-1"><span className="min-w-[80px] text-slate-400">Firmă:</span><span className="font-semibold text-slate-900">{companies.find(f => f.id === createData.firmaId)?.name}</span></div>
-                <div className="flex gap-2 text-[13px] mb-1"><span className="min-w-[80px] text-slate-400">Program:</span><span className="font-semibold text-slate-900">{createData.program}</span></div>
-                <div className="flex gap-2 text-[13px] mb-1"><span className="min-w-[80px] text-slate-400">Măsură:</span><span className="font-semibold text-slate-900">{createData.masura}</span></div>
-                <div className="flex gap-2 text-[13px]"><span className="min-w-[80px] text-slate-400">Sesiune:</span><span className="font-semibold text-slate-900">{createData.sesiune}</span></div>
-              </div>
-
-              <div className="text-[12px] mb-4 leading-relaxed text-slate-400">
+              <p className="text-[12px] text-slate-400 leading-relaxed mb-5">
                 La creare, proiectul va prelua automat ghidurile, template-urile și regulile din sesiunea selectată.
-              </div>
+              </p>
 
-              <div className="flex gap-2.5 justify-end mt-5">
-                <button className="px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer bg-white border border-slate-300 text-slate-700" onClick={() => setCreateStep(2)}>&larr; Înapoi</button>
-                <button className="px-4 py-2 rounded-lg text-sm font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed bg-blue-600 text-white" disabled={!createData.name.trim() || creating} onClick={handleCreate}>
+              <div className="flex gap-2 justify-end">
+                <BtnSecondary onClick={() => setCreateStep(2)}>← Înapoi</BtnSecondary>
+                <BtnPrimary disabled={!createData.name.trim() || creating} onClick={handleCreate}>
                   {creating ? "Se creează..." : "Creează proiect"}
-                </button>
+                </BtnPrimary>
               </div>
             </>)}
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }

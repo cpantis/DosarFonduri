@@ -1586,13 +1586,13 @@ export default function ProjectViewPage() {
         .anexe-detail-badges{display:flex;align-items:center;gap:8px}
         .anexe-detail-desc{font-size:13px;color:#64748b;line-height:1.5}
         .anexe-detail-lookup{font-size:12px;color:#94a3b8}
-        .anexe-detail-lookup code{font-family:'JetBrains Mono',monospace;color:#4d8bff;background:rgba(77,139,255,.08);padding:1px 6px;border-radius:4px}
-        .anexe-table-wrapper{overflow-x:auto;border:1px solid #e2e8f0;border-radius:10px}
+        .anexe-detail-lookup code{font-family:'JetBrains Mono',monospace;color:#2563eb;background:rgba(37,99,235,.08);padding:1px 6px;border-radius:4px}
+        .anexe-table-wrapper{overflow-x:auto;border:1px solid rgba(226,232,240,.8);border-radius:12px}
         .anexe-table{width:100%;border-collapse:collapse;font-size:12px}
-        .anexe-table th{text-align:left;padding:8px 12px;background:#f8fafc;color:#64748b;font-weight:600;border-bottom:1px solid #e2e8f0;white-space:nowrap}
-        .anexe-table td{padding:6px 12px;border-bottom:1px solid #e2e8f0;color:#0f172a}
+        .anexe-table th{text-align:left;padding:8px 12px;background:#f8fafc;color:#64748b;font-weight:600;border-bottom:1px solid rgba(226,232,240,.8);white-space:nowrap}
+        .anexe-table td{padding:6px 12px;border-bottom:1px solid rgba(226,232,240,.8);color:#0f172a}
         .anexe-table tr:hover td{background:#f1f5f9}
-        .anexe-source-text{border-top:1px solid #e2e8f0;padding-top:16px}
+        .anexe-source-text{border-top:1px solid rgba(226,232,240,.8);padding-top:16px}
         .anexe-source-label{font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;margin-bottom:8px}
         .anexe-source-quote{font-size:12px;color:#64748b;line-height:1.5;padding:12px;background:#f8fafc;border-radius:6px;border-left:3px solid #4d8bff;font-style:italic}
 

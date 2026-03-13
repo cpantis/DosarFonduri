@@ -6,7 +6,7 @@ import {
   companies, companyFinancials,
   solomonConversations, solomonMessages,
   orgConfig, solomonKnowledge,
-  elementRuleLinks,
+  elementRuleLinks, elementDefinitions, guideReferenceTables,
 } from "../db/schema";
 import { eq, and } from "drizzle-orm";
 import { logAIUsage } from "./aiUsage";
@@ -185,32 +185,74 @@ async function buildSystemPrompt(projectId: string, organizationId: string): Pro
   });
   if (!company) throw new Error("Company not found");
 
-  // Get project elements with template info
+  // Get project elements
   const elements = await db.query.projectElements.findMany({
     where: eq(projectElements.projectId, projectId),
   });
+
+  // Load element_definitions (canonical source of truth from guide processing)
+  const elemDefs = await db.query.elementDefinitions.findMany({
+    where: eq(elementDefinitions.organizationId, organizationId),
+    orderBy: (ed, { asc }) => [asc(ed.collectionOrder)],
+  });
+  const elemDefMap = new Map(elemDefs.map(ed => [ed.id, ed]));
+  const elemDefByKey = new Map(elemDefs.map(ed => [ed.elementKey, ed]));
+
+  // Fallback: template elements (backward compat for projects without element_definitions)
   const tmplElements = await db.query.templateElements.findMany({
     where: eq(templateElements.organizationId, organizationId),
   });
   const tmplMap = new Map(tmplElements.map(t => [t.id, t]));
 
-  const emptyElements = elements
-    .filter(e => !e.value || e.value.trim() === "")
-    .map(e => {
-      if (!e.templateElementId) return null;
-      const te = tmplMap.get(e.templateElementId);
-      return te ? `- ${te.label} (key: ${te.key}, tip: ${te.fieldType})` : null;
-    })
-    .filter(Boolean);
+  // Build element status using element_definitions as primary anchor
+  const emptyElements: string[] = [];
+  const filledElements: string[] = [];
+  const coveredKeys = new Set<string>();
 
-  const filledElements = elements
-    .filter(e => e.value && e.value.trim() !== "")
-    .map(e => {
-      if (!e.templateElementId) return null;
-      const te = tmplMap.get(e.templateElementId);
-      return te ? `- ${te.label}: ${e.value} [${e.confirmed ? "✓ confirmat" : "neconfirmat"}]` : null;
-    })
-    .filter(Boolean);
+  // First pass: project_elements that have elementDefId
+  for (const el of elements) {
+    const ed = el.elementDefId ? elemDefMap.get(el.elementDefId) : null;
+    const te = el.templateElementId ? tmplMap.get(el.templateElementId) : null;
+    const label = ed?.displayName || te?.label || "?";
+    const key = ed?.elementKey || te?.key || "?";
+    const category = ed?.category || "other";
+    const dataType = ed?.dataType || te?.fieldType || "text";
+
+    if (ed) coveredKeys.add(ed.elementKey);
+
+    if (!el.value || el.value.trim() === "") {
+      const helpHint = ed?.helpText ? ` — ${ed.helpText.slice(0, 100)}` : "";
+      emptyElements.push(`- ${label} (key: ${key}, tip: ${dataType}, categorie: ${category})${helpHint}`);
+    } else {
+      filledElements.push(`- ${label}: ${el.value} [${el.confirmed ? "✓ confirmat" : "neconfirmat"}, sursa: ${el.source || "necunoscută"}]`);
+    }
+  }
+
+  // Second pass: element_definitions that have NO project_element yet (truly missing)
+  for (const ed of elemDefs) {
+    if (coveredKeys.has(ed.elementKey)) continue;
+    const helpHint = ed.helpText ? ` — ${ed.helpText.slice(0, 100)}` : "";
+    emptyElements.push(`- ${ed.displayName} (key: ${ed.elementKey}, tip: ${ed.dataType}, categorie: ${ed.category})${helpHint}`);
+  }
+
+  // Load guide reference tables for context
+  const refTables = await db.query.guideReferenceTables.findMany({
+    where: eq(guideReferenceTables.organizationId, organizationId),
+    orderBy: (rt, { asc }) => [asc(rt.name)],
+  });
+  const refTablesSummary = refTables.map(rt => {
+    const rowCount = Array.isArray(rt.data) ? rt.data.length : 0;
+    const schemaInfo = Array.isArray(rt.schema) ? rt.schema.map(s => s.label || s.key).join(", ") : "";
+    // Include first few rows as sample for smaller tables
+    let sampleData = "";
+    if (rowCount > 0 && rowCount <= 30 && Array.isArray(rt.data)) {
+      sampleData = "\n    Date:\n" + rt.data.slice(0, 20).map(row =>
+        "    " + Object.entries(row).map(([k, v]) => `${k}: ${v}`).join(" | ")
+      ).join("\n");
+      if (rowCount > 20) sampleData += `\n    ... și alte ${rowCount - 20} rânduri`;
+    }
+    return `- **${rt.name}** (${rt.tableType}, ${rowCount} rânduri${rt.lookupKey ? `, cheie: ${rt.lookupKey}` : ""})${schemaInfo ? `\n    Coloane: ${schemaInfo}` : ""}${sampleData}`;
+  });
 
   // Get ALL eligibility rules with their status (not just failed)
   const eligResults = await db.query.projectEligibility.findMany({
@@ -777,6 +819,16 @@ ${emptyElements.length > 0 ? emptyElements.join("\n") : "Toate câmpurile sunt c
 ${filledElements.length > 0 ? filledElements.slice(0, 30).join("\n") : "Niciun câmp completat încă."}
 ${filledElements.length > 30 ? `\n... și alte ${filledElements.length - 30} câmpuri` : ""}
 
+${refTablesSummary.length > 0 ? `═══════════════════════════════════════════
+## TABELE DE REFERINȚĂ DIN GHID (${refTablesSummary.length})
+═══════════════════════════════════════════
+Aceste tabele au fost extrase din anexele ghidului. Folosește-le pentru validare:
+- Când consultantul furnizează o valoare, verifică dacă se încadrează în tabelele relevante
+- Exemplu: dacă furnizează "suprafața = 270 ha" și "putere tractor = 150 CP", verifică corelare din tabelul corespunzător
+- Dacă o valoare NU se regăsește în tabele, avertizează: "Conform anexei X, valoarea [Y] nu se încadrează în [Z]"
+
+${refTablesSummary.join("\n\n")}
+` : ""}
 ${await (async () => {
   // Build element→rule mapping from elementRuleLinks
   const allElemLinks = await db.query.elementRuleLinks.findMany({
@@ -1275,47 +1327,70 @@ export async function processSolomonMessage(params: {
           } catch {}
         }
 
-        // Save extracted elements to project — only if key exists in org's template elements
+        // Save extracted elements to project — using elementDefinitions as primary, templateElements as fallback
         if (extractedElements.length > 0) {
-          // Load valid keys for this organization once
+          // Load elementDefinitions (canonical source of truth)
+          const orgElemDefs = await db.query.elementDefinitions.findMany({
+            where: eq(elementDefinitions.organizationId, organizationId),
+          });
+          const keyToElemDef = new Map(orgElemDefs.map(ed => [ed.elementKey, ed]));
+
+          // Load templateElements as fallback for legacy keys
           const orgTmplEls = await db.query.templateElements.findMany({
             where: eq(templateElements.organizationId, organizationId),
           });
           const keyToTmplEl = new Map(orgTmplEls.map(t => [t.key, t]));
 
           for (const el of extractedElements) {
+            const elemDef = keyToElemDef.get(el.key);
             const tmplEl = keyToTmplEl.get(el.key);
-            if (tmplEl) {
-              // Upsert: update existing or create new project_element
-              const existing = await db.query.projectElements.findFirst({
+
+            // Must exist in at least one source
+            if (!elemDef && !tmplEl) continue;
+
+            // Find existing project_element by elementDefId or templateElementId
+            let existing = null;
+            if (elemDef) {
+              existing = await db.query.projectElements.findFirst({
+                where: and(
+                  eq(projectElements.projectId, projectId),
+                  eq(projectElements.elementDefId, elemDef.id),
+                ),
+              });
+            }
+            if (!existing && tmplEl) {
+              existing = await db.query.projectElements.findFirst({
                 where: and(
                   eq(projectElements.projectId, projectId),
                   eq(projectElements.templateElementId, tmplEl.id),
                 ),
               });
+            }
 
-              if (existing) {
-                // Don't overwrite consultant_manual or document_extracted confirmed values
-                if (existing.confirmed && (existing.source === "consultant_manual" || existing.source === "document_extracted")) {
-                  console.log(`[solomon] Skipping confirmed element ${el.key} (source: ${existing.source})`);
-                } else {
-                  await db.update(projectElements).set({
-                    value: el.value,
-                    source: "solomon_chat",
-                    updatedAt: new Date(),
-                  }).where(eq(projectElements.id, existing.id));
-                }
+            if (existing) {
+              // Don't overwrite consultant_manual or document_extracted confirmed values
+              if (existing.confirmed && (existing.source === "consultant_manual" || existing.source === "document_extracted")) {
+                console.log(`[solomon] Skipping confirmed element ${el.key} (source: ${existing.source})`);
               } else {
-                // Create new project_element if none exists
-                await db.insert(projectElements).values({
-                  projectId,
-                  templateElementId: tmplEl.id,
+                await db.update(projectElements).set({
                   value: el.value,
                   source: "solomon_chat",
-                  confirmed: false,
-                  validationStatus: "pending",
-                });
+                  // Backfill elementDefId if missing
+                  ...(elemDef && !existing.elementDefId ? { elementDefId: elemDef.id } : {}),
+                  updatedAt: new Date(),
+                }).where(eq(projectElements.id, existing.id));
               }
+            } else {
+              // Create new project_element with both IDs when available
+              await db.insert(projectElements).values({
+                projectId,
+                ...(elemDef ? { elementDefId: elemDef.id } : {}),
+                ...(tmplEl ? { templateElementId: tmplEl.id } : {}),
+                value: el.value,
+                source: "solomon_chat",
+                confirmed: false,
+                validationStatus: "pending",
+              });
             }
           }
 
@@ -1323,14 +1398,25 @@ export async function processSolomonMessage(params: {
           // Mirror the cascade from projects.ts PUT /:id/elements/:eid
           const modifiedElementIds: string[] = [];
           for (const el of extractedElements) {
+            const elemDef = keyToElemDef.get(el.key);
             const tmplEl = keyToTmplEl.get(el.key);
-            if (!tmplEl) continue;
-            const pe = await db.query.projectElements.findFirst({
-              where: and(
-                eq(projectElements.projectId, projectId),
-                eq(projectElements.templateElementId, tmplEl.id),
-              ),
-            });
+            let pe = null;
+            if (elemDef) {
+              pe = await db.query.projectElements.findFirst({
+                where: and(
+                  eq(projectElements.projectId, projectId),
+                  eq(projectElements.elementDefId, elemDef.id),
+                ),
+              });
+            }
+            if (!pe && tmplEl) {
+              pe = await db.query.projectElements.findFirst({
+                where: and(
+                  eq(projectElements.projectId, projectId),
+                  eq(projectElements.templateElementId, tmplEl.id),
+                ),
+              });
+            }
             if (pe) modifiedElementIds.push(pe.id);
           }
 
@@ -1343,18 +1429,25 @@ export async function processSolomonMessage(params: {
                 validationDetails: validation.details,
               }).where(eq(projectElements.id, elementId));
 
-              // SSE per element
+              // SSE per element — resolve label from elementDefinitions or templateElements
               const pe = await db.query.projectElements.findFirst({ where: eq(projectElements.id, elementId) });
-              const te = pe ? keyToTmplEl.get(
-                orgTmplEls.find(t => t.id === pe.templateElementId)?.key || ""
-              ) : null;
-              if (pe && te) {
+              let elementKey = "";
+              let elementLabel = "";
+              if (pe?.elementDefId) {
+                const ed = orgElemDefs.find(d => d.id === pe.elementDefId);
+                if (ed) { elementKey = ed.elementKey; elementLabel = ed.displayName || ed.elementKey; }
+              }
+              if (!elementKey && pe?.templateElementId) {
+                const te = orgTmplEls.find(t => t.id === pe.templateElementId);
+                if (te) { elementKey = te.key; elementLabel = te.label || te.key; }
+              }
+              if (pe && elementKey) {
                 publishElementValidated(projectId, {
                   elementId,
-                  elementKey: te.key,
+                  elementKey,
                   value: pe.value,
                   validationStatus: validation.status,
-                  message: `Element "${te.label || te.key}" → ${validation.status}`,
+                  message: `Element "${elementLabel}" → ${validation.status}`,
                 }).catch(() => {});
               }
             } catch (err) {

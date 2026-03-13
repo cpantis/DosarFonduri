@@ -17,8 +17,156 @@ export interface PageResult {
 }
 
 export async function extractTextFromPDF(buffer: Buffer): Promise<string> {
+  // Try XFA extraction first — XFA PDFs contain form data in XML, not in page text
+  const xfaText = await tryExtractXFA(buffer);
+  if (xfaText) {
+    return `--- Pagina 1 (XFA) ---\n${xfaText}`;
+  }
+
   const pages = await extractPDFPages(buffer);
   return pages.map(p => `--- Pagina ${p.page} ---\n${p.text}`).join("\n\n");
+}
+
+/**
+ * Try to extract XFA form data from a PDF.
+ * XFA PDFs (Adobe LiveCycle) store form data in XML streams,
+ * not in the visible page text. PyMuPDF can access these via doc.xfa.
+ * Returns null if the PDF is not XFA or has no data.
+ */
+async function tryExtractXFA(buffer: Buffer): Promise<string | null> {
+  const { execFileSync } = await import("child_process");
+  const fs = await import("fs");
+
+  const inputPath = safeTmpPath("xfa", "pdf");
+  fs.writeFileSync(inputPath, buffer);
+
+  // XFA PDFs store form data in compressed XML streams referenced by the AcroForm /XFA array.
+  // PyMuPDF's doc.xfa may not work on all versions, so we manually locate and decompress
+  // the datasets stream by parsing the AcroForm /XFA reference from the PDF catalog.
+  const script = `
+import fitz, sys, json, zlib, re
+import xml.etree.ElementTree as ET
+
+doc = fitz.open(sys.argv[1])
+
+# Strategy 1: Try doc.xfa (works in newer PyMuPDF)
+datasets_xml = None
+try:
+    if hasattr(doc, 'xfa') and doc.xfa is not None:
+        for key in ["datasets", "Datasets"]:
+            try:
+                datasets_xml = doc.xfa[key]
+                if isinstance(datasets_xml, bytes):
+                    datasets_xml = datasets_xml.decode('utf-8', errors='replace')
+                break
+            except (KeyError, TypeError):
+                pass
+except:
+    pass
+
+# Strategy 2: Manually find and decompress XFA streams from AcroForm
+if not datasets_xml:
+    # Find /XFA array in AcroForm
+    datasets_xref = None
+    for i in range(doc.xref_length()):
+        try:
+            obj = doc.xref_object(i)
+            if '/XFA' in obj:
+                # Parse the XFA array to find datasets xref
+                # Format: /XFA [ (xdp:xdp) 73 0 R ... (datasets) 74 0 R ... ]
+                xfa_match = re.search(r'\\(datasets\\)\\s+(\\d+)\\s+0\\s+R', obj)
+                if xfa_match:
+                    datasets_xref = int(xfa_match.group(1))
+                    break
+        except:
+            pass
+
+    if datasets_xref:
+        try:
+            raw = doc.xref_stream_raw(datasets_xref)
+            if raw:
+                try:
+                    decompressed = zlib.decompress(raw)
+                    datasets_xml = decompressed.decode('utf-8', errors='replace')
+                except zlib.error:
+                    datasets_xml = raw.decode('utf-8', errors='replace')
+        except:
+            pass
+
+if not datasets_xml:
+    print(json.dumps({"is_xfa": False}))
+    doc.close()
+    sys.exit(0)
+
+# Parse the XFA datasets XML
+xml_clean = datasets_xml
+for ns_prefix in ['xfa:', 'tpl:', 'ds:']:
+    xml_clean = xml_clean.replace(ns_prefix, '')
+
+lines = []
+fields = {}
+
+try:
+    root = ET.fromstring(xml_clean)
+
+    def extract_fields(elem, path=""):
+        tag = elem.tag.split('}')[-1] if '}' in elem.tag else elem.tag
+        current_path = f"{path}/{tag}" if path else tag
+
+        text = (elem.text or "").strip()
+        if text and tag not in ('datasets', 'data', 'template', 'subform'):
+            fields[current_path] = text
+            lines.append(f"{tag}: {text}")
+
+        for child in elem:
+            extract_fields(child, current_path)
+
+    extract_fields(root)
+except ET.ParseError:
+    # Fallback: regex extraction of text content between XML tags
+    text_parts = re.findall(r'>([^<]+)<', datasets_xml)
+    for part in text_parts:
+        stripped = part.strip()
+        if stripped and not stripped.startswith('<?') and len(stripped) < 500:
+            lines.append(stripped)
+
+result = {
+    "is_xfa": True,
+    "text": "\\n".join(lines),
+    "fields": fields,
+    "field_count": len(fields)
+}
+print(json.dumps(result, ensure_ascii=False))
+doc.close()
+`;
+
+  const scriptPath = safeTmpPath("xfa_extract", "py");
+  fs.writeFileSync(scriptPath, script);
+
+  try {
+    const result = execFileSync("python3", [scriptPath, inputPath], {
+      encoding: "utf-8",
+      timeout: 30000,
+    });
+
+    const parsed = JSON.parse(result);
+
+    if (!parsed.is_xfa) return null;
+    if (parsed.error) {
+      console.warn(`[XFA] Extraction error: ${parsed.error}`);
+    }
+
+    const text = parsed.text || "";
+    if (text.length < 10) return null; // No meaningful data
+
+    console.log(`[XFA] Extracted ${parsed.field_count || 0} fields from XFA PDF`);
+    return text;
+  } catch {
+    return null; // Not XFA or extraction failed — fall through to normal extraction
+  } finally {
+    try { fs.unlinkSync(inputPath); } catch {}
+    try { fs.unlinkSync(scriptPath); } catch {}
+  }
 }
 
 /** Extract pages with hybrid OCR: PyMuPDF native + Claude Vision for scanned pages */
@@ -87,7 +235,7 @@ print(json.dumps(pages))
   }
 }
 
-export async function ocrPageWithVision(pageImageBase64: string): Promise<string> {
+export async function ocrPageWithVision(pageImageBase64: string, mediaType: string = "image/png"): Promise<string> {
   const response = await anthropic.messages.create({
     model: "claude-sonnet-4-20250514",
     max_tokens: 4000,
@@ -96,7 +244,7 @@ export async function ocrPageWithVision(pageImageBase64: string): Promise<string
       content: [
         {
           type: "image",
-          source: { type: "base64", media_type: "image/png", data: pageImageBase64 },
+          source: { type: "base64", media_type: mediaType as any, data: pageImageBase64 },
         },
         {
           type: "text",
@@ -218,6 +366,55 @@ print("\\n\\n".join(pages))
   } finally {
     try { fs.unlinkSync(inputPath); } catch {}
     try { fs.unlinkSync(scriptPath); } catch {}
+  }
+}
+
+/** Extract text from an image (PNG/JPG) using Claude Vision */
+export async function extractTextFromImage(buffer: Buffer, fileName: string): Promise<string> {
+  const ext = fileName.toLowerCase().split(".").pop() || "png";
+  const mediaType = ext === "jpg" || ext === "jpeg" ? "image/jpeg" : "image/png";
+  const base64Data = buffer.toString("base64");
+
+  const ocrText = await ocrPageWithVision(base64Data, mediaType);
+  return `--- Pagina 1 (imagine) ---\n${ocrText}`;
+}
+
+/** Extract text from a .doc file (legacy Word format) using antiword or LibreOffice */
+export async function extractTextFromDOC(buffer: Buffer, _fileName: string): Promise<string> {
+  const { execFileSync } = await import("child_process");
+  const fs = await import("fs");
+
+  const inputPath = safeTmpPath("doc", "doc");
+  fs.writeFileSync(inputPath, buffer);
+
+  try {
+    // Try antiword first (lightweight)
+    try {
+      const text = execFileSync(`antiword "${inputPath}"`, { encoding: "utf-8", timeout: 15000 });
+      if (text.trim().length > 50) return text;
+    } catch {}
+
+    // Fallback: LibreOffice convert to text
+    try {
+      const outDir = safeTmpPath("doc_out", "dir");
+      const fs2 = await import("fs");
+      fs2.mkdirSync(outDir, { recursive: true });
+      execFileSync("libreoffice", [
+        "--headless", "--convert-to", "txt:Text", "--outdir", outDir, inputPath,
+      ], { encoding: "utf-8", timeout: 30000 });
+
+      const txtFiles = fs2.readdirSync(outDir).filter((f: string) => f.endsWith(".txt"));
+      if (txtFiles.length > 0) {
+        const text = fs2.readFileSync(`${outDir}/${txtFiles[0]}`, "utf-8");
+        try { fs2.rmSync(outDir, { recursive: true }); } catch {}
+        return text;
+      }
+      try { fs2.rmSync(outDir, { recursive: true }); } catch {}
+    } catch {}
+
+    return "[DOC extraction failed — neither antiword nor LibreOffice available]";
+  } finally {
+    try { fs.unlinkSync(inputPath); } catch {}
   }
 }
 

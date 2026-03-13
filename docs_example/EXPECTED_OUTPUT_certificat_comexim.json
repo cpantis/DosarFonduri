@@ -1,0 +1,27 @@
+{
+  "source_file": "3.Documente care dovedesc forma de organizare - semnat.pdf",
+  "document_type": "certificat_constatator + act_constitutiv (compound)",
+  "extractor": "companyExtractor (pages 12-43 text) + OCR needed (pages 2-11 scanned)",
+  "format": "PDF mixt (scanat + text nativ)",
+  "pages": 43,
+  "compound_structure": {
+    "page_1": "Semnatura digitala",
+    "pages_2_11": "Act constitutiv SCANAT (fara text extractibil, necesita OCR)",
+    "pages_12_43": "Certificat constatator TEXT NATIV"
+  },
+  "expected_fields_from_text_pages": {
+    "denumire": "COMEXIM R S.R.L.",
+    "cui": "2146135",
+    "regCom": "J2/480/1991",
+    "formaJuridica": "Societate cu răspundere limitată",
+    "adresa": "Arad, Str. Poetului, Nr. 56",
+    "judet": "Arad",
+    "localitate": "Arad",
+    "stare": "Funcțiune"
+  },
+  "critical_issues": [
+    "COMPOUND: pages 2-11 are scanned act constitutiv (no text) - extractor must detect boundary",
+    "COMPOUND: if all text sent to companyExtractor, may mix data from act constitutiv OCR + certificat",
+    "Pages 2-11 need OCR/Vision before extraction"
+  ]
+}

@@ -1,0 +1,126 @@
+{
+  "scanned_documents": [
+    {
+      "source_file": "05 Act Constitutiv_signed.pdf",
+      "document_type": "act_constitutiv",
+      "extractor": "genericExtractor (after OCR)",
+      "format": "PDF SCANAT",
+      "pages": 12,
+      "text_extractable": false,
+      "ocr_required": true,
+      "expected_fields": "Cannot determine without OCR - document is fully scanned",
+      "critical_issues": [
+        "extractPDFPages() returns empty text for all pages",
+        "Needs Claude Vision OCR (ocrPageWithVision) to extract text first",
+        "After OCR: should extract act constitutiv fields (parties, capital, object of activity)"
+      ]
+    },
+    {
+      "source_file": "06 Statut_signed.pdf",
+      "document_type": "statut",
+      "extractor": "genericExtractor (after OCR)",
+      "format": "PDF SCANAT",
+      "pages": 22,
+      "text_extractable": false,
+      "ocr_required": true,
+      "expected_fields": "Cannot determine without OCR - document is fully scanned",
+      "critical_issues": [
+        "extractPDFPages() returns empty text for all pages",
+        "Needs Claude Vision OCR (ocrPageWithVision) to extract text first",
+        "After OCR: should extract statut fields (company rules, governance)"
+      ]
+    },
+    {
+      "source_file": "CI Anda Chis.pdf",
+      "document_type": "carte_identitate",
+      "extractor": "genericExtractor (after OCR/Vision)",
+      "format": "PDF SCANAT",
+      "pages": 1,
+      "text_extractable": false,
+      "ocr_required": true,
+      "expected_fields_after_ocr": {
+        "ci_serie": "unknown",
+        "ci_numar": "unknown",
+        "ci_nume": "CHIȘ (or similar)",
+        "ci_prenume": "ANDA (or similar)",
+        "ci_cnp": "unknown",
+        "ci_adresa": "unknown",
+        "ci_valabilitate": "unknown"
+      },
+      "critical_issues": [
+        "Personal data - handle with care",
+        "Needs Vision API for OCR"
+      ]
+    },
+    {
+      "source_file": "DIPLOMA ING AGRONOM.pdf",
+      "document_type": "diploma_studii",
+      "extractor": "genericExtractor (after OCR/Vision)",
+      "format": "PDF SCANAT",
+      "pages": 1,
+      "text_extractable": false,
+      "ocr_required": true,
+      "expected_fields_after_ocr": {
+        "diploma_tip": "Inginer Agronom",
+        "diploma_nume": "unknown",
+        "diploma_institutie": "unknown",
+        "diploma_an": "unknown",
+        "diploma_specializare": "Agronomie"
+      }
+    }
+  ],
+  "image_documents": [
+    {
+      "source_file": "Anda Tractor.png",
+      "document_type": "oferta_pret",
+      "extractor": "ofertaExtractor (after Vision OCR)",
+      "format": "PNG imagine",
+      "ocr_required": true,
+      "expected_fields_after_ocr": {
+        "furnizor_nume": "unknown",
+        "total_oferta_eur": "unknown",
+        "articol_0_utilaj_denumire": "Tractor",
+        "articol_0_pret_unitar_eur": "unknown"
+      }
+    },
+    {
+      "source_file": "Anda semanatoare.png",
+      "document_type": "oferta_pret",
+      "extractor": "ofertaExtractor (after Vision OCR)",
+      "format": "PNG imagine",
+      "ocr_required": true,
+      "expected_fields_after_ocr": {
+        "furnizor_nume": "unknown",
+        "total_oferta_eur": "unknown",
+        "articol_0_utilaj_denumire": "Semanatoare precizie",
+        "articol_0_pret_unitar_eur": "unknown"
+      }
+    },
+    {
+      "source_file": "Anda disc 7 m.png",
+      "document_type": "oferta_pret",
+      "extractor": "ofertaExtractor (after Vision OCR)",
+      "format": "PNG imagine",
+      "ocr_required": true,
+      "expected_fields_after_ocr": {
+        "furnizor_nume": "unknown",
+        "total_oferta_eur": "unknown",
+        "articol_0_utilaj_denumire": "Disc scurt 7m",
+        "articol_0_pret_unitar_eur": "unknown"
+      }
+    },
+    {
+      "source_file": "Anda Cultivator.png",
+      "document_type": "oferta_pret",
+      "extractor": "ofertaExtractor (after Vision OCR)",
+      "format": "PNG imagine",
+      "ocr_required": true,
+      "expected_fields_after_ocr": {
+        "furnizor_nume": "unknown",
+        "total_oferta_eur": "unknown",
+        "articol_0_utilaj_denumire": "Cultivator",
+        "articol_0_pret_unitar_eur": "unknown"
+      }
+    }
+  ]
+}

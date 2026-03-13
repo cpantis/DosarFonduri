@@ -1,0 +1,51 @@
+{
+  "source_file": "Bilant_AndaOana_38480585_2023_12(1).pdf",
+  "document_type": "bilant_anaf",
+  "extractor": "bilantParser",
+  "format": "PDF XFA (Adobe LiveCycle)",
+  "pages": 1,
+  "expected_fields": {
+    "year": 2023,
+    "f10": {
+      "activeImobilizate": { "necorporale": 0, "corporale": 0, "financiare": 0, "total": 0 },
+      "activeCirculante": { "stocuri": 0, "creante": 0, "investitiiTS": 0, "casa": 0, "total": 0 },
+      "cheltuieliAvans": 0,
+      "datoriiSubAnul": 0,
+      "datoriiPesteAnul": 0,
+      "venituriAvans": 0,
+      "capital": { "subscrisVarsat": 0, "rezerve": 0, "profitReportat": 0, "profitExercitiu": 0 },
+      "capitaluriProprii": 0
+    },
+    "f20": {
+      "cifraAfaceriNeta": 0,
+      "venituriExploatare": 0,
+      "cheltuieliExploatare": 0,
+      "profitExploatare": 0,
+      "venituriTotale": 0,
+      "cheltuieliTotale": 0,
+      "profitBrut": 0,
+      "impozitProfit": 0,
+      "profitNet": 0
+    },
+    "f30": {
+      "numarMediuSalariati": 0,
+      "numarEfectivSalariati": 0
+    },
+    "f40": null
+  },
+  "adapted_fields_processClientDoc": {
+    "cifra_afaceri": 0,
+    "profit_net": 0,
+    "profit_exploatare": 0,
+    "active_totale": 0,
+    "capitaluri_proprii": 0,
+    "numar_angajati": 0,
+    "datorii_totale": 0
+  },
+  "critical_issues": [
+    "XFA FORMAT: page.get_text() returns only placeholder text, NOT the actual form data",
+    "ALL VALUES ARE 0/EMPTY: This is an uncompleted form - not useful for testing extraction accuracy",
+    "bilantParser.ts receives empty/placeholder text and will fail to extract real data",
+    "ocr.ts has NO XFA handling - extractPDFPages will return placeholder text"
+  ]
+}

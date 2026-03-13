@@ -1,0 +1,25 @@
+{
+  "source_file": "Anunt Cerere proiecte componenta 4.1.1.pdf",
+  "document_type": "other (anunt_sesiune - no dedicated extractor)",
+  "extractor": "genericExtractor",
+  "format": "PDF text nativ",
+  "pages": 1,
+  "expected_fields": {
+    "session_reference": "P4.1.1 – 01/24 – 24.09.2024",
+    "announcement_number": "A1.2/04/2024 – 01/24 – 24.09.2024",
+    "publication_date": "20/06/2024",
+    "total_budget_eur": 310515188,
+    "budget_all_crops_eur": 198000000,
+    "budget_sugar_beet_eur": 61000000,
+    "budget_associations_eur": 51515188,
+    "application_start": "25.06.2024 09:00",
+    "application_deadline": "24.09.2024 16:00",
+    "platform": "www.afir.ro",
+    "min_threshold_all_crops": 56,
+    "min_threshold_sugar_beet": 32,
+    "min_threshold_associations": 44,
+    "program": "PNDR 2014-2020",
+    "submeasure": "4.1 componenta 4.1.1"
+  },
+  "notes": "No dedicated extractor - genericExtractor will produce dynamic field keys"
+}

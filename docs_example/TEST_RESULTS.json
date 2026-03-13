@@ -1,0 +1,245 @@
+{
+  "timestamp": "2026-03-13T10:28:43.486Z",
+  "results": [
+    {
+      "file": "Certificat constatator ANDA OANA AGRO FERMA SRL din 21.06.2024.pdf",
+      "extractor": "companyExtractor",
+      "status": "PASS",
+      "textExtracted": true,
+      "textLength": 40144,
+      "classifiedAs": "certificat_constatator",
+      "classificationCorrect": true,
+      "fieldsExtracted": 0,
+      "fieldMatchResults": [],
+      "error": null,
+      "timeMs": 152
+    },
+    {
+      "file": "3.Documente care dovedesc forma de organizare - semnat.pdf",
+      "extractor": "companyExtractor",
+      "status": "PASS",
+      "textExtracted": true,
+      "textLength": 85787,
+      "classifiedAs": "certificat_constatator",
+      "classificationCorrect": true,
+      "fieldsExtracted": 0,
+      "fieldMatchResults": [],
+      "error": null,
+      "timeMs": 178
+    },
+    {
+      "file": "Bilant_AndaOana_38480585_2023_12(1).pdf",
+      "extractor": "bilantParser",
+      "status": "PASS",
+      "textExtracted": true,
+      "textLength": 698,
+      "classifiedAs": "other",
+      "classificationCorrect": false,
+      "fieldsExtracted": 0,
+      "fieldMatchResults": [],
+      "error": null,
+      "timeMs": 113
+    },
+    {
+      "file": "05 Act Constitutiv_signed.pdf",
+      "extractor": "genericExtractor",
+      "status": "SKIP",
+      "textExtracted": false,
+      "textLength": 0,
+      "classifiedAs": null,
+      "classificationCorrect": null,
+      "fieldsExtracted": 0,
+      "fieldMatchResults": [],
+      "error": null,
+      "timeMs": 112
+    },
+    {
+      "file": "06 Statut_signed.pdf",
+      "extractor": "genericExtractor",
+      "status": "SKIP",
+      "textExtracted": false,
+      "textLength": 0,
+      "classifiedAs": null,
+      "classificationCorrect": null,
+      "fieldsExtracted": 0,
+      "fieldMatchResults": [],
+      "error": null,
+      "timeMs": 116
+    },
+    {
+      "file": "anexa-11-model-adeverinta-emisa-de-forma-asociativa-pentru-dovedirea-calitatii-de-membru-a-beneficiarului.docx",
+      "extractor": "genericExtractor",
+      "status": "PASS",
+      "textExtracted": true,
+      "textLength": 2127,
+      "classifiedAs": "other",
+      "classificationCorrect": false,
+      "fieldsExtracted": 0,
+      "fieldMatchResults": [],
+      "error": null,
+      "timeMs": 94
+    },
+    {
+      "file": "14.6 Descrierea succinta a proiectului_ANDA.docx",
+      "extractor": "genericExtractor",
+      "status": "PASS",
+      "textExtracted": true,
+      "textLength": 42495,
+      "classifiedAs": "descriere_proiect",
+      "classificationCorrect": true,
+      "fieldsExtracted": 0,
+      "fieldMatchResults": [],
+      "error": null,
+      "timeMs": 123
+    },
+    {
+      "file": "CI Anda Chis.pdf",
+      "extractor": "genericExtractor",
+      "status": "SKIP",
+      "textExtracted": false,
+      "textLength": 0,
+      "classifiedAs": null,
+      "classificationCorrect": null,
+      "fieldsExtracted": 0,
+      "fieldMatchResults": [],
+      "error": null,
+      "timeMs": 115
+    },
+    {
+      "file": "DIPLOMA ING AGRONOM.pdf",
+      "extractor": "genericExtractor",
+      "status": "SKIP",
+      "textExtracted": false,
+      "textLength": 0,
+      "classifiedAs": null,
+      "classificationCorrect": null,
+      "fieldsExtracted": 0,
+      "fieldMatchResults": [],
+      "error": null,
+      "timeMs": 113
+    },
+    {
+      "file": "Anda Tractor.png",
+      "extractor": "ofertaExtractor",
+      "status": "EXPECTED_FAIL",
+      "textExtracted": false,
+      "textLength": 0,
+      "classifiedAs": null,
+      "classificationCorrect": null,
+      "fieldsExtracted": 0,
+      "fieldMatchResults": [],
+      "error": "G4: No image processing pipeline — PNG files are not handled by processClientDoc",
+      "timeMs": 0
+    },
+    {
+      "file": "Anda semanatoare.png",
+      "extractor": "ofertaExtractor",
+      "status": "EXPECTED_FAIL",
+      "textExtracted": false,
+      "textLength": 0,
+      "classifiedAs": null,
+      "classificationCorrect": null,
+      "fieldsExtracted": 0,
+      "fieldMatchResults": [],
+      "error": "G4: No image processing pipeline",
+      "timeMs": 1
+    },
+    {
+      "file": "Anda disc 7 m.png",
+      "extractor": "ofertaExtractor",
+      "status": "EXPECTED_FAIL",
+      "textExtracted": false,
+      "textLength": 0,
+      "classifiedAs": null,
+      "classificationCorrect": null,
+      "fieldsExtracted": 0,
+      "fieldMatchResults": [],
+      "error": "G4: No image processing pipeline",
+      "timeMs": 0
+    },
+    {
+      "file": "Anda Cultivator.png",
+      "extractor": "ofertaExtractor",
+      "status": "EXPECTED_FAIL",
+      "textExtracted": false,
+      "textLength": 0,
+      "classifiedAs": null,
+      "classificationCorrect": null,
+      "fieldsExtracted": 0,
+      "fieldMatchResults": [],
+      "error": "G4: No image processing pipeline",
+      "timeMs": 0
+    },
+    {
+      "file": "Anunt Cerere proiecte componenta 4.1.1.pdf",
+      "extractor": "genericExtractor",
+      "status": "PASS",
+      "textExtracted": true,
+      "textLength": 5109,
+      "classifiedAs": "other",
+      "classificationCorrect": true,
+      "fieldsExtracted": 0,
+      "fieldMatchResults": [],
+      "error": null,
+      "timeMs": 127
+    },
+    {
+      "file": "2024-RO009842533.pdf",
+      "extractor": "genericExtractor",
+      "status": "PASS",
+      "textExtracted": true,
+      "textLength": 33235,
+      "classifiedAs": "certificat_constatator",
+      "classificationCorrect": false,
+      "fieldsExtracted": 0,
+      "fieldMatchResults": [],
+      "error": null,
+      "timeMs": 137
+    }
+  ],
+  "counts": {
+    "PASS": 7,
+    "FAIL": 0,
+    "EXPECTED_FAIL": 4,
+    "SKIP": 4,
+    "ERROR": 0
+  },
+  "issues": [
+    {
+      "id": "P1",
+      "desc": "XFA PDF format unsupported",
+      "affected": 1,
+      "severity": "CRITICAL"
+    },
+    {
+      "id": "P2",
+      "desc": "Scanned pages need OCR",
+      "affected": 4,
+      "severity": "CRITICAL"
+    },
+    {
+      "id": "P3",
+      "desc": "Template Memoriu has no placeholders",
+      "affected": 1,
+      "severity": "MEDIUM"
+    },
+    {
+      "id": "P4",
+      "desc": "Compound document boundary detection",
+      "affected": 1,
+      "severity": "CRITICAL"
+    },
+    {
+      "id": "G1",
+      "desc": "PNG images not processed",
+      "affected": 4,
+      "severity": "CRITICAL"
+    },
+    {
+      "id": "G2",
+      "desc": ".doc format unsupported",
+      "affected": 0,
+      "severity": "MEDIUM"
+    }
+  ]
+}

@@ -8,7 +8,7 @@ import {
 import { eq, and, sql } from "drizzle-orm";
 import { createHash } from "crypto";
 import { getFileBuffer } from "../services/storage";
-import { extractTextFromPDF, extractTextFromDOCX, extractTextFromXLSX, classifyDocument } from "../services/ocr";
+import { extractTextFromPDF, extractTextFromDOCX, extractTextFromXLSX, extractTextFromImage, extractTextFromDOC, classifyDocument } from "../services/ocr";
 import { logAIUsage } from "../services/aiUsage";
 import { publishEvent, publishEligibilityUpdated, publishScoreUpdated, publishFieldExtracted, publishExtractionStarted } from "../lib/sse";
 import { validateElement, logElementChange } from "../services/elementValidation";
@@ -539,10 +539,14 @@ export const processClientDocWorker = new Worker<ProcessClientDocPayload>(
       let text = "";
       if (doc.fileType === "pdf") {
         text = await extractTextFromPDF(buffer);
-      } else if (doc.fileType === "docx" || doc.fileType === "doc") {
+      } else if (doc.fileType === "docx") {
         text = await extractTextFromDOCX(buffer, fileName);
+      } else if (doc.fileType === "doc") {
+        text = await extractTextFromDOC(buffer, fileName);
       } else if (doc.fileType === "xlsx") {
         text = await extractTextFromXLSX(buffer, fileName);
+      } else if (doc.fileType === "png" || doc.fileType === "jpg" || doc.fileType === "jpeg") {
+        text = await extractTextFromImage(buffer, fileName);
       } else {
         throw new Error(`Format nesuportat: ${doc.fileType}`);
       }

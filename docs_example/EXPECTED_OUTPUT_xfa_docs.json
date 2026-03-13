@@ -1,0 +1,43 @@
+{
+  "xfa_documents": [
+    {
+      "source_file": "Bilant_AndaOana_38480585_2023_12(1).pdf",
+      "document_type": "bilant_anaf",
+      "extractor": "bilantParser",
+      "format": "PDF XFA (Adobe LiveCycle)",
+      "xfa_extraction_required": true,
+      "values_all_zero": true,
+      "notes": "Formular necompletat - toate valorile sunt 0/goale"
+    },
+    {
+      "source_file": "Anexa 1 CEREREA De FINANTARE M4.1.pdf",
+      "document_type": "cerere_finantare_template",
+      "extractor": "genericExtractor",
+      "format": "PDF XFA",
+      "xfa_extraction_required": true,
+      "notes": "XFA form template - cerere finantare"
+    },
+    {
+      "source_file": "Anexa 2 Anexa B.pdf",
+      "document_type": "anexa_b_template",
+      "extractor": "genericExtractor",
+      "format": "PDF XFA",
+      "xfa_extraction_required": true,
+      "notes": "XFA form - prognoza economico-financiara B"
+    },
+    {
+      "source_file": "Anexa 2 Anexa C.pdf",
+      "document_type": "anexa_c_template",
+      "extractor": "genericExtractor",
+      "format": "PDF XFA",
+      "xfa_extraction_required": true,
+      "notes": "XFA form - prognoza economico-financiara C"
+    }
+  ],
+  "critical_issues": [
+    "ocr.ts extractPDFPages() has NO XFA handling - returns placeholder text only",
+    "bilantParser.ts receives empty/placeholder text from XFA PDFs",
+    "Need to add XFA XML stream extraction (fitz xfa property or xml.etree parsing)",
+    "4 out of 26 documents (15%) are XFA format and completely broken"
+  ]
+}

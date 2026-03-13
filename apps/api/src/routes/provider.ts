@@ -3,7 +3,7 @@ import { sign, verify } from "hono/jwt";
 import { z } from "zod";
 import { db } from "../db";
 import { providerUsers, cabinetCodes, organizations, users } from "../db/schema";
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, isNull, sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { lookupCUI_ListaFirme, searchCompany_ListaFirme } from "../services/listafirme";
 import type { AppEnv } from "../types/hono";
@@ -46,7 +46,6 @@ providerRoutes.get("/cabinets", providerAuth, async (c) => {
 // Generate code — optionally tied to a specific CUI (handshake)
 providerRoutes.post("/codes", providerAuth, async (c) => {
   const raw = await c.req.json();
-  console.log("[POST /codes] raw body:", JSON.stringify(raw));
 
   const body = z.object({
     plan: z.enum(["starter", "professional", "enterprise"]),
@@ -60,18 +59,48 @@ providerRoutes.post("/codes", providerAuth, async (c) => {
   const rand = Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
   const code = `DF-${rand}-${new Date().getFullYear()}`;
 
-  const [created] = await db.insert(cabinetCodes).values({
-    code,
-    plan: body.plan,
-    maxUsers: body.maxUsers,
-    trialDays: body.trialDays,
-    cui: body.cui?.replace(/\D/g, "") || null,
-    companyName: body.companyName || null,
-    expiresAt: new Date(Date.now() + 90 * 86400000),
-    createdBy: c.get("providerId"),
-  }).returning();
+  const cuiClean = body.cui?.replace(/\D/g, "") || null;
+  const companyName = body.companyName || null;
 
-  return c.json(created);
+  // Try insert with CUI columns first; if columns don't exist yet, retry without them
+  try {
+    const [created] = await db.insert(cabinetCodes).values({
+      code,
+      plan: body.plan,
+      maxUsers: body.maxUsers,
+      trialDays: body.trialDays,
+      cui: cuiClean,
+      companyName,
+      expiresAt: new Date(Date.now() + 90 * 86400000),
+      createdBy: c.get("providerId"),
+    }).returning();
+    return c.json(created);
+  } catch (insertErr: any) {
+    // If the error is about missing columns, auto-add them and retry
+    if (insertErr.message?.includes("cui") || insertErr.message?.includes("company_name") || insertErr.message?.includes("column")) {
+      console.log("[POST /codes] CUI columns missing, running ALTER TABLE...");
+      try {
+        await db.execute(sql`ALTER TABLE "cabinet_codes" ADD COLUMN IF NOT EXISTS "cui" varchar(20)`);
+        await db.execute(sql`ALTER TABLE "cabinet_codes" ADD COLUMN IF NOT EXISTS "company_name" varchar(500)`);
+        console.log("[POST /codes] Columns added successfully, retrying insert...");
+      } catch (alterErr: any) {
+        console.warn("[POST /codes] ALTER TABLE warning:", alterErr.message);
+      }
+      // Retry the insert
+      const [created] = await db.insert(cabinetCodes).values({
+        code,
+        plan: body.plan,
+        maxUsers: body.maxUsers,
+        trialDays: body.trialDays,
+        cui: cuiClean,
+        companyName,
+        expiresAt: new Date(Date.now() + 90 * 86400000),
+        createdBy: c.get("providerId"),
+      }).returning();
+      return c.json(created);
+    }
+    throw insertErr;
+  }
 });
 
 // List unused codes

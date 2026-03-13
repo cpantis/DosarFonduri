@@ -104,6 +104,21 @@ export default function CompanyDetailPage() {
     if (id) fetchDetail();
   }, [id, fetchDetail]);
 
+  // Poll for processing status when company is being processed
+  useEffect(() => {
+    if (!detail || (detail.processingStatus !== "processing")) return;
+    const interval = setInterval(async () => {
+      try {
+        const status = await apiGet(`/api/companies/${id}/processing-status`);
+        if (status.processingStatus !== "processing") {
+          clearInterval(interval);
+          fetchDetail(); // Reload full data when processing is done
+        }
+      } catch { /* ignore polling errors */ }
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [detail?.processingStatus, id, fetchDetail]);
+
   const handleDelete = async () => {
     if (!confirm("Sigur doriti sa stergeti aceasta firma?")) return;
     try {
@@ -132,6 +147,7 @@ export default function CompanyDetailPage() {
       await api<any>(`/api/companies/${id}/upload-onrc`, {
         method: "POST",
         body: formData,
+        timeout: 120_000,
       });
       await fetchDetail();
       setShowOnrcUpload(false);
@@ -240,6 +256,20 @@ export default function CompanyDetailPage() {
 
         {/* DETAIL VIEW */}
         {!loading && !error && sel && (<>
+          {/* PROCESSING BANNER */}
+          {sel.processingStatus === "processing" && (
+            <div style={{ padding: "14px 32px", background: "rgba(77,139,255,0.06)", borderBottom: "1px solid var(--accent-blue)", display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
+              <span className="cd-spinner cd-spinner-dark" style={{ width: 18, height: 18 }} />
+              <span style={{ fontSize: 14, fontWeight: 600, color: "var(--accent-blue)" }}>Se proceseaza documentul... Datele firmei se actualizeaza automat.</span>
+            </div>
+          )}
+          {sel.processingStatus === "error" && (
+            <div style={{ padding: "14px 32px", background: "rgba(248,113,113,0.06)", borderBottom: "1px solid var(--accent-red)", display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
+              <span style={{ fontSize: 14, fontWeight: 600, color: "var(--accent-red)" }}>Eroare la procesare: {sel.processingError || "Eroare necunoscuta"}</span>
+              <button className="cd-btn-s" style={{ marginLeft: "auto", padding: "6px 14px", fontSize: 12 }} onClick={() => setShowOnrcUpload(true)}>Reincearca upload</button>
+            </div>
+          )}
+
           {/* HEADER */}
           <div className="cd-header">
             <div style={{ marginBottom: 16 }}>

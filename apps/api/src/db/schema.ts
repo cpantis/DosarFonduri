@@ -124,6 +124,8 @@ export const companies = pgTable("companies", {
   reprezentantIF: varchar("reprezentant_if", { length: 255 }),
   onrcRawData: jsonb("onrc_raw_data"),
   certificatFileId: uuid("certificat_file_id").references(() => files.id),
+  processingStatus: varchar("processing_status", { length: 20 }).default("idle"),
+  processingError: text("processing_error"),
   lastSyncedAt: timestamp("last_synced_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull().$onUpdate(() => new Date()),

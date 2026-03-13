@@ -6,7 +6,7 @@ import {
   companies, companyAssociates, companyAdministrators,
   companyFinancials, companyIfMembers,
 } from "../db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { lookupCUI, FORMA_MAP } from "../services/onrc";
 import { lookupCUI_ListaFirme, searchCompany_ListaFirme } from "../services/listafirme";
 import { uploadFile, getFileBuffer, deleteFile } from "../services/storage";
@@ -14,6 +14,274 @@ import { parseBilantPDF } from "../services/bilantParser";
 import { extractTextFromPDF } from "../services/ocr";
 import { extractCompanyFromDocument } from "../services/companyExtractor";
 import { AuthContext } from "../middleware/auth";
+
+// Helper: ensure processing_status columns exist (self-healing)
+async function ensureProcessingColumns() {
+  try {
+    await db.execute(sql`ALTER TABLE "companies" ADD COLUMN IF NOT EXISTS "processing_status" varchar(20) DEFAULT 'idle'`);
+    await db.execute(sql`ALTER TABLE "companies" ADD COLUMN IF NOT EXISTS "processing_error" text`);
+  } catch { /* ignore */ }
+}
+
+// Background processor for PDF company extraction
+async function processCompanyPDFInBackground(
+  companyId: string,
+  buffer: Buffer,
+  organizationId: string,
+) {
+  try {
+    const pdfText = await extractTextFromPDF(buffer);
+    const companyData = await extractCompanyFromDocument(pdfText);
+
+    if (!companyData) {
+      await db.update(companies).set({
+        processingStatus: "error",
+        processingError: "Nu s-au putut extrage date din document.",
+      }).where(eq(companies.id, companyId));
+      return;
+    }
+
+    // Update company with extracted data
+    const updateData: Record<string, any> = {
+      processingStatus: "done",
+      processingError: null,
+    };
+    if (companyData.denumire) updateData.denumire = companyData.denumire;
+    if (companyData.cui) updateData.cui = companyData.cui;
+    if (companyData.regCom) updateData.regCom = companyData.regCom;
+    if (companyData.euid) updateData.euid = companyData.euid;
+    if (companyData.adresa) updateData.adresa = companyData.adresa;
+    if (companyData.localitate) updateData.localitate = companyData.localitate;
+    if (companyData.judet) updateData.judet = companyData.judet;
+    if (companyData.telefon) updateData.telefon = companyData.telefon;
+    if (companyData.email) updateData.email = companyData.email;
+    if (companyData.formaJuridica) updateData.formaJuridica = companyData.formaJuridica;
+    if (companyData.stare) updateData.stare = companyData.stare;
+    if (companyData.durata) updateData.durata = companyData.durata;
+    if (companyData.anInfiintare) updateData.anInfiintare = companyData.anInfiintare;
+    if (companyData.capitalSocial) updateData.capitalSocial = companyData.capitalSocial.toString();
+    if (companyData.moneda) updateData.moneda = companyData.moneda;
+    if (companyData.partiSociale) updateData.partiSociale = companyData.partiSociale;
+    if (companyData.naturaCapital) updateData.naturaCapital = companyData.naturaCapital;
+    if (companyData.caenPrincipal) updateData.caen = companyData.caenPrincipal;
+    updateData.onrcRawData = companyData;
+
+    await db.update(companies).set(updateData).where(eq(companies.id, companyId));
+
+    // Insert associates
+    if (companyData.asociati?.length > 0) {
+      await db.insert(companyAssociates).values(
+        companyData.asociati.map((a: any) => ({
+          companyId,
+          type: a.type as any,
+          name: a.name,
+          role: a.role,
+          citizenshipOrCountry: a.citizenship,
+          contribution: a.contribution?.toString(),
+          shares: a.shares,
+          pctBenefits: a.pctBenefits?.toString(),
+          pctLosses: a.pctLosses?.toString(),
+        }))
+      );
+    }
+
+    // Insert administrators
+    if (companyData.administratori?.length > 0) {
+      await db.insert(companyAdministrators).values(
+        companyData.administratori.map((a: any) => ({
+          companyId,
+          name: a.name,
+          role: a.role,
+          powers: a.powers,
+          mandateDuration: a.mandateDuration,
+        }))
+      );
+    }
+
+    // Insert financials
+    if (companyData.financials?.length > 0) {
+      await db.insert(companyFinancials).values(
+        companyData.financials.map((f: any) => ({
+          companyId,
+          year: f.year,
+          source: "onrc" as const,
+          f10: { capitaluriProprii: f.capitaluriProprii, activeImobilizate: { total: f.activeImobilizate }, activeCirculante: { total: f.activeCirculante } },
+          f20: { cifraAfaceriNeta: f.cifraAfaceri, profitBrut: f.profitBrut, profitNet: f.profitNet },
+          f30: { numarMediuSalariati: f.angajati, numarEfectivSalariati: f.angajatiEfectiv },
+        }))
+      );
+    }
+
+    console.log(`[BG] Company ${companyId} PDF processing completed successfully`);
+  } catch (err: any) {
+    console.error(`[BG] Company ${companyId} PDF processing failed:`, err.message);
+    await db.update(companies).set({
+      processingStatus: "error",
+      processingError: err.message?.substring(0, 500) || "Eroare la procesare",
+    }).where(eq(companies.id, companyId)).catch(() => {});
+  }
+}
+
+// Background processor for ONRC update
+async function processOnrcUpdateInBackground(
+  companyId: string,
+  buffer: Buffer,
+  organizationId: string,
+) {
+  try {
+    const pdfText = await extractTextFromPDF(buffer);
+    const companyData = await extractCompanyFromDocument(pdfText);
+
+    if (!companyData) {
+      await db.update(companies).set({
+        processingStatus: "error",
+        processingError: "Nu s-au putut extrage date din document.",
+      }).where(eq(companies.id, companyId));
+      return;
+    }
+
+    const updateData: Record<string, any> = {
+      processingStatus: "done",
+      processingError: null,
+      lastSyncedAt: new Date(),
+    };
+    if (companyData.denumire) updateData.denumire = companyData.denumire;
+    if (companyData.regCom) updateData.regCom = companyData.regCom;
+    if (companyData.euid) updateData.euid = companyData.euid;
+    if (companyData.adresa) updateData.adresa = companyData.adresa;
+    if (companyData.localitate) updateData.localitate = companyData.localitate;
+    if (companyData.judet) updateData.judet = companyData.judet;
+    if (companyData.telefon) updateData.telefon = companyData.telefon;
+    if (companyData.email) updateData.email = companyData.email;
+    if (companyData.formaJuridica) updateData.formaJuridica = companyData.formaJuridica;
+    if (companyData.stare) updateData.stare = companyData.stare;
+    if (companyData.durata) updateData.durata = companyData.durata;
+    if (companyData.anInfiintare) updateData.anInfiintare = companyData.anInfiintare;
+    if (companyData.capitalSocial) updateData.capitalSocial = companyData.capitalSocial.toString();
+    if (companyData.moneda) updateData.moneda = companyData.moneda;
+    if (companyData.partiSociale) updateData.partiSociale = companyData.partiSociale;
+    if (companyData.naturaCapital) updateData.naturaCapital = companyData.naturaCapital;
+    if (companyData.caenPrincipal) updateData.caen = companyData.caenPrincipal;
+    updateData.onrcRawData = companyData;
+
+    await db.update(companies).set(updateData).where(eq(companies.id, companyId));
+
+    // Replace associates
+    if (companyData.asociati?.length > 0) {
+      await db.delete(companyAssociates).where(eq(companyAssociates.companyId, companyId));
+      await db.insert(companyAssociates).values(
+        companyData.asociati.map((a: any) => ({
+          companyId,
+          type: a.type as any,
+          name: a.name,
+          role: a.role,
+          citizenshipOrCountry: a.citizenship,
+          contribution: a.contribution?.toString(),
+          shares: a.shares,
+          pctBenefits: a.pctBenefits?.toString(),
+          pctLosses: a.pctLosses?.toString(),
+        }))
+      );
+    }
+
+    // Replace administrators
+    if (companyData.administratori?.length > 0) {
+      await db.delete(companyAdministrators).where(eq(companyAdministrators.companyId, companyId));
+      await db.insert(companyAdministrators).values(
+        companyData.administratori.map((a: any) => ({
+          companyId,
+          name: a.name,
+          role: a.role,
+          powers: a.powers,
+          mandateDuration: a.mandateDuration,
+        }))
+      );
+    }
+
+    // Insert/update financials
+    if (companyData.financials?.length > 0) {
+      for (const f of companyData.financials) {
+        const existing = await db.query.companyFinancials.findFirst({
+          where: and(eq(companyFinancials.companyId, companyId), eq(companyFinancials.year, f.year)),
+        });
+        const finData = {
+          source: "onrc" as const,
+          f10: { capitaluriProprii: f.capitaluriProprii, activeImobilizate: { total: f.activeImobilizate }, activeCirculante: { total: f.activeCirculante } },
+          f20: { cifraAfaceriNeta: f.cifraAfaceri, profitBrut: f.profitBrut, profitNet: f.profitNet },
+          f30: { numarMediuSalariati: f.angajati, numarEfectivSalariati: f.angajatiEfectiv },
+          processedAt: new Date(),
+        };
+        if (existing) {
+          await db.update(companyFinancials).set(finData).where(eq(companyFinancials.id, existing.id));
+        } else {
+          await db.insert(companyFinancials).values({ companyId, year: f.year, ...finData });
+        }
+      }
+    }
+
+    console.log(`[BG] Company ${companyId} ONRC update completed successfully`);
+  } catch (err: any) {
+    console.error(`[BG] Company ${companyId} ONRC update failed:`, err.message);
+    await db.update(companies).set({
+      processingStatus: "error",
+      processingError: err.message?.substring(0, 500) || "Eroare la procesare",
+    }).where(eq(companies.id, companyId)).catch(() => {});
+  }
+}
+
+// Background processor for bilant PDF
+async function processBilantInBackground(
+  companyId: string,
+  fileId: string,
+  buffer: Buffer,
+  year: number,
+) {
+  try {
+    const pdfText = await extractTextFromPDF(buffer);
+    const parsed = await parseBilantPDF(pdfText, year);
+
+    const existing = await db.query.companyFinancials.findFirst({
+      where: and(eq(companyFinancials.companyId, companyId), eq(companyFinancials.year, year)),
+    });
+
+    if (existing) {
+      await db.update(companyFinancials).set({
+        source: "anaf_upload",
+        fileId,
+        f10: parsed.f10,
+        f20: parsed.f20,
+        f30: parsed.f30,
+        f40: parsed.f40,
+        processedAt: new Date(),
+      }).where(eq(companyFinancials.id, existing.id));
+    } else {
+      await db.insert(companyFinancials).values({
+        companyId,
+        year,
+        source: "anaf_upload",
+        fileId,
+        f10: parsed.f10,
+        f20: parsed.f20,
+        f30: parsed.f30,
+        f40: parsed.f40,
+        processedAt: new Date(),
+      });
+    }
+
+    await db.update(companies).set({
+      processingStatus: "done",
+      processingError: null,
+    }).where(eq(companies.id, companyId));
+
+    console.log(`[BG] Company ${companyId} bilant ${year} processing completed`);
+  } catch (err: any) {
+    console.error(`[BG] Company ${companyId} bilant processing failed:`, err.message);
+    await db.update(companies).set({
+      processingStatus: "error",
+      processingError: err.message?.substring(0, 500) || "Eroare la procesare bilant",
+    }).where(eq(companies.id, companyId)).catch(() => {});
+  }
+}
 
 export const companyRoutes = new Hono<AppEnv>();
 
@@ -70,6 +338,24 @@ companyRoutes.get("/:id", async (c) => {
   });
 });
 
+// --- PROCESSING STATUS ---
+companyRoutes.get("/:id/processing-status", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const id = c.req.param("id");
+
+  const company = await db.query.companies.findFirst({
+    where: and(eq(companies.id, id), eq(companies.organizationId, auth.organizationId!)),
+  });
+  if (!company) return c.json({ error: "Not found" }, 404);
+
+  return c.json({
+    processingStatus: (company as any).processingStatus || "idle",
+    processingError: (company as any).processingError || null,
+    denumire: company.denumire,
+    cui: company.cui,
+  });
+});
+
 // --- ADD COMPANY (CUI auto) ---
 const addByCUISchema = z.object({
   cui: z.string().min(4),
@@ -84,100 +370,34 @@ companyRoutes.post("/", async (c) => {
 
   if (contentType.includes("multipart/form-data")) {
     // Manual upload - certificat constatator or combined PDF
+    // Non-blocking: upload file, create placeholder company, process in background
     const formData = await c.req.formData();
     const file = formData.get("file") as File;
+    const formaJuridica = (formData.get("formaJuridica") as string) || "SRL";
 
     if (!file) return c.json({ error: "Fișier lipsă" }, 400);
 
     const buffer = Buffer.from(await file.arrayBuffer());
     const fileId = await uploadFile(buffer, file.name, file.type, auth.organizationId, auth.userId);
 
-    // Extract text from PDF
-    const pdfText = await extractTextFromPDF(buffer);
+    // Ensure processing columns exist
+    await ensureProcessingColumns();
 
-    // Extract company data with Claude
-    const companyData = await extractCompanyFromDocument(pdfText);
-
-    if (!companyData) {
-      return c.json({ error: "Nu s-au putut extrage date din document. Asigură-te că PDF-ul conține un certificat constatator ONRC." }, 400);
-    }
-
-    // Check duplicate
-    const existing = await db.query.companies.findFirst({
-      where: and(
-        eq(companies.cui, companyData.cui),
-        eq(companies.organizationId, auth.organizationId),
-      ),
-    });
-    if (existing) return c.json({ error: "Firma cu CUI " + companyData.cui + " există deja" }, 400);
-
-    // Create company
+    // Create company with placeholder data — will be enriched by background processor
     const [company] = await db.insert(companies).values({
       organizationId: auth.organizationId,
-      formaJuridica: companyData.formaJuridica as any,
-      denumire: companyData.denumire,
-      cui: companyData.cui,
-      regCom: companyData.regCom,
-      euid: companyData.euid,
-      adresa: companyData.adresa,
-      localitate: companyData.localitate,
-      judet: companyData.judet,
-      telefon: companyData.telefon,
-      email: companyData.email,
-      stare: companyData.stare as any,
-      durata: companyData.durata,
-      anInfiintare: companyData.anInfiintare,
-      capitalSocial: companyData.capitalSocial?.toString(),
-      moneda: companyData.moneda,
-      partiSociale: companyData.partiSociale,
-      naturaCapital: companyData.naturaCapital,
+      formaJuridica: formaJuridica as any,
+      denumire: file.name.replace(/\.[^.]+$/, "").substring(0, 100) || "Se procesează...",
+      cui: `PROC-${Date.now()}`,
       certificatFileId: fileId,
+      processingStatus: "processing",
       createdBy: auth.userId,
     }).returning();
 
-    // Insert associates
-    if (companyData.asociati?.length > 0) {
-      await db.insert(companyAssociates).values(
-        companyData.asociati.map((a) => ({
-          companyId: company.id,
-          type: a.type as any,
-          name: a.name,
-          role: a.role,
-          citizenshipOrCountry: a.citizenship,
-          contribution: a.contribution?.toString(),
-          shares: a.shares,
-          pctBenefits: a.pctBenefits?.toString(),
-          pctLosses: a.pctLosses?.toString(),
-        }))
-      );
-    }
-
-    // Insert administrators
-    if (companyData.administratori?.length > 0) {
-      await db.insert(companyAdministrators).values(
-        companyData.administratori.map((a) => ({
-          companyId: company.id,
-          name: a.name,
-          role: a.role,
-          powers: a.powers,
-          mandateDuration: a.mandateDuration,
-        }))
-      );
-    }
-
-    // Insert financials from certificat constatator
-    if (companyData.financials?.length > 0) {
-      await db.insert(companyFinancials).values(
-        companyData.financials.map((f) => ({
-          companyId: company.id,
-          year: f.year,
-          source: "onrc" as const,
-          f10: { capitaluriProprii: f.capitaluriProprii, activeImobilizate: { total: f.activeImobilizate }, activeCirculante: { total: f.activeCirculante } },
-          f20: { cifraAfaceriNeta: f.cifraAfaceri, profitBrut: f.profitBrut, profitNet: f.profitNet },
-          f30: { numarMediuSalariati: f.angajati, numarEfectivSalariati: f.angajatiEfectiv },
-        }))
-      );
-    }
+    // Fire background processing — do NOT await
+    processCompanyPDFInBackground(company.id, buffer, auth.organizationId).catch(err => {
+      console.error("[BG] Unhandled error in company PDF processing:", err);
+    });
 
     return c.json(company, 201);
   }
@@ -327,6 +547,7 @@ companyRoutes.post("/:id/sync-onrc", async (c) => {
 });
 
 // --- UPLOAD ANAF BALANCE SHEET ---
+// Non-blocking: upload file, process bilant in background
 companyRoutes.post("/:id/upload-bilant", async (c) => {
   const auth = c.get("auth") as AuthContext;
   const id = c.req.param("id");
@@ -344,38 +565,20 @@ companyRoutes.post("/:id/upload-bilant", async (c) => {
   const buffer = Buffer.from(await file.arrayBuffer());
   const fileId = await uploadFile(buffer, file.name, file.type, auth.organizationId!, auth.userId);
 
-  const pdfText = await extractTextFromPDF(buffer);
-  const parsed = await parseBilantPDF(pdfText, year);
+  await ensureProcessingColumns();
 
-  const existing = await db.query.companyFinancials.findFirst({
-    where: and(eq(companyFinancials.companyId, id), eq(companyFinancials.year, year)),
+  // Mark company as processing
+  await db.update(companies).set({
+    processingStatus: "processing",
+    processingError: null,
+  }).where(eq(companies.id, id));
+
+  // Fire background processing — do NOT await
+  processBilantInBackground(id, fileId, buffer, year).catch(err => {
+    console.error("[BG] Unhandled error in bilant processing:", err);
   });
 
-  if (existing) {
-    await db.update(companyFinancials).set({
-      source: "anaf_upload",
-      fileId,
-      f10: parsed.f10,
-      f20: parsed.f20,
-      f30: parsed.f30,
-      f40: parsed.f40,
-      processedAt: new Date(),
-    }).where(eq(companyFinancials.id, existing.id));
-  } else {
-    await db.insert(companyFinancials).values({
-      companyId: id,
-      year,
-      source: "anaf_upload",
-      fileId,
-      f10: parsed.f10,
-      f20: parsed.f20,
-      f30: parsed.f30,
-      f40: parsed.f40,
-      processedAt: new Date(),
-    });
-  }
-
-  return c.json({ ok: true, year, parsed });
+  return c.json({ ok: true, year, processingStatus: "processing", message: "Fișier încărcat, se procesează în fundal..." });
 });
 
 // --- SEARCH CUI (ListaFirme.ro) ---
@@ -517,6 +720,7 @@ companyRoutes.post("/from-listafirme", async (c) => {
 });
 
 // --- UPLOAD ONRC (Certificat Constatator) - UPDATE EXISTING COMPANY ---
+// Non-blocking: upload file, mark as processing, return immediately
 companyRoutes.post("/:id/upload-onrc", async (c) => {
   const auth = c.get("auth") as AuthContext;
   const id = c.req.param("id");
@@ -533,97 +737,21 @@ companyRoutes.post("/:id/upload-onrc", async (c) => {
   const buffer = Buffer.from(await file.arrayBuffer());
   const fileId = await uploadFile(buffer, file.name, file.type, auth.organizationId!, auth.userId);
 
-  // Extract text from PDF
-  const pdfText = await extractTextFromPDF(buffer);
+  await ensureProcessingColumns();
 
-  // Extract company data with Claude
-  const companyData = await extractCompanyFromDocument(pdfText);
-  if (!companyData) {
-    return c.json({ error: "Nu s-au putut extrage date din document." }, 400);
-  }
-
-  // Update company with extracted data
-  const updateData: Record<string, any> = {
+  // Mark company as processing and set file
+  await db.update(companies).set({
     certificatFileId: fileId,
-    lastSyncedAt: new Date(),
-    updatedAt: new Date(),
-  };
-  // Only update fields that were extracted and are non-empty
-  if (companyData.denumire) updateData.denumire = companyData.denumire;
-  if (companyData.regCom) updateData.regCom = companyData.regCom;
-  if (companyData.euid) updateData.euid = companyData.euid;
-  if (companyData.adresa) updateData.adresa = companyData.adresa;
-  if (companyData.localitate) updateData.localitate = companyData.localitate;
-  if (companyData.judet) updateData.judet = companyData.judet;
-  if (companyData.telefon) updateData.telefon = companyData.telefon;
-  if (companyData.email) updateData.email = companyData.email;
-  if (companyData.formaJuridica) updateData.formaJuridica = companyData.formaJuridica;
-  if (companyData.stare) updateData.stare = companyData.stare;
-  if (companyData.durata) updateData.durata = companyData.durata;
-  if (companyData.anInfiintare) updateData.anInfiintare = companyData.anInfiintare;
-  if (companyData.capitalSocial) updateData.capitalSocial = companyData.capitalSocial.toString();
-  if (companyData.moneda) updateData.moneda = companyData.moneda;
-  if (companyData.partiSociale) updateData.partiSociale = companyData.partiSociale;
-  if (companyData.naturaCapital) updateData.naturaCapital = companyData.naturaCapital;
-  if (companyData.caenPrincipal) updateData.caen = companyData.caenPrincipal;
-  updateData.onrcRawData = companyData;
+    processingStatus: "processing",
+    processingError: null,
+  }).where(eq(companies.id, id));
 
-  await db.update(companies).set(updateData).where(eq(companies.id, id));
+  // Fire background processing — do NOT await
+  processOnrcUpdateInBackground(id, buffer, auth.organizationId!).catch(err => {
+    console.error("[BG] Unhandled error in ONRC update:", err);
+  });
 
-  // Replace associates
-  if (companyData.asociati?.length > 0) {
-    await db.delete(companyAssociates).where(eq(companyAssociates.companyId, id));
-    await db.insert(companyAssociates).values(
-      companyData.asociati.map((a) => ({
-        companyId: id,
-        type: a.type as any,
-        name: a.name,
-        role: a.role,
-        citizenshipOrCountry: a.citizenship,
-        contribution: a.contribution?.toString(),
-        shares: a.shares,
-        pctBenefits: a.pctBenefits?.toString(),
-        pctLosses: a.pctLosses?.toString(),
-      }))
-    );
-  }
-
-  // Replace administrators
-  if (companyData.administratori?.length > 0) {
-    await db.delete(companyAdministrators).where(eq(companyAdministrators.companyId, id));
-    await db.insert(companyAdministrators).values(
-      companyData.administratori.map((a) => ({
-        companyId: id,
-        name: a.name,
-        role: a.role,
-        powers: a.powers,
-        mandateDuration: a.mandateDuration,
-      }))
-    );
-  }
-
-  // Insert/update financials from certificat constatator
-  if (companyData.financials?.length > 0) {
-    for (const f of companyData.financials) {
-      const existing = await db.query.companyFinancials.findFirst({
-        where: and(eq(companyFinancials.companyId, id), eq(companyFinancials.year, f.year)),
-      });
-      const finData = {
-        source: "onrc" as const,
-        f10: { capitaluriProprii: f.capitaluriProprii, activeImobilizate: { total: f.activeImobilizate }, activeCirculante: { total: f.activeCirculante } },
-        f20: { cifraAfaceriNeta: f.cifraAfaceri, profitBrut: f.profitBrut, profitNet: f.profitNet },
-        f30: { numarMediuSalariati: f.angajati, numarEfectivSalariati: f.angajatiEfectiv },
-        processedAt: new Date(),
-      };
-      if (existing) {
-        await db.update(companyFinancials).set(finData).where(eq(companyFinancials.id, existing.id));
-      } else {
-        await db.insert(companyFinancials).values({ companyId: id, year: f.year, ...finData });
-      }
-    }
-  }
-
-  return c.json({ ok: true, message: "Date actualizate din certificat constatator", updated: updateData });
+  return c.json({ ok: true, message: "Fișier încărcat, se procesează în fundal...", processingStatus: "processing" });
 });
 
 // --- FINANCIALS PER YEAR ---

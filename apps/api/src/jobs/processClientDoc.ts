@@ -796,7 +796,7 @@ export const processClientDocWorker = new Worker<ProcessClientDocPayload>(
     const { documentId, organizationId } = job.data;
 
     try {
-      await db.update(documents).set({ status: "processing" }).where(eq(documents.id, documentId));
+      await db.update(documents).set({ status: "processing", processingError: null }).where(eq(documents.id, documentId));
 
       const doc = await db.query.documents.findFirst({ where: eq(documents.id, documentId) });
       if (!doc) throw new Error("Document not found");
@@ -1035,7 +1035,8 @@ export const processClientDocWorker = new Worker<ProcessClientDocPayload>(
 
       const isLastAttempt = (job.attemptsMade + 1) >= (job.opts.attempts || 3);
       const docStatus = isLastAttempt ? "failed" : "error";
-      await db.update(documents).set({ status: docStatus as any }).where(eq(documents.id, documentId));
+      const errorMsg = error instanceof Error ? error.message : "Eroare necunoscută";
+      await db.update(documents).set({ status: docStatus as any, processingError: errorMsg }).where(eq(documents.id, documentId));
 
       publishEvent(`org:${organizationId}:uploads`, "document_failed", {
         documentId,
@@ -1043,9 +1044,10 @@ export const processClientDocWorker = new Worker<ProcessClientDocPayload>(
         attempt: job.attemptsMade + 1,
         maxAttempts: job.opts.attempts || 3,
         willRetry: !isLastAttempt,
+        errorMessage: errorMsg,
         message: isLastAttempt
-          ? `Eroare la procesarea documentului (toate ${job.opts.attempts || 3} încercări eșuate)`
-          : `Eroare la procesarea documentului (încercare ${job.attemptsMade + 1}/${job.opts.attempts || 3}, se reîncearcă)`,
+          ? `Eroare la procesarea documentului (toate ${job.opts.attempts || 3} încercări eșuate): ${errorMsg}`
+          : `Eroare la procesarea documentului (încercare ${job.attemptsMade + 1}/${job.opts.attempts || 3}, se reîncearcă): ${errorMsg}`,
       }).catch(() => {});
       throw error;
     }

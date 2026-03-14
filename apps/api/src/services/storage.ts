@@ -15,6 +15,8 @@ const USE_S3 = !!(process.env.S3_ACCESS_KEY && process.env.S3_SECRET_KEY && proc
 if (!USE_S3) {
   console.warn("⚠️  S3 not configured (S3_ACCESS_KEY, S3_SECRET_KEY, S3_ENDPOINT missing).");
   console.warn("   Using LOCAL filesystem storage at ./uploads/. Not suitable for production.");
+} else {
+  console.log(`✅ S3 storage configured: endpoint=${process.env.S3_ENDPOINT}, bucket=${process.env.S3_BUCKET || "dosarfonduri"}`);
 }
 
 const LOCAL_STORAGE_ROOT = join(process.cwd(), "uploads");
@@ -52,7 +54,11 @@ function localWrite(key: string, buffer: Buffer): void {
 }
 
 function localRead(key: string): Buffer {
-  return readFileSync(localPath(key));
+  const fullPath = localPath(key);
+  if (!existsSync(fullPath)) {
+    throw new Error(`Fișierul nu există pe disk (storage local): ${fullPath}. Dacă S3 nu e configurat, fișierele se pierd la restart. Re-uploadează documentul.`);
+  }
+  return readFileSync(fullPath);
 }
 
 function localDelete(key: string): void {
@@ -156,18 +162,25 @@ export async function getFileBuffer(fileId: string, organizationId?: string): Pr
   }
 
   if (USE_S3 && s3) {
-    const response = await s3.send(new GetObjectCommand({
-      Bucket: BUCKET,
-      Key: file.storageKey,
-    }));
+    try {
+      const response = await s3.send(new GetObjectCommand({
+        Bucket: BUCKET,
+        Key: file.storageKey,
+      }));
 
-    const chunks: Uint8Array[] = [];
-    for await (const chunk of response.Body as any) chunks.push(chunk);
-    return {
-      buffer: Buffer.concat(chunks),
-      name: file.originalName,
-      mimeType: file.mimeType,
-    };
+      const chunks: Uint8Array[] = [];
+      for await (const chunk of response.Body as any) chunks.push(chunk);
+      return {
+        buffer: Buffer.concat(chunks),
+        name: file.originalName,
+        mimeType: file.mimeType,
+      };
+    } catch (err: any) {
+      if (err.name === "NoSuchKey" || err.$metadata?.httpStatusCode === 404) {
+        throw new Error(`Fișierul nu există pe S3 (key: ${file.storageKey}). Probabil a fost uploadat pe storage local înainte de configurarea S3. Re-uploadează documentul.`);
+      }
+      throw err;
+    }
   }
 
   // Local filesystem

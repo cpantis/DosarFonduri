@@ -3,6 +3,7 @@ import { processGuideWorker } from "./processGuide";
 import { processTemplateWorker } from "./processTemplate";
 import { processReferenceDataWorker } from "./processReferenceData";
 import { processClientDocWorker } from "./processClientDoc";
+import { processCompanyWorker } from "./processCompany";
 import { syncOnrcJob } from "./syncOnrc";
 import { checkDeadlines } from "./checkDeadlines";
 
@@ -11,6 +12,7 @@ console.log("  - process-guide");
 console.log("  - process-template");
 console.log("  - process-reference-data");
 console.log("  - process-client-doc");
+console.log("  - process-company (concurrency: 2)");
 console.log("  - sync-onrc (cron: daily 03:00)");
 console.log("  - check-deadlines (cron: daily 08:00)");
 
@@ -72,5 +74,6 @@ process.on("SIGTERM", async () => {
   await processTemplateWorker.close();
   await processReferenceDataWorker.close();
   await processClientDocWorker.close();
+  await processCompanyWorker.close();
   process.exit(0);
 });

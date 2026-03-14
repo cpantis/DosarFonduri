@@ -256,6 +256,172 @@ export async function ocrPageWithVision(pageImageBase64: string, mediaType: stri
   return response.choices[0]?.message?.content || "";
 }
 
+// ─── GPT-4o PRE-STRUCTURING PER PAGE ───
+
+export interface PreStructuredPage {
+  page: number;
+  sectionType: "eligibilitate" | "intensitate" | "selectie" | "cheltuieli" | "documente" | "achizitii" | "general" | "cuprins" | "definitii";
+  cleanedText: string;
+  tables: Array<{ title: string; markdownTable: string }>;
+  keyTerms: string[];
+}
+
+export interface PreStructuredGuide {
+  pages: PreStructuredPage[];
+  structuredText: string;
+  pageCount: number;
+  tableCount: number;
+}
+
+/** Max pages per GPT-4o batch to balance cost vs context */
+const PRE_STRUCTURE_BATCH_SIZE = 5;
+
+/** Max parallel GPT-4o calls for pre-structuring */
+const PRE_STRUCTURE_CONCURRENCY = 3;
+
+/**
+ * Pre-structure guide text per page using GPT-4o.
+ * Sends batches of pages for: cleaned text, table detection, section classification.
+ * Cost: ~$0.15 per guide, ~15s.
+ */
+export async function preStructurePages(rawText: string): Promise<PreStructuredGuide> {
+  const pageDelimiter = /--- Pagina (\d+)(?: \([^)]+\))? ---/g;
+  const pageBreaks: Array<{ page: number; index: number }> = [];
+  let match: RegExpExecArray | null;
+  while ((match = pageDelimiter.exec(rawText)) !== null) {
+    pageBreaks.push({ page: parseInt(match[1]), index: match.index });
+  }
+
+  if (pageBreaks.length === 0) {
+    // No page delimiters — treat as single page
+    return {
+      pages: [{ page: 1, sectionType: "general", cleanedText: rawText, tables: [], keyTerms: [] }],
+      structuredText: rawText,
+      pageCount: 1,
+      tableCount: 0,
+    };
+  }
+
+  // Split into individual pages
+  const rawPages: Array<{ page: number; text: string }> = [];
+  for (let i = 0; i < pageBreaks.length; i++) {
+    const startIdx = pageBreaks[i].index;
+    const endIdx = i + 1 < pageBreaks.length ? pageBreaks[i + 1].index : rawText.length;
+    rawPages.push({ page: pageBreaks[i].page, text: rawText.slice(startIdx, endIdx) });
+  }
+
+  // Batch pages for GPT-4o processing
+  const batches: Array<Array<{ page: number; text: string }>> = [];
+  for (let i = 0; i < rawPages.length; i += PRE_STRUCTURE_BATCH_SIZE) {
+    batches.push(rawPages.slice(i, i + PRE_STRUCTURE_BATCH_SIZE));
+  }
+
+  // Process batches with concurrency limit
+  const allPages: PreStructuredPage[] = [];
+  let totalTables = 0;
+
+  const processBatch = async (batch: Array<{ page: number; text: string }>): Promise<PreStructuredPage[]> => {
+    const pagesText = batch
+      .map(p => `=== PAGINA ${p.page} ===\n${p.text}`)
+      .join("\n\n");
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o",
+      max_tokens: 4000,
+      temperature: 0,
+      messages: [{
+        role: "system",
+        content: `Ești un pre-procesor de documente de finanțare europeană. Primești pagini brute dintr-un ghid de finanțare și returnezi o versiune structurată.
+
+Pentru FIECARE pagină din input returnează un obiect JSON cu:
+- "page": numărul paginii
+- "section_type": tipul secțiunii predominante ("eligibilitate", "intensitate", "selectie", "cheltuieli", "documente", "achizitii", "general", "cuprins", "definitii")
+- "cleaned_text": textul curățat — fără headere/footere repetitive, fără numere de pagină, cu paragrafe corecte
+- "tables": array de obiecte {title, markdown_table} pentru fiecare tabel detectat (formatat ca markdown table)
+- "key_terms": array de maxim 10 termeni tehnici cheie din pagină
+
+IMPORTANT:
+- Păstrează EXACT conținutul original — nu inventa, nu rezuma
+- Tabelele se formatează ca markdown (| col1 | col2 |)
+- Identifică secțiunea pe baza titlurilor de capitol și conținutului
+- Returnează DOAR un JSON array valid. Fără backticks, fără explicații.`,
+      },
+      {
+        role: "user",
+        content: pagesText,
+      }],
+    });
+
+    const content = response.choices[0]?.message?.content || "[]";
+    const cleaned = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+
+    try {
+      const parsed = JSON.parse(cleaned);
+      if (!Array.isArray(parsed)) return batch.map(p => ({
+        page: p.page, sectionType: "general" as const, cleanedText: p.text, tables: [], keyTerms: [],
+      }));
+
+      return parsed.map((item: any, idx: number) => ({
+        page: item.page || batch[idx]?.page || idx + 1,
+        sectionType: item.section_type || "general",
+        cleanedText: item.cleaned_text || batch[idx]?.text || "",
+        tables: (item.tables || []).map((t: any) => ({
+          title: t.title || "Tabel",
+          markdownTable: t.markdown_table || "",
+        })),
+        keyTerms: Array.isArray(item.key_terms) ? item.key_terms : [],
+      }));
+    } catch {
+      console.warn("[preStructurePages] Failed to parse GPT-4o batch response, using raw text");
+      return batch.map(p => ({
+        page: p.page, sectionType: "general" as const, cleanedText: p.text, tables: [], keyTerms: [],
+      }));
+    }
+  };
+
+  // Run batches with concurrency limit
+  let nextBatch = 0;
+  async function worker() {
+    while (nextBatch < batches.length) {
+      const idx = nextBatch++;
+      const result = await processBatch(batches[idx]);
+      for (const page of result) {
+        allPages.push(page);
+        totalTables += page.tables.length;
+      }
+    }
+  }
+
+  const workers = Array.from(
+    { length: Math.min(PRE_STRUCTURE_CONCURRENCY, batches.length) },
+    () => worker(),
+  );
+  await Promise.all(workers);
+
+  // Sort by page number
+  allPages.sort((a, b) => a.page - b.page);
+
+  // Build structured text for downstream Opus consumption
+  const structuredText = allPages.map(p => {
+    let pageText = `--- Pagina ${p.page} [${p.sectionType}] ---\n${p.cleanedText}`;
+    if (p.tables.length > 0) {
+      pageText += "\n\n" + p.tables.map(t =>
+        `[TABEL: ${t.title}]\n${t.markdownTable}\n[/TABEL]`
+      ).join("\n\n");
+    }
+    return pageText;
+  }).join("\n\n");
+
+  console.log(`[preStructurePages] Pre-structured ${allPages.length} pages (${totalTables} tables detected) via GPT-4o`);
+
+  return {
+    pages: allPages,
+    structuredText,
+    pageCount: allPages.length,
+    tableCount: totalTables,
+  };
+}
+
 /** Document type classification using Haiku */
 export const DOCUMENT_TYPES = [
   "guide", "guide_annex_table", "guide_annex_form",

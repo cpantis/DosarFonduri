@@ -2,6 +2,7 @@ import "dotenv/config";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
+import { bodyLimit } from "hono/body-limit";
 import { serve } from "@hono/node-server";
 import { authRoutes } from "./routes/auth";
 import { providerRoutes } from "./routes/provider";
@@ -69,6 +70,10 @@ app.route("/api/provider", providerRoutes);
 // Protected routes
 app.use("/api/*", authMiddleware);
 app.use("/api/*", auditMiddleware);
+
+// Allow large file uploads (50 MB default, 100 MB for document routes)
+app.use("/api/documents/*", bodyLimit({ maxSize: 100 * 1024 * 1024 }));
+
 app.route("/api/companies", companyRoutes);
 app.route("/api/documents", documentRoutes);
 app.route("/api/rules", ruleRoutes);
@@ -131,42 +136,50 @@ app.get("/setup-db", async (c) => {
     `);
     const tableExists = result[0]?.exists;
 
-    if (tableExists) {
-      return c.json({ status: "tables already exist", skipped: true });
-    }
-
-    // Find and execute migration SQL
+    // Find migrations directory
     const possiblePaths = [
       pathMod.default.join(__dirname, "../src/db/migrations"),
       pathMod.default.join(__dirname, "../../src/db/migrations"),
       pathMod.default.join(process.cwd(), "src/db/migrations"),
     ];
 
-    let sqlFile = "";
     let migrationsDir = "";
     for (const p of possiblePaths) {
       const candidate = pathMod.default.join(p, "0000_powerful_dark_beast.sql");
       if (fs.default.existsSync(candidate)) {
-        sqlFile = candidate;
         migrationsDir = p;
         break;
       }
     }
 
-    if (!sqlFile) {
+    if (!migrationsDir) {
       return c.json({ error: "Migration SQL not found", searched: possiblePaths }, 404);
     }
 
-    const sqlContent = fs.default.readFileSync(sqlFile, "utf-8");
-    const statements = sqlContent.split("--> statement-breakpoint").map((s: string) => s.trim()).filter(Boolean);
+    // Run ALL migration SQL files in order (not just 0000)
+    const migrationFiles = fs.default.readdirSync(migrationsDir)
+      .filter((f: string) => f.endsWith(".sql"))
+      .sort();
+
     const results: string[] = [];
 
-    for (const stmt of statements) {
-      try {
-        await db.execute(sqlTag.raw(stmt));
-        results.push("OK");
-      } catch (e: any) {
-        results.push(e.message?.substring(0, 80) || "error");
+    for (const file of migrationFiles) {
+      const sqlContent = fs.default.readFileSync(pathMod.default.join(migrationsDir, file), "utf-8");
+      const statements = sqlContent
+        .split(/;(?=\s*(?:--|ALTER|CREATE|DO|INSERT|UPDATE|DROP|$))/i)
+        .map((s: string) => s.replace(/^[\s]*--[^\n]*\n/gm, "").trim())
+        .filter((s: string) => s.length > 0);
+
+      for (const stmt of statements) {
+        try {
+          await db.execute(sqlTag.raw(stmt));
+          results.push(`${file}: OK`);
+        } catch (e: any) {
+          // Ignore "already exists" errors — these are expected on re-runs
+          if (!e.message?.includes("already exists") && !e.message?.includes("duplicate")) {
+            results.push(`${file}: ${e.message?.substring(0, 80) || "error"}`);
+          }
+        }
       }
     }
 
@@ -202,7 +215,7 @@ app.get("/setup-db", async (c) => {
     return c.json({
       status: "success",
       migrationsDir,
-      statementsExecuted: statements.length,
+      migrationsExecuted: migrationFiles.length,
       user: { id: user.id, email: user.email },
       org: { id: org.id, name: org.name },
     });

@@ -130,6 +130,7 @@ export function FolderUploadButton({ folderId, folderType, onSuccess }: FolderUp
       await api(`/api/documents/folders/${folderId}/documents`, {
         method: "POST",
         body: formData,
+        timeout: 120_000, // 2 min — large PDFs need more than default 30s
       });
     }
   }

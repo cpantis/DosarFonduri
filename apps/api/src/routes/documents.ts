@@ -242,14 +242,26 @@ documentRoutes.post("/presigned-url", async (c) => {
   const uploadContext = processingType === "ghid" || processingType === "reference_data"
     ? "guides" : processingType === "template" ? "templates" : "uploads";
 
-  const { presignedUrl, fileId, storageKey, expiresIn } = await createPresignedUploadUrl(
-    body.filename,
-    body.mime_type,
-    body.size_bytes,
-    auth.organizationId,
-    auth.userId,
-    uploadContext,
-  );
+  console.log(`[PRESIGNED] Requesting presigned URL: file=${body.filename}, size=${body.size_bytes}, type=${processingType}, folder=${folder.type}/${body.folder_id}`);
+
+  let presignedUrl: string, fileId: string, storageKey: string, expiresIn: number;
+  try {
+    const result = await createPresignedUploadUrl(
+      body.filename,
+      body.mime_type,
+      body.size_bytes,
+      auth.organizationId,
+      auth.userId,
+      uploadContext,
+    );
+    presignedUrl = result.presignedUrl;
+    fileId = result.fileId;
+    storageKey = result.storageKey;
+    expiresIn = result.expiresIn;
+  } catch (storageErr: any) {
+    console.error(`[PRESIGNED] Storage presigned URL failed:`, storageErr.message, storageErr.stack);
+    return c.json({ error: `Eroare la pregătirea upload-ului: ${storageErr.message}` }, 500);
+  }
 
   // Sanitize filename
   const rawName = body.filename.replace(/\.[^.]+$/, "");
@@ -259,21 +271,30 @@ documentRoutes.post("/presigned-url", async (c) => {
   const generationMode = processingType === "template" ? resolveGenerationMode(body.processing_type || null) : "fill";
 
   // Pre-create document record in "uploaded" status (will be confirmed later)
-  const [doc] = await db.insert(documents).values({
-    folderId: body.folder_id,
-    organizationId: auth.organizationId,
-    name: safeName,
-    fileType: fileType as any,
-    mimeType: body.mime_type || `application/${ext}`,
-    fileId,
-    fileSize: body.size_bytes,
-    fileHash: null,
-    status: "uploaded",
-    processingType: processingType as any,
-    generationMode: generationMode as any,
-    tags: [],
-    uploadedBy: auth.userId,
-  }).returning();
+  let doc: any;
+  try {
+    const [inserted] = await db.insert(documents).values({
+      folderId: body.folder_id,
+      organizationId: auth.organizationId,
+      name: safeName,
+      fileType: fileType as any,
+      mimeType: body.mime_type || `application/${ext}`,
+      fileId,
+      fileSize: body.size_bytes,
+      fileHash: null,
+      status: "uploaded",
+      processingType: processingType as any,
+      generationMode: generationMode as any,
+      tags: [],
+      uploadedBy: auth.userId,
+    }).returning();
+    doc = inserted;
+  } catch (dbErr: any) {
+    console.error(`[PRESIGNED] DB insert failed:`, dbErr.message, dbErr.stack);
+    return c.json({ error: `Eroare la salvarea documentului: ${dbErr.message}` }, 500);
+  }
+
+  console.log(`[PRESIGNED] Success: docId=${doc.id}, presigned=${presignedUrl.substring(0, 60)}...`);
 
   return c.json({
     presigned_url: presignedUrl,
@@ -380,9 +401,18 @@ documentRoutes.post("/folders/:folderId/documents", async (c) => {
   const folder = await db.query.documentFolders.findFirst({
     where: and(eq(documentFolders.id, folderId), eq(documentFolders.organizationId, auth.organizationId!)),
   });
-  if (!folder) return c.json({ error: "Folder not found" }, 404);
+  if (!folder) {
+    console.error(`[UPLOAD] Folder not found: folderId=${folderId}, orgId=${auth.organizationId}`);
+    return c.json({ error: "Folder not found" }, 404);
+  }
 
-  const formData = await c.req.formData();
+  let formData: FormData;
+  try {
+    formData = await c.req.formData();
+  } catch (err: any) {
+    console.error(`[UPLOAD] FormData parse failed:`, err.message, err.stack);
+    return c.json({ error: `Eroare la citirea fișierului: ${err.message}` }, 400);
+  }
   const file = formData.get("file") as File;
   const rawTags = formData.get("tags") as string || "";
   let tags: string[] = [];
@@ -440,27 +470,43 @@ documentRoutes.post("/folders/:folderId/documents", async (c) => {
   // --- Upload to R2 with context path + metadata ---
   const uploadContext = processingType === "ghid" || processingType === "reference_data"
     ? "guides" : processingType === "template" ? "templates" : "uploads";
-  const fileId = await uploadFile(buffer, file.name, file.type, auth.organizationId!, auth.userId, uploadContext);
+
+  console.log(`[UPLOAD] Uploading file: name=${file.name}, size=${buffer.length}, type=${file.type}, processingType=${processingType}, folder=${folder.type}/${folderId}`);
+
+  let fileId: string;
+  try {
+    fileId = await uploadFile(buffer, file.name, file.type, auth.organizationId!, auth.userId, uploadContext);
+  } catch (storageErr: any) {
+    console.error(`[UPLOAD] Storage upload failed:`, storageErr.message, storageErr.stack);
+    return c.json({ error: `Eroare la stocarea fișierului: ${storageErr.message}` }, 500);
+  }
 
   // --- Resolve generation mode for templates ---
   const generationMode = processingType === "template" ? resolveGenerationMode(explicitType) : "fill";
 
   // --- Create DB record ---
-  const [doc] = await db.insert(documents).values({
-    folderId,
-    organizationId: auth.organizationId!,
-    name: safeName,
-    fileType: fileType as any,
-    mimeType: file.type || `application/${ext}`,
-    fileId,
-    fileSize: buffer.length,
-    fileHash: hash,
-    status: "uploaded",
-    processingType: processingType as any,
-    generationMode: generationMode as any,
-    tags,
-    uploadedBy: auth.userId,
-  }).returning();
+  let doc: any;
+  try {
+    const [inserted] = await db.insert(documents).values({
+      folderId,
+      organizationId: auth.organizationId!,
+      name: safeName,
+      fileType: fileType as any,
+      mimeType: file.type || `application/${ext}`,
+      fileId,
+      fileSize: buffer.length,
+      fileHash: hash,
+      status: "uploaded",
+      processingType: processingType as any,
+      generationMode: generationMode as any,
+      tags,
+      uploadedBy: auth.userId,
+    }).returning();
+    doc = inserted;
+  } catch (dbErr: any) {
+    console.error(`[UPLOAD] DB insert failed:`, dbErr.message, dbErr.stack);
+    return c.json({ error: `Eroare la salvarea documentului: ${dbErr.message}` }, 500);
+  }
 
   // --- Response with warnings ---
   const warnings: string[] = [];

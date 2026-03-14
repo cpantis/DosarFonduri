@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { SplitPane } from "@/components/layout/SplitPane";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { UploadModal } from "@/components/shared/UploadModal";
+import { FolderUploadButton } from "@/components/shared/FolderUploadButton";
 import { apiGet, apiPost, apiPut, apiDelete, api } from "@/lib/api";
 
 /* ══════════════════════════════════════════
@@ -285,7 +285,6 @@ export default function DocumentsPage() {
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   const [selectedDoc, setSelectedDoc] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [showUpload, setShowUpload] = useState(false);
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; nodeId: string } | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameVal, setRenameVal] = useState("");
@@ -664,12 +663,13 @@ export default function DocumentsPage() {
             />
             <kbd className="doc-search-kbd">Ctrl+K</kbd>
           </div>
-          <button className="doc-upload-btn" onClick={() => setShowUpload(true)} disabled={!canUpload} title={isClientFolder ? "Documentele client se uploadeaza prin Solomon in proiect" : !isLeafSelected ? "Selecteaza un folder de tip Ghiduri sau Template-uri" : "Upload document"}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
-            </svg>
-            Upload
-          </button>
+          {canUpload && selectedFolder && selectedNode && (
+            <FolderUploadButton
+              folderId={selectedFolder}
+              folderType={selectedNode.type as "ghiduri" | "templateuri"}
+              onSuccess={() => { if (selectedFolder) fetchDocs(selectedFolder); }}
+            />
+          )}
         </div>
       </div>
       <div className="doc-list-scroll">
@@ -736,52 +736,55 @@ export default function DocumentsPage() {
         ) : filteredDocs.length === 0 ? (
           /* Empty folder state */
           <div className="doc-empty-rich">
-            <div className="doc-empty-illustration">
-              <svg width="56" height="56" viewBox="0 0 24 24" fill="none" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" style={{ stroke: "#64748b", opacity: 0.4 }}>
-                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/>
-              </svg>
-            </div>
             {search ? (
               <>
+                <div className="doc-empty-illustration">
+                  <svg width="56" height="56" viewBox="0 0 24 24" fill="none" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" style={{ stroke: "#64748b", opacity: 0.4 }}>
+                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/>
+                  </svg>
+                </div>
                 <div className="doc-empty-title">Niciun rezultat pentru &ldquo;{search}&rdquo;</div>
                 <div className="doc-empty-desc">Incearca cu alti termeni de cautare.</div>
                 <button className="doc-empty-cta-secondary" onClick={() => setSearch("")}>
                   Sterge cautarea
                 </button>
               </>
+            ) : isClientFolder ? (
+              <>
+                <div style={{ fontSize: 48, opacity: 0.2, marginBottom: 16 }}>{"\u{1F4AC}"}</div>
+                <div className="doc-empty-title">Documentele client vin prin Solomon</div>
+                <div className="doc-empty-desc" style={{ maxWidth: 320, textAlign: "center" }}>
+                  Deschide Solomon pe un proiect pentru a uploada
+                  {"\u00A0"}si procesa documente client conversational
+                </div>
+              </>
+            ) : selectedNode?.type === "ghiduri" ? (
+              <>
+                <div style={{ fontSize: 48, opacity: 0.2, marginBottom: 16 }}>{"\u{1F4D6}"}</div>
+                <div className="doc-empty-title">Niciun ghid uploadat</div>
+                <div className="doc-empty-desc" style={{ maxWidth: 320, textAlign: "center" }}>
+                  Apasa butonul <span style={{ fontWeight: 600, color: "#2563eb" }}>+</span> pentru a uploada
+                  {" "}ghidul solicitantului sau anexele cu date de referinta
+                </div>
+              </>
+            ) : selectedNode?.type === "templateuri" ? (
+              <>
+                <div style={{ fontSize: 48, opacity: 0.2, marginBottom: 16 }}>{"\u{1F4DD}"}</div>
+                <div className="doc-empty-title">Niciun template uploadat</div>
+                <div className="doc-empty-desc" style={{ maxWidth: 320, textAlign: "center" }}>
+                  Apasa butonul <span style={{ fontWeight: 600, color: "#2563eb" }}>+</span> pentru a uploada
+                  {" "}formulare de completat sau documente consultant (Memoriu, Plan afaceri)
+                </div>
+              </>
             ) : (
               <>
-                {isClientFolder ? (
-                  <>
-                    <div className="doc-empty-title">Documentele client vin prin Solomon</div>
-                    <div className="doc-empty-desc">
-                      Deschide Solomon pe un proiect pentru a uploada și procesa documente client.<br />
-                      Certificate, contracte, bilanțuri, oferte — toate se procesează automat.<br />
-                      Documentele procesate apar automat aici.
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="doc-empty-title">
-                      {selectedNode?.type === "ghiduri" ? "Niciun ghid uploadat" : selectedNode?.type === "templateuri" ? "Niciun template uploadat" : "Folder gol"}
-                    </div>
-                    <div className="doc-empty-desc">
-                      {selectedNode?.type === "ghiduri"
-                        ? "Uploadează ghidul solicitantului și anexele cu date de referință."
-                        : selectedNode?.type === "templateuri"
-                        ? "Uploadează template-urile pentru Cerere, Memoriu, Plan afaceri."
-                        : "Acest folder nu conține încă documente."}
-                    </div>
-                    {canUpload && (
-                      <button className="doc-empty-cta" onClick={() => setShowUpload(true)}>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
-                        </svg>
-                        Upload document
-                      </button>
-                    )}
-                  </>
-                )}
+                <div className="doc-empty-illustration">
+                  <svg width="56" height="56" viewBox="0 0 24 24" fill="none" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" style={{ stroke: "#64748b", opacity: 0.4 }}>
+                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/>
+                  </svg>
+                </div>
+                <div className="doc-empty-title">Folder gol</div>
+                <div className="doc-empty-desc">Acest folder nu contine inca documente.</div>
               </>
             )}
           </div>
@@ -1036,10 +1039,6 @@ export default function DocumentsPage() {
         .doc-search-kbd { position: absolute; right: 8px; font-size: 10px; font-family: 'JetBrains Mono', monospace; color: #94a3b8; background: #f1f5f9; padding: 1px 5px; border-radius: 4px; border: 1px solid rgba(226,232,240,.8); pointer-events: none; opacity: .7; }
         .doc-search-wrap:focus-within .doc-search-kbd { opacity: 0; }
 
-        .doc-upload-btn { display: flex; align-items: center; gap: 6px; padding: 7px 16px; border-radius: 8px; border: none; background: #2563eb; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; font-family: 'Inter', system-ui, sans-serif; margin-left: auto; box-shadow: 0 1px 2px rgba(0,0,0,.05); transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1); white-space: nowrap; }
-        .doc-upload-btn:hover:not(:disabled) { background: #1d4ed8; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
-        .doc-upload-btn:active:not(:disabled) { transform: translateY(0); }
-        .doc-upload-btn:disabled { opacity: .4; cursor: not-allowed; }
         .doc-list-scroll { flex: 1; overflow-y: auto; padding: 12px 20px; display: flex; flex-direction: column; gap: 6px; background: #f8fafc; }
 
         /* ─── Document card ─── */
@@ -1190,8 +1189,6 @@ export default function DocumentsPage() {
         .doc-detail::-webkit-scrollbar-thumb:hover { background: rgba(226,232,240,1); }
       `}</style>
 
-      {/* File input moved inside upload modal for reliable click() */}
-
       {/* ─── TOPBAR ─── */}
       <PageHeader title="Documente">
         <div className="flex items-center gap-4">
@@ -1249,18 +1246,7 @@ export default function DocumentsPage() {
                 {ctxType === "program" ? "\u{1F4CA}" : "\u{1F4C5}"} {childInfo.label}
               </button>
             )}
-            {/* Show "upload here" for leaf folders */}
-            {isLeaf && (
-              <button className="doc-ctx-item" onClick={() => {
-                setSelectedFolder(ctxMenu.nodeId);
-                setShowUpload(true);
-                setCtxMenu(null);
-              }}>
-                {"\u{1F4E4}"} Upload document aici
-              </button>
-            )}
             {childInfo && <div className="doc-ctx-sep" />}
-            {isLeaf && <div className="doc-ctx-sep" />}
             <button className="doc-ctx-item" onClick={() => handleRename(ctxMenu.nodeId)}>
               {"\u270F\uFE0F"} Redenumeste
             </button>
@@ -1282,16 +1268,6 @@ export default function DocumentsPage() {
         );
       })()}
 
-      {/* ─── UPLOAD MODAL ─── */}
-      {selectedNode && canUpload && (
-        <UploadModal
-          isOpen={showUpload}
-          onClose={() => setShowUpload(false)}
-          folderId={selectedFolder!}
-          folderType={selectedNode.type as "ghiduri" | "templateuri"}
-          onSuccess={() => { if (selectedFolder) fetchDocs(selectedFolder); }}
-        />
-      )}
     </div>
   );
 }

@@ -217,6 +217,8 @@ solomonRoutes.post("/conversations/:convId/upload", async (c) => {
         organizationId: auth.organizationId!,
       }, { priority: JOB_PRIORITY.CLIENT_DOC }).catch((err: any) => {
         console.error(`Queue dispatch failed for Solomon upload ${doc.id}:`, err.message);
+        // Mark document back to uploaded so it can be retried
+        db.update(documents).set({ status: "uploaded" }).where(eq(documents.id, doc.id)).catch(() => {});
       });
 
       // SSE notification so Documents page updates in real-time

@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api";
+import { useToast } from "@/components/shared/Toast";
 
 const API_URL = "";
 
@@ -277,6 +278,7 @@ export default function ProjectViewPage() {
   const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([]);
   const [neemiaTemplates, setNeemiaTemplates] = useState<NeemiaTemplate[]>([]);
 
+  const { toast } = useToast();
   const [activeLeaf, setActiveLeaf] = useState<LeafType>("sumar");
   const [branches, setBranches] = useState<Record<string, boolean>>({ scriere: true, implementare: false, monitorizare: false });
   const [selectedRule, setSelectedRule] = useState<string | null>(null);
@@ -641,8 +643,9 @@ export default function ProjectViewPage() {
           } catch {}
         }
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Solomon SSE error:", err);
+      toast("error", err.message || "Eroare la comunicarea cu Solomon.");
       setSolomonMessages(prev => {
         if (prev.length > 0 && prev[prev.length - 1].role === "assistant" && prev[prev.length - 1].text === "") {
           return prev.slice(0, -1);
@@ -740,8 +743,9 @@ export default function ProjectViewPage() {
           } catch {}
         }
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Solomon upload error:", err);
+      toast("error", err.message || "Eroare la upload-ul documentului în Solomon.");
       setSolomonMessages(prev => {
         if (prev.length > 0 && prev[prev.length - 1].role === "assistant" && prev[prev.length - 1].text === "") {
           return prev.slice(0, -1);

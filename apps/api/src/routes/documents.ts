@@ -370,7 +370,7 @@ documentRoutes.post("/documents/:id/confirm-upload", async (c) => {
     await db.update(documents).set({ fileSize: size }).where(eq(documents.id, id));
   }
 
-  // Dispatch BullMQ processing job (best-effort — upload succeeds even if queue is down)
+  // Dispatch BullMQ processing job and set status to "processing"
   try {
     const jobPayload = { documentId: doc.id, organizationId: auth.organizationId };
     if (doc.processingType === "ghid") {
@@ -382,6 +382,8 @@ documentRoutes.post("/documents/:id/confirm-upload", async (c) => {
     } else if (doc.processingType === "client_doc") {
       await processClientDocQueue.add("process-client-doc", jobPayload, { priority: JOB_PRIORITY.CLIENT_DOC });
     }
+    // Mark as processing immediately so frontend shows correct status
+    await db.update(documents).set({ status: "processing" }).where(eq(documents.id, id));
   } catch (queueErr: any) {
     console.error(`Queue dispatch failed for document ${doc.id}:`, queueErr.message);
     // Upload still succeeds — processing can be retried via POST /documents/:id/process
@@ -391,7 +393,7 @@ documentRoutes.post("/documents/:id/confirm-upload", async (c) => {
   publishUploadEvent(auth.organizationId, {
     documentId: doc.id,
     documentName: doc.name,
-    status: "uploaded",
+    status: "processing",
     processingType: doc.processingType || "reference",
     message: `Document uploadat "${doc.name}", procesare în curs...`,
   }).catch(() => {});
@@ -550,7 +552,7 @@ documentRoutes.post("/folders/:folderId/documents", async (c) => {
   if (duplicateWarning) warnings.push(duplicateWarning);
   if (docWarning) warnings.push(docWarning);
 
-  // --- Dispatch BullMQ job with priority (best-effort) ---
+  // --- Dispatch BullMQ job with priority and set status to "processing" ---
   try {
     const jobPayload = { documentId: doc.id, organizationId: auth.organizationId! };
     if (processingType === "ghid") {
@@ -562,6 +564,9 @@ documentRoutes.post("/folders/:folderId/documents", async (c) => {
     } else if (processingType === "client_doc") {
       await processClientDocQueue.add("process-client-doc", jobPayload, { priority: JOB_PRIORITY.CLIENT_DOC });
     }
+    // Mark as processing immediately so frontend shows correct status
+    await db.update(documents).set({ status: "processing" }).where(eq(documents.id, doc.id));
+    doc = { ...doc, status: "processing" };
   } catch (queueErr: any) {
     console.error(`Queue dispatch failed for document ${doc.id}:`, queueErr.message);
     warnings.push("Procesarea automată nu a pornit (Redis indisponibil). Poți reporni manual din meniul documentului.");
@@ -571,7 +576,7 @@ documentRoutes.post("/folders/:folderId/documents", async (c) => {
   publishUploadEvent(auth.organizationId!, {
     documentId: doc.id,
     documentName: safeName,
-    status: "uploaded",
+    status: doc.status,
     processingType,
     message: `Document uploadat "${safeName}", procesare în curs...`,
   }).catch(() => {}); // fire and forget

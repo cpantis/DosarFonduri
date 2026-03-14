@@ -60,7 +60,7 @@ interface DocItem {
   size: string;
   uploaded: string;
   uploadedBy: string;
-  status: "procesat" | "neprocesat" | "template" | "referință" | "eroare";
+  status: "procesat" | "neprocesat" | "procesare" | "template" | "referință" | "eroare";
   reguliExtrase: number;
   campuri?: number;
   tags: string[];
@@ -79,6 +79,7 @@ const TYPE_ICONS: Record<string, string> = { PDF: "\u{1F4D5}", DOCX: "\u{1F4D8}"
 const STATUS_MAP: Record<string, { label: string; color: string; bg: string; icon: string }> = {
   procesat: { label: "Procesat AI", color: "#34d399", bg: "rgba(52,211,153,.1)", icon: "\u2713" },
   neprocesat: { label: "Neprocesat", color: "#64748b", bg: "#f8fafc", icon: "\u23F3" },
+  procesare: { label: "Procesare AI...", color: "#fbbf24", bg: "rgba(251,191,36,.1)", icon: "\u2699" },
   template: { label: "Template", color: "#4d8bff", bg: "rgba(77,139,255,.1)", icon: "\u{1F4DD}" },
   "referință": { label: "Referință", color: "#a78bfa", bg: "rgba(167,139,250,.1)", icon: "\u{1F4CC}" },
   eroare: { label: "Eroare", color: "#f87171", bg: "rgba(248,113,113,.1)", icon: "\u26A0" },
@@ -130,6 +131,7 @@ const NODE_DOTS: Record<string, { size: number; color: string }> = {
 
 function mapApiStatusToLocal(status: ApiDocument["status"], processingType: ApiDocument["processingType"]): DocItem["status"] {
   if (status === "error" || status === "failed") return "eroare";
+  if (status === "processing") return "procesare";
   if (processingType === "template") return "template";
   if (processingType === "reference" || processingType === "reference_data") return "referință";
   if (status === "processed") return "procesat";
@@ -348,6 +350,14 @@ export default function DocumentsPage() {
     return () => document.removeEventListener("click", close);
   }, [ctxMenu]);
 
+  // Poll for status updates when documents are processing
+  useEffect(() => {
+    const hasProcessing = docs.some(d => d.status === "procesare");
+    if (!hasProcessing || !selectedFolder) return;
+    const interval = setInterval(() => fetchDocs(selectedFolder), 5000);
+    return () => clearInterval(interval);
+  }, [docs, selectedFolder, fetchDocs]);
+
   // Keyboard shortcut: Ctrl+K to focus search
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -474,13 +484,15 @@ export default function DocumentsPage() {
 
   const handleDocProcess = useCallback(async (docId: string) => {
     try {
+      // Optimistic update — show processing status immediately
+      setDocs(prev => prev.map(d => d.id === docId ? { ...d, status: "procesare" as const } : d));
       await apiPost(`/api/documents/documents/${docId}/process`, {});
-      setDocs(prev => prev.map(d => d.id === docId ? { ...d, status: "neprocesat" as const } : d));
       if (selectedFolder) {
-        setTimeout(() => fetchDocs(selectedFolder), 1000);
+        setTimeout(() => fetchDocs(selectedFolder), 2000);
       }
     } catch (err) {
       console.error("Failed to trigger AI processing:", err);
+      setDocs(prev => prev.map(d => d.id === docId ? { ...d, status: "eroare" as const } : d));
     }
   }, [selectedFolder, fetchDocs]);
 
@@ -858,6 +870,22 @@ export default function DocumentsPage() {
               onClick={() => handleDocProcess(selDoc.id)}
             >
               {"\u{1F916}"} Proceseaza cu AI
+            </button>
+          </div>
+        )}
+        {selDoc.status === "procesare" && (
+          <div style={{ marginTop: 10, color: "#fbbf24", fontSize: 13 }}>
+            {"\u2699"} Procesare în curs... Rezultatele vor apărea automat.
+          </div>
+        )}
+        {selDoc.status === "eroare" && (
+          <div style={{ marginTop: 10 }}>
+            <button
+              className="doc-detail-btn primary"
+              style={{ width: "auto", display: "inline-flex" }}
+              onClick={() => handleDocProcess(selDoc.id)}
+            >
+              {"\u{1F504}"} Reîncearcă procesarea
             </button>
           </div>
         )}

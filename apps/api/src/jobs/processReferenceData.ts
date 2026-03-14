@@ -7,6 +7,7 @@ import { getFileBuffer } from "../services/storage";
 import { extractTextFromPDF, extractTextFromDOCX, extractTextFromXLSX } from "../services/ocr";
 import { logAIUsage } from "../services/aiUsage";
 import { publishEvent } from "../lib/sse";
+import { redis } from "../lib/redis";
 
 const anthropic = new Anthropic();
 
@@ -156,5 +157,5 @@ export const processReferenceDataWorker = new Worker<ProcessReferenceDataPayload
       throw error;
     }
   },
-  { connection: { host: process.env.REDIS_HOST, port: parseInt(process.env.REDIS_PORT || "6379") } }
+  { connection: redis }
 );

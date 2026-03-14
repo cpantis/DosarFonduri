@@ -4,13 +4,29 @@ import { z } from "zod";
 import { createHash } from "crypto";
 import { db } from "../db";
 import { documentFolders, documents, files, templateElements } from "../db/schema";
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, isNull, sql } from "drizzle-orm";
 import { uploadFile, getFileUrl, deleteFile, createPresignedUploadUrl, verifyFileUploaded, isLocalStorage } from "../services/storage";
 import { AuthContext } from "../middleware/auth";
 import { processGuideQueue, processTemplateQueue, processReferenceDataQueue, processClientDocQueue, JOB_PRIORITY } from "../lib/queue";
 import { publishUploadEvent } from "../lib/sse";
 
 export const documentRoutes = new Hono<AppEnv>();
+
+// Helper: ensure document columns added in migrations 0001+ exist (self-healing)
+let _docColumnsChecked = false;
+async function ensureDocumentColumns() {
+  if (_docColumnsChecked) return;
+  try {
+    // generation_mode enum + column (migration 0001)
+    await db.execute(sql`DO $$ BEGIN CREATE TYPE "generation_mode" AS ENUM('fill','compose'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`);
+    await db.execute(sql`ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "generation_mode" "generation_mode" DEFAULT 'fill'`);
+    // reference_data enum value (migration 0012)
+    await db.execute(sql`ALTER TYPE "doc_processing_type" ADD VALUE IF NOT EXISTS 'reference_data'`);
+    _docColumnsChecked = true;
+  } catch (e) {
+    console.warn("[ensureDocumentColumns] warning:", (e as any).message?.substring(0, 120));
+  }
+}
 
 // --- FOLDER TREE ---
 documentRoutes.get("/folders", async (c) => {
@@ -210,6 +226,7 @@ documentRoutes.post("/presigned-url", async (c) => {
   const auth = c.get("auth") as AuthContext;
   if (!auth.organizationId) return c.json({ error: "No organization" }, 403);
 
+  await ensureDocumentColumns();
   const body = presignedSchema.parse(await c.req.json());
 
   // Validate folder exists and belongs to org
@@ -397,6 +414,8 @@ documentRoutes.put("/local-upload/:fileId", async (c) => {
 documentRoutes.post("/folders/:folderId/documents", async (c) => {
   const auth = c.get("auth") as AuthContext;
   const folderId = c.req.param("folderId");
+
+  await ensureDocumentColumns();
 
   const folder = await db.query.documentFolders.findFirst({
     where: and(eq(documentFolders.id, folderId), eq(documentFolders.organizationId, auth.organizationId!)),

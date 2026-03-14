@@ -11,6 +11,7 @@ import { getFileBuffer } from "../services/storage";
 import { extractTextFromPDF, extractTextFromDOCX, extractTextFromXLSX, extractTextFromImage, extractTextFromDOC, classifyDocument } from "../services/ocr";
 import { logAIUsage } from "../services/aiUsage";
 import { publishEvent, publishEligibilityUpdated, publishScoreUpdated, publishFieldExtracted, publishExtractionStarted } from "../lib/sse";
+import { redis } from "../lib/redis";
 import { validateElement, logElementChange } from "../services/elementValidation";
 import { checkEligibility } from "../services/eligibility";
 import { computeProjectScores } from "../services/scoring";
@@ -1049,5 +1050,5 @@ export const processClientDocWorker = new Worker<ProcessClientDocPayload>(
       throw error;
     }
   },
-  { connection: { host: process.env.REDIS_HOST, port: parseInt(process.env.REDIS_PORT || "6379") } }
+  { connection: redis }
 );

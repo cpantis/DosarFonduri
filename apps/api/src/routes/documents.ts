@@ -373,17 +373,24 @@ documentRoutes.post("/documents/:id/confirm-upload", async (c) => {
   // Dispatch BullMQ processing job and set status to "processing"
   try {
     const jobPayload = { documentId: doc.id, organizationId: auth.organizationId };
+    let dispatched = false;
     if (doc.processingType === "ghid") {
       await processGuideQueue.add("process-guide", jobPayload, { priority: JOB_PRIORITY.GUIDE });
+      dispatched = true;
     } else if (doc.processingType === "template") {
       await processTemplateQueue.add("process-template", jobPayload, { priority: JOB_PRIORITY.TEMPLATE });
+      dispatched = true;
     } else if (doc.processingType === "reference_data") {
       await processReferenceDataQueue.add("process-reference-data", jobPayload, { priority: JOB_PRIORITY.REFERENCE_DATA });
+      dispatched = true;
     } else if (doc.processingType === "client_doc") {
       await processClientDocQueue.add("process-client-doc", jobPayload, { priority: JOB_PRIORITY.CLIENT_DOC });
+      dispatched = true;
     }
-    // Mark as processing immediately so frontend shows correct status
-    await db.update(documents).set({ status: "processing" }).where(eq(documents.id, id));
+    // Mark as processing only if a job was actually dispatched
+    if (dispatched) {
+      await db.update(documents).set({ status: "processing" }).where(eq(documents.id, id));
+    }
   } catch (queueErr: any) {
     console.error(`Queue dispatch failed for document ${doc.id}:`, queueErr.message);
     // Upload still succeeds — processing can be retried via POST /documents/:id/process
@@ -555,18 +562,25 @@ documentRoutes.post("/folders/:folderId/documents", async (c) => {
   // --- Dispatch BullMQ job with priority and set status to "processing" ---
   try {
     const jobPayload = { documentId: doc.id, organizationId: auth.organizationId! };
+    let dispatched = false;
     if (processingType === "ghid") {
       await processGuideQueue.add("process-guide", jobPayload, { priority: JOB_PRIORITY.GUIDE });
+      dispatched = true;
     } else if (processingType === "template") {
       await processTemplateQueue.add("process-template", jobPayload, { priority: JOB_PRIORITY.TEMPLATE });
+      dispatched = true;
     } else if (processingType === "reference_data") {
       await processReferenceDataQueue.add("process-reference-data", jobPayload, { priority: JOB_PRIORITY.REFERENCE_DATA });
+      dispatched = true;
     } else if (processingType === "client_doc") {
       await processClientDocQueue.add("process-client-doc", jobPayload, { priority: JOB_PRIORITY.CLIENT_DOC });
+      dispatched = true;
     }
-    // Mark as processing immediately so frontend shows correct status
-    await db.update(documents).set({ status: "processing" }).where(eq(documents.id, doc.id));
-    doc = { ...doc, status: "processing" };
+    // Mark as processing only if a job was actually dispatched
+    if (dispatched) {
+      await db.update(documents).set({ status: "processing" }).where(eq(documents.id, doc.id));
+      doc = { ...doc, status: "processing" };
+    }
   } catch (queueErr: any) {
     console.error(`Queue dispatch failed for document ${doc.id}:`, queueErr.message);
     warnings.push("Procesarea automată nu a pornit (Redis indisponibil). Poți reporni manual din meniul documentului.");
@@ -624,6 +638,12 @@ documentRoutes.post("/documents/:id/process", async (c) => {
     where: and(eq(documents.id, id), eq(documents.organizationId, auth.organizationId!)),
   });
   if (!doc) return c.json({ error: "Not found" }, 404);
+
+  // Only dispatch types that have a processing queue
+  const dispatchableTypes = ["ghid", "template", "reference_data", "client_doc"];
+  if (!dispatchableTypes.includes(doc.processingType || "")) {
+    return c.json({ error: `Tipul "${doc.processingType}" nu necesită procesare AI.` }, 400);
+  }
 
   await db.update(documents).set({ status: "processing" }).where(eq(documents.id, id));
 

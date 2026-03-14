@@ -1403,5 +1403,5 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
       throw error;
     }
   },
-  { connection: { host: process.env.REDIS_HOST, port: parseInt(process.env.REDIS_PORT || "6379") } }
+  { connection: redis }
 );

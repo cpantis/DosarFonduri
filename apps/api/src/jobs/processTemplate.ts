@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import { getFileBuffer } from "../services/storage";
 import { logAIUsage } from "../services/aiUsage";
 import { publishEvent } from "../lib/sse";
+import { redis } from "../lib/redis";
 import { autoMapTemplatePlaceholders } from "../services/elementDefinitionService";
 
 const anthropic = new Anthropic();
@@ -429,5 +430,5 @@ export const processTemplateWorker = new Worker<ProcessTemplatePayload>(
       throw error;
     }
   },
-  { connection: { host: process.env.REDIS_HOST, port: parseInt(process.env.REDIS_PORT || "6379") } }
+  { connection: redis }
 );

@@ -1,15 +1,14 @@
 import { Worker, Job } from "bullmq";
-import Anthropic from "@anthropic-ai/sdk";
 import { db } from "../db";
 import { documents, templateElements } from "../db/schema";
 import { eq } from "drizzle-orm";
 import { getFileBuffer } from "../services/storage";
 import { logAIUsage } from "../services/aiUsage";
-import { publishEvent } from "../lib/sse";
+import { publishEvent, publishJobProgress } from "../lib/sse";
 import { redis } from "../lib/redis";
 import { autoMapTemplatePlaceholders } from "../services/elementDefinitionService";
-
-const anthropic = new Anthropic();
+import { anthropic, withAILimit } from "../lib/anthropic";
+import { detectFieldsVisually, crossCheckFields } from "../services/ocr";
 
 interface ProcessTemplatePayload {
   documentId: string;
@@ -117,7 +116,7 @@ async function classifyElements(
 ): Promise<Array<{ key: string; label: string; fieldType: string }>> {
   if (placeholders.length === 0) return [];
 
-  const response = await anthropic.messages.create({
+  const response = await withAILimit(() => anthropic.messages.create({
     model,
     max_tokens: 4000,
     system: `Clasifica fiecare camp placeholder dintr-un template de document de finantare.
@@ -131,7 +130,7 @@ ${JSON.stringify(placeholders.map(p => ({ key: p.key, context: p.context })), nu
 Returneaza:
 [{ "key": "...", "label": "Label descriptiv in romana", "fieldType": "text|number|textarea|date|table|signature|select" }]`
     }],
-  });
+  }));
 
   const text = response.content[0].type === "text" ? response.content[0].text : "[]";
   const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
@@ -252,6 +251,42 @@ print(json.dumps(unique))
   }
 }
 
+/**
+ * Convert DOCX to PDF using LibreOffice (headless) for visual field detection.
+ * Returns null if LibreOffice is not available.
+ */
+async function convertDocxToPdf(buffer: Buffer): Promise<Buffer | null> {
+  const { execSync } = await import("child_process");
+  const fs = await import("fs");
+  const os = await import("os");
+  const path = await import("path");
+  const crypto = await import("crypto");
+
+  const tmpDir = os.tmpdir();
+  const id = crypto.randomUUID();
+  const inputPath = path.join(tmpDir, `convert_${id}.docx`);
+  const outDir = path.join(tmpDir, `convert_out_${id}`);
+  fs.writeFileSync(inputPath, buffer);
+  fs.mkdirSync(outDir, { recursive: true });
+
+  try {
+    execSync(`libreoffice --headless --convert-to pdf --outdir "${outDir}" "${inputPath}"`, {
+      encoding: "utf-8",
+      timeout: 30000,
+    });
+
+    const pdfFiles = fs.readdirSync(outDir).filter((f: string) => f.endsWith(".pdf"));
+    if (pdfFiles.length === 0) return null;
+
+    return fs.readFileSync(path.join(outDir, pdfFiles[0]));
+  } catch {
+    return null;
+  } finally {
+    try { fs.unlinkSync(inputPath); } catch {}
+    try { fs.rmSync(outDir, { recursive: true }); } catch {}
+  }
+}
+
 export const processTemplateWorker = new Worker<ProcessTemplatePayload>(
   "process-template",
   async (job: Job<ProcessTemplatePayload>) => {
@@ -282,29 +317,60 @@ export const processTemplateWorker = new Worker<ProcessTemplatePayload>(
         validated: boolean;
       }> = [];
 
+      let visualCrossCheckStats: { textOnly: number; visualOnly: number; both: number; total: number } | null = null;
+
       if (doc.fileType === "pdf") {
-        await job.updateProgress(20);
+        // ─── PDF: XFA extraction + GPT-4o Vision cross-check ───
+        await job.updateProgress(10);
+        publishJobProgress(organizationId, {
+          jobId: job.id || "", jobType: "template", documentId,
+          documentName: doc.name, progress: 10, status: "processing",
+          message: `Extragere câmpuri XFA din "${doc.name}"...`,
+        }).catch(() => {});
 
         const { extractXFAFields } = await import("../services/xfaFiller");
-        const xfaFields = await extractXFAFields(buffer);
+        const [xfaFields, visualFields] = await Promise.all([
+          extractXFAFields(buffer),
+          detectFieldsVisually(buffer),
+        ]);
 
-        await job.updateProgress(60);
+        await job.updateProgress(50);
+        publishJobProgress(organizationId, {
+          jobId: job.id || "", jobType: "template", documentId,
+          documentName: doc.name, progress: 50, status: "processing",
+          message: `XFA: ${xfaFields.length} câmpuri. Vizual: ${visualFields.length} câmpuri. Cross-check...`,
+        }).catch(() => {});
 
-        uniqueElements = xfaFields.map((f, idx) => ({
-          documentId,
-          organizationId,
+        // Build text fields from XFA for cross-check
+        const xfaAsTextFields = xfaFields.map(f => ({
           key: f.key,
           label: f.label,
-          fieldType: (f.fieldType === "checkbox" ? "select" : f.fieldType) as any,
+          fieldType: f.fieldType === "checkbox" ? "select" : f.fieldType,
           pageNum: 1,
-          lineNum: idx,
-          group: f.group || "general",
-          isRepeating: f.isRepeating || false,
-          rowIndex: f.rowIndex ?? null,
-          detected: true,
-          validated: false,
         }));
 
+        const { merged, stats } = crossCheckFields(xfaAsTextFields, visualFields);
+        visualCrossCheckStats = stats;
+
+        console.log(`[processTemplate] PDF cross-check: ${stats.both} matched, ${stats.textOnly} XFA-only, ${stats.visualOnly} visual-only (total: ${stats.total})`);
+
+        // Convert merged results to template elements
+        uniqueElements = merged.map((m, idx) => ({
+          documentId,
+          organizationId,
+          key: m.key,
+          label: m.label,
+          fieldType: m.fieldType as any,
+          pageNum: m.pageNum,
+          lineNum: idx,
+          group: "general",
+          isRepeating: false,
+          rowIndex: null,
+          detected: true,
+          validated: m.source === "both", // auto-validate if found in both
+        }));
+
+        // Deduplicate by key
         const seen = new Set<string>();
         uniqueElements = uniqueElements.filter(el => {
           if (seen.has(el.key)) return false;
@@ -313,38 +379,98 @@ export const processTemplateWorker = new Worker<ProcessTemplatePayload>(
         });
 
       } else {
-        await job.updateProgress(20);
+        // ─── DOCX/XLSX: text placeholder extraction + optional visual cross-check ───
+        await job.updateProgress(10);
+        publishJobProgress(organizationId, {
+          jobId: job.id || "", jobType: "template", documentId,
+          documentName: doc.name, progress: 10, status: "processing",
+          message: `Extragere placeholder-e din "${doc.name}"...`,
+        }).catch(() => {});
+
         const placeholders = await extractPlaceholders(buffer, name);
 
-        if (placeholders.length === 0) {
-          await db.update(documents).set({
-            status: "processed",
-            processedAt: new Date(),
-          }).where(eq(documents.id, documentId));
-          return;
+        await job.updateProgress(30);
+
+        // Try to convert DOCX to PDF for visual cross-check
+        let visualFields: Awaited<ReturnType<typeof detectFieldsVisually>> = [];
+        if (doc.fileType === "docx") {
+          try {
+            const pdfBuffer = await convertDocxToPdf(buffer);
+            if (pdfBuffer) {
+              publishJobProgress(organizationId, {
+                jobId: job.id || "", jobType: "template", documentId,
+                documentName: doc.name, progress: 40, status: "processing",
+                message: `Scanare vizuală GPT-4o Vision pe "${doc.name}"...`,
+              }).catch(() => {});
+              visualFields = await detectFieldsVisually(pdfBuffer);
+            }
+          } catch (err) {
+            console.warn(`[processTemplate] DOCX→PDF conversion failed, skipping visual detection:`, err);
+          }
         }
 
-        await job.updateProgress(50);
-        const classified = await classifyElements(placeholders, "claude-sonnet-4-20250514");
+        await job.updateProgress(55);
+        const classified = placeholders.length > 0
+          ? await classifyElements(placeholders, "claude-sonnet-4-20250514")
+          : [];
 
         await job.updateProgress(70);
-        const elements = placeholders.map(p => {
+
+        // Build text fields
+        const textFields = placeholders.map(p => {
           const cls = classified.find(c => c.key === p.key);
           return {
-            documentId,
-            organizationId,
             key: p.key,
             label: cls?.label || p.key.replace(/_/g, " "),
-            fieldType: (cls?.fieldType || "text") as any,
+            fieldType: cls?.fieldType || "text",
             pageNum: p.pageNum,
-            lineNum: p.lineNum,
-            detected: true,
-            validated: false,
           };
         });
 
-        uniqueElements = elements.filter((el, idx) =>
-          elements.findIndex(e => e.key === el.key) === idx
+        if (visualFields.length > 0) {
+          // Cross-check text placeholders with visual detection
+          const { merged, stats } = crossCheckFields(textFields, visualFields);
+          visualCrossCheckStats = stats;
+
+          console.log(`[processTemplate] DOCX cross-check: ${stats.both} matched, ${stats.textOnly} text-only, ${stats.visualOnly} visual-only (total: ${stats.total})`);
+
+          uniqueElements = merged.map((m, idx) => ({
+            documentId,
+            organizationId,
+            key: m.key,
+            label: m.label,
+            fieldType: m.fieldType as any,
+            pageNum: m.pageNum,
+            lineNum: idx,
+            detected: true,
+            validated: m.source === "both",
+          }));
+        } else {
+          // No visual fields — use text-only (original behavior)
+          if (placeholders.length === 0) {
+            await db.update(documents).set({
+              status: "processed",
+              processedAt: new Date(),
+            }).where(eq(documents.id, documentId));
+            return;
+          }
+
+          uniqueElements = textFields.map((tf, idx) => ({
+            documentId,
+            organizationId,
+            key: tf.key,
+            label: tf.label,
+            fieldType: tf.fieldType as any,
+            pageNum: tf.pageNum,
+            lineNum: idx,
+            detected: true,
+            validated: false,
+          }));
+        }
+
+        // Deduplicate by key
+        uniqueElements = uniqueElements.filter((el, idx) =>
+          uniqueElements.findIndex(e => e.key === el.key) === idx
         );
       }
 
@@ -400,6 +526,9 @@ export const processTemplateWorker = new Worker<ProcessTemplatePayload>(
       });
 
       // SSE notification
+      const crossCheckMsg = visualCrossCheckStats
+        ? ` Visual cross-check: ${visualCrossCheckStats.both} confirmate, ${visualCrossCheckStats.visualOnly} doar vizual, ${visualCrossCheckStats.textOnly} doar text.`
+        : "";
       publishEvent(`org:${organizationId}:uploads`, "document_processed", {
         documentId,
         documentName: doc.name,
@@ -407,7 +536,8 @@ export const processTemplateWorker = new Worker<ProcessTemplatePayload>(
         processingType: "template",
         elementsCount: uniqueElements.length,
         mappedToDefinitions: mappedCount,
-        message: `Template procesat "${doc.name}". ${uniqueElements.length} câmpuri detectate, ${mappedCount} mapate la definiții.`,
+        visualCrossCheck: visualCrossCheckStats,
+        message: `Template procesat "${doc.name}". ${uniqueElements.length} câmpuri detectate, ${mappedCount} mapate la definiții.${crossCheckMsg}`,
       }).catch(() => {});
 
     } catch (error) {

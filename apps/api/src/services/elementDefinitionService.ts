@@ -1,10 +1,8 @@
 import { db } from "../db";
 import { elementDefinitions, templatePlaceholderMapping, templateElements } from "../db/schema";
 import { eq, and, ilike } from "drizzle-orm";
-import Anthropic from "@anthropic-ai/sdk";
+import { anthropic, withAILimit } from "../lib/anthropic";
 import { logAIUsage } from "./aiUsage";
-
-const anthropic = new Anthropic();
 
 // ─── TYPES ───
 
@@ -325,7 +323,7 @@ export async function extractElementDefinitionsFromGuide(
   guideDocumentId: string,
   organizationId: string,
 ): Promise<number> {
-  const response = await anthropic.messages.create({
+  const response = await withAILimit(() => anthropic.messages.create({
     model: "claude-sonnet-4-20250514",
     max_tokens: 8000,
     system: ELEMENT_EXTRACTION_SYSTEM,
@@ -333,7 +331,7 @@ export async function extractElementDefinitionsFromGuide(
       role: "user",
       content: `${ELEMENT_EXTRACTION_USER}${guideText.slice(0, 50000)}`,
     }],
-  });
+  }));
 
   const content = response.content[0].type === "text" ? response.content[0].text : "[]";
   const cleaned = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();

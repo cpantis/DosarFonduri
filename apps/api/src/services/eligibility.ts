@@ -4,10 +4,8 @@ import {
   documentFolders, documents, orgConfig,
 } from "../db/schema";
 import { eq, and } from "drizzle-orm";
-import Anthropic from "@anthropic-ai/sdk";
+import { anthropic, withAILimit } from "../lib/anthropic";
 import { logAIUsage } from "./aiUsage";
-
-const anthropic = new Anthropic();
 
 export async function checkEligibility(projectId: string, organizationId: string) {
   const project = await db.query.projects.findFirst({
@@ -286,7 +284,7 @@ Pentru fiecare regulă returnează:
   }
 
   try {
-    const response = await anthropic.messages.create(requestParams);
+    const response = await withAILimit(() => anthropic.messages.create(requestParams));
 
     const textBlock = response.content.find((b: any) => b.type === "text");
     const content = textBlock ? (textBlock as any).text : "[]";

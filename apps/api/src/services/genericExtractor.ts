@@ -1,7 +1,5 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { anthropic, withAILimit } from "../lib/anthropic";
 import type { ExtractionResult } from "./extractionTypes";
-
-const anthropic = new Anthropic();
 
 /**
  * Generic AI extractor — handles any document type that doesn't have
@@ -28,7 +26,7 @@ Dacă un câmp extras corespunde uneia din cheile de mai sus, folosește EXACT a
 Dacă nu găsești o cheie potrivită, poți folosi un field_key nou descriptiv în snake_case.`
     : "";
 
-  const response = await anthropic.messages.create({
+  const response = await withAILimit(() => anthropic.messages.create({
     model: "claude-sonnet-4-20250514",
     max_tokens: 4000,
     system: `Ești expert în documente oficiale românești pentru fonduri europene și proiecte de finanțare.
@@ -57,7 +55,7 @@ Reguli:
 TEXT DOCUMENT:
 ${text.slice(0, 40000)}`,
     }],
-  });
+  }));
 
   const fields: ExtractionResult["extracted_fields"] = [];
   const textSample = text.slice(0, 200);
@@ -66,7 +64,7 @@ ${text.slice(0, 40000)}`,
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     const currentResponse = attempt === 1
       ? response
-      : await anthropic.messages.create({
+      : await withAILimit(() => anthropic.messages.create({
           model: "claude-sonnet-4-20250514",
           max_tokens: 4000,
           system: `Ești expert în documente oficiale românești. Returnează EXCLUSIV un JSON valid cu structura {"fields": [...]}. Fără backticks, fără explicații.${vocabSection}`,
@@ -74,7 +72,7 @@ ${text.slice(0, 40000)}`,
             role: "user",
             content: `Extrage datele structurate din acest document "${documentType}". Returnează {"fields": [{"key": "...", "value": "...", "page": N}]}.\n\nTEXT:\n${text.slice(0, 40000)}`,
           }],
-        });
+        }));
 
     const responseText = currentResponse.content[0].type === "text" ? currentResponse.content[0].text : "";
     const cleaned = responseText.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();

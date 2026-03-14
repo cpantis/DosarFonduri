@@ -1,7 +1,6 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { anthropic, withAILimit } from "../lib/anthropic";
+import { openai } from "../lib/openai";
 import crypto from "crypto";
-
-const anthropic = new Anthropic();
 
 function safeTmpPath(prefix: string, ext: string): string {
   const os = require("os");
@@ -236,15 +235,15 @@ print(json.dumps(pages))
 }
 
 export async function ocrPageWithVision(pageImageBase64: string, mediaType: string = "image/png"): Promise<string> {
-  const response = await anthropic.messages.create({
-    model: "claude-sonnet-4-20250514",
+  const response = await openai.chat.completions.create({
+    model: "gpt-4o",
     max_tokens: 4000,
     messages: [{
       role: "user",
       content: [
         {
-          type: "image",
-          source: { type: "base64", media_type: mediaType as any, data: pageImageBase64 },
+          type: "image_url",
+          image_url: { url: `data:${mediaType};base64,${pageImageBase64}`, detail: "high" },
         },
         {
           type: "text",
@@ -254,7 +253,471 @@ export async function ocrPageWithVision(pageImageBase64: string, mediaType: stri
     }],
   });
 
-  return response.content[0].type === "text" ? response.content[0].text : "";
+  return response.choices[0]?.message?.content || "";
+}
+
+// ─── GPT-4o PRE-STRUCTURING PER PAGE ───
+
+export interface PreStructuredPage {
+  page: number;
+  sectionType: "eligibilitate" | "intensitate" | "selectie" | "cheltuieli" | "documente" | "achizitii" | "general" | "cuprins" | "definitii";
+  cleanedText: string;
+  tables: Array<{ title: string; markdownTable: string }>;
+  keyTerms: string[];
+}
+
+export interface PreStructuredGuide {
+  pages: PreStructuredPage[];
+  structuredText: string;
+  pageCount: number;
+  tableCount: number;
+}
+
+/** Max pages per GPT-4o batch to balance cost vs context */
+const PRE_STRUCTURE_BATCH_SIZE = 5;
+
+/** Max parallel GPT-4o calls for pre-structuring */
+const PRE_STRUCTURE_CONCURRENCY = 3;
+
+/**
+ * Pre-structure guide text per page using GPT-4o.
+ * Sends batches of pages for: cleaned text, table detection, section classification.
+ * Cost: ~$0.15 per guide, ~15s.
+ */
+export async function preStructurePages(rawText: string): Promise<PreStructuredGuide> {
+  const pageDelimiter = /--- Pagina (\d+)(?: \([^)]+\))? ---/g;
+  const pageBreaks: Array<{ page: number; index: number }> = [];
+  let match: RegExpExecArray | null;
+  while ((match = pageDelimiter.exec(rawText)) !== null) {
+    pageBreaks.push({ page: parseInt(match[1]), index: match.index });
+  }
+
+  if (pageBreaks.length === 0) {
+    // No page delimiters — treat as single page
+    return {
+      pages: [{ page: 1, sectionType: "general", cleanedText: rawText, tables: [], keyTerms: [] }],
+      structuredText: rawText,
+      pageCount: 1,
+      tableCount: 0,
+    };
+  }
+
+  // Split into individual pages
+  const rawPages: Array<{ page: number; text: string }> = [];
+  for (let i = 0; i < pageBreaks.length; i++) {
+    const startIdx = pageBreaks[i].index;
+    const endIdx = i + 1 < pageBreaks.length ? pageBreaks[i + 1].index : rawText.length;
+    rawPages.push({ page: pageBreaks[i].page, text: rawText.slice(startIdx, endIdx) });
+  }
+
+  // Batch pages for GPT-4o processing
+  const batches: Array<Array<{ page: number; text: string }>> = [];
+  for (let i = 0; i < rawPages.length; i += PRE_STRUCTURE_BATCH_SIZE) {
+    batches.push(rawPages.slice(i, i + PRE_STRUCTURE_BATCH_SIZE));
+  }
+
+  // Process batches with concurrency limit
+  const allPages: PreStructuredPage[] = [];
+  let totalTables = 0;
+
+  const processBatch = async (batch: Array<{ page: number; text: string }>): Promise<PreStructuredPage[]> => {
+    const pagesText = batch
+      .map(p => `=== PAGINA ${p.page} ===\n${p.text}`)
+      .join("\n\n");
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o",
+      max_tokens: 4000,
+      temperature: 0,
+      messages: [{
+        role: "system",
+        content: `Ești un pre-procesor de documente de finanțare europeană. Primești pagini brute dintr-un ghid de finanțare și returnezi o versiune structurată.
+
+Pentru FIECARE pagină din input returnează un obiect JSON cu:
+- "page": numărul paginii
+- "section_type": tipul secțiunii predominante ("eligibilitate", "intensitate", "selectie", "cheltuieli", "documente", "achizitii", "general", "cuprins", "definitii")
+- "cleaned_text": textul curățat — fără headere/footere repetitive, fără numere de pagină, cu paragrafe corecte
+- "tables": array de obiecte {title, markdown_table} pentru fiecare tabel detectat (formatat ca markdown table)
+- "key_terms": array de maxim 10 termeni tehnici cheie din pagină
+
+IMPORTANT:
+- Păstrează EXACT conținutul original — nu inventa, nu rezuma
+- Tabelele se formatează ca markdown (| col1 | col2 |)
+- Identifică secțiunea pe baza titlurilor de capitol și conținutului
+- Returnează DOAR un JSON array valid. Fără backticks, fără explicații.`,
+      },
+      {
+        role: "user",
+        content: pagesText,
+      }],
+    });
+
+    const content = response.choices[0]?.message?.content || "[]";
+    const cleaned = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+
+    try {
+      const parsed = JSON.parse(cleaned);
+      if (!Array.isArray(parsed)) return batch.map(p => ({
+        page: p.page, sectionType: "general" as const, cleanedText: p.text, tables: [], keyTerms: [],
+      }));
+
+      return parsed.map((item: any, idx: number) => ({
+        page: item.page || batch[idx]?.page || idx + 1,
+        sectionType: item.section_type || "general",
+        cleanedText: item.cleaned_text || batch[idx]?.text || "",
+        tables: (item.tables || []).map((t: any) => ({
+          title: t.title || "Tabel",
+          markdownTable: t.markdown_table || "",
+        })),
+        keyTerms: Array.isArray(item.key_terms) ? item.key_terms : [],
+      }));
+    } catch {
+      console.warn("[preStructurePages] Failed to parse GPT-4o batch response, using raw text");
+      return batch.map(p => ({
+        page: p.page, sectionType: "general" as const, cleanedText: p.text, tables: [], keyTerms: [],
+      }));
+    }
+  };
+
+  // Run batches with concurrency limit
+  let nextBatch = 0;
+  async function worker() {
+    while (nextBatch < batches.length) {
+      const idx = nextBatch++;
+      const result = await processBatch(batches[idx]);
+      for (const page of result) {
+        allPages.push(page);
+        totalTables += page.tables.length;
+      }
+    }
+  }
+
+  const workers = Array.from(
+    { length: Math.min(PRE_STRUCTURE_CONCURRENCY, batches.length) },
+    () => worker(),
+  );
+  await Promise.all(workers);
+
+  // Sort by page number
+  allPages.sort((a, b) => a.page - b.page);
+
+  // Build structured text for downstream Opus consumption
+  const structuredText = allPages.map(p => {
+    let pageText = `--- Pagina ${p.page} [${p.sectionType}] ---\n${p.cleanedText}`;
+    if (p.tables.length > 0) {
+      pageText += "\n\n" + p.tables.map(t =>
+        `[TABEL: ${t.title}]\n${t.markdownTable}\n[/TABEL]`
+      ).join("\n\n");
+    }
+    return pageText;
+  }).join("\n\n");
+
+  console.log(`[preStructurePages] Pre-structured ${allPages.length} pages (${totalTables} tables detected) via GPT-4o`);
+
+  return {
+    pages: allPages,
+    structuredText,
+    pageCount: allPages.length,
+    tableCount: totalTables,
+  };
+}
+
+// ─── GPT-4o VISION TEMPLATE FIELD DETECTION ───
+
+export interface VisualField {
+  key: string;
+  label: string;
+  fieldType: "text" | "number" | "textarea" | "date" | "table" | "signature" | "select" | "checkbox";
+  page: number;
+  /** Approximate position for PDF pre-fill */
+  position?: { x: number; y: number; width: number; height: number };
+  /** Nearby label text detected visually */
+  visualLabel: string;
+  /** How the field appears: blank line, box, dotted underline, checkbox, etc. */
+  appearance: string;
+  confidence: number;
+}
+
+/** Max parallel GPT-4o Vision calls for field detection */
+const VISUAL_FIELD_CONCURRENCY = 3;
+
+/**
+ * Render PDF pages as images and detect fillable fields visually using GPT-4o Vision.
+ * Detects: blank lines, boxes, checkboxes, dotted underlines, empty table cells, signature areas.
+ * Cost: ~$0.02-0.05 per page, ~$0.30-0.75 per template (5-15 pages).
+ */
+export async function detectFieldsVisually(buffer: Buffer): Promise<VisualField[]> {
+  const { execFileSync } = await import("child_process");
+  const fs = await import("fs");
+
+  const inputPath = safeTmpPath("tmpl_vis", "pdf");
+  fs.writeFileSync(inputPath, buffer);
+
+  // Render each page as base64 PNG at 200 DPI
+  const renderScript = `
+import fitz, sys, json, base64
+doc = fitz.open(sys.argv[1])
+pages = []
+for page in doc:
+    pix = page.get_pixmap(dpi=200)
+    img = base64.b64encode(pix.tobytes("png")).decode()
+    pages.append({"page": page.number + 1, "image": img, "width": pix.width, "height": pix.height})
+doc.close()
+print(json.dumps(pages))
+`;
+  const scriptPath = safeTmpPath("render_tmpl", "py");
+  fs.writeFileSync(scriptPath, renderScript);
+
+  let pageImages: Array<{ page: number; image: string; width: number; height: number }>;
+  try {
+    const result = execFileSync("python3", [scriptPath, inputPath], {
+      encoding: "utf-8",
+      timeout: 60000,
+      maxBuffer: 100 * 1024 * 1024,
+    });
+    pageImages = JSON.parse(result);
+  } finally {
+    try { fs.unlinkSync(inputPath); } catch {}
+    try { fs.unlinkSync(scriptPath); } catch {}
+  }
+
+  if (pageImages.length === 0) return [];
+
+  const allFields: VisualField[] = [];
+
+  const processPage = async (pageData: { page: number; image: string; width: number; height: number }): Promise<VisualField[]> => {
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o",
+      max_tokens: 4000,
+      temperature: 0,
+      messages: [{
+        role: "system",
+        content: `Ești un detector de câmpuri de completat din template-uri de documente de finanțare europeană.
+
+Analizezi VIZUAL o pagină de template și identifici TOATE zonele care trebuie completate:
+- Linii goale cu/fără etichetă (ex: "Denumire solicitant: ___________")
+- Căsuțe/checkbox-uri goale (□)
+- Câmpuri cu chenar/border gol
+- Linii punctate sau subliniate unde se scrie
+- Celule goale din tabele destinate completării
+- Zone de semnătură (ștampilă, semnătura)
+- Dropdown-uri sau câmpuri cu opțiuni
+
+Pentru FIECARE câmp detectat returnează:
+{
+  "key": "snake_case_key derivat din eticheta detectată",
+  "label": "eticheta câmpului așa cum apare vizual",
+  "field_type": "text|number|textarea|date|table|signature|select|checkbox",
+  "position": {"x": procent_x, "y": procent_y, "width": procent_latime, "height": procent_inaltime},
+  "visual_label": "textul care apare lângă câmp",
+  "appearance": "blank_line|box|dotted|checkbox|table_cell|signature_area",
+  "confidence": 0.0-1.0
+}
+
+Coordonatele position sunt în PROCENTE din dimensiunea paginii (0-100).
+
+IMPORTANT:
+- NU include câmpuri pre-completate (care au deja text)
+- Detectează TOATE câmpurile, inclusiv cele mici sau greu vizibile
+- Returnează DOAR un JSON array valid. Fără backticks, fără explicații.`,
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "image_url",
+            image_url: { url: `data:image/png;base64,${pageData.image}`, detail: "high" },
+          },
+          {
+            type: "text",
+            text: `Detectează toate câmpurile de completat din pagina ${pageData.page} a template-ului.`,
+          },
+        ],
+      }],
+    });
+
+    const content = response.choices[0]?.message?.content || "[]";
+    const cleaned = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+
+    try {
+      const parsed = JSON.parse(cleaned);
+      if (!Array.isArray(parsed)) return [];
+
+      return parsed.map((item: any) => ({
+        key: sanitizeFieldKey(item.key || item.label || "unknown"),
+        label: item.label || item.visual_label || "Câmp neidentificat",
+        fieldType: item.field_type || "text",
+        page: pageData.page,
+        position: item.position ? {
+          x: item.position.x || 0,
+          y: item.position.y || 0,
+          width: item.position.width || 10,
+          height: item.position.height || 3,
+        } : undefined,
+        visualLabel: item.visual_label || "",
+        appearance: item.appearance || "blank_line",
+        confidence: Math.min(1, Math.max(0, item.confidence || 0.7)),
+      }));
+    } catch {
+      console.warn(`[detectFieldsVisually] Failed to parse GPT-4o Vision response for page ${pageData.page}`);
+      return [];
+    }
+  };
+
+  // Process pages with concurrency limit
+  let nextPage = 0;
+  async function worker() {
+    while (nextPage < pageImages.length) {
+      const idx = nextPage++;
+      const fields = await processPage(pageImages[idx]);
+      allFields.push(...fields);
+    }
+  }
+
+  const workers = Array.from(
+    { length: Math.min(VISUAL_FIELD_CONCURRENCY, pageImages.length) },
+    () => worker(),
+  );
+  await Promise.all(workers);
+
+  // Sort by page, then by vertical position
+  allFields.sort((a, b) => {
+    if (a.page !== b.page) return a.page - b.page;
+    return (a.position?.y || 0) - (b.position?.y || 0);
+  });
+
+  console.log(`[detectFieldsVisually] Detected ${allFields.length} visual fields across ${pageImages.length} pages via GPT-4o Vision`);
+  return allFields;
+}
+
+function sanitizeFieldKey(raw: string): string {
+  return raw
+    .toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // remove diacritics
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_|_$/g, "")
+    .slice(0, 255) || "field";
+}
+
+/**
+ * Cross-check text-extracted placeholders with visually detected fields.
+ * Returns merged list with confidence adjustments.
+ */
+export function crossCheckFields(
+  textFields: Array<{ key: string; label: string; fieldType: string; pageNum: number }>,
+  visualFields: VisualField[],
+): {
+  merged: Array<{
+    key: string;
+    label: string;
+    fieldType: string;
+    pageNum: number;
+    source: "text" | "visual" | "both";
+    confidence: number;
+    position?: VisualField["position"];
+  }>;
+  stats: {
+    textOnly: number;
+    visualOnly: number;
+    both: number;
+    total: number;
+  };
+} {
+  const merged: Array<{
+    key: string;
+    label: string;
+    fieldType: string;
+    pageNum: number;
+    source: "text" | "visual" | "both";
+    confidence: number;
+    position?: VisualField["position"];
+  }> = [];
+
+  const matchedVisualKeys = new Set<string>();
+
+  // For each text field, try to find a matching visual field
+  for (const tf of textFields) {
+    const normalizedKey = tf.key.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+    // Look for matching visual field on the same page (or nearby pages)
+    const matchingVisual = visualFields.find(vf => {
+      const vNorm = vf.key.toLowerCase().replace(/[^a-z0-9]/g, "");
+      const labelNorm = vf.visualLabel.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+      // Match by key similarity or label containment
+      const keyMatch = vNorm === normalizedKey || bigramSimilarity(vNorm, normalizedKey) > 0.6;
+      const labelMatch = labelNorm.includes(normalizedKey) || normalizedKey.includes(labelNorm);
+      const pageClose = Math.abs(vf.page - tf.pageNum) <= 1;
+
+      return (keyMatch || labelMatch) && pageClose && !matchedVisualKeys.has(vf.key);
+    });
+
+    if (matchingVisual) {
+      matchedVisualKeys.add(matchingVisual.key);
+      merged.push({
+        key: tf.key, // keep original text key (has {{placeholder}} naming)
+        label: tf.label,
+        fieldType: tf.fieldType,
+        pageNum: tf.pageNum,
+        source: "both",
+        confidence: Math.min(1, (matchingVisual.confidence + 1.0) / 2), // boost confidence
+        position: matchingVisual.position,
+      });
+    } else {
+      // Text-only field — still valid but lower confidence for review
+      merged.push({
+        key: tf.key,
+        label: tf.label,
+        fieldType: tf.fieldType,
+        pageNum: tf.pageNum,
+        source: "text",
+        confidence: 0.85,
+      });
+    }
+  }
+
+  // Add visual-only fields (found visually but not in text)
+  for (const vf of visualFields) {
+    if (!matchedVisualKeys.has(vf.key)) {
+      merged.push({
+        key: vf.key,
+        label: vf.label || vf.visualLabel,
+        fieldType: vf.fieldType,
+        pageNum: vf.page,
+        source: "visual",
+        confidence: vf.confidence * 0.9, // slightly lower since not confirmed by text
+        position: vf.position,
+      });
+    }
+  }
+
+  const textOnly = merged.filter(m => m.source === "text").length;
+  const visualOnly = merged.filter(m => m.source === "visual").length;
+  const both = merged.filter(m => m.source === "both").length;
+
+  return {
+    merged,
+    stats: { textOnly, visualOnly, both, total: merged.length },
+  };
+}
+
+/** Simple bigram similarity for field key matching */
+function bigramSimilarity(a: string, b: string): number {
+  if (a === b) return 1.0;
+  if (a.length < 2 || b.length < 2) return 0;
+
+  const bigramsA = new Set<string>();
+  for (let i = 0; i < a.length - 1; i++) bigramsA.add(a.slice(i, i + 2));
+
+  const bigramsB = new Set<string>();
+  for (let i = 0; i < b.length - 1; i++) bigramsB.add(b.slice(i, i + 2));
+
+  let intersection = 0;
+  for (const bg of bigramsA) {
+    if (bigramsB.has(bg)) intersection++;
+  }
+
+  return (2 * intersection) / (bigramsA.size + bigramsB.size);
 }
 
 /** Document type classification using Haiku */
@@ -265,7 +728,7 @@ export const DOCUMENT_TYPES = [
   "document_mediu", "extras_cont", "certificat_fiscal",
   "memoriu_template", "cerere_finantare_template",
   "anexa_b_template", "anexa_c_template",
-  "carte_identitate", "diploma_studii", "act_constitutiv",
+  "carte_identitate", "diploma_studii", "act_constitutiv", "factura",
   "statut", "descriere_proiect", "adeverinta", "foto_echipament",
   "other",
 ] as const;
@@ -279,8 +742,8 @@ export async function classifyDocument(textPreview: string): Promise<{
   hasTables: boolean;
   hasForms: boolean;
 }> {
-  const response = await anthropic.messages.create({
-    model: "claude-haiku-4-5-20251001",
+  const response = await withAILimit(() => anthropic.messages.create({
+    model: "claude-sonnet-4-20250514",
     max_tokens: 500,
     system: `Clasifici documente din dosare de finantare europeana. Analizeaza textul si returneaza DOAR JSON valid.`,
     messages: [{
@@ -298,7 +761,7 @@ Returnează un singur obiect JSON:
   "has_forms": true/false
 }`,
     }],
-  });
+  }));
 
   const text = response.content[0].type === "text" ? response.content[0].text : "{}";
   const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();

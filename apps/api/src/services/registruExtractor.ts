@@ -1,7 +1,5 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { anthropic, withAILimit } from "../lib/anthropic";
 import type { ExtractionResult } from "./extractionTypes";
-
-const anthropic = new Anthropic();
 
 /**
  * Check if a tractor is older than 8 years (excluded from Anexa 3 calculation).
@@ -20,7 +18,7 @@ function isTractorExcluded(anAchizitie: number): boolean {
 export async function extractRegistruImobilizari(pdfText: string): Promise<ExtractionResult> {
   const start = Date.now();
 
-  const response = await anthropic.messages.create({
+  const response = await withAILimit(() => anthropic.messages.create({
     model: "claude-sonnet-4-20250514",
     max_tokens: 6000,
     system: `Ești expert în contabilitate românească. Extrage registrul de imobilizări corporale (mijloace fixe) din documentul primit.
@@ -57,7 +55,7 @@ IMPORTANT:
 TEXT DOCUMENT:
 ${pdfText.slice(0, 80000)}`,
     }],
-  });
+  }));
 
   const text = response.content[0].type === "text" ? response.content[0].text : "";
   const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();

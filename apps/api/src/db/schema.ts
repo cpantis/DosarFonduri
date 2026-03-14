@@ -39,7 +39,7 @@ export const documentTypeEnum = pgEnum("document_type_class", [
   "document_mediu", "extras_cont", "certificat_fiscal",
   "memoriu_template", "cerere_finantare_template",
   "anexa_b_template", "anexa_c_template",
-  "carte_identitate", "diploma_studii", "act_constitutiv",
+  "carte_identitate", "diploma_studii", "act_constitutiv", "factura",
   "statut", "descriere_proiect", "adeverinta", "foto_echipament",
   "other",
 ]);

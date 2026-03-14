@@ -1,6 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
-
-const anthropic = new Anthropic();
+import { anthropic, withAILimit } from "../lib/anthropic";
 
 export interface ExtractedCompanyData {
   denumire: string;
@@ -146,7 +144,7 @@ export async function extractCompanyFromDocument(pdfText: string): Promise<Extra
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     const isRetry = attempt > 1;
 
-    const response = await anthropic.messages.create({
+    const response = await withAILimit(() => anthropic.messages.create({
       model: "claude-sonnet-4-20250514",
       max_tokens: 8000,
       system: isRetry
@@ -156,7 +154,7 @@ export async function extractCompanyFromDocument(pdfText: string): Promise<Extra
         role: "user",
         content: COMPANY_USER_PROMPT(pdfText),
       }],
-    });
+    }));
 
     const responseText = response.content[0].type === "text" ? response.content[0].text : "";
     const data = tryParseJSON(responseText);

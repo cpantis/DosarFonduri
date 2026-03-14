@@ -1,7 +1,5 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { anthropic, withAILimit } from "../lib/anthropic";
 import type { ExtractionResult } from "./extractionTypes";
-
-const anthropic = new Anthropic();
 
 /**
  * Extract data from certificat fiscal (tax certificate) documents.
@@ -10,7 +8,7 @@ const anthropic = new Anthropic();
 export async function extractCertificatFiscal(text: string): Promise<ExtractionResult> {
   const start = Date.now();
 
-  const response = await anthropic.messages.create({
+  const response = await withAILimit(() => anthropic.messages.create({
     model: "claude-sonnet-4-20250514",
     max_tokens: 2000,
     system: "Extragi date structurate din certificate fiscale romanesti. Returnezi DOAR JSON valid.",
@@ -34,7 +32,7 @@ Returnează un singur obiect JSON:
   "tip_obligatii": "buget_stat" | "buget_local" | "ambele"
 }`,
     }],
-  });
+  }));
 
   const responseText = response.content[0].type === "text" ? response.content[0].text : "{}";
   const cleaned = responseText.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();

@@ -1,7 +1,5 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { anthropic, withAILimit } from "../lib/anthropic";
 import type { ExtractionResult } from "./extractionTypes";
-
-const anthropic = new Anthropic();
 
 /**
  * Extracts structured data from environmental documents
@@ -10,7 +8,7 @@ const anthropic = new Anthropic();
 export async function extractDocumentMediu(pdfText: string): Promise<ExtractionResult> {
   const start = Date.now();
 
-  const response = await anthropic.messages.create({
+  const response = await withAILimit(() => anthropic.messages.create({
     model: "claude-haiku-4-5-20251001",
     max_tokens: 2000,
     system: `Ești expert în documente de mediu românești. Extrage datele structurate.
@@ -39,7 +37,7 @@ Returnează DOAR JSON valid, fără backticks, fără explicații.`,
 TEXT DOCUMENT:
 ${pdfText.slice(0, 30000)}`,
     }],
-  });
+  }));
 
   const text = response.content[0].type === "text" ? response.content[0].text : "";
   const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();

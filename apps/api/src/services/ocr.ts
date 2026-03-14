@@ -422,6 +422,304 @@ IMPORTANT:
   };
 }
 
+// ─── GPT-4o VISION TEMPLATE FIELD DETECTION ───
+
+export interface VisualField {
+  key: string;
+  label: string;
+  fieldType: "text" | "number" | "textarea" | "date" | "table" | "signature" | "select" | "checkbox";
+  page: number;
+  /** Approximate position for PDF pre-fill */
+  position?: { x: number; y: number; width: number; height: number };
+  /** Nearby label text detected visually */
+  visualLabel: string;
+  /** How the field appears: blank line, box, dotted underline, checkbox, etc. */
+  appearance: string;
+  confidence: number;
+}
+
+/** Max parallel GPT-4o Vision calls for field detection */
+const VISUAL_FIELD_CONCURRENCY = 3;
+
+/**
+ * Render PDF pages as images and detect fillable fields visually using GPT-4o Vision.
+ * Detects: blank lines, boxes, checkboxes, dotted underlines, empty table cells, signature areas.
+ * Cost: ~$0.02-0.05 per page, ~$0.30-0.75 per template (5-15 pages).
+ */
+export async function detectFieldsVisually(buffer: Buffer): Promise<VisualField[]> {
+  const { execFileSync } = await import("child_process");
+  const fs = await import("fs");
+
+  const inputPath = safeTmpPath("tmpl_vis", "pdf");
+  fs.writeFileSync(inputPath, buffer);
+
+  // Render each page as base64 PNG at 200 DPI
+  const renderScript = `
+import fitz, sys, json, base64
+doc = fitz.open(sys.argv[1])
+pages = []
+for page in doc:
+    pix = page.get_pixmap(dpi=200)
+    img = base64.b64encode(pix.tobytes("png")).decode()
+    pages.append({"page": page.number + 1, "image": img, "width": pix.width, "height": pix.height})
+doc.close()
+print(json.dumps(pages))
+`;
+  const scriptPath = safeTmpPath("render_tmpl", "py");
+  fs.writeFileSync(scriptPath, renderScript);
+
+  let pageImages: Array<{ page: number; image: string; width: number; height: number }>;
+  try {
+    const result = execFileSync("python3", [scriptPath, inputPath], {
+      encoding: "utf-8",
+      timeout: 60000,
+      maxBuffer: 100 * 1024 * 1024,
+    });
+    pageImages = JSON.parse(result);
+  } finally {
+    try { fs.unlinkSync(inputPath); } catch {}
+    try { fs.unlinkSync(scriptPath); } catch {}
+  }
+
+  if (pageImages.length === 0) return [];
+
+  const allFields: VisualField[] = [];
+
+  const processPage = async (pageData: { page: number; image: string; width: number; height: number }): Promise<VisualField[]> => {
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o",
+      max_tokens: 4000,
+      temperature: 0,
+      messages: [{
+        role: "system",
+        content: `Ești un detector de câmpuri de completat din template-uri de documente de finanțare europeană.
+
+Analizezi VIZUAL o pagină de template și identifici TOATE zonele care trebuie completate:
+- Linii goale cu/fără etichetă (ex: "Denumire solicitant: ___________")
+- Căsuțe/checkbox-uri goale (□)
+- Câmpuri cu chenar/border gol
+- Linii punctate sau subliniate unde se scrie
+- Celule goale din tabele destinate completării
+- Zone de semnătură (ștampilă, semnătura)
+- Dropdown-uri sau câmpuri cu opțiuni
+
+Pentru FIECARE câmp detectat returnează:
+{
+  "key": "snake_case_key derivat din eticheta detectată",
+  "label": "eticheta câmpului așa cum apare vizual",
+  "field_type": "text|number|textarea|date|table|signature|select|checkbox",
+  "position": {"x": procent_x, "y": procent_y, "width": procent_latime, "height": procent_inaltime},
+  "visual_label": "textul care apare lângă câmp",
+  "appearance": "blank_line|box|dotted|checkbox|table_cell|signature_area",
+  "confidence": 0.0-1.0
+}
+
+Coordonatele position sunt în PROCENTE din dimensiunea paginii (0-100).
+
+IMPORTANT:
+- NU include câmpuri pre-completate (care au deja text)
+- Detectează TOATE câmpurile, inclusiv cele mici sau greu vizibile
+- Returnează DOAR un JSON array valid. Fără backticks, fără explicații.`,
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "image_url",
+            image_url: { url: `data:image/png;base64,${pageData.image}`, detail: "high" },
+          },
+          {
+            type: "text",
+            text: `Detectează toate câmpurile de completat din pagina ${pageData.page} a template-ului.`,
+          },
+        ],
+      }],
+    });
+
+    const content = response.choices[0]?.message?.content || "[]";
+    const cleaned = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+
+    try {
+      const parsed = JSON.parse(cleaned);
+      if (!Array.isArray(parsed)) return [];
+
+      return parsed.map((item: any) => ({
+        key: sanitizeFieldKey(item.key || item.label || "unknown"),
+        label: item.label || item.visual_label || "Câmp neidentificat",
+        fieldType: item.field_type || "text",
+        page: pageData.page,
+        position: item.position ? {
+          x: item.position.x || 0,
+          y: item.position.y || 0,
+          width: item.position.width || 10,
+          height: item.position.height || 3,
+        } : undefined,
+        visualLabel: item.visual_label || "",
+        appearance: item.appearance || "blank_line",
+        confidence: Math.min(1, Math.max(0, item.confidence || 0.7)),
+      }));
+    } catch {
+      console.warn(`[detectFieldsVisually] Failed to parse GPT-4o Vision response for page ${pageData.page}`);
+      return [];
+    }
+  };
+
+  // Process pages with concurrency limit
+  let nextPage = 0;
+  async function worker() {
+    while (nextPage < pageImages.length) {
+      const idx = nextPage++;
+      const fields = await processPage(pageImages[idx]);
+      allFields.push(...fields);
+    }
+  }
+
+  const workers = Array.from(
+    { length: Math.min(VISUAL_FIELD_CONCURRENCY, pageImages.length) },
+    () => worker(),
+  );
+  await Promise.all(workers);
+
+  // Sort by page, then by vertical position
+  allFields.sort((a, b) => {
+    if (a.page !== b.page) return a.page - b.page;
+    return (a.position?.y || 0) - (b.position?.y || 0);
+  });
+
+  console.log(`[detectFieldsVisually] Detected ${allFields.length} visual fields across ${pageImages.length} pages via GPT-4o Vision`);
+  return allFields;
+}
+
+function sanitizeFieldKey(raw: string): string {
+  return raw
+    .toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // remove diacritics
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_|_$/g, "")
+    .slice(0, 255) || "field";
+}
+
+/**
+ * Cross-check text-extracted placeholders with visually detected fields.
+ * Returns merged list with confidence adjustments.
+ */
+export function crossCheckFields(
+  textFields: Array<{ key: string; label: string; fieldType: string; pageNum: number }>,
+  visualFields: VisualField[],
+): {
+  merged: Array<{
+    key: string;
+    label: string;
+    fieldType: string;
+    pageNum: number;
+    source: "text" | "visual" | "both";
+    confidence: number;
+    position?: VisualField["position"];
+  }>;
+  stats: {
+    textOnly: number;
+    visualOnly: number;
+    both: number;
+    total: number;
+  };
+} {
+  const merged: Array<{
+    key: string;
+    label: string;
+    fieldType: string;
+    pageNum: number;
+    source: "text" | "visual" | "both";
+    confidence: number;
+    position?: VisualField["position"];
+  }> = [];
+
+  const matchedVisualKeys = new Set<string>();
+
+  // For each text field, try to find a matching visual field
+  for (const tf of textFields) {
+    const normalizedKey = tf.key.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+    // Look for matching visual field on the same page (or nearby pages)
+    const matchingVisual = visualFields.find(vf => {
+      const vNorm = vf.key.toLowerCase().replace(/[^a-z0-9]/g, "");
+      const labelNorm = vf.visualLabel.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+      // Match by key similarity or label containment
+      const keyMatch = vNorm === normalizedKey || bigramSimilarity(vNorm, normalizedKey) > 0.6;
+      const labelMatch = labelNorm.includes(normalizedKey) || normalizedKey.includes(labelNorm);
+      const pageClose = Math.abs(vf.page - tf.pageNum) <= 1;
+
+      return (keyMatch || labelMatch) && pageClose && !matchedVisualKeys.has(vf.key);
+    });
+
+    if (matchingVisual) {
+      matchedVisualKeys.add(matchingVisual.key);
+      merged.push({
+        key: tf.key, // keep original text key (has {{placeholder}} naming)
+        label: tf.label,
+        fieldType: tf.fieldType,
+        pageNum: tf.pageNum,
+        source: "both",
+        confidence: Math.min(1, (matchingVisual.confidence + 1.0) / 2), // boost confidence
+        position: matchingVisual.position,
+      });
+    } else {
+      // Text-only field — still valid but lower confidence for review
+      merged.push({
+        key: tf.key,
+        label: tf.label,
+        fieldType: tf.fieldType,
+        pageNum: tf.pageNum,
+        source: "text",
+        confidence: 0.85,
+      });
+    }
+  }
+
+  // Add visual-only fields (found visually but not in text)
+  for (const vf of visualFields) {
+    if (!matchedVisualKeys.has(vf.key)) {
+      merged.push({
+        key: vf.key,
+        label: vf.label || vf.visualLabel,
+        fieldType: vf.fieldType,
+        pageNum: vf.page,
+        source: "visual",
+        confidence: vf.confidence * 0.9, // slightly lower since not confirmed by text
+        position: vf.position,
+      });
+    }
+  }
+
+  const textOnly = merged.filter(m => m.source === "text").length;
+  const visualOnly = merged.filter(m => m.source === "visual").length;
+  const both = merged.filter(m => m.source === "both").length;
+
+  return {
+    merged,
+    stats: { textOnly, visualOnly, both, total: merged.length },
+  };
+}
+
+/** Simple bigram similarity for field key matching */
+function bigramSimilarity(a: string, b: string): number {
+  if (a === b) return 1.0;
+  if (a.length < 2 || b.length < 2) return 0;
+
+  const bigramsA = new Set<string>();
+  for (let i = 0; i < a.length - 1; i++) bigramsA.add(a.slice(i, i + 2));
+
+  const bigramsB = new Set<string>();
+  for (let i = 0; i < b.length - 1; i++) bigramsB.add(b.slice(i, i + 2));
+
+  let intersection = 0;
+  for (const bg of bigramsA) {
+    if (bigramsB.has(bg)) intersection++;
+  }
+
+  return (2 * intersection) / (bigramsA.size + bigramsB.size);
+}
+
 /** Document type classification using Haiku */
 export const DOCUMENT_TYPES = [
   "guide", "guide_annex_table", "guide_annex_form",

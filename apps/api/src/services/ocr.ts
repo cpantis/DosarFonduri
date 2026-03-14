@@ -1,4 +1,5 @@
 import { anthropic, withAILimit } from "../lib/anthropic";
+import { openai } from "../lib/openai";
 import crypto from "crypto";
 
 function safeTmpPath(prefix: string, ext: string): string {
@@ -234,15 +235,15 @@ print(json.dumps(pages))
 }
 
 export async function ocrPageWithVision(pageImageBase64: string, mediaType: string = "image/png"): Promise<string> {
-  const response = await withAILimit(() => anthropic.messages.create({
-    model: "claude-sonnet-4-20250514",
+  const response = await openai.chat.completions.create({
+    model: "gpt-4o",
     max_tokens: 4000,
     messages: [{
       role: "user",
       content: [
         {
-          type: "image",
-          source: { type: "base64", media_type: mediaType as any, data: pageImageBase64 },
+          type: "image_url",
+          image_url: { url: `data:${mediaType};base64,${pageImageBase64}`, detail: "high" },
         },
         {
           type: "text",
@@ -250,9 +251,9 @@ export async function ocrPageWithVision(pageImageBase64: string, mediaType: stri
         },
       ],
     }],
-  }));
+  });
 
-  return response.content[0].type === "text" ? response.content[0].text : "";
+  return response.choices[0]?.message?.content || "";
 }
 
 /** Document type classification using Haiku */

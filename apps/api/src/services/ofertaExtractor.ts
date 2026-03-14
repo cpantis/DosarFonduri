@@ -1,7 +1,5 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { anthropic, withAILimit } from "../lib/anthropic";
 import type { ExtractionResult } from "./extractionTypes";
-
-const anthropic = new Anthropic();
 
 /**
  * Extracts structured data from "ofertă de preț" (price quote) documents.

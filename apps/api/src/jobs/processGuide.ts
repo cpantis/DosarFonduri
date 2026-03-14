@@ -1,5 +1,4 @@
 import { Worker, Job } from "bullmq";
-import Anthropic from "@anthropic-ai/sdk";
 import { db } from "../db";
 import { documents, rules, orgConfig, scoringCriteria, templateElements, elementRuleLinks, ruleReferenceLinks, guideReferenceTables, elementDefinitions } from "../db/schema";
 import { eq, and, inArray } from "drizzle-orm";
@@ -9,8 +8,7 @@ import { logAIUsage } from "../services/aiUsage";
 import { publishEvent, publishJobProgress } from "../lib/sse";
 import { redis, isRedisReady } from "../lib/redis";
 import { extractElementDefinitionsFromGuide, autoMapTemplatePlaceholders } from "../services/elementDefinitionService";
-
-const anthropic = new Anthropic();
+import { anthropic, withAILimit } from "../lib/anthropic";
 
 /** Maximum pages per chunk when splitting large guides */
 const PAGES_PER_CHUNK = 15;
@@ -19,7 +17,7 @@ const PAGES_PER_CHUNK = 15;
 const SINGLE_PASS_CHAR_LIMIT = 80000;
 
 /** Max concurrent AI calls per phase to avoid rate limits */
-const MAX_PARALLEL_CHUNKS = 4;
+const MAX_PARALLEL_CHUNKS = 2;
 
 // ─── SECTION DETECTION ───
 
@@ -522,7 +520,7 @@ async function extractFixedRulesFromChunk(
   organizationId: string,
   chunkLabel: string,
 ): Promise<any[]> {
-  const response = await anthropic.messages.create({
+  const response = await withAILimit(() => anthropic.messages.create({
     model,
     max_tokens: 8000,
     system: FIXED_RULES_SYSTEM,
@@ -530,7 +528,7 @@ async function extractFixedRulesFromChunk(
       role: "user",
       content: `${FIXED_RULES_USER_PREFIX}${chunkText}`,
     }],
-  });
+  }));
 
   const content = response.content[0].type === "text" ? response.content[0].text : "[]";
   const cleaned = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
@@ -693,7 +691,7 @@ async function extractInterpretedRulesFromChunk(
     };
   }
 
-  const response = await anthropic.messages.create(requestParams);
+  const response = await withAILimit(() => anthropic.messages.create(requestParams));
 
   const textBlock = response.content.find((b: any) => b.type === "text");
   const content = textBlock ? (textBlock as any).text : "[]";
@@ -822,7 +820,7 @@ async function extractScoringFromChunk(
   organizationId: string,
   chunkLabel: string,
 ): Promise<any[]> {
-  const response = await anthropic.messages.create({
+  const response = await withAILimit(() => anthropic.messages.create({
     model,
     max_tokens: 8000,
     system: SCORING_SYSTEM,
@@ -830,7 +828,7 @@ async function extractScoringFromChunk(
       role: "user",
       content: `${SCORING_USER_PREFIX}${chunkText}`,
     }],
-  });
+  }));
 
   const content = response.content[0].type === "text" ? response.content[0].text : "[]";
   const cleaned = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();

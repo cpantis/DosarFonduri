@@ -1,5 +1,4 @@
 import { Worker, Job } from "bullmq";
-import Anthropic from "@anthropic-ai/sdk";
 import { db } from "../db";
 import { documents, guideReferenceTables } from "../db/schema";
 import { eq } from "drizzle-orm";
@@ -8,8 +7,7 @@ import { extractTextFromPDF, extractTextFromDOCX, extractTextFromXLSX } from "..
 import { logAIUsage } from "../services/aiUsage";
 import { publishEvent } from "../lib/sse";
 import { redis } from "../lib/redis";
-
-const anthropic = new Anthropic();
+import { anthropic, withAILimit } from "../lib/anthropic";
 
 interface ProcessReferenceDataPayload {
   documentId: string;
@@ -22,7 +20,7 @@ async function extractTables(
   documentId: string,
   organizationId: string,
 ): Promise<void> {
-  const response = await anthropic.messages.create({
+  const response = await withAILimit(() => anthropic.messages.create({
     model,
     max_tokens: 8000,
     system: `Extragi tabele structurate din anexele ghidurilor de finanțare europeană.
@@ -47,7 +45,7 @@ Pentru fiecare tabel returnează:
 TEXT DOCUMENT:
 ${text.slice(0, 80000)}`,
     }],
-  });
+  }));
 
   const content = response.content[0].type === "text" ? response.content[0].text : "[]";
   const cleaned = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();

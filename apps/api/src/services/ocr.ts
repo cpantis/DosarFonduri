@@ -1,7 +1,5 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { anthropic, withAILimit } from "../lib/anthropic";
 import crypto from "crypto";
-
-const anthropic = new Anthropic();
 
 function safeTmpPath(prefix: string, ext: string): string {
   const os = require("os");
@@ -236,7 +234,7 @@ print(json.dumps(pages))
 }
 
 export async function ocrPageWithVision(pageImageBase64: string, mediaType: string = "image/png"): Promise<string> {
-  const response = await anthropic.messages.create({
+  const response = await withAILimit(() => anthropic.messages.create({
     model: "claude-sonnet-4-20250514",
     max_tokens: 4000,
     messages: [{
@@ -252,7 +250,7 @@ export async function ocrPageWithVision(pageImageBase64: string, mediaType: stri
         },
       ],
     }],
-  });
+  }));
 
   return response.content[0].type === "text" ? response.content[0].text : "";
 }
@@ -279,7 +277,7 @@ export async function classifyDocument(textPreview: string): Promise<{
   hasTables: boolean;
   hasForms: boolean;
 }> {
-  const response = await anthropic.messages.create({
+  const response = await withAILimit(() => anthropic.messages.create({
     model: "claude-haiku-4-5-20251001",
     max_tokens: 500,
     system: `Clasifici documente din dosare de finantare europeana. Analizeaza textul si returneaza DOAR JSON valid.`,
@@ -298,7 +296,7 @@ Returnează un singur obiect JSON:
   "has_forms": true/false
 }`,
     }],
-  });
+  }));
 
   const text = response.content[0].type === "text" ? response.content[0].text : "{}";
   const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();

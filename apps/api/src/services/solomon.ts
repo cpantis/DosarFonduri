@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { anthropic, withAILimit } from "../lib/anthropic";
 import { db } from "../db";
 import {
   projects, projectElements, templateElements,
@@ -32,7 +32,6 @@ const ALLOWED_METADATA_KEYS = new Set([
 ]);
 const MAX_METADATA_VALUE_LENGTH = 500;
 
-const anthropic = new Anthropic();
 
 const MODEL_COSTS: Record<string, { input: number; output: number }> = {
   "claude-sonnet-4-20250514": { input: 3 / 1_000_000, output: 15 / 1_000_000 },

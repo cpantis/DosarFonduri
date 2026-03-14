@@ -1,5 +1,4 @@
 import { Worker, Job } from "bullmq";
-import Anthropic from "@anthropic-ai/sdk";
 import { db } from "../db";
 import { documents, templateElements } from "../db/schema";
 import { eq } from "drizzle-orm";
@@ -8,8 +7,7 @@ import { logAIUsage } from "../services/aiUsage";
 import { publishEvent } from "../lib/sse";
 import { redis } from "../lib/redis";
 import { autoMapTemplatePlaceholders } from "../services/elementDefinitionService";
-
-const anthropic = new Anthropic();
+import { anthropic, withAILimit } from "../lib/anthropic";
 
 interface ProcessTemplatePayload {
   documentId: string;
@@ -117,7 +115,7 @@ async function classifyElements(
 ): Promise<Array<{ key: string; label: string; fieldType: string }>> {
   if (placeholders.length === 0) return [];
 
-  const response = await anthropic.messages.create({
+  const response = await withAILimit(() => anthropic.messages.create({
     model,
     max_tokens: 4000,
     system: `Clasifica fiecare camp placeholder dintr-un template de document de finantare.
@@ -131,7 +129,7 @@ ${JSON.stringify(placeholders.map(p => ({ key: p.key, context: p.context })), nu
 Returneaza:
 [{ "key": "...", "label": "Label descriptiv in romana", "fieldType": "text|number|textarea|date|table|signature|select" }]`
     }],
-  });
+  }));
 
   const text = response.content[0].type === "text" ? response.content[0].text : "[]";
   const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();

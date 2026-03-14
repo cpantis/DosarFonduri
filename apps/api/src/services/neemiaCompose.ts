@@ -13,7 +13,7 @@
  *   {{key}}                  → Simple value replacement (same as FILL mode)
  */
 
-import Anthropic from "@anthropic-ai/sdk";
+import { anthropic, withAILimit } from "../lib/anthropic";
 import { db } from "../db";
 import {
   projects, projectElements, projectDocuments,
@@ -26,7 +26,6 @@ import { getFileBuffer, uploadFile } from "./storage";
 import { logAIUsage } from "./aiUsage";
 import crypto from "crypto";
 
-const anthropic = new Anthropic();
 
 function safeTmpPath(prefix: string, ext: string): string {
   const os = require("os");

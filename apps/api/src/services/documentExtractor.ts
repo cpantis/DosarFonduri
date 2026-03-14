@@ -7,7 +7,7 @@
  */
 
 import { createHash } from "crypto";
-import Anthropic from "@anthropic-ai/sdk";
+import { anthropic, withAILimit } from "../lib/anthropic";
 import { db } from "../db";
 import { extractionCache } from "../db/schema";
 import { eq, and, sql } from "drizzle-orm";
@@ -23,7 +23,6 @@ import {
   type DocumentType,
 } from "./ocr";
 
-const anthropic = new Anthropic();
 
 // ─── Types ─────────────────────────────────────────────
 
@@ -229,7 +228,7 @@ async function processChunk(
 
   const chunkText = chunkPages.map(p => `--- Pagina ${p.page} ---\n${p.text}`).join("\n\n");
 
-  const response = await anthropic.messages.create({
+  const response = await withAILimit(() => anthropic.messages.create({
     model: "claude-sonnet-4-20250514",
     max_tokens: 8000,
     system: `Ești expert în extragerea datelor structurate din documente românești de finanțare europeană.
@@ -256,7 +255,7 @@ Returnează:
 TEXT:
 ${chunkText.slice(0, 60000)}`,
     }],
-  });
+  }));
 
   const text = response.content[0].type === "text" ? response.content[0].text : "{}";
   const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();

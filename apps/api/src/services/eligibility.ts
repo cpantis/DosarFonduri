@@ -284,7 +284,7 @@ Pentru fiecare regulă returnează:
   }
 
   try {
-    const response = await anthropic.messages.create(requestParams);
+    const response = await withAILimit(() => anthropic.messages.create(requestParams));
 
     const textBlock = response.content.find((b: any) => b.type === "text");
     const content = textBlock ? (textBlock as any).text : "[]";

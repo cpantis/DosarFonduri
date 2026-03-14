@@ -8,7 +8,7 @@ import type { ExtractionResult } from "./extractionTypes";
 export async function extractDeclaratie(pdfText: string): Promise<ExtractionResult> {
   const start = Date.now();
 
-  const response = await anthropic.messages.create({
+  const response = await withAILimit(() => anthropic.messages.create({
     model: "claude-sonnet-4-20250514",
     max_tokens: 4000,
     system: `Ești expert în documente financiar-contabile românești. Extrage datele din declarația expertului contabil privind activitatea agroalimentară a firmei.
@@ -43,7 +43,7 @@ IMPORTANT:
 TEXT DOCUMENT:
 ${pdfText.slice(0, 40000)}`,
     }],
-  });
+  }));
 
   const text = response.content[0].type === "text" ? response.content[0].text : "";
   const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();

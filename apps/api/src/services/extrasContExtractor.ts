@@ -32,7 +32,7 @@ function businessDaysSince(dateStr: string, referenceDate: Date = new Date()): n
 export async function extractExtrasCont(pdfText: string): Promise<ExtractionResult> {
   const start = Date.now();
 
-  const response = await anthropic.messages.create({
+  const response = await withAILimit(() => anthropic.messages.create({
     model: "claude-haiku-4-5-20251001",
     max_tokens: 2000,
     system: `Ești expert în documente bancare românești. Extrage datele din extrasul de cont.
@@ -59,7 +59,7 @@ IMPORTANT:
 TEXT DOCUMENT:
 ${pdfText.slice(0, 20000)}`,
     }],
-  });
+  }));
 
   const text = response.content[0].type === "text" ? response.content[0].text : "";
   const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();

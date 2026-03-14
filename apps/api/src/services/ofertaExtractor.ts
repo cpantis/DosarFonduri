@@ -8,7 +8,7 @@ import type { ExtractionResult } from "./extractionTypes";
 export async function extractOferta(pdfText: string): Promise<ExtractionResult> {
   const start = Date.now();
 
-  const response = await anthropic.messages.create({
+  const response = await withAILimit(() => anthropic.messages.create({
     model: "claude-sonnet-4-20250514",
     max_tokens: 4000,
     system: `Ești expert în oferte de preț pentru echipamente agricole/industriale. Extrage datele structurate din oferta primită.
@@ -45,7 +45,7 @@ IMPORTANT:
 TEXT DOCUMENT:
 ${pdfText.slice(0, 60000)}`,
     }],
-  });
+  }));
 
   const text = response.content[0].type === "text" ? response.content[0].text : "";
   const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();

@@ -322,12 +322,12 @@ ${sectionsRequest}
 
 Răspunde DOAR cu JSON-ul, fără markdown code blocks, fără text suplimentar.`;
 
-  const response = await anthropic.messages.create({
+  const response = await withAILimit(() => anthropic.messages.create({
     model: aiModel,
     max_tokens: 8192,
     system: systemPrompt,
     messages: [{ role: "user", content: userPrompt }],
-  });
+  }));
 
   const tokensInput = response.usage.input_tokens;
   const tokensOutput = response.usage.output_tokens;

@@ -12,17 +12,35 @@ import { publishUploadEvent } from "../lib/sse";
 
 export const documentRoutes = new Hono<AppEnv>();
 
-// Helper: ensure document columns added in migrations 0001+ exist (self-healing)
+// Helper: ensure ALL document columns from migrations 0001-0012 exist (self-healing).
+// The initial migration 0000 only created the base columns. If the DB was provisioned
+// via /setup-db instead of drizzle migrate, these columns are missing.
 let _docColumnsChecked = false;
 async function ensureDocumentColumns() {
   if (_docColumnsChecked) return;
   try {
-    // generation_mode enum + column (migration 0001)
-    await db.execute(sql`DO $$ BEGIN CREATE TYPE "generation_mode" AS ENUM('fill','compose'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`);
-    await db.execute(sql`ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "generation_mode" "generation_mode" DEFAULT 'fill'`);
-    // reference_data enum value (migration 0012)
-    await db.execute(sql`ALTER TYPE "doc_processing_type" ADD VALUE IF NOT EXISTS 'reference_data'`);
+    const stmts = [
+      // Enums (safe: DO block swallows "already exists")
+      `DO $$ BEGIN CREATE TYPE "generation_mode" AS ENUM('fill','compose'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+      `DO $$ BEGIN CREATE TYPE "document_type_class" AS ENUM('guide','guide_annex_table','guide_annex_form','certificat_constatator','bilant_anaf','contract_arenda','oferta_pret','registru_imobilizari','declaratie_expert_contabil','document_mediu','extras_cont','certificat_fiscal','memoriu_template','cerere_finantare_template','anexa_b_template','anexa_c_template','carte_identitate','diploma_studii','act_constitutiv','statut','descriere_proiect','adeverinta','foto_echipament','other'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+      // Columns on documents table (safe: IF NOT EXISTS)
+      `ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "mime_type" varchar(100) NOT NULL DEFAULT 'application/octet-stream'`,
+      `ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "file_hash" varchar(64)`,
+      `ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "generation_mode" "generation_mode" DEFAULT 'fill'`,
+      `ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "compose_config" jsonb`,
+      `ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "document_type_class" "document_type_class"`,
+      `ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "classification_confidence" decimal(3,2)`,
+      `ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "processing_result" jsonb`,
+      // Columns on files table
+      `ALTER TABLE "files" ADD COLUMN IF NOT EXISTS "size" bigint NOT NULL DEFAULT 0`,
+      // Enum values (safe: IF NOT EXISTS)
+      `ALTER TYPE "doc_processing_type" ADD VALUE IF NOT EXISTS 'reference_data'`,
+    ];
+    for (const stmt of stmts) {
+      try { await db.execute(sql.raw(stmt)); } catch { /* ignore individual failures */ }
+    }
     _docColumnsChecked = true;
+    console.log("[ensureDocumentColumns] Schema check complete");
   } catch (e) {
     console.warn("[ensureDocumentColumns] warning:", (e as any).message?.substring(0, 120));
   }

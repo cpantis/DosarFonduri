@@ -13,7 +13,7 @@ export function BtnPrimary({ children, icon, size = "md", className = "", ...pro
   return (
     <button
       {...props}
-      className={`bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-xl transition-all inline-flex items-center justify-center whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed shadow-sm shadow-blue-500/20 hover:shadow-md hover:shadow-blue-500/25 ${sz} ${className}`}
+      className={`bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg transition-all inline-flex items-center justify-center whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed shadow-sm shadow-blue-500/20 hover:shadow-md hover:shadow-blue-500/25 ${sz} ${className}`}
     >
       {icon && <span className="shrink-0 [&>svg]:w-[14px] [&>svg]:h-[14px]">{icon}</span>}
       {children}
@@ -28,7 +28,7 @@ export function BtnSecondary({ children, icon, size = "md", className = "", ...p
   return (
     <button
       {...props}
-      className={`bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-600 font-medium rounded-xl transition-all inline-flex items-center justify-center whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed ${sz} ${className}`}
+      className={`bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-600 font-medium rounded-lg transition-all inline-flex items-center justify-center whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed ${sz} ${className}`}
     >
       {icon && <span className="shrink-0 [&>svg]:w-[14px] [&>svg]:h-[14px] text-slate-400">{icon}</span>}
       {children}
@@ -43,7 +43,7 @@ export function BtnDanger({ children, icon, size = "md", className = "", ...prop
   return (
     <button
       {...props}
-      className={`text-red-500 bg-white border border-red-200 hover:bg-red-50 hover:border-red-300 font-medium rounded-xl transition-all inline-flex items-center justify-center whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed ${sz} ${className}`}
+      className={`text-red-500 bg-white border border-red-200 hover:bg-red-50 hover:border-red-300 font-medium rounded-lg transition-all inline-flex items-center justify-center whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed ${sz} ${className}`}
     >
       {icon && <span className="shrink-0 [&>svg]:w-[14px] [&>svg]:h-[14px]">{icon}</span>}
       {children}

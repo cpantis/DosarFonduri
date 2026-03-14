@@ -47,10 +47,10 @@ export default function LoginPage() {
         .remember input { accent-color: #4d8bff; width: 16px; height: 16px; }
         .f-link { font-size: 13px; color: #4d8bff; font-weight: 500; cursor: pointer; text-decoration: none; }
         .f-link:hover { color: #6da3ff; }
-        .btn-p { width: 100%; padding: 14px; border-radius: 10px; border: none; background: #4d8bff; color: #fff; font-size: 15px; font-weight: 700; font-family: 'Inter', system-ui, sans-serif; cursor: pointer; transition: all .2s; display: flex; align-items: center; justify-content: center; gap: 8px; }
+        .btn-p { width: 100%; padding: 14px; border-radius: 8px; border: none; background: #4d8bff; color: #fff; font-size: 15px; font-weight: 700; font-family: 'Inter', system-ui, sans-serif; cursor: pointer; transition: all .2s; display: flex; align-items: center; justify-content: center; gap: 8px; }
         .btn-p:hover:not(:disabled) { background: #5d9bff; box-shadow: 0 4px 20px rgba(77,139,255,.3); transform: translateY(-1px); }
         .btn-p:disabled { opacity: .5; cursor: not-allowed; }
-        .btn-s { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #e2e8f0; background: transparent; color: #64748b; font-size: 14px; font-weight: 600; font-family: 'Inter', system-ui, sans-serif; cursor: pointer; transition: all .15s; }
+        .btn-s { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #e2e8f0; background: transparent; color: #64748b; font-size: 14px; font-weight: 600; font-family: 'Inter', system-ui, sans-serif; cursor: pointer; transition: all .15s; }
         .btn-s:hover { border-color: #cbd5e1; background: #f1f5f9; color: #0f172a; }
         .sw-row { text-align: center; margin-top: 28px; font-size: 14px; color: #94a3b8; }
         .sw-link { color: #4d8bff; font-weight: 600; cursor: pointer; }

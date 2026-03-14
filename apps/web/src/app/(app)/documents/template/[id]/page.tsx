@@ -272,7 +272,7 @@ export default function TemplateViewerPage() {
     return (
       <div className="flex items-center justify-center h-full text-red-500 text-sm flex-col gap-3">
         <span>{error || "Template negasit"}</span>
-        <button onClick={() => router.back()} className="px-4 py-1.5 rounded-md border border-slate-200 bg-transparent text-slate-500 cursor-pointer font-sans text-[13px]">Inapoi</button>
+        <button onClick={() => router.back()} className="px-4 py-1.5 rounded-lg border border-slate-200 bg-transparent text-slate-500 cursor-pointer font-sans text-[13px]">Inapoi</button>
       </div>
     );
   }
@@ -282,7 +282,7 @@ export default function TemplateViewerPage() {
       <style>{`
         .tv{display:flex;flex-direction:column;height:100%}
         .tv-header{padding:12px 24px;border-bottom:1px solid rgb(226 232 240);background:white;display:flex;align-items:center;gap:16px;flex-shrink:0}
-        .tv-back{background:none;border:1px solid rgb(226 232 240);border-radius:6px;padding:6px 12px;color:rgb(100 116 139);font-size:13px;font-weight:600;cursor:pointer;font-family:'Inter',system-ui,sans-serif;display:flex;align-items:center;gap:4px;transition:all .15s}
+        .tv-back{background:none;border:1px solid rgb(226 232 240);border-radius:8px;padding:6px 12px;color:rgb(100 116 139);font-size:13px;font-weight:600;cursor:pointer;font-family:'Inter',system-ui,sans-serif;display:flex;align-items:center;gap:4px;transition:all .15s}
         .tv-back:hover{border-color:rgb(203 213 225);color:rgb(15 23 42)}
         .tv-title{font-size:16px;font-weight:800;flex:1}
         .tv-file-badge{font-size:10px;font-weight:700;text-transform:uppercase;padding:3px 8px;border-radius:4px;background:rgba(77,139,255,.1);color:rgb(37 99 235);letter-spacing:.5px}
@@ -305,7 +305,7 @@ export default function TemplateViewerPage() {
         .tv-left{min-width:280px;max-width:640px;border-right:1px solid rgb(226 232 240);display:flex;flex-direction:column;overflow:hidden;background:white;flex-shrink:0}
         .tv-left-bar{padding:10px 16px;border-bottom:1px solid rgb(226 232 240);display:flex;align-items:center;gap:8px;flex-shrink:0}
         .pill-group{display:flex;background:rgb(248 250 252);border-radius:10px;padding:2px;gap:1px}
-        .pill{padding:4px 10px;border-radius:6px;font-size:11px;font-weight:600;border:none;cursor:pointer;background:transparent;color:rgb(148 163 184);font-family:'Inter',system-ui,sans-serif;transition:all .15s}
+        .pill{padding:4px 10px;border-radius:8px;font-size:11px;font-weight:600;border:none;cursor:pointer;background:transparent;color:rgb(148 163 184);font-family:'Inter',system-ui,sans-serif;transition:all .15s}
         .pill:hover{color:rgb(100 116 139)}.pill.on{background:rgb(37 99 235);color:#fff}
         .tv-left-scroll{flex:1;overflow-y:auto;padding:8px 12px}
 
@@ -326,7 +326,7 @@ export default function TemplateViewerPage() {
         .el-card-bottom{display:flex;align-items:center;gap:8px}
         .el-key{font-size:11px;font-family:'JetBrains Mono',monospace;color:rgb(100 116 139)}
         .el-line{font-size:10px;color:rgb(148 163 184)}
-        .el-validate{flex-shrink:0;padding:3px 10px;border-radius:4px;border:1px solid rgb(226 232 240);background:transparent;font-size:10px;font-weight:700;cursor:pointer;font-family:'Inter',system-ui,sans-serif;transition:all .12s;color:rgb(148 163 184);margin-left:auto}
+        .el-validate{flex-shrink:0;padding:3px 10px;border-radius:8px;border:1px solid rgb(226 232 240);background:transparent;font-size:10px;font-weight:700;cursor:pointer;font-family:'Inter',system-ui,sans-serif;transition:all .12s;color:rgb(148 163 184);margin-left:auto}
         .el-validate:hover{border-color:rgb(16 185 129);color:rgb(16 185 129)}
         .el-validate.on{background:rgba(52,211,153,.1);border-color:rgb(16 185 129);color:rgb(16 185 129)}
         .el-status{font-size:10px;font-weight:700;flex-shrink:0}
@@ -334,7 +334,7 @@ export default function TemplateViewerPage() {
         .el-status.detected{color:rgb(245 158 11)}
         .el-status.manual{color:rgb(139 92 246)}
 
-        .btn-add{width:calc(100% - 12px);margin:8px 6px;padding:8px;border-radius:6px;border:1px dashed rgb(226 232 240);background:transparent;color:rgb(148 163 184);font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',system-ui,sans-serif;transition:all .15s;text-align:center}
+        .btn-add{width:calc(100% - 12px);margin:8px 6px;padding:8px;border-radius:8px;border:1px dashed rgb(226 232 240);background:transparent;color:rgb(148 163 184);font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',system-ui,sans-serif;transition:all .15s;text-align:center}
         .btn-add:hover{border-color:rgb(139 92 246);color:rgb(139 92 246)}
 
         .add-form{margin:8px 6px;padding:14px;background:rgb(248 250 252);border-radius:10px;border:1px solid rgb(226 232 240)}
@@ -344,7 +344,7 @@ export default function TemplateViewerPage() {
         .add-input{flex:1;padding:6px 10px;border-radius:6px;border:1px solid rgb(226 232 240);background:rgb(248 250 252);color:rgb(15 23 42);font-size:12px;font-family:'Inter',system-ui,sans-serif;outline:none}
         .add-input:focus{border-color:rgb(37 99 235)}.add-input::placeholder{color:rgb(148 163 184)}
         .add-select{padding:6px 10px;border-radius:6px;border:1px solid rgb(226 232 240);background:rgb(248 250 252);color:rgb(15 23 42);font-size:12px;font-family:'Inter',system-ui,sans-serif;outline:none}
-        .add-btn{padding:6px 16px;border-radius:6px;border:none;background:rgb(37 99 235);color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:'Inter',system-ui,sans-serif}.add-btn:disabled{opacity:.4;cursor:not-allowed}
+        .add-btn{padding:6px 16px;border-radius:8px;border:none;background:rgb(37 99 235);color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:'Inter',system-ui,sans-serif}.add-btn:disabled{opacity:.4;cursor:not-allowed}
 
         .tv-legend{padding:8px 16px;border-top:1px solid rgb(226 232 240);display:flex;gap:14px;font-size:10px;color:rgb(148 163 184);flex-shrink:0}
         .tv-legend-item{display:flex;align-items:center;gap:4px}
@@ -355,13 +355,13 @@ export default function TemplateViewerPage() {
         .tv-right-bar{padding:10px 24px;border-bottom:1px solid rgb(226 232 240);background:white;display:flex;align-items:center;gap:12px;flex-shrink:0}
         .tv-right-page{font-size:13px;font-family:'JetBrains Mono',monospace;color:rgb(100 116 139)}
         .tv-right-title{font-size:14px;font-weight:700;flex:1}
-        .tv-val-all{padding:5px 12px;border-radius:6px;border:1px solid rgb(16 185 129);background:transparent;color:rgb(16 185 129);font-size:11px;font-weight:600;cursor:pointer;font-family:'Inter',system-ui,sans-serif;transition:all .15s}
+        .tv-val-all{padding:5px 12px;border-radius:8px;border:1px solid rgb(16 185 129);background:transparent;color:rgb(16 185 129);font-size:11px;font-weight:600;cursor:pointer;font-family:'Inter',system-ui,sans-serif;transition:all .15s}
         .tv-val-all:hover{background:rgba(52,211,153,.08)}
 
         /* Page navigation bar — like Neemia */
         .tv-page-nav{display:flex;align-items:center;gap:10px;padding:8px 16px;border-bottom:1px solid rgb(226 232 240);background:white;flex-shrink:0}
         .tv-pn-scroll{display:flex;gap:4px;flex:1;overflow-x:auto;padding:2px 0}
-        .tv-pn-thumb{display:flex;align-items:center;gap:4px;padding:4px 10px;border-radius:6px;border:1px solid transparent;cursor:pointer;transition:all .15s;font-size:11px;font-weight:600;color:rgb(148 163 184);white-space:nowrap}
+        .tv-pn-thumb{display:flex;align-items:center;gap:4px;padding:4px 10px;border-radius:8px;border:1px solid transparent;cursor:pointer;transition:all .15s;font-size:11px;font-weight:600;color:rgb(148 163 184);white-space:nowrap}
         .tv-pn-thumb:hover{background:rgb(241 245 249);border-color:rgb(226 232 240)}
         .tv-pn-thumb.active{background:rgba(77,139,255,.08);border-color:rgb(59 130 246);color:rgb(37 99 235)}
         .tv-pn-thumb.complete .tv-pn-dot{background:rgb(16 185 129)}
@@ -437,13 +437,13 @@ export default function TemplateViewerPage() {
               <div className="flex bg-slate-50 rounded-lg p-0.5 gap-px">
                 <button
                   onClick={() => setGenMode("fill")}
-                  className={`px-3.5 py-1 rounded-md text-xs font-semibold border-none cursor-pointer font-sans ${genMode === "fill" ? "bg-blue-600 text-white" : "bg-transparent text-slate-400"}`}
+                  className={`px-3.5 py-1 rounded-lg text-xs font-semibold border-none cursor-pointer font-sans ${genMode === "fill" ? "bg-blue-600 text-white" : "bg-transparent text-slate-400"}`}
                 >
                   FILL
                 </button>
                 <button
                   onClick={() => setGenMode("compose")}
-                  className={`px-3.5 py-1 rounded-md text-xs font-semibold border-none cursor-pointer font-sans ${genMode === "compose" ? "bg-violet-500 text-white" : "bg-transparent text-slate-400"}`}
+                  className={`px-3.5 py-1 rounded-lg text-xs font-semibold border-none cursor-pointer font-sans ${genMode === "compose" ? "bg-violet-500 text-white" : "bg-transparent text-slate-400"}`}
                 >
                   COMPOSE
                 </button>

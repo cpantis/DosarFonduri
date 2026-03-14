@@ -251,6 +251,7 @@ export const documents = pgTable("documents", {
   uploadedBy: uuid("uploaded_by").references(() => users.id).notNull(),
   uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
   processedAt: timestamp("processed_at"),
+  processingError: text("processing_error"),
 }, (table) => ({
   orgIdx: index("doc_org_idx").on(table.organizationId),
   folderIdx: index("doc_folder_idx").on(table.folderId),

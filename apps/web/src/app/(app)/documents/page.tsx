@@ -53,6 +53,7 @@ interface ApiDocument {
   tags: string[];
   uploadedAt: string;
   uploadedBy: string;
+  processingError: string | null;
 }
 
 interface DocItem {
@@ -70,6 +71,7 @@ interface DocItem {
   classificationConfidence: number | null;
   pageCount: number | null;
   extractedFields: Array<{ field_key: string; field_value: any; confidence: number }>;
+  processingError: string | null;
 }
 
 /* ══════════════════════════════════════════
@@ -163,6 +165,7 @@ function mapApiDocToLocal(doc: ApiDocument): DocItem {
     classificationConfidence: doc.classificationConfidence ? parseFloat(doc.classificationConfidence) : null,
     pageCount: doc.pageCount || null,
     extractedFields: visibleFields,
+    processingError: doc.processingError || null,
   };
 }
 
@@ -901,6 +904,22 @@ export default function DocumentsPage() {
         )}
         {selDoc.status === "eroare" && (
           <div style={{ marginTop: 10 }}>
+            {selDoc.processingError && (
+              <div style={{
+                padding: "10px 14px",
+                marginBottom: 10,
+                borderRadius: 8,
+                background: "rgba(220,38,38,.05)",
+                border: "1px solid rgba(220,38,38,.15)",
+                color: "#dc2626",
+                fontSize: 12,
+                lineHeight: 1.5,
+                fontFamily: "'JetBrains Mono', monospace",
+                wordBreak: "break-word",
+              }}>
+                {selDoc.processingError}
+              </div>
+            )}
             <button
               className="doc-detail-btn primary"
               style={{ width: "auto", display: "inline-flex" }}

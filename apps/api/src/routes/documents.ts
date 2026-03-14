@@ -31,6 +31,7 @@ async function ensureDocumentColumns() {
       `ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "document_type_class" "document_type_class"`,
       `ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "classification_confidence" decimal(3,2)`,
       `ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "processing_result" jsonb`,
+      `ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "processing_error" text`,
       // Columns on files table
       `ALTER TABLE "files" ADD COLUMN IF NOT EXISTS "size" bigint NOT NULL DEFAULT 0`,
       // Enum values (safe: IF NOT EXISTS)
@@ -672,7 +673,7 @@ documentRoutes.post("/documents/:id/process", async (c) => {
     return c.json({ error: `Tipul "${doc.processingType}" nu necesită procesare AI.` }, 400);
   }
 
-  await db.update(documents).set({ status: "processing" }).where(eq(documents.id, id));
+  await db.update(documents).set({ status: "processing", processingError: null }).where(eq(documents.id, id));
 
   try {
     const jobPayload = { documentId: doc.id, organizationId: auth.organizationId! };

@@ -18,6 +18,349 @@ const PAGES_PER_CHUNK = 15;
 /** Character threshold — guides under this use single-pass (no chunking) */
 const SINGLE_PASS_CHAR_LIMIT = 80000;
 
+/** Max concurrent AI calls per phase to avoid rate limits */
+const MAX_PARALLEL_CHUNKS = 4;
+
+// ─── SECTION DETECTION ───
+
+/**
+ * Identified section from guide text with its content and metadata.
+ */
+interface GuideSection {
+  /** Section identifier for logging/SSE */
+  id: string;
+  /** Human-readable section title */
+  title: string;
+  /** Content type determines which AI model to use */
+  contentType: "eligibilitate" | "intensitate" | "selectie" | "cheltuieli" | "documente" | "achizitii" | "general";
+  /** The extracted text for this section */
+  text: string;
+  /** Page numbers covered by this section */
+  pageRange: [number, number];
+}
+
+/**
+ * Section detection patterns. Each pattern identifies a type of guide section
+ * by matching chapter/section headers and keywords.
+ */
+const SECTION_PATTERNS: Array<{
+  id: string;
+  title: string;
+  contentType: GuideSection["contentType"];
+  /** Header patterns to match section titles (case-insensitive) */
+  headerPatterns: RegExp[];
+  /** Keyword density patterns — if many of these appear in a chunk, it's likely this section type */
+  keywords: string[];
+}> = [
+  {
+    id: "eligibilitate",
+    title: "Eligibilitate",
+    contentType: "eligibilitate",
+    headerPatterns: [
+      /(?:capitolul|cap\.?|sec[tț]iunea|articolul)\s*\d*[.:)]*\s*.*(?:eligibil|beneficiar)/i,
+      /\d+[.\d]*\s+(?:beneficiari\s+eligibili|condi[tț]ii\s+(?:de\s+)?eligibilitate|criterii\s+(?:de\s+)?eligibilitate)/i,
+      /(?:condi[tț]ii\s+obligatorii|cerin[tț]e\s+minime)/i,
+    ],
+    keywords: ["eligibil", "beneficiar", "forma juridic", "CAEN", "inregistr", "constituit", "vechime", "insolventa", "radiata", "dificultate"],
+  },
+  {
+    id: "intensitate",
+    title: "Intensitate sprijin",
+    contentType: "intensitate",
+    headerPatterns: [
+      /\d+[.\d]*\s+(?:intensitatea|rata)\s+(?:sprijinului|ajutorului|finan[tț][aă]rii)/i,
+      /(?:capitolul|cap\.?|sec[tț]iunea)\s*\d*[.:)]*\s*.*(?:intensitat|rata\s+ajutor)/i,
+      /(?:cofinan[tț]are|contribu[tț]ie\s+proprie)/i,
+    ],
+    keywords: ["intensitate", "cofinantare", "nerambursabil", "contribu", "ajutor de stat", "de minimis", "micro", "intreprindere mica", "mijlocie", "mare"],
+  },
+  {
+    id: "selectie",
+    title: "Criterii selecție",
+    contentType: "selectie",
+    headerPatterns: [
+      /\d+[.\d]*\s+(?:criterii(?:le)?\s+(?:de\s+)?selec[tț]ie|grila\s+(?:de\s+)?(?:punctaj|evaluare|selec[tț]ie))/i,
+      /(?:capitolul|cap\.?|sec[tț]iunea)\s*\d*[.:)]*\s*.*(?:selec[tț]ie|punctaj|evaluare)/i,
+    ],
+    keywords: ["punctaj", "puncte", "criteriu", "selectie", "grila", "evaluare", "scor", "minim", "maxim", "pondere"],
+  },
+  {
+    id: "cheltuieli",
+    title: "Cheltuieli eligibile",
+    contentType: "cheltuieli",
+    headerPatterns: [
+      /\d+[.\d]*\s+(?:cheltuieli(?:le)?\s+eligibil|categorii\s+(?:de\s+)?cheltuieli)/i,
+      /(?:capitolul|cap\.?|sec[tț]iunea)\s*\d*[.:)]*\s*.*cheltuiel/i,
+    ],
+    keywords: ["cheltuieli eligibil", "cheltuieli neeligibil", "TVA", "flat rate", "cost real", "amortizare", "buget", "categori"],
+  },
+  {
+    id: "documente",
+    title: "Documente obligatorii",
+    contentType: "documente",
+    headerPatterns: [
+      /\d+[.\d]*\s+(?:documente(?:le)?\s+(?:obligatorii|necesare)|lista\s+documentel)/i,
+      /(?:capitolul|cap\.?|sec[tț]iunea)\s*\d*[.:)]*\s*.*(?:document|anexe?\s+obligatori)/i,
+    ],
+    keywords: ["document obligatoriu", "certificat", "copie conform", "original", "semnat", "termen valabilitate", "anexa"],
+  },
+  {
+    id: "achizitii",
+    title: "Achiziții",
+    contentType: "achizitii",
+    headerPatterns: [
+      /\d+[.\d]*\s+(?:achizi[tț]ii|procedur[aă]\s+(?:de\s+)?achizi[tț]ie)/i,
+      /(?:capitolul|cap\.?|sec[tț]iunea)\s*\d*[.:)]*\s*.*achizi[tț]/i,
+    ],
+    keywords: ["achizitie", "procedura simplificata", "licitatie", "SEAP", "SICAP", "oferta", "prag", "atribuire"],
+  },
+];
+
+/**
+ * Detect logical sections in guide text based on chapter headers and keyword density.
+ * Falls back to page-based chunking if no sections are detected.
+ */
+function detectSections(text: string): GuideSection[] {
+  const pageDelimiter = /--- Pagina (\d+) ---/g;
+  const pageBreaks: Array<{ page: number; index: number }> = [];
+  let match: RegExpExecArray | null;
+  while ((match = pageDelimiter.exec(text)) !== null) {
+    pageBreaks.push({ page: parseInt(match[1]), index: match.index });
+  }
+
+  if (pageBreaks.length < 3) {
+    // Too few pages to detect sections — return as single section
+    return [{ id: "full", title: "Ghid complet", contentType: "general", text, pageRange: [1, 1] }];
+  }
+
+  // Try to detect sections using header patterns
+  const detectedSections: GuideSection[] = [];
+  const assignedPages = new Set<number>();
+
+  for (const pattern of SECTION_PATTERNS) {
+    for (const headerPattern of pattern.headerPatterns) {
+      const headerMatch = headerPattern.exec(text);
+      if (!headerMatch) continue;
+
+      // Find which page this header is on
+      const matchIndex = headerMatch.index;
+      let startPageIdx = 0;
+      for (let i = 0; i < pageBreaks.length; i++) {
+        if (pageBreaks[i].index <= matchIndex) {
+          startPageIdx = i;
+        } else {
+          break;
+        }
+      }
+
+      // Find the end: next detected section header or ~15 pages max
+      let endPageIdx = Math.min(startPageIdx + PAGES_PER_CHUNK, pageBreaks.length - 1);
+
+      // Look for the next section header to determine where this section ends
+      for (const otherPattern of SECTION_PATTERNS) {
+        if (otherPattern.id === pattern.id) continue;
+        for (const otherHeader of otherPattern.headerPatterns) {
+          const otherMatch = otherHeader.exec(text.slice(pageBreaks[startPageIdx + 1]?.index || 0));
+          if (otherMatch) {
+            const otherAbsIndex = (pageBreaks[startPageIdx + 1]?.index || 0) + otherMatch.index;
+            for (let i = startPageIdx + 1; i < pageBreaks.length; i++) {
+              if (pageBreaks[i].index >= otherAbsIndex) {
+                endPageIdx = Math.min(endPageIdx, i - 1);
+                break;
+              }
+            }
+          }
+        }
+      }
+
+      // Ensure we have at least 1 page
+      endPageIdx = Math.max(endPageIdx, startPageIdx);
+
+      // Check if these pages are already assigned
+      let overlap = false;
+      for (let p = pageBreaks[startPageIdx].page; p <= pageBreaks[endPageIdx].page; p++) {
+        if (assignedPages.has(p)) { overlap = true; break; }
+      }
+      if (overlap) continue;
+
+      // Extract the text for this section
+      const startIdx = pageBreaks[startPageIdx].index;
+      const endIdx = endPageIdx + 1 < pageBreaks.length
+        ? pageBreaks[endPageIdx + 1].index
+        : text.length;
+      const sectionText = text.slice(startIdx, endIdx);
+
+      // Verify keyword density — at least 3 keywords must appear
+      const keywordMatches = pattern.keywords.filter(kw =>
+        sectionText.toLowerCase().includes(kw.toLowerCase())
+      ).length;
+      if (keywordMatches < 3) continue;
+
+      // Mark pages as assigned
+      for (let p = pageBreaks[startPageIdx].page; p <= pageBreaks[endPageIdx].page; p++) {
+        assignedPages.add(p);
+      }
+
+      detectedSections.push({
+        id: pattern.id,
+        title: pattern.title,
+        contentType: pattern.contentType,
+        text: sectionText,
+        pageRange: [pageBreaks[startPageIdx].page, pageBreaks[endPageIdx].page],
+      });
+
+      break; // Only use first header match per pattern
+    }
+  }
+
+  // If we detected at least 2 sections, use section-based processing
+  if (detectedSections.length >= 2) {
+    // Add remaining unassigned pages as "general" sections
+    const unassignedRanges: Array<[number, number]> = [];
+    let rangeStart = -1;
+
+    for (let i = 0; i < pageBreaks.length; i++) {
+      const page = pageBreaks[i].page;
+      if (!assignedPages.has(page)) {
+        if (rangeStart === -1) rangeStart = i;
+      } else {
+        if (rangeStart !== -1) {
+          unassignedRanges.push([rangeStart, i - 1]);
+          rangeStart = -1;
+        }
+      }
+    }
+    if (rangeStart !== -1) {
+      unassignedRanges.push([rangeStart, pageBreaks.length - 1]);
+    }
+
+    // Group unassigned pages into chunks of PAGES_PER_CHUNK
+    for (const [startIdx, endIdx] of unassignedRanges) {
+      for (let i = startIdx; i <= endIdx; i += PAGES_PER_CHUNK) {
+        const chunkEndIdx = Math.min(i + PAGES_PER_CHUNK - 1, endIdx);
+        const startTextIdx = pageBreaks[i].index;
+        const endTextIdx = chunkEndIdx + 1 < pageBreaks.length
+          ? pageBreaks[chunkEndIdx + 1].index
+          : text.length;
+
+        detectedSections.push({
+          id: `general_${pageBreaks[i].page}_${pageBreaks[chunkEndIdx].page}`,
+          title: `Pagini ${pageBreaks[i].page}-${pageBreaks[chunkEndIdx].page}`,
+          contentType: "general",
+          text: text.slice(startTextIdx, endTextIdx),
+          pageRange: [pageBreaks[i].page, pageBreaks[chunkEndIdx].page],
+        });
+      }
+    }
+
+    // Sort by page range
+    detectedSections.sort((a, b) => a.pageRange[0] - b.pageRange[0]);
+
+    console.log(`[processGuide] Detected ${detectedSections.length} sections: ${detectedSections.map(s => `${s.id}(p${s.pageRange[0]}-${s.pageRange[1]})`).join(", ")}`);
+    return detectedSections;
+  }
+
+  // Fallback: no sections detected, use page-based chunking
+  return fallbackToPageChunks(text, pageBreaks);
+}
+
+/** Fallback: split into page-based chunks when section detection fails */
+function fallbackToPageChunks(text: string, pageBreaks: Array<{ page: number; index: number }>): GuideSection[] {
+  const sections: GuideSection[] = [];
+
+  for (let i = 0; i < pageBreaks.length; i += PAGES_PER_CHUNK) {
+    const endIdx = Math.min(i + PAGES_PER_CHUNK - 1, pageBreaks.length - 1);
+    const startTextIdx = pageBreaks[i].index;
+    const endTextIdx = endIdx + 1 < pageBreaks.length
+      ? pageBreaks[endIdx + 1].index
+      : text.length;
+
+    // Classify the chunk by keyword density
+    const chunkText = text.slice(startTextIdx, endTextIdx);
+    const contentType = classifyChunkByKeywords(chunkText);
+
+    sections.push({
+      id: `chunk_${pageBreaks[i].page}_${pageBreaks[endIdx].page}`,
+      title: `Pagini ${pageBreaks[i].page}-${pageBreaks[endIdx].page}`,
+      contentType,
+      text: chunkText,
+      pageRange: [pageBreaks[i].page, pageBreaks[endIdx].page],
+    });
+  }
+
+  return sections;
+}
+
+/** Classify a text chunk by keyword density to determine its predominant content type */
+function classifyChunkByKeywords(text: string): GuideSection["contentType"] {
+  const lower = text.toLowerCase();
+  const scores: Array<{ type: GuideSection["contentType"]; score: number }> = [];
+
+  for (const pattern of SECTION_PATTERNS) {
+    const score = pattern.keywords.filter(kw => lower.includes(kw.toLowerCase())).length;
+    scores.push({ type: pattern.contentType, score });
+  }
+
+  scores.sort((a, b) => b.score - a.score);
+  return scores[0]?.score >= 3 ? scores[0].type : "general";
+}
+
+/**
+ * Select the optimal AI model for a section based on its content type.
+ * Simple rule lists → Haiku (cheap, fast)
+ * Scoring/moderate complexity → Sonnet
+ * Complex interpretive rules → Opus + Extended Thinking
+ */
+function selectModelForSection(
+  section: GuideSection,
+  phase: "fixed" | "interpreted" | "scoring",
+  defaults: { fixedModel: string; interpModel: string },
+): { model: string; useET: boolean } {
+  if (phase === "fixed") {
+    switch (section.contentType) {
+      case "documente":
+      case "cheltuieli":
+        // Simple lists — Haiku is sufficient
+        return { model: "claude-haiku-4-5-20251001", useET: false };
+      case "eligibilitate":
+      case "achizitii":
+        // Moderate complexity — use configured fixed model (default Sonnet)
+        return { model: defaults.fixedModel, useET: false };
+      default:
+        return { model: defaults.fixedModel, useET: false };
+    }
+  }
+
+  if (phase === "interpreted") {
+    switch (section.contentType) {
+      case "intensitate":
+        // Complex decision trees — Opus + Extended Thinking
+        return { model: defaults.interpModel, useET: true };
+      case "selectie":
+        // Scoring criteria with conditions — Sonnet is sufficient
+        return { model: "claude-sonnet-4-20250514", useET: false };
+      case "documente":
+      case "cheltuieli":
+        // Conditional lists — Haiku with careful prompting
+        return { model: "claude-haiku-4-5-20251001", useET: false };
+      default:
+        return { model: defaults.interpModel, useET: true };
+    }
+  }
+
+  // scoring phase
+  switch (section.contentType) {
+    case "selectie":
+      // This IS the scoring section — use Sonnet
+      return { model: "claude-sonnet-4-20250514", useET: false };
+    default:
+      // Other sections might also contain scoring info
+      return { model: defaults.fixedModel, useET: false };
+  }
+}
+
+// ─── LEGACY CHUNKING (kept for backward compatibility with single-pass) ───
+
 /**
  * Split guide text into chunks of ~PAGES_PER_CHUNK pages.
  * Uses "--- Pagina N ---" delimiters produced by extractTextFromPDF.
@@ -88,6 +431,27 @@ async function cacheGuideText(documentId: string, text: string): Promise<void> {
   }
 }
 
+/** Run async tasks in parallel with concurrency limit */
+async function parallelMap<T, R>(
+  items: T[],
+  fn: (item: T, index: number) => Promise<R>,
+  concurrency: number = MAX_PARALLEL_CHUNKS,
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (nextIndex < items.length) {
+      const idx = nextIndex++;
+      results[idx] = await fn(items[idx], idx);
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, () => worker());
+  await Promise.all(workers);
+  return results;
+}
+
 interface ProcessGuidePayload {
   documentId: string;
   organizationId: string;
@@ -151,7 +515,7 @@ Pentru fiecare regula returneaza:
 TEXT GHID:
 `;
 
-/** Extract fixed rules from a single chunk of text. Returns parsed rules (not saved to DB). */
+/** Extract fixed rules from a single section/chunk of text. Returns parsed rules (not saved to DB). */
 async function extractFixedRulesFromChunk(
   chunkText: string,
   model: string,
@@ -191,28 +555,28 @@ async function extractFixedRulesFromChunk(
   return parsed;
 }
 
-/** Extract fixed rules with chunk processing for large guides. */
+/** Extract fixed rules — processes sections IN PARALLEL with smart model selection. */
 async function extractFixedRules(
-  text: string,
-  model: string,
+  sections: GuideSection[],
+  defaultModel: string,
+  interpModel: string,
   documentId: string,
   organizationId: string,
-  onChunkProgress?: (chunkIdx: number, totalChunks: number) => void,
+  onSectionDone?: (sectionId: string, sectionTitle: string, rulesCount: number) => void,
 ): Promise<void> {
-  const chunks = splitTextIntoChunks(text);
-  let allRules: any[] = [];
-
-  for (let i = 0; i < chunks.length; i++) {
-    const chunkRules = await extractFixedRulesFromChunk(
-      chunks[i], model, organizationId,
-      chunks.length === 1 ? "full" : `chunk_${i + 1}_of_${chunks.length}`,
+  const allResults = await parallelMap(sections, async (section) => {
+    const { model } = selectModelForSection(section, "fixed", { fixedModel: defaultModel, interpModel });
+    const sectionRules = await extractFixedRulesFromChunk(
+      section.text, model, organizationId, section.id,
     );
-    allRules.push(...chunkRules);
-    onChunkProgress?.(i + 1, chunks.length);
-  }
+    onSectionDone?.(section.id, section.title, sectionRules.length);
+    return sectionRules;
+  });
 
-  // Deduplicate if multiple chunks were processed
-  if (chunks.length > 1) {
+  let allRules = allResults.flat();
+
+  // Deduplicate
+  if (sections.length > 1) {
     const before = allRules.length;
     allRules = deduplicateRules(allRules);
     if (before !== allRules.length) {
@@ -304,7 +668,7 @@ Pentru fiecare regula returneaza:
 TEXT GHID:
 `;
 
-/** Extract interpreted rules from a single chunk. Returns parsed rules (not saved to DB). */
+/** Extract interpreted rules from a single section/chunk. Returns parsed rules (not saved to DB). */
 async function extractInterpretedRulesFromChunk(
   chunkText: string,
   model: string,
@@ -355,29 +719,31 @@ async function extractInterpretedRulesFromChunk(
   return parsed;
 }
 
-/** Extract interpreted rules with chunk processing for large guides. */
+/** Extract interpreted rules — processes sections IN PARALLEL with smart model selection. */
 async function extractInterpretedRules(
-  text: string,
-  model: string,
-  useET: boolean,
+  sections: GuideSection[],
+  defaultInterpModel: string,
+  defaultUseET: boolean,
+  fixedModel: string,
   documentId: string,
   organizationId: string,
-  onChunkProgress?: (chunkIdx: number, totalChunks: number) => void,
+  onSectionDone?: (sectionId: string, sectionTitle: string, rulesCount: number) => void,
 ): Promise<void> {
-  const chunks = splitTextIntoChunks(text);
-  let allRules: any[] = [];
-
-  for (let i = 0; i < chunks.length; i++) {
-    const chunkRules = await extractInterpretedRulesFromChunk(
-      chunks[i], model, useET, organizationId,
-      chunks.length === 1 ? "full" : `chunk_${i + 1}_of_${chunks.length}`,
+  const allResults = await parallelMap(sections, async (section) => {
+    const { model, useET } = selectModelForSection(section, "interpreted", { fixedModel, interpModel: defaultInterpModel });
+    // Only use ET if the section warrants it AND it's enabled in config
+    const effectiveET = useET && defaultUseET;
+    const sectionRules = await extractInterpretedRulesFromChunk(
+      section.text, model, effectiveET, organizationId, section.id,
     );
-    allRules.push(...chunkRules);
-    onChunkProgress?.(i + 1, chunks.length);
-  }
+    onSectionDone?.(section.id, section.title, sectionRules.length);
+    return sectionRules;
+  });
 
-  // Deduplicate if multiple chunks
-  if (chunks.length > 1) {
+  let allRules = allResults.flat();
+
+  // Deduplicate
+  if (sections.length > 1) {
     const before = allRules.length;
     allRules = deduplicateRules(allRules);
     if (before !== allRules.length) {
@@ -449,7 +815,7 @@ Daca nu gasesti nicio grila de punctaj, returneaza un array gol [].
 TEXT GHID:
 `;
 
-/** Extract scoring criteria from a single chunk. Returns parsed criteria (not saved to DB). */
+/** Extract scoring criteria from a single section/chunk. Returns parsed criteria (not saved to DB). */
 async function extractScoringFromChunk(
   chunkText: string,
   model: string,
@@ -489,35 +855,34 @@ async function extractScoringFromChunk(
   return parsed;
 }
 
-/** Phase 3: Extract scoring grid → scoringCriteria table (with chunk support) */
+/** Phase 3: Extract scoring grid — processes sections IN PARALLEL. */
 async function extractScoringCriteria(
-  text: string,
-  model: string,
+  sections: GuideSection[],
+  defaultModel: string,
+  interpModel: string,
   documentId: string,
   organizationId: string,
-  onChunkProgress?: (chunkIdx: number, totalChunks: number) => void,
+  onSectionDone?: (sectionId: string, sectionTitle: string, criteriaCount: number) => void,
 ): Promise<void> {
-  const chunks = splitTextIntoChunks(text);
-  let allCriteria: any[] = [];
-
-  for (let i = 0; i < chunks.length; i++) {
-    const chunkCriteria = await extractScoringFromChunk(
-      chunks[i], model, organizationId,
-      chunks.length === 1 ? "full" : `chunk_${i + 1}_of_${chunks.length}`,
+  const allResults = await parallelMap(sections, async (section) => {
+    const { model } = selectModelForSection(section, "scoring", { fixedModel: defaultModel, interpModel });
+    const sectionCriteria = await extractScoringFromChunk(
+      section.text, model, organizationId, section.id,
     );
-    allCriteria.push(...chunkCriteria);
-    onChunkProgress?.(i + 1, chunks.length);
-  }
+    onSectionDone?.(section.id, section.title, sectionCriteria.length);
+    return sectionCriteria;
+  });
+
+  let allCriteria = allResults.flat();
 
   // Deduplicate scoring criteria by code
-  if (chunks.length > 1) {
+  if (sections.length > 1) {
     const seen = new Map<string, any>();
     for (const c of allCriteria) {
       const code = (c.code || "").toLowerCase().trim();
       if (!seen.has(code)) {
         seen.set(code, c);
       }
-      // Keep first occurrence (scoring criteria are typically unique by code)
     }
     const before = allCriteria.length;
     allCriteria = Array.from(seen.values());
@@ -527,7 +892,6 @@ async function extractScoringCriteria(
   }
 
   if (allCriteria.length > 0) {
-    // Remove existing criteria for this document before inserting
     await db.delete(scoringCriteria).where(eq(scoringCriteria.documentId, documentId));
 
     await db.insert(scoringCriteria).values(
@@ -815,6 +1179,7 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
   "process-guide",
   async (job: Job<ProcessGuidePayload>) => {
     const { documentId, organizationId } = job.data;
+    const startTime = Date.now();
 
     try {
       await db.update(documents).set({ status: "processing" }).where(eq(documents.id, documentId));
@@ -824,6 +1189,8 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
 
       const { buffer, name: fileName } = await getFileBuffer(doc.fileId);
 
+      // ─── STEP 1: Text extraction (PyMuPDF, zero AI, < 1 second) ───
+      const extractStart = Date.now();
       let text = "";
       if (doc.fileType === "pdf") {
         text = await extractTextFromPDF(buffer);
@@ -834,9 +1201,16 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
       } else {
         throw new Error(`Format nesuportat pentru ghid: ${doc.fileType}`);
       }
+      const extractDuration = Date.now() - extractStart;
+      console.log(`[processGuide] Text extraction: ${extractDuration}ms for "${doc.name}"`);
 
       // Cache guide text in Redis for reuse by Solomon/Neemia
       cacheGuideText(documentId, text).catch(() => {});
+
+      // ─── STEP 2: Section detection (zero AI, < 100ms) ───
+      const sections = text.length <= SINGLE_PASS_CHAR_LIMIT
+        ? [{ id: "full", title: "Ghid complet", contentType: "general" as const, text, pageRange: [1, 1] as [number, number] }]
+        : detectSections(text);
 
       const config = await db.query.orgConfig.findFirst({
         where: eq(orgConfig.organizationId, organizationId),
@@ -846,11 +1220,12 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
       const interpModel = config?.reguliInterpModel || "claude-opus-4-6";
       const useET = config?.reguliInterpET ?? true;
 
-      const chunks = splitTextIntoChunks(text);
-      const isChunked = chunks.length > 1;
-      const chunkSuffix = isChunked ? ` (${chunks.length} chunk-uri)` : "";
+      const sectionSummary = sections.map(s => s.id).join(", ");
+      console.log(`[processGuide] Processing "${doc.name}" with ${sections.length} sections: ${sectionSummary}`);
 
-      // Phase 1: Fixed rules (progress 10-35)
+      // ─── STEP 3: Extract rules — Phases 1-3 IN PARALLEL ───
+      // Fixed rules, interpreted rules, and scoring criteria are independent
+      // (they read the same text but write to different tables).
       await job.updateProgress(10);
       publishJobProgress(organizationId, {
         jobId: job.id || "",
@@ -859,77 +1234,82 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         documentName: doc.name,
         progress: 10,
         status: "processing",
-        message: `Extragere reguli fixe din "${doc.name}"${chunkSuffix}...`,
+        message: `Extragere reguli din "${doc.name}" (${sections.length} secțiuni, procesare paralelă)...`,
       }).catch(() => {});
-      await extractFixedRules(text, fixedModel, documentId, organizationId, (chunkIdx, totalChunks) => {
-        if (totalChunks > 1) {
-          const chunkProgress = 10 + Math.round((chunkIdx / totalChunks) * 25);
-          job.updateProgress(chunkProgress).catch(() => {});
-          publishJobProgress(organizationId, {
-            jobId: job.id || "",
-            jobType: "ghid",
-            documentId,
-            documentName: doc.name,
-            progress: chunkProgress,
-            status: "processing",
-            message: `Extragere reguli fixe din "${doc.name}" (chunk ${chunkIdx}/${totalChunks})...`,
-          }).catch(() => {});
-        }
-      });
 
-      // Phase 2: Interpreted rules (progress 35-70)
-      await job.updateProgress(35);
-      publishJobProgress(organizationId, {
-        jobId: job.id || "",
-        jobType: "ghid",
-        documentId,
-        documentName: doc.name,
-        progress: 35,
-        status: "processing",
-        message: `Extragere reguli interpretate din "${doc.name}"${chunkSuffix}...`,
-      }).catch(() => {});
-      await extractInterpretedRules(text, interpModel, useET, documentId, organizationId, (chunkIdx, totalChunks) => {
-        if (totalChunks > 1) {
-          const chunkProgress = 35 + Math.round((chunkIdx / totalChunks) * 35);
-          job.updateProgress(chunkProgress).catch(() => {});
-          publishJobProgress(organizationId, {
-            jobId: job.id || "",
-            jobType: "ghid",
-            documentId,
-            documentName: doc.name,
-            progress: chunkProgress,
-            status: "processing",
-            message: `Extragere reguli interpretate din "${doc.name}" (chunk ${chunkIdx}/${totalChunks})...`,
-          }).catch(() => {});
-        }
-      });
+      const phaseStart = Date.now();
+      let fixedRulesSections = 0;
+      let interpRulesSections = 0;
+      let scoringSections = 0;
 
-      // Phase 3: Scoring criteria (progress 70-90)
-      await job.updateProgress(70);
-      publishJobProgress(organizationId, {
-        jobId: job.id || "",
-        jobType: "ghid",
-        documentId,
-        documentName: doc.name,
-        progress: 70,
-        status: "processing",
-        message: `Extragere grilă punctaj din "${doc.name}"${chunkSuffix}...`,
-      }).catch(() => {});
-      await extractScoringCriteria(text, fixedModel, documentId, organizationId, (chunkIdx, totalChunks) => {
-        if (totalChunks > 1) {
-          const chunkProgress = 70 + Math.round((chunkIdx / totalChunks) * 20);
-          job.updateProgress(chunkProgress).catch(() => {});
+      await Promise.all([
+        // Phase 1: Fixed rules (all sections in parallel)
+        extractFixedRules(sections, fixedModel, interpModel, documentId, organizationId, (sectionId, sectionTitle, rulesCount) => {
+          fixedRulesSections++;
+          const phaseProgress = 10 + Math.round((fixedRulesSections / sections.length) * 25);
           publishJobProgress(organizationId, {
             jobId: job.id || "",
             jobType: "ghid",
             documentId,
             documentName: doc.name,
-            progress: chunkProgress,
+            progress: phaseProgress,
             status: "processing",
-            message: `Extragere grilă punctaj din "${doc.name}" (chunk ${chunkIdx}/${totalChunks})...`,
+            message: `Reguli fixe: secțiunea "${sectionTitle}" — ${rulesCount} reguli extrase`,
           }).catch(() => {});
-        }
-      });
+          // SSE per section
+          publishEvent(`org:${organizationId}:uploads`, "guide_section_processed", {
+            documentId,
+            section: sectionTitle,
+            phase: "fixed_rules",
+            rulesCount,
+          }).catch(() => {});
+        }),
+
+        // Phase 2: Interpreted rules (all sections in parallel)
+        extractInterpretedRules(sections, interpModel, useET, fixedModel, documentId, organizationId, (sectionId, sectionTitle, rulesCount) => {
+          interpRulesSections++;
+          const phaseProgress = 35 + Math.round((interpRulesSections / sections.length) * 35);
+          publishJobProgress(organizationId, {
+            jobId: job.id || "",
+            jobType: "ghid",
+            documentId,
+            documentName: doc.name,
+            progress: phaseProgress,
+            status: "processing",
+            message: `Reguli interpretate: secțiunea "${sectionTitle}" — ${rulesCount} reguli extrase`,
+          }).catch(() => {});
+          publishEvent(`org:${organizationId}:uploads`, "guide_section_processed", {
+            documentId,
+            section: sectionTitle,
+            phase: "interpreted_rules",
+            rulesCount,
+          }).catch(() => {});
+        }),
+
+        // Phase 3: Scoring criteria (all sections in parallel)
+        extractScoringCriteria(sections, fixedModel, interpModel, documentId, organizationId, (sectionId, sectionTitle, criteriaCount) => {
+          scoringSections++;
+          const phaseProgress = 70 + Math.round((scoringSections / sections.length) * 20);
+          publishJobProgress(organizationId, {
+            jobId: job.id || "",
+            jobType: "ghid",
+            documentId,
+            documentName: doc.name,
+            progress: phaseProgress,
+            status: "processing",
+            message: `Grilă punctaj: secțiunea "${sectionTitle}" — ${criteriaCount} criterii extrase`,
+          }).catch(() => {});
+          publishEvent(`org:${organizationId}:uploads`, "guide_section_processed", {
+            documentId,
+            section: sectionTitle,
+            phase: "scoring_criteria",
+            rulesCount: criteriaCount,
+          }).catch(() => {});
+        }),
+      ]);
+
+      const phaseDuration = Date.now() - phaseStart;
+      console.log(`[processGuide] Phases 1-3 (parallel): ${phaseDuration}ms for "${doc.name}"`);
 
       // Phase 4: Auto-link rules to template elements and reference tables (progress 90-95)
       await job.updateProgress(90);
@@ -976,6 +1356,8 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
       }
 
       const pageCount = (text.match(/--- Pagina/g) || []).length;
+      const totalDuration = Date.now() - startTime;
+
       await db.update(documents).set({
         status: "processed",
         pageCount,
@@ -984,6 +1366,8 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
 
       await job.updateProgress(100);
 
+      console.log(`[processGuide] Total: ${totalDuration}ms (extract: ${extractDuration}ms, AI phases: ${phaseDuration}ms) for "${doc.name}" (${pageCount} pages, ${sections.length} sections)`);
+
       // SSE notification
       publishEvent(`org:${organizationId}:uploads`, "document_processed", {
         documentId,
@@ -991,11 +1375,13 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         status: "processed",
         processingType: "ghid",
         pageCount,
+        sectionCount: sections.length,
         elementLinks: linkResult.elementLinks,
         referenceLinks: linkResult.referenceLinks,
         elementDefinitions: elementDefsCount,
         templateMappings,
-        message: `Ghid procesat "${doc.name}". ${pageCount} pagini, reguli extrase. ${linkResult.elementLinks + linkResult.referenceLinks} link-uri create. ${elementDefsCount} definiții elemente. ${templateMappings} mapări template.`,
+        totalDurationMs: totalDuration,
+        message: `Ghid procesat "${doc.name}". ${pageCount} pagini, ${sections.length} secțiuni, reguli extrase paralel. ${linkResult.elementLinks + linkResult.referenceLinks} link-uri create. ${elementDefsCount} definiții elemente. ${templateMappings} mapări template. Timp total: ${(totalDuration / 1000).toFixed(1)}s.`,
       }).catch(() => {});
     } catch (error) {
       console.error(`Process guide error (attempt ${job.attemptsMade + 1}/${job.opts.attempts || 3}):`, error);

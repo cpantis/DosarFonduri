@@ -324,7 +324,7 @@ async function handleBilantParse(job: Job<CompanyBilantPayload>) {
 
 export const processCompanyWorker = new Worker<ProcessCompanyPayload>(
   "process-company",
-  async (job) => {
+  async (job: Job<ProcessCompanyPayload>) => {
     console.log(`[process-company] Job ${job.id} started: ${job.data.type} for company ${job.data.companyId}`);
 
     try {

@@ -279,7 +279,7 @@ export async function classifyDocument(textPreview: string): Promise<{
   hasForms: boolean;
 }> {
   const response = await withAILimit(() => anthropic.messages.create({
-    model: "claude-haiku-4-5-20251001",
+    model: "claude-sonnet-4-20250514",
     max_tokens: 500,
     system: `Clasifici documente din dosare de finantare europeana. Analizeaza textul si returneaza DOAR JSON valid.`,
     messages: [{

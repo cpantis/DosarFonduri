@@ -1050,5 +1050,5 @@ export const processClientDocWorker = new Worker<ProcessClientDocPayload>(
       throw error;
     }
   },
-  { connection: redis }
+  { connection: redis as any }
 );

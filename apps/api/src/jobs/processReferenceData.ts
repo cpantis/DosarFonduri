@@ -157,5 +157,5 @@ export const processReferenceDataWorker = new Worker<ProcessReferenceDataPayload
       throw error;
     }
   },
-  { connection: redis }
+  { connection: redis as any }
 );

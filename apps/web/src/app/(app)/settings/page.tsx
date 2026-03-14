@@ -279,7 +279,7 @@ export default function SettingsPage() {
         .api-spinner{width:12px;height:12px;border:2px solid rgba(37,99,235,.3);border-top-color:#2563eb;border-radius:50%;animation:spin .7s linear infinite;display:inline-block}
         @keyframes spin{to{transform:rotate(360deg)}}
         .export-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-        .export-btn{padding:20px;border-radius:12px;border:1px solid rgba(226,232,240,.8);background:#ffffff;cursor:pointer;transition:all .15s;text-align:center}
+        .export-btn{padding:20px;border-radius:8px;border:1px solid rgba(226,232,240,.8);background:#ffffff;cursor:pointer;transition:all .15s;text-align:center}
         .export-btn:hover{border-color:#cbd5e1;background:#f8fafc}
         .cfg-input{border:1px solid rgba(226,232,240,.8);border-radius:8px;padding:8px 12px;font-size:14px;background:#ffffff;color:#0f172a;outline:none;font-family:'Inter', system-ui, sans-serif}
         .cfg-input:focus{border-color:#2563eb}
@@ -581,7 +581,7 @@ export default function SettingsPage() {
 
               {!showAddApi ? (
                 <button
-                  className="w-full py-2.5 mt-2.5 text-xs font-semibold cursor-pointer transition-all text-center rounded-md bg-transparent font-sans border border-dashed border-slate-200 text-slate-400"
+                  className="w-full py-2.5 mt-2.5 text-xs font-semibold cursor-pointer transition-all text-center rounded-lg bg-transparent font-sans border border-dashed border-slate-200 text-slate-400"
                   onClick={() => setShowAddApi(true)}
                 >
                   + Adauga integrare API

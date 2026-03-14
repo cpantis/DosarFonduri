@@ -1647,7 +1647,7 @@ export default function ProjectViewPage() {
         .elem-search{padding:7px 14px;border-radius:8px;border:1px solid rgba(226,232,240,.8);background:#f0f2f5;color:#0f172a;font-size:13px;font-family:'Inter',system-ui,sans-serif;outline:none;width:180px;transition:all .15s cubic-bezier(.4,0,.2,1)}
         .elem-search:focus{border-color:#2563eb}.elem-search::placeholder{color:#94a3b8}
         .fp-group{display:flex;background:#f0f2f5;border-radius:10px;padding:3px;gap:2px}
-        .fp{padding:5px 14px;border-radius:7px;font-size:12px;font-weight:600;border:none;cursor:pointer;background:transparent;color:#64748b;font-family:'Inter',system-ui,sans-serif;transition:all .15s cubic-bezier(.4,0,.2,1);white-space:nowrap}
+        .fp{padding:5px 14px;border-radius:8px;font-size:12px;font-weight:600;border:none;cursor:pointer;background:transparent;color:#64748b;font-family:'Inter',system-ui,sans-serif;transition:all .15s cubic-bezier(.4,0,.2,1);white-space:nowrap}
         .fp:hover{color:#0f172a}.fp.on{background:#2563eb;color:#ffffff;box-shadow:0 1px 3px rgba(37,99,235,.3)}
         .fp.on-green{background:#34d399;color:#ffffff}
         .fp.on-yellow{background:#fbbf24;color:#ffffff}
@@ -1656,13 +1656,13 @@ export default function ProjectViewPage() {
         .fp-count{font-size:10px;opacity:.7;margin-left:2px}
         .fp-sub-group{display:flex;align-items:center;gap:4px;margin-left:4px;padding-left:8px;border-left:1px solid rgba(226,232,240,.8)}
         .fp-sub-label{font-size:11px;color:#94a3b8;font-weight:600;white-space:nowrap}
-        .fp-sub{padding:3px 10px;border-radius:5px;font-size:11px;font-weight:600;border:1px solid rgba(226,232,240,.8);cursor:pointer;background:transparent;color:#64748b;font-family:'Inter',system-ui,sans-serif;transition:all .15s cubic-bezier(.4,0,.2,1);white-space:nowrap}
+        .fp-sub{padding:3px 10px;border-radius:8px;font-size:11px;font-weight:600;border:1px solid rgba(226,232,240,.8);cursor:pointer;background:transparent;color:#64748b;font-family:'Inter',system-ui,sans-serif;transition:all .15s cubic-bezier(.4,0,.2,1);white-space:nowrap}
         .fp-sub:hover{border-color:#fb923c;color:#fb923c}
         .fp-sub.active{background:rgba(251,146,60,.12);border-color:#fb923c;color:#fb923c}
         .elemente-filter-bar{flex-wrap:wrap}
         .bulk-confirm-bar{display:flex;align-items:center;justify-content:space-between;padding:8px 24px;background:rgba(251,146,60,.06);border-bottom:1px solid rgba(251,146,60,.2)}
         .bc-text{font-size:12px;color:#fb923c;font-weight:600}
-        .bc-btn{padding:5px 16px;border-radius:6px;border:1px solid #34d399;background:rgba(52,211,153,.08);color:#34d399;font-size:12px;font-weight:700;cursor:pointer;font-family:'Inter',system-ui,sans-serif;transition:all .15s}
+        .bc-btn{padding:5px 16px;border-radius:8px;border:1px solid #34d399;background:rgba(52,211,153,.08);color:#34d399;font-size:12px;font-weight:700;cursor:pointer;font-family:'Inter',system-ui,sans-serif;transition:all .15s}
         .bc-btn:hover:not(:disabled){background:rgba(52,211,153,.18)}
         .bc-btn:disabled{opacity:.5;cursor:not-allowed}
         .elemente-scroll{flex:1;overflow-y:auto;padding:16px 24px;display:flex;flex-direction:column;gap:10px}
@@ -1739,7 +1739,7 @@ export default function ProjectViewPage() {
 
         /* Checklist Item Actions */
         .check-item-actions{position:relative}
-        .check-actions-btn{background:none;border:none;color:#94a3b8;cursor:pointer;font-size:14px;padding:2px 6px;border-radius:3px;transition:all .15s cubic-bezier(.4,0,.2,1);line-height:1}
+        .check-actions-btn{background:none;border:none;color:#94a3b8;cursor:pointer;font-size:14px;padding:2px 6px;border-radius:8px;transition:all .15s cubic-bezier(.4,0,.2,1);line-height:1}
         .check-actions-btn:hover{background:#f1f5f9;color:#0f172a}
         .check-actions-menu{position:absolute;right:0;top:100%;z-index:20;background:#ffffff;border:1px solid rgba(226,232,240,.8);border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,.15);min-width:200px;padding:4px;animation:menuSlide .15s ease}
         @keyframes menuSlide{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
@@ -1782,10 +1782,10 @@ export default function ProjectViewPage() {
         .sn-status-dot{width:6px;height:6px;border-radius:50%;background:#34d399;animation:statusPulse 2s ease infinite}
         @keyframes statusPulse{0%,100%{opacity:1}50%{opacity:.4}}
         .model-selector{display:flex;gap:3px;background:#f0f2f5;padding:3px;border-radius:6px;margin-left:auto}
-        .model-btn{padding:4px 10px;font-size:11px;font-weight:600;border-radius:4px;border:none;cursor:pointer;background:transparent;color:#64748b;font-family:'JetBrains Mono',monospace;transition:all .15s cubic-bezier(.4,0,.2,1)}
+        .model-btn{padding:4px 10px;font-size:11px;font-weight:600;border-radius:8px;border:none;cursor:pointer;background:transparent;color:#64748b;font-family:'JetBrains Mono',monospace;transition:all .15s cubic-bezier(.4,0,.2,1)}
         .model-btn.active{background:#2563eb;color:#ffffff}
         .model-btn:hover:not(.active){color:#0f172a;background:#f1f5f9}
-        .et-toggle{display:flex;align-items:center;gap:5px;font-size:11px;color:#64748b;cursor:pointer;padding:4px 9px;border-radius:4px;border:1px solid rgba(226,232,240,.8);background:transparent;font-family:'Inter',system-ui,sans-serif;transition:all .15s cubic-bezier(.4,0,.2,1)}
+        .et-toggle{display:flex;align-items:center;gap:5px;font-size:11px;color:#64748b;cursor:pointer;padding:4px 9px;border-radius:8px;border:1px solid rgba(226,232,240,.8);background:transparent;font-family:'Inter',system-ui,sans-serif;transition:all .15s cubic-bezier(.4,0,.2,1)}
         .et-toggle.on{border-color:#a78bfa;color:#a78bfa;background:rgba(167,139,250,.08)}
         .chat-messages{flex:1;overflow-y:auto;overflow-x:hidden;padding:20px;display:flex;flex-direction:column;gap:16px;min-height:0}
         .chat-msg{max-width:85%;padding:14px 18px;border-radius:16px;font-size:14px;line-height:1.6;white-space:pre-wrap;position:relative}

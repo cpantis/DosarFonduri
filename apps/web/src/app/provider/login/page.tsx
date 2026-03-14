@@ -182,7 +182,7 @@ export default function ProviderLoginPage() {
           <button
             onClick={go}
             disabled={busy || !email || !pw}
-            className="prov-login-btn rounded-[10px] bg-violet-500 font-sans"
+            className="prov-login-btn rounded-lg bg-violet-500 font-sans"
           >
             {busy ? <Spinner light /> : "Autentificare Provider"}
           </button>

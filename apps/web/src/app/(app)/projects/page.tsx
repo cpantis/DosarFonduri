@@ -226,7 +226,7 @@ export default function ProjectsPage() {
                 <div className="space-y-1.5 mb-6">
                   {companies.map(f => (
                     <div key={f.id}
-                      className={`px-4 py-3 rounded-xl cursor-pointer transition-all text-[13px] font-medium flex items-center gap-3 ${createData.firmaId === f.id ? "bg-blue-50 text-blue-700 ring-2 ring-blue-500/20" : "bg-slate-50/80 text-slate-600 hover:bg-slate-100"}`}
+                      className={`px-4 py-3 rounded-lg cursor-pointer transition-all text-[13px] font-medium flex items-center gap-3 ${createData.firmaId === f.id ? "bg-blue-50 text-blue-700 ring-2 ring-blue-500/20" : "bg-slate-50/80 text-slate-600 hover:bg-slate-100"}`}
                       onClick={() => setCreateData(p => ({ ...p, firmaId: f.id }))}>
                       <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-[14px] ${createData.firmaId === f.id ? "bg-blue-100" : "bg-white border border-slate-200"}`}>🏢</div>
                       {f.name}

@@ -161,7 +161,7 @@ export default function CompaniesPage() {
         .co-modal{background:#ffffff;border-radius:16px;width:540px;max-height:85vh;overflow-y:auto;padding:28px;border:1px solid rgba(226,232,240,.8);box-shadow:0 20px 60px rgba(0,0,0,.08);animation:fadeUp .2s ease-out}
         @keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
         .co-mode-toggle{display:flex;gap:4px;padding:4px;background:#f1f5f9;border-radius:8px;margin-bottom:20px}
-        .co-mode-btn{flex:1;padding:8px;font-size:13px;font-weight:500;border-radius:6px;border:none;cursor:pointer;transition:all .15s;background:transparent;color:#64748b}
+        .co-mode-btn{flex:1;padding:8px;font-size:13px;font-weight:500;border-radius:8px;border:none;cursor:pointer;transition:all .15s;background:transparent;color:#64748b}
         .co-mode-btn.on{background:#ffffff;color:#0f172a;box-shadow:0 1px 2px rgba(0,0,0,.05)}
       `}</style>
 

@@ -301,7 +301,7 @@ export default function ProviderDashboardPage() {
         <div className="w-[220px] min-w-[220px] bg-white border-r border-slate-200 flex flex-col">
           <div className="p-5 flex items-center gap-2.5 border-b border-slate-200">
             <div
-              className="w-9 h-9 flex items-center justify-center text-base font-extrabold text-white rounded-[10px] bg-violet-500"
+              className="w-9 h-9 flex items-center justify-center text-base font-extrabold text-white rounded-lg bg-violet-500"
             >
               DF
             </div>
@@ -321,7 +321,7 @@ export default function ProviderDashboardPage() {
             ].map((item) => (
               <div
                 key={item.id}
-                className={`flex items-center gap-2.5 py-2.5 px-3 rounded-md cursor-pointer text-sm font-medium transition-all mb-0.5 ${
+                className={`flex items-center gap-2.5 py-2.5 px-3 rounded-lg cursor-pointer text-sm font-medium transition-all mb-0.5 ${
                   activeTab === item.id
                     ? "bg-violet-500/10 text-violet-500 font-semibold"
                     : "text-slate-500 hover:bg-slate-100 hover:text-slate-900"
@@ -349,7 +349,7 @@ export default function ProviderDashboardPage() {
               {activeTab === "cabinets" ? "Cabinete" : activeTab === "codes" ? "Coduri de acces" : activeTab === "users" ? "Utilizatori platforma" : "Revenue & Metrici"}
             </div>
             <button
-              className="px-4 py-2 text-[13px] font-bold text-white flex items-center gap-1.5 cursor-pointer rounded-[10px] border-none bg-violet-500 font-sans shadow-[0_2px_12px_rgba(167,139,250,.25)]"
+              className="px-4 py-2 text-[13px] font-bold text-white flex items-center gap-1.5 cursor-pointer rounded-lg border-none bg-violet-500 font-sans shadow-[0_2px_12px_rgba(167,139,250,.25)]"
               onClick={() => { setShowGenerate(true); setGenCode(null); setGenCui(""); setGenCuiRes(null); }}
             >
               🔑 Genereaza cod nou
@@ -358,28 +358,28 @@ export default function ProviderDashboardPage() {
 
           {/* Stats bar */}
           <div className="grid grid-cols-4 gap-3.5 p-5 border-b border-slate-200 bg-white">
-            <div className="p-4 rounded-[10px] border border-slate-200 bg-slate-50">
+            <div className="p-4 rounded-lg border border-slate-200 bg-slate-50">
               <div className="text-[11px] font-semibold uppercase mb-1.5 text-slate-400" style={{ letterSpacing: ".6px" }}>Cabinete active</div>
               <div className="text-[28px] font-extrabold font-mono text-emerald-500" style={{ letterSpacing: "-1px" }}>
                 {revenue?.activeCabinets || 0}
               </div>
               <div className="text-xs text-slate-400">din {revenue?.totalCabinets || 0} total</div>
             </div>
-            <div className="p-4 rounded-[10px] border border-slate-200 bg-slate-50">
+            <div className="p-4 rounded-lg border border-slate-200 bg-slate-50">
               <div className="text-[11px] font-semibold uppercase mb-1.5 text-slate-400" style={{ letterSpacing: ".6px" }}>MRR</div>
               <div className="text-[28px] font-extrabold font-mono text-blue-600" style={{ letterSpacing: "-1px" }}>
                 {revenue?.mrr || 0}€
               </div>
               <div className="text-xs text-slate-400">venit lunar recurent</div>
             </div>
-            <div className="p-4 rounded-[10px] border border-slate-200 bg-slate-50">
+            <div className="p-4 rounded-lg border border-slate-200 bg-slate-50">
               <div className="text-[11px] font-semibold uppercase mb-1.5 text-slate-400" style={{ letterSpacing: ".6px" }}>Trial</div>
               <div className="text-[28px] font-extrabold font-mono text-amber-500" style={{ letterSpacing: "-1px" }}>
                 {revenue?.trialCabinets || 0}
               </div>
               <div className="text-xs text-slate-400">cabinete in trial</div>
             </div>
-            <div className="p-4 rounded-[10px] border border-slate-200 bg-slate-50">
+            <div className="p-4 rounded-lg border border-slate-200 bg-slate-50">
               <div className="text-[11px] font-semibold uppercase mb-1.5 text-slate-400" style={{ letterSpacing: ".6px" }}>Utilizatori</div>
               <div className="text-[28px] font-extrabold font-mono" style={{ letterSpacing: "-1px" }}>
                 {platformUsers.filter(u => u.status === "active").length}
@@ -396,12 +396,12 @@ export default function ProviderDashboardPage() {
               <>
                 <div className="flex items-center gap-2.5 mb-4">
                   <input
-                    className="px-3.5 py-2 text-[13px] outline-none w-[260px] rounded-[10px] border border-slate-200 bg-slate-50 text-slate-900 font-sans"
+                    className="px-3.5 py-2 text-[13px] outline-none w-[260px] rounded-lg border border-slate-200 bg-slate-50 text-slate-900 font-sans"
                     placeholder="Cauta cabinet, cod..."
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                   />
-                  <div className="flex bg-slate-50 rounded-[10px] p-0.5 gap-px">
+                  <div className="flex bg-slate-50 rounded-lg p-0.5 gap-px">
                     {[
                       { id: "all", label: "Toate" },
                       { id: "active", label: "Active" },
@@ -410,7 +410,7 @@ export default function ProviderDashboardPage() {
                     ].map((f) => (
                       <button
                         key={f.id}
-                        className={`py-1 px-2.5 rounded-md text-[11px] font-semibold border-none cursor-pointer font-sans transition-all ${
+                        className={`py-1 px-2.5 rounded-lg text-[11px] font-semibold border-none cursor-pointer font-sans transition-all ${
                           statusFilter === f.id ? "bg-violet-500 text-white" : "bg-transparent text-slate-400 hover:text-slate-500"
                         }`}
                         onClick={() => setStatusFilter(f.id)}
@@ -428,7 +428,7 @@ export default function ProviderDashboardPage() {
                   return (
                     <div key={c.id}>
                       <div
-                        className={`flex items-center gap-4 py-4 px-5 rounded-[10px] border bg-white mb-2 cursor-pointer transition-all ${
+                        className={`flex items-center gap-4 py-4 px-5 rounded-lg border bg-white mb-2 cursor-pointer transition-all ${
                           isActive ? "border-violet-500 bg-violet-500/[.04]" : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"
                         }`}
                         onClick={() => setSelectedCabinet(isActive ? null : c.id)}
@@ -463,7 +463,7 @@ export default function ProviderDashboardPage() {
                       </div>
 
                       {isActive && (
-                        <div className="p-5 rounded-[10px] border border-violet-500 bg-violet-500/[.03] mt-2 mb-2">
+                        <div className="p-5 rounded-lg border border-violet-500 bg-violet-500/[.03] mt-2 mb-2">
                           <div className="text-lg font-extrabold mb-0.5">{c.name}</div>
                           <div className="text-[13px] mb-3 font-mono text-slate-500">{c.code}</div>
                           <div className="grid grid-cols-4 gap-2.5 mb-4">
@@ -483,25 +483,25 @@ export default function ProviderDashboardPage() {
                           </div>
                           <div className="flex gap-2">
                             <button
-                              className="px-4 py-2 text-xs font-bold cursor-pointer transition-all rounded-md border border-blue-500 bg-blue-600/[.08] text-blue-600 font-sans"
+                              className="px-4 py-2 text-xs font-bold cursor-pointer transition-all rounded-lg border border-blue-500 bg-blue-600/[.08] text-blue-600 font-sans"
                               onClick={() => handleAccessCabinet(c.id)}
                             >
                               🔓 Acceseaza cabinet
                             </button>
                             <button
-                              className="px-4 py-2 text-xs font-semibold cursor-pointer transition-all rounded-md border border-slate-200 bg-transparent text-slate-500 font-sans"
+                              className="px-4 py-2 text-xs font-semibold cursor-pointer transition-all rounded-lg border border-slate-200 bg-transparent text-slate-500 font-sans"
                               onClick={() => setEditModal({ id: c.id, plan: c.plan, maxUsers: c.maxUsers })}
                             >
                               ✏️ Editeaza plan
                             </button>
                             <button
-                              className="px-4 py-2 text-xs font-semibold cursor-pointer transition-all rounded-md border border-slate-200 bg-transparent text-slate-500 font-sans"
+                              className="px-4 py-2 text-xs font-semibold cursor-pointer transition-all rounded-lg border border-slate-200 bg-transparent text-slate-500 font-sans"
                               onClick={() => { setEmailModal({ id: c.id, name: c.name }); setEmailSubject(""); setEmailMessage(""); }}
                             >
                               📧 Trimite email
                             </button>
                             <button
-                              className="px-4 py-2 text-xs font-semibold cursor-pointer transition-all rounded-md border border-red-500/25 bg-transparent text-red-500 font-sans"
+                              className="px-4 py-2 text-xs font-semibold cursor-pointer transition-all rounded-lg border border-red-500/25 bg-transparent text-red-500 font-sans"
                               onClick={() => handleDeactivate(c.id)}
                             >
                               🚫 Dezactiveaza
@@ -526,7 +526,7 @@ export default function ProviderDashboardPage() {
                   Coduri generate dar neactivate inca de niciun cabinet. Poti activa/dezactiva fiecare cod.
                 </div>
                 {codes.map((c) => (
-                  <div className="flex items-center gap-4 py-3.5 px-[18px] rounded-[10px] border border-slate-200 bg-white mb-2" key={c.id} style={{ opacity: c.isActive ? 1 : 0.55 }}>
+                  <div className="flex items-center gap-4 py-3.5 px-[18px] rounded-lg border border-slate-200 bg-white mb-2" key={c.id} style={{ opacity: c.isActive ? 1 : 0.55 }}>
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
                         <div className={`text-base font-extrabold font-mono ${c.isActive ? "text-violet-500" : "text-slate-400"}`} style={{ letterSpacing: "1px" }}>
@@ -551,7 +551,7 @@ export default function ProviderDashboardPage() {
                       </div>
                     </div>
                     <button
-                      className={`px-3 py-1.5 text-xs font-semibold cursor-pointer transition-all rounded-md border bg-transparent font-sans ${
+                      className={`px-3 py-1.5 text-xs font-semibold cursor-pointer transition-all rounded-lg border bg-transparent font-sans ${
                         c.isActive ? "border-red-500/25 text-red-500" : "border-emerald-500/25 text-emerald-500"
                       }`}
                       onClick={() => handleToggleCode(c.id)}
@@ -559,13 +559,13 @@ export default function ProviderDashboardPage() {
                       {c.isActive ? "Dezactiveaza" : "Activeaza"}
                     </button>
                     <button
-                      className="px-3 py-1.5 text-xs font-semibold cursor-pointer transition-all rounded-md border border-slate-200 bg-transparent text-slate-500 font-sans"
+                      className="px-3 py-1.5 text-xs font-semibold cursor-pointer transition-all rounded-lg border border-slate-200 bg-transparent text-slate-500 font-sans"
                       onClick={() => navigator.clipboard?.writeText(c.code)}
                     >
                       📋 Copiaza
                     </button>
                     <button
-                      className="px-3 py-1.5 text-xs font-semibold cursor-pointer transition-all rounded-md border border-red-500/25 bg-transparent text-red-500 font-sans"
+                      className="px-3 py-1.5 text-xs font-semibold cursor-pointer transition-all rounded-lg border border-red-500/25 bg-transparent text-red-500 font-sans"
                       onClick={() => handleDeleteCode(c.id)}
                     >
                       🗑
@@ -583,7 +583,7 @@ export default function ProviderDashboardPage() {
               <>
                 <div className="flex items-center gap-2.5 mb-4">
                   <input
-                    className="px-3.5 py-2 text-[13px] outline-none w-[300px] rounded-[10px] border border-slate-200 bg-slate-50 text-slate-900 font-sans"
+                    className="px-3.5 py-2 text-[13px] outline-none w-[300px] rounded-lg border border-slate-200 bg-slate-50 text-slate-900 font-sans"
                     placeholder="Cauta dupa email, nume sau cabinet..."
                     value={userSearch}
                     onChange={(e) => setUserSearch(e.target.value)}
@@ -593,7 +593,7 @@ export default function ProviderDashboardPage() {
                   </div>
                 </div>
 
-                <div className="border border-slate-200 rounded-[10px] overflow-hidden bg-white">
+                <div className="border border-slate-200 rounded-lg overflow-hidden bg-white">
                   {/* Table header */}
                   <div className="grid items-center border-b border-slate-200" style={{ gridTemplateColumns: "1fr 1fr 100px 80px 140px 60px" }}>
                     {["Utilizator", "Cabinet", "Rol", "Status", "Ultima activitate", ""].map((h, i) => (
@@ -630,7 +630,7 @@ export default function ProviderDashboardPage() {
                         </div>
                         <div className="px-4 py-2.5">
                           <button
-                            className="px-2 py-1 text-[11px] font-semibold cursor-pointer transition-all rounded-md border border-red-500/25 bg-transparent text-red-500 font-sans"
+                            className="px-2 py-1 text-[11px] font-semibold cursor-pointer transition-all rounded-lg border border-red-500/25 bg-transparent text-red-500 font-sans"
                             onClick={() => handleDeleteUser(u.id, u.email)}
                             title="Sterge utilizator"
                           >
@@ -653,17 +653,17 @@ export default function ProviderDashboardPage() {
               <>
                 <div className="text-sm mb-5 text-slate-500">Overview financiar pe toate cabinetele.</div>
                 <div className="grid grid-cols-3 gap-3.5 mb-6">
-                  <div className="p-4 rounded-[10px] border border-slate-200 bg-slate-50">
+                  <div className="p-4 rounded-lg border border-slate-200 bg-slate-50">
                     <div className="text-[11px] font-semibold uppercase mb-1.5 text-slate-400" style={{ letterSpacing: ".6px" }}>MRR (Monthly Recurring Revenue)</div>
                     <div className="text-[28px] font-extrabold font-mono text-emerald-500" style={{ letterSpacing: "-1px" }}>{totalMRR}€</div>
                   </div>
-                  <div className="p-4 rounded-[10px] border border-slate-200 bg-slate-50">
+                  <div className="p-4 rounded-lg border border-slate-200 bg-slate-50">
                     <div className="text-[11px] font-semibold uppercase mb-1.5 text-slate-400" style={{ letterSpacing: ".6px" }}>Cabinete active</div>
                     <div className="text-[28px] font-extrabold font-mono text-blue-600" style={{ letterSpacing: "-1px" }}>
                       {cabinets.filter((c) => c.status === "active").length}
                     </div>
                   </div>
-                  <div className="p-4 rounded-[10px] border border-slate-200 bg-slate-50">
+                  <div className="p-4 rounded-lg border border-slate-200 bg-slate-50">
                     <div className="text-[11px] font-semibold uppercase mb-1.5 text-slate-400" style={{ letterSpacing: ".6px" }}>Trial</div>
                     <div className="text-[28px] font-extrabold font-mono text-amber-500" style={{ letterSpacing: "-1px" }}>
                       {cabinets.filter((c) => c.status === "trial").length}
@@ -672,7 +672,7 @@ export default function ProviderDashboardPage() {
                 </div>
 
                 <div className="text-[11px] font-bold uppercase mb-2.5 text-slate-400" style={{ letterSpacing: ".8px" }}>Revenue per cabinet</div>
-                <div className="border border-slate-200 rounded-[10px] overflow-hidden bg-white">
+                <div className="border border-slate-200 rounded-lg overflow-hidden bg-white">
                   <div className="grid gap-0" style={{ gridTemplateColumns: "1fr 100px 80px 100px" }}>
                     {["Cabinet", "Plan", "MRR", "Status"].map((h, i) => (
                       <div key={i} className="px-4 py-2.5 text-[10px] font-bold uppercase text-slate-400 border-b border-slate-200" style={{ letterSpacing: ".5px" }}>{h}</div>
@@ -721,7 +721,7 @@ export default function ProviderDashboardPage() {
                       {(["starter", "professional", "enterprise"] as const).map((p) => (
                         <div
                           key={p}
-                          className={`py-3 px-2.5 text-center cursor-pointer transition-all rounded-md border-2 ${
+                          className={`py-3 px-2.5 text-center cursor-pointer transition-all rounded-lg border-2 ${
                             genPlan === p ? "border-violet-500 bg-violet-500/[.06]" : "border-slate-200 bg-slate-50"
                           }`}
                           onClick={() => setGenPlan(p)}
@@ -742,7 +742,7 @@ export default function ProviderDashboardPage() {
                         max={100}
                         value={genMaxUsers}
                         onChange={(e) => setGenMaxUsers(parseInt(e.target.value) || 1)}
-                        className="w-full px-3.5 py-2.5 text-sm text-center outline-none rounded-[10px] border border-slate-200 bg-slate-50 text-slate-900 font-mono"
+                        className="w-full px-3.5 py-2.5 text-sm text-center outline-none rounded-lg border border-slate-200 bg-slate-50 text-slate-900 font-mono"
                       />
                     </div>
                     <div className="flex-1">
@@ -753,7 +753,7 @@ export default function ProviderDashboardPage() {
                         max={90}
                         value={genTrial}
                         onChange={(e) => setGenTrial(parseInt(e.target.value) || 0)}
-                        className="w-full px-3.5 py-2.5 text-sm text-center outline-none rounded-[10px] border border-slate-200 bg-slate-50 text-slate-900 font-mono"
+                        className="w-full px-3.5 py-2.5 text-sm text-center outline-none rounded-lg border border-slate-200 bg-slate-50 text-slate-900 font-mono"
                       />
                     </div>
                   </div>
@@ -768,14 +768,14 @@ export default function ProviderDashboardPage() {
                         value={genCui}
                         onChange={(e) => { setGenCui(e.target.value); setGenCuiRes(null); }}
                         onKeyDown={(e) => e.key === "Enter" && handleLookupCui()}
-                        className={`flex-1 px-3.5 py-2.5 text-sm outline-none rounded-[10px] border bg-slate-50 text-slate-900 font-mono ${
+                        className={`flex-1 px-3.5 py-2.5 text-sm outline-none rounded-lg border bg-slate-50 text-slate-900 font-mono ${
                           genCuiRes && genCuiRes !== "error" ? "border-emerald-500" : genCuiRes === "error" ? "border-red-500" : "border-slate-200"
                         }`}
                         style={{ letterSpacing: "1px" }}
                         placeholder="ex: 19893984"
                       />
                       <button
-                        className="px-4 py-2.5 text-sm font-semibold cursor-pointer rounded-[10px] border border-slate-200 bg-transparent text-slate-500 font-sans"
+                        className="px-4 py-2.5 text-sm font-semibold cursor-pointer rounded-lg border border-slate-200 bg-transparent text-slate-500 font-sans"
                         onClick={handleLookupCui}
                         disabled={genCuiLoad || genCui.replace(/\D/g, "").length < 6}
                       >
@@ -787,7 +787,7 @@ export default function ProviderDashboardPage() {
                     </div>
 
                     {genCuiRes && genCuiRes !== "error" && (
-                      <div className="mt-2 p-3 rounded-[10px] border border-emerald-500 bg-emerald-500/[.04]">
+                      <div className="mt-2 p-3 rounded-lg border border-emerald-500 bg-emerald-500/[.04]">
                         <div className="text-[15px] font-bold text-emerald-500">{genCuiRes.name}</div>
                         <div className="text-xs mt-1 text-slate-500">
                           CUI: {genCuiRes.taxCode} · {genCuiRes.county}{genCuiRes.city ? `, ${genCuiRes.city}` : ""}
@@ -805,20 +805,20 @@ export default function ProviderDashboardPage() {
                     )}
 
                     {genCuiRes === "error" && (
-                      <div className="mt-2 p-2.5 text-xs rounded-[10px] border border-red-500 bg-red-500/[.04] text-red-500">
+                      <div className="mt-2 p-2.5 text-xs rounded-lg border border-red-500 bg-red-500/[.04] text-red-500">
                         CUI-ul nu a fost gasit. Verifica si incearca din nou.
                       </div>
                     )}
                   </div>
 
                   <div className="flex gap-2.5 justify-end">
-                    <button className="px-5 py-2.5 text-sm font-semibold cursor-pointer rounded-[10px] border border-slate-200 bg-transparent text-slate-500 font-sans" onClick={() => setShowGenerate(false)}>Anuleaza</button>
-                    <button className="px-5 py-2.5 text-sm font-bold text-white cursor-pointer rounded-[10px] border-none bg-violet-500 font-sans" onClick={handleGenerateCode}>🔑 Genereaza cod</button>
+                    <button className="px-5 py-2.5 text-sm font-semibold cursor-pointer rounded-lg border border-slate-200 bg-transparent text-slate-500 font-sans" onClick={() => setShowGenerate(false)}>Anuleaza</button>
+                    <button className="px-5 py-2.5 text-sm font-bold text-white cursor-pointer rounded-lg border-none bg-violet-500 font-sans" onClick={handleGenerateCode}>🔑 Genereaza cod</button>
                   </div>
                 </>
               ) : (
                 <>
-                  <div className="p-5 mb-4 text-center rounded-[10px] border border-emerald-500 bg-emerald-500/[.04]">
+                  <div className="p-5 mb-4 text-center rounded-lg border border-emerald-500 bg-emerald-500/[.04]">
                     <div className="text-2xl font-extrabold mb-2 font-mono text-violet-500" style={{ letterSpacing: "2px" }}>
                       {genCode}
                     </div>
@@ -833,13 +833,13 @@ export default function ProviderDashboardPage() {
                   </div>
                   <div className="flex gap-2.5 justify-end">
                     <button
-                      className="px-5 py-2.5 text-sm font-semibold cursor-pointer rounded-[10px] border border-slate-200 bg-transparent text-slate-500 font-sans"
+                      className="px-5 py-2.5 text-sm font-semibold cursor-pointer rounded-lg border border-slate-200 bg-transparent text-slate-500 font-sans"
                       onClick={() => navigator.clipboard?.writeText(genCode!)}
                     >
                       📋 Copiaza cod
                     </button>
                     <button
-                      className="px-5 py-2.5 text-sm font-bold text-white cursor-pointer rounded-[10px] border-none bg-violet-500 font-sans"
+                      className="px-5 py-2.5 text-sm font-bold text-white cursor-pointer rounded-lg border-none bg-violet-500 font-sans"
                       onClick={() => setShowGenerate(false)}
                     >
                       Gata
@@ -868,7 +868,7 @@ export default function ProviderDashboardPage() {
                   {(["starter", "professional", "enterprise"] as const).map((p) => (
                     <div
                       key={p}
-                      className={`py-3 px-2.5 text-center cursor-pointer transition-all rounded-md border-2 ${
+                      className={`py-3 px-2.5 text-center cursor-pointer transition-all rounded-lg border-2 ${
                         editModal.plan === p ? "border-violet-500 bg-violet-500/[.06]" : "border-slate-200 bg-slate-50"
                       }`}
                       onClick={() => setEditModal({ ...editModal, plan: p })}
@@ -888,13 +888,13 @@ export default function ProviderDashboardPage() {
                   max={100}
                   value={editModal.maxUsers}
                   onChange={(e) => setEditModal({ ...editModal, maxUsers: parseInt(e.target.value) || 1 })}
-                  className="w-full px-3.5 py-2.5 text-sm text-center outline-none rounded-[10px] border border-slate-200 bg-slate-50 text-slate-900 font-mono"
+                  className="w-full px-3.5 py-2.5 text-sm text-center outline-none rounded-lg border border-slate-200 bg-slate-50 text-slate-900 font-mono"
                 />
               </div>
 
               <div className="flex gap-2.5 justify-end">
-                <button className="px-5 py-2.5 text-sm font-semibold cursor-pointer rounded-[10px] border border-slate-200 bg-transparent text-slate-500 font-sans" onClick={() => setEditModal(null)}>Anuleaza</button>
-                <button className="px-5 py-2.5 text-sm font-bold text-white cursor-pointer rounded-[10px] border-none bg-violet-500 font-sans" onClick={handleEditPlan}>Salveaza</button>
+                <button className="px-5 py-2.5 text-sm font-semibold cursor-pointer rounded-lg border border-slate-200 bg-transparent text-slate-500 font-sans" onClick={() => setEditModal(null)}>Anuleaza</button>
+                <button className="px-5 py-2.5 text-sm font-bold text-white cursor-pointer rounded-lg border-none bg-violet-500 font-sans" onClick={handleEditPlan}>Salveaza</button>
               </div>
             </div>
           </div>
@@ -917,7 +917,7 @@ export default function ProviderDashboardPage() {
                 <input
                   value={emailSubject}
                   onChange={(e) => setEmailSubject(e.target.value)}
-                  className="w-full px-3.5 py-2.5 text-sm outline-none rounded-[10px] border border-slate-200 bg-slate-50 text-slate-900 font-sans"
+                  className="w-full px-3.5 py-2.5 text-sm outline-none rounded-lg border border-slate-200 bg-slate-50 text-slate-900 font-sans"
                   placeholder="Subiect email..."
                 />
               </div>
@@ -927,15 +927,15 @@ export default function ProviderDashboardPage() {
                 <textarea
                   value={emailMessage}
                   onChange={(e) => setEmailMessage(e.target.value)}
-                  className="w-full px-3.5 py-2.5 text-sm outline-none rounded-[10px] border border-slate-200 bg-slate-50 text-slate-900 font-sans min-h-[120px] resize-y"
+                  className="w-full px-3.5 py-2.5 text-sm outline-none rounded-lg border border-slate-200 bg-slate-50 text-slate-900 font-sans min-h-[120px] resize-y"
                   placeholder="Scrie mesajul..."
                 />
               </div>
 
               <div className="flex gap-2.5 justify-end">
-                <button className="px-5 py-2.5 text-sm font-semibold cursor-pointer rounded-[10px] border border-slate-200 bg-transparent text-slate-500 font-sans" onClick={() => setEmailModal(null)}>Anuleaza</button>
+                <button className="px-5 py-2.5 text-sm font-semibold cursor-pointer rounded-lg border border-slate-200 bg-transparent text-slate-500 font-sans" onClick={() => setEmailModal(null)}>Anuleaza</button>
                 <button
-                  className="px-5 py-2.5 text-sm font-bold text-white cursor-pointer rounded-[10px] border-none bg-blue-600 font-sans"
+                  className="px-5 py-2.5 text-sm font-bold text-white cursor-pointer rounded-lg border-none bg-blue-600 font-sans"
                   style={{ opacity: emailSending ? 0.5 : 1 }}
                   onClick={handleSendEmail}
                   disabled={emailSending || !emailSubject.trim() || !emailMessage.trim()}

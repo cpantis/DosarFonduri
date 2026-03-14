@@ -529,7 +529,7 @@ export default function AdminPage() {
                 ].map((f) => (
                   <button
                     key={f.id}
-                    className={`px-2.5 py-1 rounded-md text-[11px] font-semibold border-none cursor-pointer transition-all ${
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border-none cursor-pointer transition-all ${
                       auditFilter === f.id
                         ? "bg-blue-600 text-white"
                         : "bg-transparent text-slate-400 hover:text-slate-500"
@@ -616,7 +616,7 @@ export default function AdminPage() {
                 {Object.entries(ROLES).map(([key, role]) => (
                   <div
                     key={key}
-                    className={`py-3 px-2.5 text-center cursor-pointer transition-all rounded-xl bg-slate-50 border-2 ${
+                    className={`py-3 px-2.5 text-center cursor-pointer transition-all rounded-lg bg-slate-50 border-2 ${
                       inviteRole === key
                         ? "border-blue-500"
                         : "border-slate-200 hover:border-slate-300"

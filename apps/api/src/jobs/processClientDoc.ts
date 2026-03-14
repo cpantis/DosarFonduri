@@ -28,6 +28,10 @@ import { extractDocumentMediu } from "../services/mediuExtractor";
 import { extractExtrasCont } from "../services/extrasContExtractor";
 import { extractDeclaratie } from "../services/declaratieExtractor";
 import { extractCertificatFiscal } from "../services/certificatFiscalExtractor";
+import { extractCarteIdentitate } from "../services/carteIdentitateExtractor";
+import { extractFactura } from "../services/facturaExtractor";
+import { extractDiploma } from "../services/diplomaExtractor";
+import { extractActConstitutiv } from "../services/actConstitutivExtractor";
 import { extractGeneric } from "../services/genericExtractor";
 
 interface ProcessClientDocPayload {
@@ -359,6 +363,14 @@ async function runExtractor(documentType: string, text: string, vocabulary?: str
       return extractCertificatFiscal(text);
     case "declaratie_expert_contabil":
       return extractDeclaratie(text);
+    case "carte_identitate":
+      return extractCarteIdentitate(text);
+    case "factura":
+      return extractFactura(text);
+    case "diploma_studii":
+      return extractDiploma(text);
+    case "act_constitutiv":
+      return extractActConstitutiv(text);
     default:
       // Generic AI extractor — handles any document type without a dedicated extractor.
       // Skips guides and templates (they have their own processing pipelines).

@@ -336,7 +336,7 @@ async function analyzeWithExtendedThinking(
 
   const startMs = Date.now();
 
-  const response = await anthropic.messages.create({
+  const response = await withAILimit(() => anthropic.messages.create({
     model: "claude-opus-4-6",
     max_tokens: 16000,
     thinking: { type: "enabled", budget_tokens: 10000 },
@@ -366,7 +366,7 @@ Returnează JSON: { "fields": [...], "structured": {...} }
 TEXT:
 ${fullText.slice(0, 80000)}`,
     }],
-  });
+  }));
 
   let reasoning = "";
   let resultText = "";

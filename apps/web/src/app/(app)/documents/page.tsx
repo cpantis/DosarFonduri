@@ -366,7 +366,7 @@ export default function DocumentsPage() {
   selectedFolderRef.current = selectedFolder;
   useSSE({
     enabled: true,
-    onEvent: useCallback((ev) => {
+    onEvent: useCallback((ev: { event: string; data: any }) => {
       if (
         (ev.event === "document_processed" || ev.event === "document_failed") &&
         selectedFolderRef.current

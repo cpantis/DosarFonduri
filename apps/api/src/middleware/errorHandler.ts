@@ -25,5 +25,7 @@ export const errorHandler = (err: Error, c: Context) => {
     return c.json({ error: "Eroare la stocarea fișierului. Contactează administratorul." }, 500);
   }
 
-  return c.json({ error: "Eroare internă" }, 500);
+  // Return the actual error message so the client can report it
+  const msg = err.message || "Eroare internă";
+  return c.json({ error: msg.length > 300 ? msg.substring(0, 300) : msg }, 500);
 };

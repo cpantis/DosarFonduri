@@ -624,8 +624,34 @@ documentRoutes.delete("/documents/:id", async (c) => {
   });
   if (!doc) return c.json({ error: "Not found" }, 404);
 
-  await deleteFile(doc.fileId);
+  // Try to remove any pending/waiting BullMQ jobs for this document
+  try {
+    const queueMap: Record<string, typeof processGuideQueue> = {
+      ghid: processGuideQueue,
+      template: processTemplateQueue,
+      reference_data: processReferenceDataQueue,
+      client_doc: processClientDocQueue,
+    };
+    const q = queueMap[doc.processingType || ""];
+    if (q) {
+      const jobs = await q.getJobs(["waiting", "delayed", "active"]);
+      for (const job of jobs) {
+        if (job.data?.documentId === id) {
+          await job.remove().catch(() => {});
+        }
+      }
+    }
+  } catch (_) {
+    // Queue cleanup is best-effort; don't block deletion
+  }
+
+  const fileId = doc.fileId;
+
+  // Delete document first (cascades to rules, elements, etc.)
   await db.delete(documents).where(eq(documents.id, id));
+
+  // Now delete the file from storage + files table (no more FK reference)
+  await deleteFile(fileId);
 
   return c.json({ ok: true });
 });

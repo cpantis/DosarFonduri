@@ -486,6 +486,7 @@ export default function DocumentsPage() {
       if (selectedDoc === docId) setSelectedDoc(null);
     } catch (err) {
       console.error("Failed to delete document:", err);
+      alert("Nu s-a putut sterge documentul. Incearca din nou.");
     }
   }, [selectedDoc]);
 

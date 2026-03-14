@@ -9,12 +9,9 @@ import {
 import { eq, and, sql } from "drizzle-orm";
 import { lookupCUI, FORMA_MAP } from "../services/onrc";
 import { lookupCUI_ListaFirme, searchCompany_ListaFirme } from "../services/listafirme";
-import { uploadFile, getFileBuffer, deleteFile } from "../services/storage";
-import { parseBilantPDF } from "../services/bilantParser";
-import { extractTextFromPDF } from "../services/ocr";
-import { extractCompanyFromDocument } from "../services/companyExtractor";
+import { uploadFile, deleteFile } from "../services/storage";
 import { AuthContext } from "../middleware/auth";
-import { publishEvent } from "../lib/sse";
+import { processCompanyQueue, JOB_PRIORITY } from "../lib/queue";
 
 // Helper: ensure processing_status columns exist (self-healing)
 async function ensureProcessingColumns() {
@@ -24,319 +21,17 @@ async function ensureProcessingColumns() {
   } catch { /* ignore */ }
 }
 
-// Background processor for PDF company extraction
-async function processCompanyPDFInBackground(
-  companyId: string,
-  buffer: Buffer,
-  organizationId: string,
+// Helper: dispatch company processing job to BullMQ queue
+async function dispatchCompanyJob(
+  type: "onrc-extract" | "onrc-update" | "bilant-parse",
+  data: Record<string, any>,
 ) {
-  try {
-    const pdfText = await extractTextFromPDF(buffer);
-    const companyData = await extractCompanyFromDocument(pdfText);
-
-    if (!companyData) {
-      await db.update(companies).set({
-        processingStatus: "error",
-        processingError: "Nu s-au putut extrage date din document.",
-      }).where(eq(companies.id, companyId));
-      return;
-    }
-
-    // Update company with extracted data
-    const updateData: Record<string, any> = {
-      processingStatus: "done",
-      processingError: null,
-    };
-    if (companyData.denumire) updateData.denumire = companyData.denumire;
-    if (companyData.cui) updateData.cui = companyData.cui;
-    if (companyData.regCom) updateData.regCom = companyData.regCom;
-    if (companyData.euid) updateData.euid = companyData.euid;
-    if (companyData.adresa) updateData.adresa = companyData.adresa;
-    if (companyData.localitate) updateData.localitate = companyData.localitate;
-    if (companyData.judet) updateData.judet = companyData.judet;
-    if (companyData.telefon) updateData.telefon = companyData.telefon;
-    if (companyData.email) updateData.email = companyData.email;
-    if (companyData.formaJuridica) updateData.formaJuridica = companyData.formaJuridica;
-    if (companyData.stare) updateData.stare = companyData.stare;
-    if (companyData.durata) updateData.durata = companyData.durata;
-    if (companyData.anInfiintare) updateData.anInfiintare = companyData.anInfiintare;
-    if (companyData.capitalSocial) updateData.capitalSocial = companyData.capitalSocial.toString();
-    if (companyData.moneda) updateData.moneda = companyData.moneda;
-    if (companyData.partiSociale) updateData.partiSociale = companyData.partiSociale;
-    if (companyData.naturaCapital) updateData.naturaCapital = companyData.naturaCapital;
-    if (companyData.caenPrincipal) updateData.caen = companyData.caenPrincipal;
-    updateData.onrcRawData = companyData;
-
-    await db.update(companies).set(updateData).where(eq(companies.id, companyId));
-
-    // Insert associates
-    if (companyData.asociati?.length > 0) {
-      await db.insert(companyAssociates).values(
-        companyData.asociati.map((a: any) => ({
-          companyId,
-          type: a.type as any,
-          name: a.name,
-          role: a.role,
-          citizenshipOrCountry: a.citizenship,
-          contribution: a.contribution?.toString(),
-          shares: a.shares,
-          pctBenefits: a.pctBenefits?.toString(),
-          pctLosses: a.pctLosses?.toString(),
-        }))
-      );
-    }
-
-    // Insert administrators
-    if (companyData.administratori?.length > 0) {
-      await db.insert(companyAdministrators).values(
-        companyData.administratori.map((a: any) => ({
-          companyId,
-          name: a.name,
-          role: a.role,
-          powers: a.powers,
-          mandateDuration: a.mandateDuration,
-        }))
-      );
-    }
-
-    // Insert financials
-    if (companyData.financials?.length > 0) {
-      await db.insert(companyFinancials).values(
-        companyData.financials.map((f: any) => ({
-          companyId,
-          year: f.year,
-          source: "onrc" as const,
-          f10: { capitaluriProprii: f.capitaluriProprii, activeImobilizate: { total: f.activeImobilizate }, activeCirculante: { total: f.activeCirculante } },
-          f20: { cifraAfaceriNeta: f.cifraAfaceri, profitBrut: f.profitBrut, profitNet: f.profitNet },
-          f30: { numarMediuSalariati: f.angajati, numarEfectivSalariati: f.angajatiEfectiv },
-        }))
-      );
-    }
-
-    console.log(`[BG] Company ${companyId} PDF processing completed successfully`);
-
-    // SSE: notify frontend that company processing is complete
-    publishEvent(`org:${organizationId}:uploads`, "company_processed", {
-      companyId,
-      status: "done",
-      denumire: companyData.denumire || null,
-      cui: companyData.cui || null,
-      message: `Firmă procesată: ${companyData.denumire || "necunoscută"}`,
-    }).catch(() => {});
-  } catch (err: any) {
-    console.error(`[BG] Company ${companyId} PDF processing failed:`, err.message);
-    await db.update(companies).set({
-      processingStatus: "error",
-      processingError: err.message?.substring(0, 500) || "Eroare la procesare",
-    }).where(eq(companies.id, companyId)).catch(() => {});
-
-    // SSE: notify frontend about failure
-    publishEvent(`org:${organizationId}:uploads`, "company_processing_failed", {
-      companyId,
-      status: "error",
-      message: `Eroare la procesarea firmei: ${err.message?.substring(0, 200) || "Eroare necunoscută"}`,
-    }).catch(() => {});
-  }
-}
-
-// Background processor for ONRC update
-async function processOnrcUpdateInBackground(
-  companyId: string,
-  buffer: Buffer,
-  organizationId: string,
-) {
-  try {
-    const pdfText = await extractTextFromPDF(buffer);
-    const companyData = await extractCompanyFromDocument(pdfText);
-
-    if (!companyData) {
-      await db.update(companies).set({
-        processingStatus: "error",
-        processingError: "Nu s-au putut extrage date din document.",
-      }).where(eq(companies.id, companyId));
-      return;
-    }
-
-    const updateData: Record<string, any> = {
-      processingStatus: "done",
-      processingError: null,
-      lastSyncedAt: new Date(),
-    };
-    if (companyData.denumire) updateData.denumire = companyData.denumire;
-    if (companyData.regCom) updateData.regCom = companyData.regCom;
-    if (companyData.euid) updateData.euid = companyData.euid;
-    if (companyData.adresa) updateData.adresa = companyData.adresa;
-    if (companyData.localitate) updateData.localitate = companyData.localitate;
-    if (companyData.judet) updateData.judet = companyData.judet;
-    if (companyData.telefon) updateData.telefon = companyData.telefon;
-    if (companyData.email) updateData.email = companyData.email;
-    if (companyData.formaJuridica) updateData.formaJuridica = companyData.formaJuridica;
-    if (companyData.stare) updateData.stare = companyData.stare;
-    if (companyData.durata) updateData.durata = companyData.durata;
-    if (companyData.anInfiintare) updateData.anInfiintare = companyData.anInfiintare;
-    if (companyData.capitalSocial) updateData.capitalSocial = companyData.capitalSocial.toString();
-    if (companyData.moneda) updateData.moneda = companyData.moneda;
-    if (companyData.partiSociale) updateData.partiSociale = companyData.partiSociale;
-    if (companyData.naturaCapital) updateData.naturaCapital = companyData.naturaCapital;
-    if (companyData.caenPrincipal) updateData.caen = companyData.caenPrincipal;
-    updateData.onrcRawData = companyData;
-
-    await db.update(companies).set(updateData).where(eq(companies.id, companyId));
-
-    // Replace associates
-    if (companyData.asociati?.length > 0) {
-      await db.delete(companyAssociates).where(eq(companyAssociates.companyId, companyId));
-      await db.insert(companyAssociates).values(
-        companyData.asociati.map((a: any) => ({
-          companyId,
-          type: a.type as any,
-          name: a.name,
-          role: a.role,
-          citizenshipOrCountry: a.citizenship,
-          contribution: a.contribution?.toString(),
-          shares: a.shares,
-          pctBenefits: a.pctBenefits?.toString(),
-          pctLosses: a.pctLosses?.toString(),
-        }))
-      );
-    }
-
-    // Replace administrators
-    if (companyData.administratori?.length > 0) {
-      await db.delete(companyAdministrators).where(eq(companyAdministrators.companyId, companyId));
-      await db.insert(companyAdministrators).values(
-        companyData.administratori.map((a: any) => ({
-          companyId,
-          name: a.name,
-          role: a.role,
-          powers: a.powers,
-          mandateDuration: a.mandateDuration,
-        }))
-      );
-    }
-
-    // Insert/update financials
-    if (companyData.financials?.length > 0) {
-      for (const f of companyData.financials) {
-        const existing = await db.query.companyFinancials.findFirst({
-          where: and(eq(companyFinancials.companyId, companyId), eq(companyFinancials.year, f.year)),
-        });
-        const finData = {
-          source: "onrc" as const,
-          f10: { capitaluriProprii: f.capitaluriProprii, activeImobilizate: { total: f.activeImobilizate }, activeCirculante: { total: f.activeCirculante } },
-          f20: { cifraAfaceriNeta: f.cifraAfaceri, profitBrut: f.profitBrut, profitNet: f.profitNet },
-          f30: { numarMediuSalariati: f.angajati, numarEfectivSalariati: f.angajatiEfectiv },
-          processedAt: new Date(),
-        };
-        if (existing) {
-          await db.update(companyFinancials).set(finData).where(eq(companyFinancials.id, existing.id));
-        } else {
-          await db.insert(companyFinancials).values({ companyId, year: f.year, ...finData });
-        }
-      }
-    }
-
-    console.log(`[BG] Company ${companyId} ONRC update completed successfully`);
-
-    // SSE: notify frontend that ONRC update is complete
-    publishEvent(`org:${organizationId}:uploads`, "company_processed", {
-      companyId,
-      status: "done",
-      denumire: companyData.denumire || null,
-      cui: companyData.cui || null,
-      message: `Date ONRC actualizate: ${companyData.denumire || "firmă"}`,
-    }).catch(() => {});
-  } catch (err: any) {
-    console.error(`[BG] Company ${companyId} ONRC update failed:`, err.message);
-    await db.update(companies).set({
-      processingStatus: "error",
-      processingError: err.message?.substring(0, 500) || "Eroare la procesare",
-    }).where(eq(companies.id, companyId)).catch(() => {});
-
-    // SSE: notify frontend about failure
-    publishEvent(`org:${organizationId}:uploads`, "company_processing_failed", {
-      companyId,
-      status: "error",
-      message: `Eroare la actualizarea ONRC: ${err.message?.substring(0, 200) || "Eroare necunoscută"}`,
-    }).catch(() => {});
-  }
-}
-
-// Background processor for bilant PDF
-async function processBilantInBackground(
-  companyId: string,
-  fileId: string,
-  buffer: Buffer,
-  year: number,
-) {
-  try {
-    const pdfText = await extractTextFromPDF(buffer);
-    const parsed = await parseBilantPDF(pdfText, year);
-
-    const existing = await db.query.companyFinancials.findFirst({
-      where: and(eq(companyFinancials.companyId, companyId), eq(companyFinancials.year, year)),
-    });
-
-    if (existing) {
-      await db.update(companyFinancials).set({
-        source: "anaf_upload",
-        fileId,
-        f10: parsed.f10,
-        f20: parsed.f20,
-        f30: parsed.f30,
-        f40: parsed.f40,
-        processedAt: new Date(),
-      }).where(eq(companyFinancials.id, existing.id));
-    } else {
-      await db.insert(companyFinancials).values({
-        companyId,
-        year,
-        source: "anaf_upload",
-        fileId,
-        f10: parsed.f10,
-        f20: parsed.f20,
-        f30: parsed.f30,
-        f40: parsed.f40,
-        processedAt: new Date(),
-      });
-    }
-
-    await db.update(companies).set({
-      processingStatus: "done",
-      processingError: null,
-    }).where(eq(companies.id, companyId));
-
-    console.log(`[BG] Company ${companyId} bilant ${year} processing completed`);
-
-    // SSE: notify frontend that bilant processing is complete
-    // Note: we need organizationId for SSE channel but don't have it in this function signature
-    // Look up the company to get the org
-    const companyForSSE = await db.query.companies.findFirst({ where: eq(companies.id, companyId) });
-    if (companyForSSE?.organizationId) {
-      publishEvent(`org:${companyForSSE.organizationId}:uploads`, "company_processed", {
-        companyId,
-        status: "done",
-        year,
-        message: `Bilanț ${year} procesat pentru ${companyForSSE.denumire || "firmă"}`,
-      }).catch(() => {});
-    }
-  } catch (err: any) {
-    console.error(`[BG] Company ${companyId} bilant processing failed:`, err.message);
-    await db.update(companies).set({
-      processingStatus: "error",
-      processingError: err.message?.substring(0, 500) || "Eroare la procesare bilant",
-    }).where(eq(companies.id, companyId)).catch(() => {});
-
-    // SSE: notify frontend about failure
-    const companyForSSE = await db.query.companies.findFirst({ where: eq(companies.id, companyId) }).catch(() => null);
-    if (companyForSSE?.organizationId) {
-      publishEvent(`org:${companyForSSE.organizationId}:uploads`, "company_processing_failed", {
-        companyId,
-        status: "error",
-        message: `Eroare la procesarea bilanțului: ${err.message?.substring(0, 200) || "Eroare necunoscută"}`,
-      }).catch(() => {});
-    }
-  }
+  const jobName = `${type}:${data.companyId}`;
+  await processCompanyQueue.add(jobName, { type, ...data }, {
+    priority: JOB_PRIORITY.COMPANY,
+    jobId: `${type}-${data.companyId}-${Date.now()}`,
+  });
+  console.log(`[queue] Dispatched ${type} job for company ${data.companyId}`);
 }
 
 export const companyRoutes = new Hono<AppEnv>();
@@ -450,9 +145,11 @@ companyRoutes.post("/", async (c) => {
       createdBy: auth.userId,
     }).returning();
 
-    // Fire background processing — do NOT await
-    processCompanyPDFInBackground(company.id, buffer, auth.organizationId).catch(err => {
-      console.error("[BG] Unhandled error in company PDF processing:", err);
+    // Dispatch to BullMQ queue — persistent, retryable, concurrency-controlled
+    await dispatchCompanyJob("onrc-extract", {
+      companyId: company.id,
+      fileId,
+      organizationId: auth.organizationId,
     });
 
     return c.json(company, 201);
@@ -629,9 +326,12 @@ companyRoutes.post("/:id/upload-bilant", async (c) => {
     processingError: null,
   }).where(eq(companies.id, id));
 
-  // Fire background processing — do NOT await
-  processBilantInBackground(id, fileId, buffer, year).catch(err => {
-    console.error("[BG] Unhandled error in bilant processing:", err);
+  // Dispatch to BullMQ queue — persistent, retryable
+  await dispatchCompanyJob("bilant-parse", {
+    companyId: id,
+    fileId,
+    year,
+    organizationId: auth.organizationId,
   });
 
   return c.json({ ok: true, year, processingStatus: "processing", message: "Fișier încărcat, se procesează în fundal..." });
@@ -806,9 +506,11 @@ companyRoutes.post("/:id/upload-onrc", async (c) => {
     processingError: null,
   }).where(eq(companies.id, id));
 
-  // Fire background processing — do NOT await
-  processOnrcUpdateInBackground(id, buffer, auth.organizationId!).catch(err => {
-    console.error("[BG] Unhandled error in ONRC update:", err);
+  // Dispatch to BullMQ queue — persistent, retryable
+  await dispatchCompanyJob("onrc-update", {
+    companyId: id,
+    fileId,
+    organizationId: auth.organizationId,
   });
 
   return c.json({ ok: true, message: "Fișier încărcat, se procesează în fundal...", processingStatus: "processing" });

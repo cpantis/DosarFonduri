@@ -5,6 +5,8 @@ import { SplitPane } from "@/components/layout/SplitPane";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { FolderUploadButton } from "@/components/shared/FolderUploadButton";
 import { apiGet, apiPost, apiPut, apiDelete, api } from "@/lib/api";
+import { useSSE } from "@/hooks/useSSE";
+import { useToast } from "@/components/shared/Toast";
 
 /* ══════════════════════════════════════════
    INTERFACES
@@ -293,6 +295,7 @@ export default function DocumentsPage() {
   const [docs, setDocs] = useState<DocItem[]>([]);
   const [docsLoading, setDocsLoading] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
+  const { toast } = useToast();
 
   // Fetch folder tree on mount
   const fetchTree = useCallback(async () => {
@@ -357,6 +360,21 @@ export default function DocumentsPage() {
     const interval = setInterval(() => fetchDocs(selectedFolder), 5000);
     return () => clearInterval(interval);
   }, [docs, selectedFolder, fetchDocs]);
+
+  // SSE: instant refetch when a document finishes processing
+  const selectedFolderRef = useRef(selectedFolder);
+  selectedFolderRef.current = selectedFolder;
+  useSSE({
+    enabled: true,
+    onEvent: useCallback((ev) => {
+      if (
+        (ev.event === "document_processed" || ev.event === "document_failed") &&
+        selectedFolderRef.current
+      ) {
+        fetchDocs(selectedFolderRef.current);
+      }
+    }, [fetchDocs]),
+  });
 
   // Keyboard shortcut: Ctrl+K to focus search
   useEffect(() => {
@@ -490,11 +508,12 @@ export default function DocumentsPage() {
       if (selectedFolder) {
         setTimeout(() => fetchDocs(selectedFolder), 2000);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to trigger AI processing:", err);
       setDocs(prev => prev.map(d => d.id === docId ? { ...d, status: "eroare" as const } : d));
+      toast("error", err.message || "Procesarea nu a pornit. Verifică dacă Redis și worker-ul sunt active.");
     }
-  }, [selectedFolder, fetchDocs]);
+  }, [selectedFolder, fetchDocs, toast]);
 
   // Filtered documents
   const filteredDocs = docs.filter(d => {
@@ -680,6 +699,7 @@ export default function DocumentsPage() {
               folderId={selectedFolder}
               folderType={selectedNode.type as "ghiduri" | "templateuri"}
               onSuccess={() => { if (selectedFolder) fetchDocs(selectedFolder); }}
+              onWarnings={(warnings) => warnings.forEach(w => toast("warning", w))}
             />
           )}
         </div>

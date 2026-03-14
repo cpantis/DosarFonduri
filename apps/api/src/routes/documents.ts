@@ -371,6 +371,7 @@ documentRoutes.post("/documents/:id/confirm-upload", async (c) => {
   }
 
   // Dispatch BullMQ processing job and set status to "processing"
+  const warnings: string[] = [];
   try {
     const jobPayload = { documentId: doc.id, organizationId: auth.organizationId };
     let dispatched = false;
@@ -393,7 +394,7 @@ documentRoutes.post("/documents/:id/confirm-upload", async (c) => {
     }
   } catch (queueErr: any) {
     console.error(`Queue dispatch failed for document ${doc.id}:`, queueErr.message);
-    // Upload still succeeds — processing can be retried via POST /documents/:id/process
+    warnings.push("Procesarea automată nu a pornit (Redis indisponibil). Poți reporni manual din meniul documentului.");
   }
 
   // SSE notification
@@ -405,7 +406,7 @@ documentRoutes.post("/documents/:id/confirm-upload", async (c) => {
     message: `Document uploadat "${doc.name}", procesare în curs...`,
   }).catch(() => {});
 
-  return c.json({ ok: true, document_id: doc.id, actual_size: size });
+  return c.json({ ok: true, document_id: doc.id, actual_size: size, warnings: warnings.length > 0 ? warnings : undefined });
 });
 
 // --- LOCAL UPLOAD (dev fallback when S3 is not configured) ---

@@ -10,7 +10,9 @@
     "build": "turbo build",
     "lint": "turbo lint",
     "dev:web": "cd apps/web && npm run dev",
-    "dev:api": "cd apps/api && npm run dev"
+    "dev:api": "cd apps/api && npm run dev",
+    "dev:worker": "cd apps/api && npm run worker",
+    "dev:all": "trap 'kill 0' EXIT; turbo dev & (cd apps/api && npm run worker) & wait"
   },
   "devDependencies": {
     "turbo": "^2.3.0"

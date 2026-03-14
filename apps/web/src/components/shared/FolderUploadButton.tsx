@@ -11,6 +11,7 @@ interface FolderUploadProps {
   folderId: string;
   folderType: "ghiduri" | "templateuri" | "clienti_prospecti" | "clienti_finali";
   onSuccess?: () => void;
+  onWarnings?: (warnings: string[]) => void;
 }
 
 interface UploadOption {
@@ -44,7 +45,7 @@ const PRESIGNED_THRESHOLD = 10 * 1024 * 1024; // 10 MB
    COMPONENT
    ══════════════════════════════════════════ */
 
-export function FolderUploadButton({ folderId, folderType, onSuccess }: FolderUploadProps) {
+export function FolderUploadButton({ folderId, folderType, onSuccess, onWarnings }: FolderUploadProps) {
   const [open, setOpen] = useState(false);
   const [uploading, setUploading] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -65,7 +66,7 @@ export function FolderUploadButton({ folderId, folderType, onSuccess }: FolderUp
     }
   }
 
-  async function uploadSingleFile(file: File, processingType: string): Promise<void> {
+  async function uploadSingleFile(file: File, processingType: string): Promise<string[]> {
     const storedToken = typeof window !== "undefined" ? localStorage.getItem("df-token") : null;
     const authHeaders: Record<string, string> = {};
     if (storedToken) authHeaders["Authorization"] = `Bearer ${storedToken}`;
@@ -121,17 +122,21 @@ export function FolderUploadButton({ folderId, folderType, onSuccess }: FolderUp
         const body = await confirmRes.json().catch(() => ({ error: "Confirm failed" }));
         throw new Error(body.error || "Confirmare e\u0219uat\u0103");
       }
+
+      const confirmData = await confirmRes.json().catch(() => ({}));
+      return confirmData.warnings || [];
     } else {
       // Small file: classic FormData upload through Node
       const formData = new FormData();
       formData.append("file", file);
       formData.append("processingType", processingType);
 
-      await api(`/api/documents/folders/${folderId}/documents`, {
+      const result = await api<{ warnings?: string[] }>(`/api/documents/folders/${folderId}/documents`, {
         method: "POST",
         body: formData,
         timeout: 120_000, // 2 min — large PDFs need more than default 30s
       });
+      return result.warnings || [];
     }
   }
 
@@ -145,11 +150,13 @@ export function FolderUploadButton({ folderId, folderType, onSuccess }: FolderUp
 
     const files = Array.from(fileList);
     const errors: string[] = [];
+    const allWarnings: string[] = [];
 
     try {
       for (const file of files) {
         try {
-          await uploadSingleFile(file, processingType);
+          const warnings = await uploadSingleFile(file, processingType);
+          if (warnings.length > 0) allWarnings.push(...warnings);
         } catch (err: any) {
           errors.push(`${file.name}: ${err.message || "Eroare la upload"}`);
         }
@@ -157,6 +164,10 @@ export function FolderUploadButton({ folderId, folderType, onSuccess }: FolderUp
 
       if (errors.length > 0) {
         alert(`Eroare upload:\n${errors.join("\n")}`);
+      }
+
+      if (allWarnings.length > 0) {
+        onWarnings?.(allWarnings);
       }
 
       // Always refresh — some files may have succeeded

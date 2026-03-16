@@ -826,20 +826,19 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
       const linkResult = await autoLinkRulesAndReferences(documentId, organizationId);
 
       // ─── STEP 6: Auto-map template placeholders to element definitions ───
+      // FIX F3.2: Backfill ALL templates in the org, not just specific types
       let templateMappings = 0;
       if (elemDefCount > 0) {
         const templateDocs = await db.query.documents.findMany({
           where: and(
             eq(documents.organizationId, organizationId),
-            inArray(documents.documentTypeClass, [
-              "memoriu_template", "cerere_finantare_template",
-              "anexa_b_template", "anexa_c_template",
-            ]),
+            eq(documents.processingType, "template"),
           ),
         });
         for (const tDoc of templateDocs) {
           templateMappings += await autoMapTemplatePlaceholders(tDoc.id, organizationId);
         }
+        console.log(`[processGuide] Backfill mapping: ${templateDocs.length} template-uri re-procesate, ${templateMappings} mapări create`);
       }
 
       // ─── FINALIZE ───

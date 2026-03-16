@@ -386,6 +386,20 @@ export async function generateDocument(params: GenerateDocParams): Promise<Reada
         let filledBuffer: Buffer;
         if (templateDoc.fileType === "xlsx") {
           filledBuffer = await fillXlsxTemplate(templateBuffer, templateName, elementsMap);
+        } else if (templateDoc.fileType === "pdf") {
+          // FIX F5.1: Integrate XFA fill for PDF templates
+          const { fillXFAFields, extractXFAFields } = await import("./xfaFiller");
+          const xfaFields = await extractXFAFields(templateBuffer);
+          if (xfaFields.length > 0) {
+            filledBuffer = await fillXFAFields(templateBuffer, elementsMap);
+          } else {
+            console.warn(`[neemia] PDF template "${templateDoc.name}" has no XFA fields — returning original PDF`);
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+              type: "warning",
+              message: "PDF-ul template nu conține câmpuri editabile (XFA). Folosiți DOCX pentru documente narrative.",
+            })}\n\n`));
+            filledBuffer = templateBuffer;
+          }
         } else {
           filledBuffer = await fillDocxTemplate(templateBuffer, templateName, elementsMap, cabinetStyle);
         }

@@ -103,7 +103,7 @@ export async function lookupCUI(
 ): Promise<ONRCCompanyData | null> {
   const cleanCUI = cui.replace(/\D/g, "");
 
-  const cached = await redis.get(`onrc:${cleanCUI}`);
+  const cached = await redis.get(`onrc:${organizationId}:${cleanCUI}`);
   if (cached) return JSON.parse(cached);
 
   const integration = await db.query.apiIntegrations.findFirst({
@@ -137,7 +137,7 @@ export async function lookupCUI(
     const data = transformONRCData(raw);
 
     const syncDays = integration.syncIntervalDays || 7;
-    await redis.set(`onrc:${cleanCUI}`, JSON.stringify(data), "EX", syncDays * 86400);
+    await redis.set(`onrc:${organizationId}:${cleanCUI}`, JSON.stringify(data), "EX", syncDays * 86400);
 
     return data;
   } catch (error) {

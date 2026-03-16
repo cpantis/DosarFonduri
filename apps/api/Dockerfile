@@ -21,7 +21,7 @@ COPY packages/shared ./packages/shared
 COPY apps/api ./apps/api
 
 # 4. Build shared + api
-RUN cd packages/shared && npx tsc --outDir dist 2>/dev/null || true
+RUN cd packages/shared && npx tsc
 RUN cd apps/api && npx tsc
 
 # ── Stage 2: Production ────────────────────────────────

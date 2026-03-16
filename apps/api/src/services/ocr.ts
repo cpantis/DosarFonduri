@@ -1,5 +1,4 @@
 import { anthropic, withAILimit } from "../lib/anthropic";
-import { openai } from "../lib/openai";
 import crypto from "crypto";
 
 function safeTmpPath(prefix: string, ext: string): string {
@@ -20,27 +19,43 @@ export interface PDFExtractionResult {
   hasScannedPages: boolean;
   totalPages: number;
   scannedPageCount: number;
+  nativePageCount: number;
+  totalChars: number;
+  pages: PageResult[];
 }
 
 export async function extractTextFromPDF(buffer: Buffer): Promise<PDFExtractionResult> {
   // Try XFA extraction first — XFA PDFs contain form data in XML, not in page text
   const xfaText = await tryExtractXFA(buffer);
   if (xfaText) {
+    const xfaPage: PageResult = { page: 1, text: xfaText, is_scanned: false, confidence: 1.0 };
     return {
       text: `--- Pagina 1 (XFA) ---\n${xfaText}`,
       hasScannedPages: false,
       totalPages: 1,
       scannedPageCount: 0,
+      nativePageCount: 1,
+      totalChars: xfaText.length,
+      pages: [xfaPage],
     };
   }
 
   const pages = await extractPDFPages(buffer);
   const scannedCount = pages.filter(p => p.is_scanned).length;
+  const nativeCount = pages.length - scannedCount;
+  const totalChars = pages.reduce((sum, p) => sum + p.text.length, 0);
+  const text = pages.map(p => `--- Pagina ${p.page} ---\n${p.text}`).join("\n\n");
+
+  console.log(`[extractTextFromPDF] ${nativeCount} pagini text nativ, ${scannedCount} pagini OCR, ${totalChars} chars total`);
+
   return {
-    text: pages.map(p => `--- Pagina ${p.page} ---\n${p.text}`).join("\n\n"),
+    text,
     hasScannedPages: scannedCount > 0,
     totalPages: pages.length,
     scannedPageCount: scannedCount,
+    nativePageCount: nativeCount,
+    totalChars,
+    pages,
   };
 }
 
@@ -253,15 +268,15 @@ print(json.dumps(pages))
 }
 
 export async function ocrPageWithVision(pageImageBase64: string, mediaType: string = "image/png"): Promise<string> {
-  const response = await openai.chat.completions.create({
-    model: "gpt-4o",
+  const response = await withAILimit(() => anthropic.messages.create({
+    model: "claude-sonnet-4-20250514",
     max_tokens: 4000,
     messages: [{
       role: "user",
       content: [
         {
-          type: "image_url",
-          image_url: { url: `data:${mediaType};base64,${pageImageBase64}`, detail: "high" },
+          type: "image",
+          source: { type: "base64", media_type: mediaType as "image/png" | "image/jpeg" | "image/gif" | "image/webp", data: pageImageBase64 },
         },
         {
           type: "text",
@@ -269,9 +284,10 @@ export async function ocrPageWithVision(pageImageBase64: string, mediaType: stri
         },
       ],
     }],
-  });
+  }));
 
-  return response.choices[0]?.message?.content || "";
+  const textBlock = response.content.find((b: any) => b.type === "text");
+  return textBlock ? (textBlock as any).text : "";
 }
 
 // ─── GPT-4o PRE-STRUCTURING PER PAGE ───
@@ -343,13 +359,10 @@ export async function preStructurePages(rawText: string): Promise<PreStructuredG
       .map(p => `=== PAGINA ${p.page} ===\n${p.text}`)
       .join("\n\n");
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+    const response = await withAILimit(() => anthropic.messages.create({
+      model: "claude-sonnet-4-20250514",
       max_tokens: 4000,
-      temperature: 0,
-      messages: [{
-        role: "system",
-        content: `Ești un pre-procesor de documente de finanțare europeană. Primești pagini brute dintr-un ghid de finanțare și returnezi o versiune structurată.
+      system: `Ești un pre-procesor de documente de finanțare europeană. Primești pagini brute dintr-un ghid de finanțare și returnezi o versiune structurată.
 
 Pentru FIECARE pagină din input returnează un obiect JSON cu:
 - "page": numărul paginii
@@ -363,14 +376,14 @@ IMPORTANT:
 - Tabelele se formatează ca markdown (| col1 | col2 |)
 - Identifică secțiunea pe baza titlurilor de capitol și conținutului
 - Returnează DOAR un JSON array valid. Fără backticks, fără explicații.`,
-      },
-      {
+      messages: [{
         role: "user",
         content: pagesText,
       }],
-    });
+    }));
 
-    const content = response.choices[0]?.message?.content || "[]";
+    const textBlock = response.content.find((b: any) => b.type === "text");
+    const content = textBlock ? (textBlock as any).text : "[]";
     const cleaned = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
 
     try {
@@ -390,7 +403,7 @@ IMPORTANT:
         keyTerms: Array.isArray(item.key_terms) ? item.key_terms : [],
       }));
     } catch {
-      console.warn("[preStructurePages] Failed to parse GPT-4o batch response, using raw text");
+      console.warn("[preStructurePages] Failed to parse Sonnet batch response, using raw text");
       return batch.map(p => ({
         page: p.page, sectionType: "general" as const, cleanedText: p.text, tables: [], keyTerms: [],
       }));
@@ -430,13 +443,206 @@ IMPORTANT:
     return pageText;
   }).join("\n\n");
 
-  console.log(`[preStructurePages] Pre-structured ${allPages.length} pages (${totalTables} tables detected) via GPT-4o`);
+  console.log(`[preStructurePages] Pre-structured ${allPages.length} pages (${totalTables} tables detected) via Claude Sonnet`);
 
   return {
     pages: allPages,
     structuredText,
     pageCount: allPages.length,
     tableCount: totalTables,
+  };
+}
+
+// ─── SONNET PRE-STRUCTURING FOR CLIENT DOCUMENTS ───
+
+/**
+ * Pre-structure client document text using Sonnet.
+ * Lighter than preStructurePages (guide-oriented) — focuses on:
+ * - Cleaning OCR artifacts, headers/footers, page numbers
+ * - Formatting messy tables as markdown
+ * - Normalizing whitespace and paragraph breaks
+ * - Preserving all original content (no summarization)
+ *
+ * Use for client docs >10 pages or >20K chars where raw PyMuPDF
+ * text has quality issues (scanned, multi-column, broken tables).
+ *
+ * Cost: ~$0.03-0.08 per document (much cheaper than guide pre-structuring).
+ */
+
+export interface PreStructuredClientDoc {
+  cleanedText: string;
+  tableCount: number;
+  pageCount: number;
+  qualityScore: number; // 0-1, how much the text improved
+}
+
+/** Max pages per Sonnet batch for client doc pre-structuring */
+const CLIENT_PRE_STRUCTURE_BATCH_SIZE = 8;
+
+/** Max parallel Sonnet calls for client doc pre-structuring */
+const CLIENT_PRE_STRUCTURE_CONCURRENCY = 3;
+
+/** Thresholds for triggering pre-structuring */
+export const PRE_STRUCTURE_THRESHOLDS = {
+  minPages: 10,
+  minChars: 20000,
+} as const;
+
+/**
+ * Document types that should SKIP pre-structuring (already well-structured
+ * or too short to benefit, or have dedicated extractors that handle raw text fine).
+ */
+export const SKIP_PRE_STRUCTURE_TYPES = new Set([
+  "bilant_anaf",           // XFA/formular fix, structured
+  "certificat_constatator", // ONRC, regex+AI extractor handles it
+  "carte_identitate",      // 1-2 pages, Vision OCR already clean
+  "certificat_fiscal",     // Short, structured
+  "factura",               // Short, dedicated extractor
+  "diploma_studii",        // 1 page
+  "extras_cont",           // Tabular, dedicated extractor
+  "declaratie_expert_contabil", // Short, structured
+  "guide",                 // Has its own preStructurePages pipeline
+  "guide_annex_table",
+  "guide_annex_form",
+]);
+
+/**
+ * Check whether a document qualifies for Sonnet pre-structuring.
+ */
+export function shouldPreStructure(
+  documentType: string,
+  pageCount: number,
+  charCount: number,
+): boolean {
+  if (SKIP_PRE_STRUCTURE_TYPES.has(documentType)) return false;
+  return pageCount >= PRE_STRUCTURE_THRESHOLDS.minPages
+    || charCount >= PRE_STRUCTURE_THRESHOLDS.minChars;
+}
+
+/**
+ * Pre-structure client document text using Claude Sonnet.
+ * Cleans text, formats tables, removes noise — without changing content.
+ */
+export async function preStructureClientText(rawText: string): Promise<PreStructuredClientDoc> {
+  // Split by page delimiters
+  const pageDelimiter = /--- Pagina (\d+)(?: \([^)]+\))? ---/g;
+  const pageBreaks: Array<{ page: number; index: number }> = [];
+  let match: RegExpExecArray | null;
+  while ((match = pageDelimiter.exec(rawText)) !== null) {
+    pageBreaks.push({ page: parseInt(match[1]), index: match.index });
+  }
+
+  if (pageBreaks.length === 0) {
+    return { cleanedText: rawText, tableCount: 0, pageCount: 1, qualityScore: 0 };
+  }
+
+  // Split into individual pages
+  const rawPages: Array<{ page: number; text: string }> = [];
+  for (let i = 0; i < pageBreaks.length; i++) {
+    const startIdx = pageBreaks[i].index;
+    const endIdx = i + 1 < pageBreaks.length ? pageBreaks[i + 1].index : rawText.length;
+    rawPages.push({ page: pageBreaks[i].page, text: rawText.slice(startIdx, endIdx) });
+  }
+
+  // Batch pages
+  const batches: Array<Array<{ page: number; text: string }>> = [];
+  for (let i = 0; i < rawPages.length; i += CLIENT_PRE_STRUCTURE_BATCH_SIZE) {
+    batches.push(rawPages.slice(i, i + CLIENT_PRE_STRUCTURE_BATCH_SIZE));
+  }
+
+  const cleanedPages: Array<{ page: number; cleanedText: string; tableCount: number }> = [];
+
+  const processBatch = async (batch: Array<{ page: number; text: string }>) => {
+    const pagesText = batch
+      .map(p => `=== PAGINA ${p.page} ===\n${p.text}`)
+      .join("\n\n");
+
+    const response = await withAILimit(() => anthropic.messages.create({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 6000,
+      system: `Ești un pre-procesor de text pentru documente client din dosare de finanțare europeană.
+
+Primești pagini brute extrase cu PyMuPDF (pot avea artefacte OCR, tabele stricate, coloane amestecate).
+
+Pentru FIECARE pagină returnezi un JSON cu:
+- "page": numărul paginii
+- "cleaned_text": textul curățat — fără headere/footere repetitive, fără numere de pagină izolate, cu paragrafe corecte, coloane re-aliniate
+- "tables": număr de tabele detectate și formatate ca markdown în cleaned_text
+
+REGULI STRICTE:
+- Păstrează EXACT conținutul original — NU inventa, NU rezuma, NU traduce
+- Corectează doar: spații duble, linii goale excesive, coloane amestecate, tabele stricate
+- Tabelele detectate se formatează ca markdown (| col1 | col2 |) direct în cleaned_text
+- NU adăuga metadate, clasificări sau comentarii
+- Returnează DOAR un JSON array valid. Fără backticks, fără explicații.`,
+      messages: [{
+        role: "user",
+        content: pagesText,
+      }],
+    }));
+
+    const textBlock = response.content.find((b: any) => b.type === "text");
+    const content = textBlock ? (textBlock as any).text : "[]";
+    const cleaned = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+
+    try {
+      const parsed = JSON.parse(cleaned);
+      if (!Array.isArray(parsed)) {
+        return batch.map(p => ({ page: p.page, cleanedText: p.text, tableCount: 0 }));
+      }
+      return parsed.map((item: any, idx: number) => ({
+        page: item.page || batch[idx]?.page || idx + 1,
+        cleanedText: item.cleaned_text || batch[idx]?.text || "",
+        tableCount: typeof item.tables === "number" ? item.tables : 0,
+      }));
+    } catch {
+      console.warn("[preStructureClientText] Failed to parse Sonnet batch response, using raw text");
+      return batch.map(p => ({ page: p.page, cleanedText: p.text, tableCount: 0 }));
+    }
+  };
+
+  // Run batches with concurrency limit
+  let nextBatch = 0;
+  async function worker() {
+    while (nextBatch < batches.length) {
+      const idx = nextBatch++;
+      const result = await processBatch(batches[idx]);
+      cleanedPages.push(...result);
+    }
+  }
+
+  const workers = Array.from(
+    { length: Math.min(CLIENT_PRE_STRUCTURE_CONCURRENCY, batches.length) },
+    () => worker(),
+  );
+  await Promise.all(workers);
+
+  // Sort by page number
+  cleanedPages.sort((a, b) => a.page - b.page);
+
+  // Build cleaned text
+  const cleanedText = cleanedPages
+    .map(p => `--- Pagina ${p.page} ---\n${p.cleanedText}`)
+    .join("\n\n");
+
+  const totalTables = cleanedPages.reduce((sum, p) => sum + p.tableCount, 0);
+
+  // Quality score: how different is cleaned vs raw (normalized edit distance approximation)
+  const rawLen = rawText.length;
+  const cleanLen = cleanedText.length;
+  const lenDiff = Math.abs(rawLen - cleanLen) / Math.max(rawLen, 1);
+  const qualityScore = Math.min(1, lenDiff * 5); // 20%+ length change = 1.0 quality improvement
+
+  console.log(
+    `[preStructureClientText] Pre-structured ${cleanedPages.length} pages ` +
+    `(${totalTables} tables, quality=${qualityScore.toFixed(2)}) via Claude Sonnet`,
+  );
+
+  return {
+    cleanedText,
+    tableCount: totalTables,
+    pageCount: cleanedPages.length,
+    qualityScore,
   };
 }
 
@@ -504,13 +710,10 @@ print(json.dumps(pages))
   const allFields: VisualField[] = [];
 
   const processPage = async (pageData: { page: number; image: string; width: number; height: number }): Promise<VisualField[]> => {
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+    const response = await withAILimit(() => anthropic.messages.create({
+      model: "claude-sonnet-4-20250514",
       max_tokens: 4000,
-      temperature: 0,
-      messages: [{
-        role: "system",
-        content: `Ești un detector de câmpuri de completat din template-uri de documente de finanțare europeană.
+      system: `Ești un detector de câmpuri de completat din template-uri de documente de finanțare europeană.
 
 Analizezi VIZUAL o pagină de template și identifici TOATE zonele care trebuie completate:
 - Linii goale cu/fără etichetă (ex: "Denumire solicitant: ___________")
@@ -538,13 +741,12 @@ IMPORTANT:
 - NU include câmpuri pre-completate (care au deja text)
 - Detectează TOATE câmpurile, inclusiv cele mici sau greu vizibile
 - Returnează DOAR un JSON array valid. Fără backticks, fără explicații.`,
-      },
-      {
+      messages: [{
         role: "user",
         content: [
           {
-            type: "image_url",
-            image_url: { url: `data:image/png;base64,${pageData.image}`, detail: "high" },
+            type: "image",
+            source: { type: "base64", media_type: "image/png", data: pageData.image },
           },
           {
             type: "text",
@@ -552,9 +754,10 @@ IMPORTANT:
           },
         ],
       }],
-    });
+    }));
 
-    const content = response.choices[0]?.message?.content || "[]";
+    const textBlock = response.content.find((b: any) => b.type === "text");
+    const content = textBlock ? (textBlock as any).text : "[]";
     const cleaned = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
 
     try {
@@ -577,7 +780,7 @@ IMPORTANT:
         confidence: Math.min(1, Math.max(0, item.confidence || 0.7)),
       }));
     } catch {
-      console.warn(`[detectFieldsVisually] Failed to parse GPT-4o Vision response for page ${pageData.page}`);
+      console.warn(`[detectFieldsVisually] Failed to parse Claude Vision response for page ${pageData.page}`);
       return [];
     }
   };
@@ -604,7 +807,7 @@ IMPORTANT:
     return (a.position?.y || 0) - (b.position?.y || 0);
   });
 
-  console.log(`[detectFieldsVisually] Detected ${allFields.length} visual fields across ${pageImages.length} pages via GPT-4o Vision`);
+  console.log(`[detectFieldsVisually] Detected ${allFields.length} visual fields across ${pageImages.length} pages via Claude Vision`);
   return allFields;
 }
 

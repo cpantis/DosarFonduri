@@ -3,7 +3,7 @@ import { db } from "../db";
 import { documents, rules, orgConfig, scoringCriteria, templateElements, elementRuleLinks, ruleReferenceLinks, guideReferenceTables, elementDefinitions } from "../db/schema";
 import { eq, and, inArray } from "drizzle-orm";
 import { getFileBuffer } from "../services/storage";
-import { extractTextFromPDF, extractTextFromDOCX, extractTextFromXLSX, preStructurePages } from "../services/ocr";
+import { extractTextFromPDF, extractTextFromDOCX, extractTextFromXLSX, preStructurePages, type PDFExtractionResult } from "../services/ocr";
 import { logAIUsage } from "../services/aiUsage";
 import { publishEvent, publishJobProgress } from "../lib/sse";
 import { redis, isRedisReady } from "../lib/redis";
@@ -644,8 +644,10 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
       // ─── STEP 1: Text extraction (PyMuPDF, zero AI, < 1 second) ───
       const extractStart = Date.now();
       let rawText = "";
+      let pdfResult: PDFExtractionResult | null = null;
       if (doc.fileType === "pdf") {
-        rawText = (await extractTextFromPDF(buffer)).text;
+        pdfResult = await extractTextFromPDF(buffer);
+        rawText = pdfResult.text;
       } else if (doc.fileType === "docx" || doc.fileType === "doc") {
         rawText = await extractTextFromDOCX(buffer, fileName);
       } else if (doc.fileType === "xlsx") {
@@ -660,21 +662,38 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
       cacheGuideText(documentId, rawText).catch(() => {});
 
       await job.updateProgress(5);
-      publishJobProgress(organizationId, {
-        jobId: job.id || "",
-        jobType: "ghid",
-        documentId,
-        documentName: doc.name,
-        progress: 5,
-        status: "processing",
-        message: `Text extras din "${doc.name}". Pre-structurare cu GPT-4o...`,
-      }).catch(() => {});
 
-      // ─── STEP 2: GPT-4o pre-structuring per page (~$0.15, ~15s) ───
-      const preStructStart = Date.now();
-      const preStructured = await preStructurePages(rawText);
-      const preStructDuration = Date.now() - preStructStart;
-      console.log(`[processGuide] GPT-4o pre-structuring: ${preStructDuration}ms for "${doc.name}" (${preStructured.pageCount} pages, ${preStructured.tableCount} tables)`);
+      // ─── STEP 2: Pre-structuring — SKIP for native PDFs, use GPT-4o only for scanned ───
+      const needsPreStructure = pdfResult?.hasScannedPages === true;
+      let structuredText: string;
+      let preStructDuration = 0;
+      let preStructPageCount = 0;
+      let preStructTableCount = 0;
+
+      if (needsPreStructure) {
+        publishJobProgress(organizationId, {
+          jobId: job.id || "",
+          jobType: "ghid",
+          documentId,
+          documentName: doc.name,
+          progress: 5,
+          status: "processing",
+          message: `Text extras din "${doc.name}". Pre-structurare cu GPT-4o (${pdfResult!.scannedPageCount} pagini scanate)...`,
+        }).catch(() => {});
+
+        const preStructStart = Date.now();
+        const preStructured = await preStructurePages(rawText);
+        preStructDuration = Date.now() - preStructStart;
+        preStructPageCount = preStructured.pageCount;
+        preStructTableCount = preStructured.tableCount;
+        structuredText = preStructured.structuredText;
+        console.log(`[processGuide] GPT-4o pre-structuring: ${preStructDuration}ms for "${doc.name}" (${preStructPageCount} pages, ${preStructTableCount} tables)`);
+      } else {
+        // Native PDF — PyMuPDF text is good enough, skip GPT-4o entirely ($0 cost)
+        structuredText = rawText;
+        preStructPageCount = pdfResult?.totalPages || 1;
+        console.log(`[processGuide] SKIP GPT-4o pre-structuring — PDF nativ, ${pdfResult?.totalPages || 0} pagini, ${pdfResult?.totalChars || rawText.length} chars (zero AI cost)`);
+      }
 
       await job.updateProgress(30);
       publishJobProgress(organizationId, {
@@ -684,7 +703,9 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         documentName: doc.name,
         progress: 30,
         status: "processing",
-        message: `Pre-structurare completă: ${preStructured.pageCount} pagini, ${preStructured.tableCount} tabele. Extragere reguli cu Opus + ET...`,
+        message: needsPreStructure
+          ? `Pre-structurare completă: ${preStructPageCount} pagini, ${preStructTableCount} tabele. Extragere reguli cu Opus + ET...`
+          : `Text nativ extras: ${preStructPageCount} pagini. Extragere reguli cu Opus + ET...`,
       }).catch(() => {});
 
       // ─── STEP 3: Unified Opus + ET extraction (~$0.40, ~20s) ───
@@ -694,7 +715,7 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
       const useET = config?.reguliInterpET ?? true;
 
       const opusStart = Date.now();
-      const chunks = splitStructuredText(preStructured.structuredText);
+      const chunks = splitStructuredText(structuredText);
       console.log(`[processGuide] Processing "${doc.name}" with ${chunks.length} Opus chunk(s), ET=${useET}`);
 
       let allFixed: any[] = [];
@@ -805,7 +826,7 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
       }
 
       // ─── FINALIZE ───
-      const pageCount = preStructured.pageCount;
+      const pageCount = preStructPageCount;
       const totalDuration = Date.now() - startTime;
 
       await db.update(documents).set({
@@ -816,7 +837,12 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
 
       await job.updateProgress(100);
 
-      console.log(`[processGuide] Pipeline complete: ${totalDuration}ms total (extract: ${extractDuration}ms, GPT-4o pre-struct: ${preStructDuration}ms, Opus+ET: ${opusDuration}ms) for "${doc.name}" (${pageCount} pages)`);
+      const pipelineDesc = needsPreStructure
+        ? `PyMuPDF + GPT-4o pre-struct (${(preStructDuration / 1000).toFixed(1)}s) + Opus+ET (${(opusDuration / 1000).toFixed(1)}s)`
+        : `PyMuPDF nativ + Opus+ET (${(opusDuration / 1000).toFixed(1)}s)`;
+      const costDesc = needsPreStructure ? "~$0.55" : "~$0.40";
+
+      console.log(`[processGuide] Pipeline complete: ${totalDuration}ms total (extract: ${extractDuration}ms, pre-struct: ${preStructDuration}ms, Opus+ET: ${opusDuration}ms) for "${doc.name}" (${pageCount} pages, native=${!needsPreStructure})`);
 
       publishEvent(`org:${organizationId}:uploads`, "document_processed", {
         documentId,
@@ -832,13 +858,13 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         referenceLinks: linkResult.referenceLinks,
         templateMappings,
         totalDurationMs: totalDuration,
-        pipeline: "gpt4o_prestructure + opus_et_unified",
+        pipeline: needsPreStructure ? "gpt4o_prestructure + opus_et_unified" : "native_pymupdf + opus_et_unified",
         costs: {
-          preStructure: "~$0.15",
+          preStructure: needsPreStructure ? "~$0.15" : "$0",
           opusET: "~$0.40",
-          total: "~$0.55",
+          total: costDesc,
         },
-        message: `Ghid procesat "${doc.name}". ${pageCount} pagini. Pipeline: GPT-4o pre-structurare (${(preStructDuration / 1000).toFixed(1)}s) → Opus+ET extracție unificată (${(opusDuration / 1000).toFixed(1)}s). ${fixedCount} reguli fixe, ${interpCount} interpretate, ${scoringCount} criterii selecție, ${elemDefCount} definiții elemente. ${linkResult.elementLinks + linkResult.referenceLinks} link-uri, ${templateMappings} mapări template. Total: ${(totalDuration / 1000).toFixed(1)}s, ~$0.55.`,
+        message: `Ghid procesat "${doc.name}". ${pageCount} pagini. Pipeline: ${pipelineDesc}. ${fixedCount} reguli fixe, ${interpCount} interpretate, ${scoringCount} criterii selecție, ${elemDefCount} definiții elemente. ${linkResult.elementLinks + linkResult.referenceLinks} link-uri, ${templateMappings} mapări template. Total: ${(totalDuration / 1000).toFixed(1)}s, ${costDesc}.`,
       }).catch(() => {});
     } catch (error) {
       console.error(`Process guide error (attempt ${job.attemptsMade + 1}/${job.opts.attempts || 3}):`, error);

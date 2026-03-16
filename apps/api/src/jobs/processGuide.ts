@@ -250,7 +250,7 @@ async function saveFixedRules(fixedRules: any[], documentId: string, organizatio
       condition: r.condition,
       sourcePage: r.source_page,
       sourceText: r.source_text,
-      confidence: r.confidence?.toString() || "0.90",
+      confidence: String(Number(r.confidence) || 0.90),
     }))
   );
   return fixedRules.length;
@@ -268,7 +268,7 @@ async function saveInterpretedRules(interpRules: any[], documentId: string, orga
       condition: r.condition,
       sourcePage: r.source_page,
       sourceText: r.source_text,
-      confidence: r.confidence?.toString() || "0.75",
+      confidence: String(Number(r.confidence) || 0.75),
       validated: false,
     }))
   );
@@ -287,8 +287,8 @@ async function saveScoringCriteria(criteria: any[], documentId: string, organiza
       code: c.code || `CS${idx + 1}`,
       name: c.name || "Criteriu neprecizat",
       description: c.description || null,
-      maxPoints: String(c.maxPoints || 0),
-      evaluationLogic: c.evaluationLogic || null,
+      maxPoints: String(Number(c.maxPoints) || 0),
+      evaluationLogic: (c.evaluationLogic && typeof c.evaluationLogic === "object") ? c.evaluationLogic : null,
       category: c.category || null,
       sortOrder: idx,
       sourcePage: c.sourcePage || null,
@@ -351,6 +351,12 @@ async function autoLinkRulesAndReferences(
     where: eq(templateElements.organizationId, organizationId),
   });
 
+  // FIX F2.2: Load elementDefinitions to populate elementDefId on links
+  const orgElemDefs = await db.query.elementDefinitions.findMany({
+    where: eq(elementDefinitions.organizationId, organizationId),
+  });
+  const elemDefByKey = new Map(orgElemDefs.map(ed => [ed.elementKey.toLowerCase(), ed]));
+
   const orgRefTables = await db.query.guideReferenceTables.findMany({
     where: eq(guideReferenceTables.organizationId, organizationId),
   });
@@ -411,8 +417,10 @@ async function autoLinkRulesAndReferences(
           if (!existingElemLinks.has(linkKey)) {
             existingElemLinks.add(linkKey);
             try {
+              const matchedElemDef = elemDefByKey.get(matchedElement.key.toLowerCase());
               await db.insert(elementRuleLinks).values({
                 templateElementId: matchedElement.id,
+                elementDefId: matchedElemDef?.id || null,
                 ruleId: rule.id,
                 role: "constraint",
                 description: `Auto-linked: rule condition.field "${condition.field}" → element "${matchedElement.key}"`,
@@ -438,8 +446,10 @@ async function autoLinkRulesAndReferences(
           if (!existingElemLinks.has(linkKey)) {
             existingElemLinks.add(linkKey);
             try {
+              const scoringElemDef = elemDefByKey.get(matchedElement.key.toLowerCase());
               await db.insert(elementRuleLinks).values({
                 templateElementId: matchedElement.id,
+                elementDefId: scoringElemDef?.id || null,
                 ruleId: rule.id,
                 role: "input",
                 description: `Auto-linked: scoring elementKey "${condition.elementKey}" → element "${matchedElement.key}"`,
@@ -513,8 +523,10 @@ async function autoLinkRulesAndReferences(
           if (!existingElemLinks.has(linkKey)) {
             existingElemLinks.add(linkKey);
             try {
+              const scElemDef = elemDefByKey.get(matchedElement.key.toLowerCase());
               await db.insert(elementRuleLinks).values({
                 templateElementId: matchedElement.id,
+                elementDefId: scElemDef?.id || null,
                 ruleId: matchingRule.id,
                 role: "input",
                 description: `Auto-linked: scoring ${sc.code} elementKey "${evalLogic.elementKey}"`,
@@ -788,6 +800,11 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         message: `Salvare: ${allFixed.length} reguli fixe, ${allInterpreted.length} interpretate, ${allScoring.length} criterii, ${allElementDefs.length} elemente...`,
       }).catch(() => {});
 
+      // Clean up old data before re-insert (handles guide re-processing)
+      // elementRuleLinks and ruleReferenceLinks cascade from rules, but clean elementDefinitions separately
+      await db.delete(rules).where(and(eq(rules.documentId, documentId), eq(rules.organizationId, organizationId)));
+      await db.delete(elementDefinitions).where(and(eq(elementDefinitions.guideDocumentId, documentId), eq(elementDefinitions.organizationId, organizationId)));
+
       const [fixedCount, interpCount, scoringCount, elemDefCount] = await Promise.all([
         saveFixedRules(allFixed, documentId, organizationId),
         saveInterpretedRules(allInterpreted, documentId, organizationId),
@@ -809,20 +826,19 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
       const linkResult = await autoLinkRulesAndReferences(documentId, organizationId);
 
       // ─── STEP 6: Auto-map template placeholders to element definitions ───
+      // FIX F3.2: Backfill ALL templates in the org, not just specific types
       let templateMappings = 0;
       if (elemDefCount > 0) {
         const templateDocs = await db.query.documents.findMany({
           where: and(
             eq(documents.organizationId, organizationId),
-            inArray(documents.documentTypeClass, [
-              "memoriu_template", "cerere_finantare_template",
-              "anexa_b_template", "anexa_c_template",
-            ]),
+            eq(documents.processingType, "template"),
           ),
         });
         for (const tDoc of templateDocs) {
           templateMappings += await autoMapTemplatePlaceholders(tDoc.id, organizationId);
         }
+        console.log(`[processGuide] Backfill mapping: ${templateDocs.length} template-uri re-procesate, ${templateMappings} mapări create`);
       }
 
       // ─── FINALIZE ───

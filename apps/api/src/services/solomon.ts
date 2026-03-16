@@ -317,7 +317,7 @@ async function buildSystemPrompt(projectId: string, organizationId: string): Pro
       eq(solomonKnowledge.enabled, true),
     ),
     orderBy: (k, { desc }) => [desc(k.priority), desc(k.createdAt)],
-    limit: 50,
+    limit: 100,
   });
   // Filter valid entries (validFrom <= now && (validUntil is null or >= now))
   const activeKnowledge = knowledgeEntries.filter(k => {
@@ -1310,7 +1310,17 @@ export async function processSolomonMessage(params: {
     requestParams.thinking = { type: "enabled", budget_tokens: 8000 };
   }
 
-  const stream = anthropic.messages.stream(requestParams);
+  // FIX F4.1: AbortController with 120s timeout to prevent infinite stream hang
+  const controller_abort = new AbortController();
+  const streamTimeout = setTimeout(() => controller_abort.abort(), 120_000);
+
+  let stream: ReturnType<typeof anthropic.messages.stream>;
+  try {
+    stream = anthropic.messages.stream(requestParams, { signal: controller_abort.signal });
+  } catch (err) {
+    clearTimeout(streamTimeout);
+    throw err;
+  }
 
   let fullResponse = "";
   let tokensIn = 0;
@@ -1349,9 +1359,20 @@ export async function processSolomonMessage(params: {
                 .filter((el: any) =>
                   el && typeof el.key === "string" && el.key.length <= 255
                   && typeof el.value === "string" && el.value.length <= 10000
-                );
+                )
+                .map((el: any) => ({
+                  ...el,
+                  confidence: Math.min(1, Math.max(0, Number(el.confidence) || 0.5)),
+                }));
             }
-          } catch {}
+          } catch (parseErr) {
+            // FIX F4.3: Log parse failure instead of silently swallowing
+            console.warn("[solomon] ELEMENTS_JSON parse failed", { error: parseErr, rawMatch: elementsMatch[1]?.slice(0, 200) });
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+              type: "extraction_warning",
+              message: "Nu am putut extrage date structurate din răspuns. Răspunsul conversațional e valid.",
+            })}\n\n`));
+          }
         }
 
         // Save extracted elements to project — using elementDefinitions as primary, templateElements as fallback
@@ -1399,9 +1420,11 @@ export async function processSolomonMessage(params: {
               if (existing.confirmed && (existing.source === "consultant_manual" || existing.source === "document_extracted")) {
                 console.log(`[solomon] Skipping confirmed element ${el.key} (source: ${existing.source})`);
               } else {
+                // FIX F4.4: Reset confirmed when value changes from Solomon
                 await db.update(projectElements).set({
                   value: el.value,
                   source: "solomon_chat",
+                  confirmed: false,
                   // Backfill elementDefId if missing
                   ...(elemDef && !existing.elementDefId ? { elementDefId: elemDef.id } : {}),
                   updatedAt: new Date(),
@@ -1409,15 +1432,33 @@ export async function processSolomonMessage(params: {
               }
             } else {
               // Create new project_element with both IDs when available
-              await db.insert(projectElements).values({
-                projectId,
-                ...(elemDef ? { elementDefId: elemDef.id } : {}),
-                ...(tmplEl ? { templateElementId: tmplEl.id } : {}),
-                value: el.value,
-                source: "solomon_chat",
-                confirmed: false,
-                validationStatus: "pending",
-              });
+              try {
+                await db.insert(projectElements).values({
+                  projectId,
+                  ...(elemDef ? { elementDefId: elemDef.id } : {}),
+                  ...(tmplEl ? { templateElementId: tmplEl.id } : {}),
+                  value: el.value,
+                  source: "solomon_chat",
+                  confirmed: false,
+                  validationStatus: "pending",
+                });
+              } catch (insertErr: any) {
+                // Race condition: another concurrent request may have inserted this element
+                if (insertErr.code === "23505") {
+                  console.warn(`[solomon] Duplicate insert for element ${el.key} — updating instead`);
+                  const retryExisting = await db.query.projectElements.findFirst({
+                    where: and(
+                      eq(projectElements.projectId, projectId),
+                      elemDef ? eq(projectElements.elementDefId, elemDef.id) : eq(projectElements.templateElementId, tmplEl!.id),
+                    ),
+                  });
+                  if (retryExisting) {
+                    await db.update(projectElements).set({ value: el.value, source: "solomon_chat", confirmed: false, updatedAt: new Date() }).where(eq(projectElements.id, retryExisting.id));
+                  }
+                } else {
+                  throw insertErr;
+                }
+              }
             }
           }
 
@@ -1581,9 +1622,11 @@ export async function processSolomonMessage(params: {
           action: "chat",
         });
 
+        clearTimeout(streamTimeout);
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "done" })}\n\n`));
         controller.close();
       } catch (error) {
+        clearTimeout(streamTimeout);
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "error", message: (error as Error).message })}\n\n`));
         controller.close();
       }

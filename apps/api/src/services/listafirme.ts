@@ -123,14 +123,31 @@ export async function lookupCUI_ListaFirme(
   const data = buildInfoPayload(cleanCUI);
   const body = `key=${encodeURIComponent(key)}&data=${encodeURIComponent(JSON.stringify(data))}`;
 
-  const response = await fetch(INFO_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body,
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+
+  let response: Response;
+  try {
+    response = await fetch(INFO_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+      signal: controller.signal,
+    });
+  } catch (err: any) {
+    clearTimeout(timeout);
+    const msg = err.name === "AbortError"
+      ? "ListaFirme API timeout (15s)"
+      : `ListaFirme API indisponibil: ${err.message}`;
+    console.warn(`[listafirme] ${msg}`);
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!response.ok) {
-    throw new Error(`ListaFirme API HTTP ${response.status}`);
+    console.warn(`[listafirme] HTTP ${response.status} for CUI ${cleanCUI}`);
+    return null;
   }
 
   const raw = await response.json();

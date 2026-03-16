@@ -42,7 +42,15 @@ const app = new Hono();
 // Health check FIRST — must respond before any middleware or route import fails.
 // Railway starts healthchecking immediately after the container starts.
 app.get("/", (c) => c.json({ status: "ok", service: "dosarfonduri-api" }));
-app.get("/health", (c) => c.json({ status: "ok", service: "dosarfonduri-api", timestamp: new Date().toISOString() }));
+app.get("/health", async (c) => {
+  let redisOk = false;
+  try {
+    const { redis } = await import("./lib/redis");
+    const pong = await redis.ping();
+    redisOk = pong === "PONG";
+  } catch { /* redis down */ }
+  return c.json({ status: redisOk ? "ok" : "degraded", service: "dosarfonduri-api", redis: redisOk ? "ok" : "down", timestamp: new Date().toISOString() });
+});
 
 // Global middleware
 app.use("*", logger());

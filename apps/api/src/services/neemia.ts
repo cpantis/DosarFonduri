@@ -56,10 +56,7 @@ async function buildElementsMap(
   for (const tmplEl of templateEls) {
     if (resolvedPlaceholders.has(tmplEl.key)) continue; // Already resolved via mapping
 
-    const projEl = projectEls.find(pe =>
-      (pe.templateElementId === tmplEl.id) ||
-      (pe.elementDefId && !pe.templateElementId && false) // elementDefId-only handled above
-    );
+    const projEl = projectEls.find(pe => pe.templateElementId === tmplEl.id);
     if (projEl?.value && projEl.value.trim() !== "") {
       elementsMap[tmplEl.key] = projEl.value;
       filledCount++;
@@ -386,6 +383,20 @@ export async function generateDocument(params: GenerateDocParams): Promise<Reada
         let filledBuffer: Buffer;
         if (templateDoc.fileType === "xlsx") {
           filledBuffer = await fillXlsxTemplate(templateBuffer, templateName, elementsMap);
+        } else if (templateDoc.fileType === "pdf") {
+          // FIX F5.1: Integrate XFA fill for PDF templates
+          const { fillXFAFields, extractXFAFields } = await import("./xfaFiller");
+          const xfaFields = await extractXFAFields(templateBuffer);
+          if (xfaFields.length > 0) {
+            filledBuffer = await fillXFAFields(templateBuffer, elementsMap);
+          } else {
+            console.warn(`[neemia] PDF template "${templateDoc.name}" has no XFA fields — returning original PDF`);
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+              type: "warning",
+              message: "PDF-ul template nu conține câmpuri editabile (XFA). Folosiți DOCX pentru documente narrative.",
+            })}\n\n`));
+            filledBuffer = templateBuffer;
+          }
         } else {
           filledBuffer = await fillDocxTemplate(templateBuffer, templateName, elementsMap, cabinetStyle);
         }
@@ -686,6 +697,11 @@ export async function computeCalculatedFields(
     return isNaN(n) ? null : n;
   };
 
+  /** Format number with Romanian decimal separator (comma) */
+  const fmtRo = (n: number, decimals = 2): string => {
+    return n.toFixed(decimals).replace(".", ",");
+  };
+
   const results: Array<{ key: string; label: string; calculatedValue: string; formula: string }> = [];
 
   // Standard calculations for EU funding projects
@@ -702,7 +718,7 @@ export async function computeCalculatedFields(
       compute: () => {
         const total = getNum("valoare_totala_proiect") ?? getNum("valoare_totala");
         const ajutor = getNum("ajutor_nerambursabil") ?? getNum("finantare_nerambursabila");
-        if (total !== null && ajutor !== null) return (total - ajutor).toFixed(2);
+        if (total !== null && ajutor !== null) return fmtRo(total - ajutor);
         return null;
       },
     },
@@ -713,7 +729,7 @@ export async function computeCalculatedFields(
       compute: () => {
         const total = getNum("valoare_totala_proiect") ?? getNum("valoare_totala");
         const ajutor = getNum("ajutor_nerambursabil") ?? getNum("finantare_nerambursabila");
-        if (total !== null && ajutor !== null && total > 0) return ((ajutor / total) * 100).toFixed(2);
+        if (total !== null && ajutor !== null && total > 0) return fmtRo((ajutor / total) * 100);
         return null;
       },
     },
@@ -724,7 +740,7 @@ export async function computeCalculatedFields(
       compute: () => {
         const cuTva = getNum("valoare_totala_cu_tva") ?? getNum("total_cu_tva");
         const faraTva = getNum("valoare_totala_fara_tva") ?? getNum("total_fara_tva") ?? getNum("valoare_totala_proiect");
-        if (cuTva !== null && faraTva !== null) return (cuTva - faraTva).toFixed(2);
+        if (cuTva !== null && faraTva !== null) return fmtRo(cuTva - faraTva);
         return null;
       },
     },

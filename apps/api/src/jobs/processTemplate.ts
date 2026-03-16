@@ -137,6 +137,7 @@ Returneaza:
   try {
     return JSON.parse(cleaned);
   } catch {
+    console.warn(`[processTemplate] AI label classification failed — using auto-generated labels for ${placeholders.length} fields`);
     return placeholders.map(p => ({
       key: p.key,
       label: p.key.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase()),
@@ -338,30 +339,64 @@ export const processTemplateWorker = new Worker<ProcessTemplatePayload>(
           message: `XFA: ${xfaFields.length} câmpuri extrase programatic (zero AI cost).`,
         }).catch(() => {});
 
-        console.log(`[processTemplate] PDF XFA: ${xfaFields.length} câmpuri extrase programatic, skip detectFieldsVisually()`);
+        if (xfaFields.length > 0) {
+          console.log(`[processTemplate] PDF XFA: ${xfaFields.length} câmpuri extrase programatic, skip detectFieldsVisually()`);
 
-        // Convert XFA fields directly to template elements
-        const seen = new Set<string>();
-        uniqueElements = xfaFields
-          .filter(f => {
-            if (seen.has(f.key)) return false;
-            seen.add(f.key);
-            return true;
-          })
-          .map((f, idx) => ({
-            documentId,
-            organizationId,
-            key: f.key,
-            label: f.label,
-            fieldType: (f.fieldType === "checkbox" ? "select" : f.fieldType) as any,
-            pageNum: 1,
-            lineNum: idx,
-            group: f.group || "general",
-            isRepeating: false,
-            rowIndex: null,
-            detected: true,
-            validated: true, // XFA fields are structurally certain
-          }));
+          // Convert XFA fields directly to template elements
+          const seen = new Set<string>();
+          uniqueElements = xfaFields
+            .filter(f => {
+              if (seen.has(f.key)) return false;
+              seen.add(f.key);
+              return true;
+            })
+            .map((f, idx) => ({
+              documentId,
+              organizationId,
+              key: f.key,
+              label: f.label,
+              fieldType: (f.fieldType === "checkbox" ? "select" : f.fieldType) as any,
+              pageNum: 1,
+              lineNum: idx,
+              group: f.group || "general",
+              isRepeating: false,
+              rowIndex: null,
+              detected: true,
+              validated: true, // XFA fields are structurally certain
+            }));
+        } else {
+          // FIX F3.1: Fallback to visual detection for non-XFA PDFs
+          console.log(`[processTemplate] No XFA fields, falling back to visual detection`);
+          publishJobProgress(organizationId, {
+            jobId: job.id || "", jobType: "template", documentId,
+            documentName: doc.name, progress: 40, status: "processing",
+            message: `PDF fără XFA — detecție vizuală cu Claude Vision...`,
+          }).catch(() => {});
+          try {
+            const visualFields = await detectFieldsVisually(buffer);
+            uniqueElements = visualFields.map((f, idx) => ({
+              documentId,
+              organizationId,
+              key: f.key,
+              label: f.label || f.key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()),
+              fieldType: (f.fieldType || "text") as any,
+              pageNum: f.page || 1,
+              lineNum: idx,
+              group: "general",
+              isRepeating: false,
+              rowIndex: null,
+              detected: true,
+              validated: false,
+            }));
+          } catch (visErr) {
+            console.warn(`[processTemplate] Visual detection failed for PDF "${doc.name}":`, visErr);
+            publishJobProgress(organizationId, {
+              jobId: job.id || "", jobType: "template", documentId,
+              documentName: doc.name, progress: 50, status: "processing",
+              message: `Detecția vizuală nu a funcționat — se continuă doar cu extracția text`,
+            }).catch(() => {});
+          }
+        }
 
       } else {
         // ─── DOCX/XLSX: text placeholder extraction + optional visual cross-check ───

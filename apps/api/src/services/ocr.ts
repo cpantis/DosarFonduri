@@ -344,11 +344,21 @@ export async function preStructurePages(rawText: string): Promise<PreStructuredG
     rawPages.push({ page: pageBreaks[i].page, text: rawText.slice(startIdx, endIdx) });
   }
 
-  // Batch pages for GPT-4o processing
+  // Batch pages for GPT-4o processing (max 5 pages OR 30k chars per batch)
+  const MAX_BATCH_CHARS = 30_000;
   const batches: Array<Array<{ page: number; text: string }>> = [];
-  for (let i = 0; i < rawPages.length; i += PRE_STRUCTURE_BATCH_SIZE) {
-    batches.push(rawPages.slice(i, i + PRE_STRUCTURE_BATCH_SIZE));
+  let currentBatch: Array<{ page: number; text: string }> = [];
+  let currentChars = 0;
+  for (const page of rawPages) {
+    if (currentBatch.length >= PRE_STRUCTURE_BATCH_SIZE || (currentChars + page.text.length > MAX_BATCH_CHARS && currentBatch.length > 0)) {
+      batches.push(currentBatch);
+      currentBatch = [];
+      currentChars = 0;
+    }
+    currentBatch.push(page);
+    currentChars += page.text.length;
   }
+  if (currentBatch.length > 0) batches.push(currentBatch);
 
   // Process batches with concurrency limit
   const allPages: PreStructuredPage[] = [];
@@ -392,9 +402,10 @@ IMPORTANT:
         page: p.page, sectionType: "general" as const, cleanedText: p.text, tables: [], keyTerms: [],
       }));
 
+      const VALID_SECTION_TYPES = new Set(["eligibilitate", "intensitate", "selectie", "cheltuieli", "documente", "achizitii", "general", "cuprins", "definitii"]);
       return parsed.map((item: any, idx: number) => ({
         page: item.page || batch[idx]?.page || idx + 1,
-        sectionType: item.section_type || "general",
+        sectionType: (VALID_SECTION_TYPES.has(item.section_type) ? item.section_type : "general") as PreStructuredPage["sectionType"],
         cleanedText: item.cleaned_text || batch[idx]?.text || "",
         tables: (item.tables || []).map((t: any) => ({
           title: t.title || "Tabel",

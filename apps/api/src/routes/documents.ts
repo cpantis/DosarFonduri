@@ -375,18 +375,19 @@ documentRoutes.post("/documents/:id/confirm-upload", async (c) => {
   const warnings: string[] = [];
   try {
     const jobPayload = { documentId: doc.id, organizationId: auth.organizationId };
+    const dedup = { jobId: `doc-${doc.id}` };
     let dispatched = false;
     if (doc.processingType === "ghid") {
-      await processGuideQueue.add("process-guide", jobPayload, { priority: JOB_PRIORITY.GUIDE });
+      await processGuideQueue.add("process-guide", jobPayload, { priority: JOB_PRIORITY.GUIDE, ...dedup });
       dispatched = true;
     } else if (doc.processingType === "template") {
-      await processTemplateQueue.add("process-template", jobPayload, { priority: JOB_PRIORITY.TEMPLATE });
+      await processTemplateQueue.add("process-template", jobPayload, { priority: JOB_PRIORITY.TEMPLATE, ...dedup });
       dispatched = true;
     } else if (doc.processingType === "reference_data") {
-      await processReferenceDataQueue.add("process-reference-data", jobPayload, { priority: JOB_PRIORITY.REFERENCE_DATA });
+      await processReferenceDataQueue.add("process-reference-data", jobPayload, { priority: JOB_PRIORITY.REFERENCE_DATA, ...dedup });
       dispatched = true;
     } else if (doc.processingType === "client_doc") {
-      await processClientDocQueue.add("process-client-doc", jobPayload, { priority: JOB_PRIORITY.CLIENT_DOC });
+      await processClientDocQueue.add("process-client-doc", jobPayload, { priority: JOB_PRIORITY.CLIENT_DOC, ...dedup });
       dispatched = true;
     }
     // Mark as processing only if a job was actually dispatched
@@ -564,18 +565,19 @@ documentRoutes.post("/folders/:folderId/documents", async (c) => {
   // --- Dispatch BullMQ job with priority and set status to "processing" ---
   try {
     const jobPayload = { documentId: doc.id, organizationId: auth.organizationId! };
+    const dedup = { jobId: `doc-${doc.id}` };
     let dispatched = false;
     if (processingType === "ghid") {
-      await processGuideQueue.add("process-guide", jobPayload, { priority: JOB_PRIORITY.GUIDE });
+      await processGuideQueue.add("process-guide", jobPayload, { priority: JOB_PRIORITY.GUIDE, ...dedup });
       dispatched = true;
     } else if (processingType === "template") {
-      await processTemplateQueue.add("process-template", jobPayload, { priority: JOB_PRIORITY.TEMPLATE });
+      await processTemplateQueue.add("process-template", jobPayload, { priority: JOB_PRIORITY.TEMPLATE, ...dedup });
       dispatched = true;
     } else if (processingType === "reference_data") {
-      await processReferenceDataQueue.add("process-reference-data", jobPayload, { priority: JOB_PRIORITY.REFERENCE_DATA });
+      await processReferenceDataQueue.add("process-reference-data", jobPayload, { priority: JOB_PRIORITY.REFERENCE_DATA, ...dedup });
       dispatched = true;
     } else if (processingType === "client_doc") {
-      await processClientDocQueue.add("process-client-doc", jobPayload, { priority: JOB_PRIORITY.CLIENT_DOC });
+      await processClientDocQueue.add("process-client-doc", jobPayload, { priority: JOB_PRIORITY.CLIENT_DOC, ...dedup });
       dispatched = true;
     }
     // Mark as processing only if a job was actually dispatched
@@ -677,14 +679,15 @@ documentRoutes.post("/documents/:id/process", async (c) => {
 
   try {
     const jobPayload = { documentId: doc.id, organizationId: auth.organizationId! };
+    const dedup = { jobId: `reprocess-${doc.id}-${Date.now()}` };
     if (doc.processingType === "ghid") {
-      await processGuideQueue.add("process-guide", jobPayload, { priority: JOB_PRIORITY.GUIDE });
+      await processGuideQueue.add("process-guide", jobPayload, { priority: JOB_PRIORITY.GUIDE, ...dedup });
     } else if (doc.processingType === "template") {
-      await processTemplateQueue.add("process-template", jobPayload, { priority: JOB_PRIORITY.TEMPLATE });
+      await processTemplateQueue.add("process-template", jobPayload, { priority: JOB_PRIORITY.TEMPLATE, ...dedup });
     } else if (doc.processingType === "reference_data") {
-      await processReferenceDataQueue.add("process-reference-data", jobPayload, { priority: JOB_PRIORITY.REFERENCE_DATA });
+      await processReferenceDataQueue.add("process-reference-data", jobPayload, { priority: JOB_PRIORITY.REFERENCE_DATA, ...dedup });
     } else if (doc.processingType === "client_doc") {
-      await processClientDocQueue.add("process-client-doc", jobPayload, { priority: JOB_PRIORITY.CLIENT_DOC });
+      await processClientDocQueue.add("process-client-doc", jobPayload, { priority: JOB_PRIORITY.CLIENT_DOC, ...dedup });
     }
   } catch (queueErr: any) {
     console.error(`Queue dispatch failed for document ${doc.id}:`, queueErr.message);

@@ -29,6 +29,8 @@ function scheduleOnrcSync() {
       await syncOnrcJob();
     } catch (err) {
       console.error("[syncOnrc] Cron error:", err);
+      // Retry once after 5 minutes
+      setTimeout(async () => { try { await syncOnrcJob(); } catch (e) { console.error("[syncOnrc] Retry failed:", e); } }, 5 * 60 * 1000);
     }
     // Schedule next run every 24h
     setInterval(async () => {
@@ -36,6 +38,7 @@ function scheduleOnrcSync() {
         await syncOnrcJob();
       } catch (err) {
         console.error("[syncOnrc] Cron error:", err);
+        setTimeout(async () => { try { await syncOnrcJob(); } catch (e) { console.error("[syncOnrc] Retry failed:", e); } }, 5 * 60 * 1000);
       }
     }, 24 * 60 * 60 * 1000);
   }, delay);
@@ -56,12 +59,14 @@ function scheduleDeadlineCheck() {
       await checkDeadlines();
     } catch (err) {
       console.error("[checkDeadlines] Cron error:", err);
+      setTimeout(async () => { try { await checkDeadlines(); } catch (e) { console.error("[checkDeadlines] Retry failed:", e); } }, 5 * 60 * 1000);
     }
     setInterval(async () => {
       try {
         await checkDeadlines();
       } catch (err) {
         console.error("[checkDeadlines] Cron error:", err);
+        setTimeout(async () => { try { await checkDeadlines(); } catch (e) { console.error("[checkDeadlines] Retry failed:", e); } }, 5 * 60 * 1000);
       }
     }, 24 * 60 * 60 * 1000);
   }, delay);

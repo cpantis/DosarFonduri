@@ -88,17 +88,22 @@ export async function uploadFile(
   const key = `${organizationId}/${ctx}/${uuid()}.${ext}`;
 
   if (USE_S3 && s3) {
-    await s3.send(new PutObjectCommand({
-      Bucket: BUCKET,
-      Key: key,
-      Body: buffer,
-      ContentType: mimeType,
-      Metadata: {
-        "original-filename": encodeURIComponent(originalName),
-        "upload-context": ctx,
-        "uploaded-by": uploadedBy,
-      },
-    }));
+    try {
+      await s3.send(new PutObjectCommand({
+        Bucket: BUCKET,
+        Key: key,
+        Body: buffer,
+        ContentType: mimeType,
+        Metadata: {
+          "original-filename": encodeURIComponent(originalName),
+          "upload-context": ctx,
+          "uploaded-by": uploadedBy,
+        },
+      }));
+    } catch (err: any) {
+      console.error(`[storage] S3 upload failed for key ${key}:`, err.message);
+      throw new Error(`Eroare la upload S3: ${err.message}. Verificați configurarea S3/R2.`);
+    }
   } else {
     localWrite(key, buffer);
   }

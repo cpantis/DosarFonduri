@@ -1,7 +1,7 @@
 import { db } from "../db";
 import {
   projects, projectEligibility, rules, companies, companyFinancials,
-  documentFolders, documents, orgConfig,
+  documentFolders, documents, orgConfig, projectElements, elementDefinitions,
 } from "../db/schema";
 import { eq, and } from "drizzle-orm";
 import { anthropic, withAILimit } from "../lib/anthropic";
@@ -66,6 +66,22 @@ export async function checkEligibility(projectId: string, organizationId: string
     judet: company.judet,
     localitate: company.localitate,
   };
+
+  // Overlay projectElements values (Solomon-collected data takes precedence)
+  const projEls = await db.query.projectElements.findMany({
+    where: eq(projectElements.projectId, projectId),
+  });
+  if (projEls.length > 0) {
+    const elemDefs = await db.query.elementDefinitions.findMany({
+      where: eq(elementDefinitions.organizationId, organizationId),
+    });
+    const elemDefMap = new Map(elemDefs.map(ed => [ed.id, ed]));
+    for (const pe of projEls) {
+      if (!pe.value || !pe.value.trim()) continue;
+      const ed = pe.elementDefId ? elemDefMap.get(pe.elementDefId) : null;
+      if (ed) companyData[ed.elementKey] = pe.value;
+    }
+  }
 
   // Get all financials for interpreted rules
   const allFinancials = await db.query.companyFinancials.findMany({

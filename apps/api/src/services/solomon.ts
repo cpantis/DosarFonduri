@@ -317,7 +317,7 @@ async function buildSystemPrompt(projectId: string, organizationId: string): Pro
       eq(solomonKnowledge.enabled, true),
     ),
     orderBy: (k, { desc }) => [desc(k.priority), desc(k.createdAt)],
-    limit: 50,
+    limit: 100,
   });
   // Filter valid entries (validFrom <= now && (validUntil is null or >= now))
   const activeKnowledge = knowledgeEntries.filter(k => {
@@ -1359,7 +1359,11 @@ export async function processSolomonMessage(params: {
                 .filter((el: any) =>
                   el && typeof el.key === "string" && el.key.length <= 255
                   && typeof el.value === "string" && el.value.length <= 10000
-                );
+                )
+                .map((el: any) => ({
+                  ...el,
+                  confidence: Math.min(1, Math.max(0, Number(el.confidence) || 0.5)),
+                }));
             }
           } catch (parseErr) {
             // FIX F4.3: Log parse failure instead of silently swallowing

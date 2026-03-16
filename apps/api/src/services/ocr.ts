@@ -392,9 +392,10 @@ IMPORTANT:
         page: p.page, sectionType: "general" as const, cleanedText: p.text, tables: [], keyTerms: [],
       }));
 
+      const VALID_SECTION_TYPES = new Set(["eligibilitate", "intensitate", "selectie", "cheltuieli", "documente", "achizitii", "general", "cuprins", "definitii"]);
       return parsed.map((item: any, idx: number) => ({
         page: item.page || batch[idx]?.page || idx + 1,
-        sectionType: item.section_type || "general",
+        sectionType: (VALID_SECTION_TYPES.has(item.section_type) ? item.section_type : "general") as PreStructuredPage["sectionType"],
         cleanedText: item.cleaned_text || batch[idx]?.text || "",
         tables: (item.tables || []).map((t: any) => ({
           title: t.title || "Tabel",

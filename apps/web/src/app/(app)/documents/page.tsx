@@ -54,6 +54,12 @@ interface ApiDocument {
   uploadedAt: string;
   uploadedBy: string;
   processingError: string | null;
+  _summary?: {
+    rulesCount?: number;
+    scoringCount?: number;
+    elementsCount?: number;
+    fieldsCount?: number;
+  };
 }
 
 interface DocItem {
@@ -64,6 +70,7 @@ interface DocItem {
   uploaded: string;
   uploadedBy: string;
   status: "procesat" | "neprocesat" | "procesare" | "template" | "referință" | "eroare";
+  processingType: string | null;
   reguliExtrase: number;
   campuri?: number;
   tags: string[];
@@ -72,6 +79,12 @@ interface DocItem {
   pageCount: number | null;
   extractedFields: Array<{ field_key: string; field_value: any; confidence: number }>;
   processingError: string | null;
+  summary?: {
+    rulesCount?: number;
+    scoringCount?: number;
+    elementsCount?: number;
+    fieldsCount?: number;
+  };
 }
 
 /* ══════════════════════════════════════════
@@ -150,6 +163,7 @@ function formatFileSize(bytes: number): string {
 
 function mapApiDocToLocal(doc: ApiDocument): DocItem {
   const visibleFields = doc.processingResult?.extracted_fields?.filter(f => !f.field_key.startsWith("_")) || [];
+  const summary = doc._summary;
   return {
     id: doc.id,
     name: doc.name,
@@ -158,14 +172,16 @@ function mapApiDocToLocal(doc: ApiDocument): DocItem {
     uploaded: doc.uploadedAt ? doc.uploadedAt.slice(0, 10) : "",
     uploadedBy: doc.uploadedBy || "",
     status: mapApiStatusToLocal(doc.status, doc.processingType),
-    reguliExtrase: 0,
-    campuri: doc.processingType === "template" ? 0 : undefined,
+    processingType: doc.processingType || null,
+    reguliExtrase: summary?.rulesCount || 0,
+    campuri: summary?.fieldsCount ?? (doc.processingType === "template" ? 0 : undefined),
     tags: doc.tags || [],
     documentTypeClass: doc.documentTypeClass || null,
     classificationConfidence: doc.classificationConfidence ? parseFloat(doc.classificationConfidence) : null,
     pageCount: doc.pageCount || null,
     extractedFields: visibleFields,
     processingError: doc.processingError || null,
+    summary,
   };
 }
 
@@ -297,6 +313,7 @@ export default function DocumentsPage() {
   const [renameVal, setRenameVal] = useState("");
   const [docs, setDocs] = useState<DocItem[]>([]);
   const [docsLoading, setDocsLoading] = useState(false);
+  const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
   const searchRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
@@ -364,10 +381,10 @@ export default function DocumentsPage() {
     return () => clearInterval(interval);
   }, [docs, selectedFolder, fetchDocs]);
 
-  // SSE: instant refetch when a document finishes processing
+  // SSE: instant refetch when a document finishes processing + real-time progress
   const selectedFolderRef = useRef(selectedFolder);
   selectedFolderRef.current = selectedFolder;
-  useSSE({
+  const { jobProgress: sseJobProgress } = useSSE({
     enabled: true,
     onEvent: useCallback((ev: { event: string; data: any }) => {
       if (
@@ -378,6 +395,12 @@ export default function DocumentsPage() {
       }
     }, [fetchDocs]),
   });
+
+  // Build a lookup: documentId → { progress, message, status }
+  const jobProgressMap = new Map<string, { progress: number; message: string; status: string }>();
+  for (const jp of sseJobProgress) {
+    jobProgressMap.set(jp.id, { progress: jp.progress, message: jp.message, status: jp.status });
+  }
 
   // Keyboard shortcut: Ctrl+K to focus search
   useEffect(() => {
@@ -826,36 +849,131 @@ export default function DocumentsPage() {
           </div>
         ) : filteredDocs.map(d => {
           const st = STATUS_MAP[d.status];
+          const jp = jobProgressMap.get(d.id);
+          const isProcessing = d.status === "procesare";
+          const isProcessed = d.status === "procesat";
+          const isExpanded = expandedCards[d.id] || false;
+          const hasSummary = isProcessed && d.summary && (
+            (d.summary.rulesCount || 0) > 0 ||
+            (d.summary.scoringCount || 0) > 0 ||
+            (d.summary.elementsCount || 0) > 0 ||
+            (d.summary.fieldsCount || 0) > 0
+          );
           return (
-            <div
-              key={d.id}
-              className={`doc-card ${selectedDoc === d.id ? "active" : ""}`}
-              onClick={() => setSelectedDoc(d.id)}
-            >
-              <div className="doc-card-icon">{TYPE_ICONS[d.type] || "\u{1F4C4}"}</div>
-              <div className="doc-card-info">
-                <div className="doc-card-name">{d.name}</div>
-                <div className="doc-card-meta">
-                  <span>{d.type} {"\u00B7"} {d.size}</span>
-                  <span>{"\u{1F4C5}"} {d.uploaded}</span>
-                  <span>{"\u{1F464}"} {d.uploadedBy}</span>
-                </div>
-                {d.tags.length > 0 && (
-                  <div className="doc-card-tags">
-                    {d.tags.map((t, i) => <span key={i} className="doc-card-tag">{t}</span>)}
+            <div key={d.id} style={{ display: "flex", flexDirection: "column" }}>
+              <div
+                className={`doc-card ${selectedDoc === d.id ? "active" : ""}`}
+                onClick={() => setSelectedDoc(d.id)}
+              >
+                <div className="doc-card-icon">{TYPE_ICONS[d.type] || "\u{1F4C4}"}</div>
+                <div className="doc-card-info">
+                  <div className="doc-card-name">{d.name}</div>
+                  <div className="doc-card-meta">
+                    <span>{d.type} {"\u00B7"} {d.size}</span>
+                    <span>{"\u{1F4C5}"} {d.uploaded}</span>
+                    {d.pageCount ? <span>{d.pageCount} pag.</span> : null}
                   </div>
-                )}
+                  {/* Real-time progress bar during processing */}
+                  {isProcessing && jp && (
+                    <div style={{ marginTop: 6 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#fbbf24", marginBottom: 3 }}>
+                        <span style={{ maxWidth: "80%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{jp.message}</span>
+                        <span style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>{jp.progress}%</span>
+                      </div>
+                      <div style={{ height: 4, borderRadius: 2, background: "rgba(251,191,36,.15)", overflow: "hidden" }}>
+                        <div style={{
+                          height: "100%",
+                          width: `${jp.progress}%`,
+                          borderRadius: 2,
+                          background: "linear-gradient(90deg, #fbbf24, #f59e0b)",
+                          transition: "width 0.5s ease-out",
+                        }} />
+                      </div>
+                    </div>
+                  )}
+                  {isProcessing && !jp && (
+                    <div style={{ marginTop: 6, fontSize: 11, color: "#fbbf24" }}>
+                      {"\u2699"} Procesare \u00EEn curs...
+                    </div>
+                  )}
+                  {d.tags.length > 0 && (
+                    <div className="doc-card-tags">
+                      {d.tags.map((t, i) => <span key={i} className="doc-card-tag">{t}</span>)}
+                    </div>
+                  )}
+                </div>
+                <div className="doc-card-status">
+                  <span
+                    className="doc-status-badge"
+                    style={{ background: st.bg, color: st.color }}
+                  >
+                    {st.icon} {st.label}
+                  </span>
+                  {d.reguliExtrase > 0 && <span className="doc-stat-num">{d.reguliExtrase} reguli</span>}
+                  {d.campuri != null && d.campuri > 0 && <span className="doc-stat-num">{d.campuri} c\u00E2mpuri</span>}
+                  {hasSummary && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setExpandedCards(prev => ({ ...prev, [d.id]: !prev[d.id] })); }}
+                      style={{
+                        background: "none", border: "none", cursor: "pointer",
+                        color: "#4d8bff", fontSize: 11, fontWeight: 600, padding: "2px 6px",
+                        marginTop: 2, display: "flex", alignItems: "center", gap: 3,
+                      }}
+                    >
+                      {isExpanded ? "\u25B2 Ascunde" : "\u25BC Detalii"}
+                    </button>
+                  )}
+                </div>
               </div>
-              <div className="doc-card-status">
-                <span
-                  className="doc-status-badge"
-                  style={{ background: st.bg, color: st.color }}
-                >
-                  {st.icon} {st.label}
-                </span>
-                {d.reguliExtrase > 0 && <span className="doc-stat-num">{d.reguliExtrase} reguli</span>}
-                {d.campuri != null && d.campuri > 0 && <span className="doc-stat-num">{d.campuri} campuri</span>}
-              </div>
+              {/* Expandable results section */}
+              {hasSummary && isExpanded && (
+                <div style={{
+                  margin: "0 4px 8px 4px",
+                  padding: "10px 14px",
+                  borderRadius: "0 0 10px 10px",
+                  border: "1px solid var(--border, #e0e4ea)",
+                  borderTop: "none",
+                  background: "var(--bg-elevated, #f8f9fb)",
+                  fontSize: 12,
+                  display: "flex",
+                  gap: 16,
+                  flexWrap: "wrap",
+                  animation: "docFadeIn .2s ease-out",
+                }}>
+                  {d.processingType === "ghid" && (
+                    <>
+                      {(d.summary?.rulesCount || 0) > 0 && (
+                        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                          <span style={{ fontSize: 14 }}>{"\u{1F6E1}"}</span>
+                          <span style={{ color: "var(--text-secondary, #5a6478)" }}>Reguli eligibilitate:</span>
+                          <span style={{ fontWeight: 700, color: "#34d399", fontFamily: "'JetBrains Mono', monospace" }}>{d.summary?.rulesCount}</span>
+                        </div>
+                      )}
+                      {(d.summary?.scoringCount || 0) > 0 && (
+                        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                          <span style={{ fontSize: 14 }}>{"\u{1F4CA}"}</span>
+                          <span style={{ color: "var(--text-secondary, #5a6478)" }}>Criterii punctaj:</span>
+                          <span style={{ fontWeight: 700, color: "#a78bfa", fontFamily: "'JetBrains Mono', monospace" }}>{d.summary?.scoringCount}</span>
+                        </div>
+                      )}
+                      {(d.summary?.elementsCount || 0) > 0 && (
+                        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                          <span style={{ fontSize: 14 }}>{"\u{1F4CB}"}</span>
+                          <span style={{ color: "var(--text-secondary, #5a6478)" }}>Elemente definite:</span>
+                          <span style={{ fontWeight: 700, color: "#4d8bff", fontFamily: "'JetBrains Mono', monospace" }}>{d.summary?.elementsCount}</span>
+                        </div>
+                      )}
+                    </>
+                  )}
+                  {d.processingType === "template" && (d.summary?.fieldsCount || 0) > 0 && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                      <span style={{ fontSize: 14 }}>{"\u{1F4DD}"}</span>
+                      <span style={{ color: "var(--text-secondary, #5a6478)" }}>C\u00E2mpuri detectate:</span>
+                      <span style={{ fontWeight: 700, color: "#4d8bff", fontFamily: "'JetBrains Mono', monospace" }}>{d.summary?.fieldsCount}</span>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           );
         })}

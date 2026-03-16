@@ -127,16 +127,22 @@ solomonRoutes.post("/conversations/:convId/upload", async (c) => {
   const fileId = await uploadFile(buffer, file.name, file.type, auth.organizationId!, auth.userId, "client-docs");
 
   // Extract text based on file type (for Solomon's immediate use)
+  // FIX F4.2: Wrap extraction in try-catch so corrupt files don't crash the stream
   let extractedText = "";
   const isImage = /^image\/(png|jpe?g)$/i.test(file.type) || /\.(png|jpe?g)$/i.test(file.name);
-  if (file.type === "application/pdf" || file.name.endsWith(".pdf")) {
-    extractedText = (await extractTextFromPDF(buffer)).text;
-  } else if (file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" || file.name.endsWith(".docx")) {
-    extractedText = await extractTextFromDOCX(buffer, file.name);
-  } else if (file.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" || file.name.endsWith(".xlsx")) {
-    extractedText = await extractTextFromXLSX(buffer, file.name);
-  } else if (isImage) {
-    extractedText = await extractTextFromImage(buffer, file.name);
+  try {
+    if (file.type === "application/pdf" || file.name.endsWith(".pdf")) {
+      extractedText = (await extractTextFromPDF(buffer)).text;
+    } else if (file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" || file.name.endsWith(".docx")) {
+      extractedText = await extractTextFromDOCX(buffer, file.name);
+    } else if (file.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" || file.name.endsWith(".xlsx")) {
+      extractedText = await extractTextFromXLSX(buffer, file.name);
+    } else if (isImage) {
+      extractedText = await extractTextFromImage(buffer, file.name);
+    }
+  } catch (extractErr) {
+    console.warn(`[solomon upload] File extraction failed for "${file.name}":`, (extractErr as Error).message);
+    extractedText = `[Fișier neprelucrabil: ${file.name}]`;
   }
 
   // --- Create document record in Clienți Finali folder (linked to project) ---

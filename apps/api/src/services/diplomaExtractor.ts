@@ -1,4 +1,5 @@
 import { anthropic, withAILimit } from "../lib/anthropic";
+import { safeJSONParse } from "../lib/safeExtract";
 import type { ExtractionResult } from "./extractionTypes";
 
 /**
@@ -46,12 +47,12 @@ ${pdfText.slice(0, 15000)}`,
   }));
 
   const text = response.content[0].type === "text" ? response.content[0].text : "";
-  const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
 
   const fields: ExtractionResult["extracted_fields"] = [];
 
-  try {
-    const data = JSON.parse(cleaned);
+  const parsed = safeJSONParse(text, "diplomaExtractor");
+  if (parsed) {
+    const data = parsed.data;
 
     if (data.tip_document) fields.push({ field_key: "tip_document_studii", field_value: data.tip_document, confidence: 0.85, source_page: 1, extraction_method: "ai_sonnet" });
     if (data.institutie) fields.push({ field_key: "institutie_studii", field_value: data.institutie, confidence: 0.9, source_page: 1, extraction_method: "ai_sonnet" });
@@ -68,8 +69,8 @@ ${pdfText.slice(0, 15000)}`,
     if (data.media_absolvire != null) fields.push({ field_key: "media_absolvire", field_value: data.media_absolvire, confidence: 0.8, source_page: 1, extraction_method: "ai_sonnet" });
 
     fields.push({ field_key: "_raw_diploma", field_value: data, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
-  } catch {
-    console.error("[diplomaExtractor] Failed to parse extraction JSON");
+  } else {
+    console.error("[diplomaExtractor] CRITICAL: Failed to parse extraction JSON");
   }
 
   return {

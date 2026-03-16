@@ -1,4 +1,5 @@
 import { anthropic, withAILimit } from "../lib/anthropic";
+import { safeJSONParse } from "../lib/safeExtract";
 import type { ExtractionResult } from "./extractionTypes";
 
 /**
@@ -40,12 +41,12 @@ ${pdfText.slice(0, 60000)}`,
   }));
 
   const text = response.content[0].type === "text" ? response.content[0].text : "";
-  const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
 
   const fields: ExtractionResult["extracted_fields"] = [];
 
-  try {
-    const data = JSON.parse(cleaned);
+  const parsed = safeJSONParse(text, "mediuExtractor");
+  if (parsed) {
+    const data = parsed.data;
 
     fields.push({ field_key: "tip_document_mediu", field_value: data.tip_document ?? null, confidence: data.tip_document ? 0.9 : 0, source_page: 1, extraction_method: "ai_haiku" });
     fields.push({ field_key: "numar_document_mediu", field_value: data.numar_document ?? null, confidence: data.numar_document ? 0.9 : 0, source_page: 1, extraction_method: "ai_haiku" });
@@ -55,8 +56,8 @@ ${pdfText.slice(0, 60000)}`,
     fields.push({ field_key: "titular_mediu_cui", field_value: data.titular_cui ?? null, confidence: data.titular_cui ? 0.8 : 0, source_page: null, extraction_method: "ai_haiku" });
     fields.push({ field_key: "proiect_mediu_denumire", field_value: data.proiect_denumire ?? null, confidence: data.proiect_denumire ? 0.8 : 0, source_page: null, extraction_method: "ai_haiku" });
     fields.push({ field_key: "locatie_mediu", field_value: data.locatie ?? null, confidence: data.locatie ? 0.8 : 0, source_page: null, extraction_method: "ai_haiku" });
-  } catch {
-    console.error("Failed to parse document mediu extraction JSON");
+  } else {
+    console.error("[mediuExtractor] CRITICAL: Failed to parse extraction JSON");
   }
 
   return {

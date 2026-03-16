@@ -1,4 +1,5 @@
 import { anthropic, withAILimit } from "../lib/anthropic";
+import { safeJSONParse } from "../lib/safeExtract";
 import type { ExtractionResult } from "./extractionTypes";
 
 /**
@@ -95,12 +96,12 @@ export async function extractCarteIdentitate(text: string): Promise<ExtractionRe
 }
 
 function parseCIResponse(responseText: string, startTime: number): ExtractionResult {
-  const cleaned = responseText.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
   const fields: ExtractionResult["extracted_fields"] = [];
   const method = "ai_sonnet";
 
-  try {
-    const data = JSON.parse(cleaned);
+  const parsed = safeJSONParse(responseText, "carteIdentitateExtractor");
+  if (parsed) {
+    const data = parsed.data;
 
     if (data.cnp) fields.push({ field_key: "cnp", field_value: data.cnp, confidence: 0.95, source_page: 1, extraction_method: method });
     if (data.serie) fields.push({ field_key: "serie_ci", field_value: data.serie, confidence: 0.9, source_page: 1, extraction_method: method });
@@ -120,8 +121,8 @@ function parseCIResponse(responseText: string, startTime: number): ExtractionRes
     if (data.emitent) fields.push({ field_key: "emitent_ci", field_value: data.emitent, confidence: 0.8, source_page: 1, extraction_method: method });
 
     fields.push({ field_key: "_raw_carte_identitate", field_value: data, confidence: 0.9, source_page: null, extraction_method: method });
-  } catch {
-    console.error("[carteIdentitateExtractor] Failed to parse Claude Sonnet response JSON");
+  } else {
+    console.error("[carteIdentitateExtractor] CRITICAL: Failed to parse extraction JSON");
   }
 
   return {

@@ -9,6 +9,7 @@ import { publishEvent, publishJobProgress } from "../lib/sse";
 import { redis, isRedisReady } from "../lib/redis";
 import { upsertElementDefinition, autoMapTemplatePlaceholders } from "../services/elementDefinitionService";
 import { anthropic, withAILimit } from "../lib/anthropic";
+import { repairTruncatedJSON } from "../lib/safeExtract";
 
 /** Character limit for a single Opus + ET pass (200K context window) */
 const OPUS_CHAR_LIMIT = 150000;
@@ -137,66 +138,7 @@ TEXT GHID PRE-STRUCTURAT:
 /** Max continuation attempts when output is truncated */
 const MAX_CONTINUATION_ATTEMPTS = 2;
 
-/**
- * Try to repair truncated JSON by closing open arrays/objects.
- * Returns null if repair is not possible.
- */
-function repairTruncatedJSON(text: string): any | null {
-  let cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-
-  // Try parsing as-is first
-  try { return JSON.parse(cleaned); } catch {}
-
-  // Remove trailing comma before attempting to close
-  cleaned = cleaned.replace(/,\s*$/, "");
-
-  // Count open brackets/braces and close them
-  let openBraces = 0;
-  let openBrackets = 0;
-  let inString = false;
-  let escapeNext = false;
-
-  for (const ch of cleaned) {
-    if (escapeNext) { escapeNext = false; continue; }
-    if (ch === "\\") { escapeNext = true; continue; }
-    if (ch === '"') { inString = !inString; continue; }
-    if (inString) continue;
-    if (ch === "{") openBraces++;
-    if (ch === "}") openBraces--;
-    if (ch === "[") openBrackets++;
-    if (ch === "]") openBrackets--;
-  }
-
-  // Close unclosed structures
-  let suffix = "";
-  // If we're inside a string, close it first
-  if (inString) {
-    // Find the last complete entry — truncate to last complete object/closing bracket
-    const lastComplete = Math.max(cleaned.lastIndexOf("},"), cleaned.lastIndexOf("}]"));
-    if (lastComplete > 0) {
-      cleaned = cleaned.slice(0, lastComplete + 1);
-      // Recount
-      openBraces = 0; openBrackets = 0; inString = false; escapeNext = false;
-      for (const ch of cleaned) {
-        if (escapeNext) { escapeNext = false; continue; }
-        if (ch === "\\") { escapeNext = true; continue; }
-        if (ch === '"') { inString = !inString; continue; }
-        if (inString) continue;
-        if (ch === "{") openBraces++;
-        if (ch === "}") openBraces--;
-        if (ch === "[") openBrackets++;
-        if (ch === "]") openBrackets--;
-      }
-    } else {
-      return null; // Can't repair
-    }
-  }
-
-  for (let i = 0; i < openBrackets; i++) suffix += "]";
-  for (let i = 0; i < openBraces; i++) suffix += "}";
-
-  try { return JSON.parse(cleaned + suffix); } catch { return null; }
-}
+// repairTruncatedJSON imported from ../lib/safeExtract
 
 async function unifiedExtraction(
   structuredText: string,

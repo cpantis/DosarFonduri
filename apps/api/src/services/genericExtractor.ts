@@ -1,8 +1,12 @@
 import { anthropic, withAILimit } from "../lib/anthropic";
+import { safeJSONParse, splitTextIntoChunks, checkExtractionQuality } from "../lib/safeExtract";
 import type { ExtractionResult } from "./extractionTypes";
 
 /** Max chars per AI call — Sonnet handles 200K context but we stay under budget */
 const CHUNK_CHAR_LIMIT = 80000;
+
+/** Overlap pages between chunks to prevent field loss at boundaries */
+const CHUNK_OVERLAP_PAGES = 2;
 
 /** Max concurrent chunk extractions */
 const MAX_CHUNK_CONCURRENCY = 3;
@@ -12,8 +16,9 @@ const MAX_CHUNK_CONCURRENCY = 3;
  * a dedicated extractor. Uses Claude Sonnet to identify and extract
  * all relevant structured fields from the document text.
  *
- * For documents >80K chars, splits into chunks at page boundaries,
- * processes each chunk separately, then merges and deduplicates results.
+ * For documents >80K chars, splits into chunks at page boundaries
+ * with 2-page overlap, processes each chunk separately, then merges
+ * and deduplicates results.
  *
  * When vocabulary is provided (from element_definitions), the extractor
  * maps extracted fields to known keys, ensuring consistent naming and
@@ -73,7 +78,7 @@ Reguli:
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     const response = await withAILimit(() => anthropic.messages.create({
       model: "claude-sonnet-4-20250514",
-      max_tokens: 8000,
+      max_tokens: 12000, // Increased from 8000 for complex documents
       system: attempt > 1
         ? `Ești expert în documente oficiale românești. Returnează EXCLUSIV un JSON valid cu structura {"fields": [...]}. Fără backticks, fără explicații.${vocabSection}`
         : systemPrompt,
@@ -93,17 +98,47 @@ ${text.slice(0, CHUNK_CHAR_LIMIT)}`,
     }));
 
     const responseText = response.content[0].type === "text" ? response.content[0].text : "";
-    const cleaned = responseText.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+    const wasTruncated = response.stop_reason === "max_tokens";
 
-    // Try direct parse, then regex fallback
-    let data: any = null;
-    try { data = JSON.parse(cleaned); } catch { /* continue */ }
-    if (!data) {
-      const match = cleaned.match(/\{[\s\S]*\}/);
-      if (match) { try { data = JSON.parse(match[0]); } catch { /* continue */ } }
+    let fullText = responseText;
+
+    // Handle truncation — one continuation attempt
+    if (wasTruncated) {
+      console.warn(`[genericExtractor] Attempt ${attempt}: truncated at ${responseText.length} chars, requesting continuation...`);
+
+      const contResponse = await withAILimit(() => anthropic.messages.create({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 12000,
+        system: systemPrompt + "\n\nContinuă JSON-ul trunchiat. NU repeta ce a fost generat anterior.",
+        messages: [
+          {
+            role: "user",
+            content: `Extrage toate datele structurate din acest document. Returnează un JSON cu structura:
+{
+  "fields": [
+    { "key": "field_key_snake_case", "value": "valoarea extrasă", "page": 1 },
+    ...
+  ]
+}
+
+TEXT DOCUMENT:
+${text.slice(0, CHUNK_CHAR_LIMIT)}`,
+          },
+          { role: "assistant", content: responseText },
+          { role: "user", content: "JSON-ul a fost trunchiat. Continuă EXACT de unde ai rămas:" },
+        ],
+      }));
+
+      const contText = contResponse.content[0].type === "text" ? contResponse.content[0].text : "";
+      fullText = responseText + contText;
+      console.log(`[genericExtractor] Continuation: +${contText.length} chars (total: ${fullText.length})`);
     }
 
-    if (data) {
+    // Parse with safe JSON parser (includes repair)
+    const parsed = safeJSONParse(fullText, `genericExtractor_${documentType}`);
+
+    if (parsed) {
+      const data = parsed.data;
       const extractedFields = Array.isArray(data.fields) ? data.fields : [];
 
       for (const f of extractedFields) {
@@ -117,19 +152,22 @@ ${text.slice(0, CHUNK_CHAR_LIMIT)}`,
           extraction_method: "ai_sonnet",
         });
       }
+
+      if (parsed.repaired) {
+        console.warn(`[genericExtractor] Data was repaired from truncated JSON — some fields may be incomplete for "${documentType}"`);
+      }
       break; // success
     }
 
     console.error(
       `[genericExtractor] Attempt ${attempt}/${MAX_ATTEMPTS}: JSON parse failed for "${documentType}". ` +
-      `Response length: ${responseText.length}, first 300 chars: "${responseText.slice(0, 300)}". ` +
+      `Response length: ${fullText.length}, first 300 chars: "${fullText.slice(0, 300)}". ` +
       `Input text sample: "${textSample}"`,
     );
   }
 
-  if (fields.length === 0) {
-    console.error(`[genericExtractor] All attempts produced 0 fields for "${documentType}". Text sample: "${textSample}"`);
-  }
+  // Quality check
+  checkExtractionQuality(`genericExtractor:${documentType}`, text.length, fields.length);
 
   return {
     document_type: documentType,
@@ -140,8 +178,8 @@ ${text.slice(0, CHUNK_CHAR_LIMIT)}`,
 }
 
 /**
- * Extract from a large document by splitting into chunks at page boundaries,
- * processing each chunk, then merging and deduplicating results.
+ * Extract from a large document by splitting into chunks at page boundaries
+ * with overlap, processing each chunk, then merging and deduplicating results.
  */
 async function extractGenericChunked(
   text: string,
@@ -149,37 +187,9 @@ async function extractGenericChunked(
   vocabulary: string[] | undefined,
   start: number,
 ): Promise<ExtractionResult> {
-  // Split at page boundaries
-  const pageDelimiter = /--- Pagina \d+/g;
-  const pageBreaks: number[] = [];
-  let match: RegExpExecArray | null;
-  while ((match = pageDelimiter.exec(text)) !== null) {
-    pageBreaks.push(match.index);
-  }
+  const chunks = splitTextIntoChunks(text, CHUNK_CHAR_LIMIT, CHUNK_OVERLAP_PAGES);
 
-  // Build chunks that stay under CHUNK_CHAR_LIMIT
-  const chunks: string[] = [];
-  if (pageBreaks.length <= 1) {
-    // No page delimiters — split by character count
-    for (let i = 0; i < text.length; i += CHUNK_CHAR_LIMIT) {
-      chunks.push(text.slice(i, i + CHUNK_CHAR_LIMIT));
-    }
-  } else {
-    let chunkStart = 0;
-    for (let i = 1; i < pageBreaks.length; i++) {
-      const chunkSize = pageBreaks[i] - chunkStart;
-      if (chunkSize > CHUNK_CHAR_LIMIT) {
-        chunks.push(text.slice(chunkStart, pageBreaks[i]));
-        chunkStart = pageBreaks[i];
-      }
-    }
-    // Last chunk
-    if (chunkStart < text.length) {
-      chunks.push(text.slice(chunkStart));
-    }
-  }
-
-  console.log(`[genericExtractor] Large document (${text.length} chars): splitting into ${chunks.length} chunks for "${documentType}"`);
+  console.log(`[genericExtractor] Large document (${text.length} chars): splitting into ${chunks.length} chunks with ${CHUNK_OVERLAP_PAGES}-page overlap for "${documentType}"`);
 
   // Process chunks with concurrency limit
   const allFields: ExtractionResult["extracted_fields"] = [];
@@ -199,16 +209,27 @@ async function extractGenericChunked(
   );
   await Promise.all(workers);
 
-  // Deduplicate by field_key, keep highest confidence
+  // Deduplicate by field_key + value, keep highest confidence
   const fieldMap = new Map<string, ExtractionResult["extracted_fields"][0]>();
   for (const f of allFields) {
-    const existing = fieldMap.get(f.field_key);
+    // Use key+value for dedup to preserve different values for same key from different pages
+    const dedupKey = `${f.field_key}|${JSON.stringify(f.field_value)}`;
+    const existing = fieldMap.get(dedupKey);
     if (!existing || f.confidence > existing.confidence) {
-      fieldMap.set(f.field_key, f);
+      fieldMap.set(dedupKey, f);
     }
   }
 
-  const dedupedFields = Array.from(fieldMap.values());
+  // Also deduplicate by key alone when values are identical (from overlap)
+  const keyMap = new Map<string, ExtractionResult["extracted_fields"][0]>();
+  for (const f of fieldMap.values()) {
+    const existing = keyMap.get(f.field_key);
+    if (!existing || f.confidence > existing.confidence) {
+      keyMap.set(f.field_key, f);
+    }
+  }
+
+  const dedupedFields = Array.from(keyMap.values());
 
   console.log(
     `[genericExtractor] Chunked extraction complete: ${allFields.length} raw → ${dedupedFields.length} deduped fields from ${chunks.length} chunks`,

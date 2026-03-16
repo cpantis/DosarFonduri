@@ -1,4 +1,5 @@
 import { anthropic, withAILimit } from "../lib/anthropic";
+import { safeJSONParse } from "../lib/safeExtract";
 import type { ExtractionResult } from "./extractionTypes";
 
 /**
@@ -62,12 +63,12 @@ ${pdfText.slice(0, 20000)}`,
   }));
 
   const text = response.content[0].type === "text" ? response.content[0].text : "";
-  const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
 
   const fields: ExtractionResult["extracted_fields"] = [];
 
-  try {
-    const data = JSON.parse(cleaned);
+  const parsed = safeJSONParse(text, "extrasContExtractor");
+  if (parsed) {
+    const data = parsed.data;
 
     fields.push({ field_key: "banca", field_value: data.banca ?? null, confidence: data.banca ? 0.9 : 0, source_page: 1, extraction_method: "ai_haiku" });
     fields.push({ field_key: "sold_disponibil", field_value: data.sold_disponibil ?? null, confidence: data.sold_disponibil != null ? 0.9 : 0, source_page: 1, extraction_method: "ai_haiku" });
@@ -107,8 +108,8 @@ ${pdfText.slice(0, 20000)}`,
         });
       }
     }
-  } catch {
-    console.error("Failed to parse extras cont extraction JSON");
+  } else {
+    console.error("[extrasContExtractor] CRITICAL: Failed to parse extraction JSON");
   }
 
   return {

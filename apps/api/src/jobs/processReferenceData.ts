@@ -8,6 +8,7 @@ import { logAIUsage } from "../services/aiUsage";
 import { publishEvent } from "../lib/sse";
 import { redis } from "../lib/redis";
 import { anthropic, withAILimit } from "../lib/anthropic";
+import { splitTextIntoChunks, safeJSONParse, checkExtractionQuality } from "../lib/safeExtract";
 
 interface ProcessReferenceDataPayload {
   documentId: string;
@@ -15,42 +16,8 @@ interface ProcessReferenceDataPayload {
 }
 
 const CHUNK_CHAR_LIMIT = 80000;
+const CHUNK_OVERLAP_PAGES = 2;
 const MAX_CHUNK_CONCURRENCY = 3;
-
-/**
- * Split text into chunks at page boundaries (--- Pagina N ---),
- * each chunk staying under CHUNK_CHAR_LIMIT.
- */
-function splitTextIntoChunks(text: string): string[] {
-  if (text.length <= CHUNK_CHAR_LIMIT) return [text];
-
-  const pageMarker = /^--- Pagina \d+/gm;
-  const pageStarts: number[] = [0];
-  let m: RegExpExecArray | null;
-  while ((m = pageMarker.exec(text)) !== null) {
-    pageStarts.push(m.index);
-  }
-
-  const chunks: string[] = [];
-  let currentChunk = "";
-
-  for (let i = 0; i < pageStarts.length; i++) {
-    const end = i + 1 < pageStarts.length ? pageStarts[i + 1] : text.length;
-    const pageText = text.slice(pageStarts[i], end);
-
-    if (currentChunk.length + pageText.length > CHUNK_CHAR_LIMIT && currentChunk.length > 0) {
-      chunks.push(currentChunk);
-      currentChunk = pageText;
-    } else {
-      currentChunk += pageText;
-    }
-  }
-  if (currentChunk.length > 0) {
-    chunks.push(currentChunk);
-  }
-
-  return chunks;
-}
 
 const TABLE_EXTRACTION_SYSTEM = `Extragi tabele structurate din anexele ghidurilor de finanțare europeană.
 Fiecare tabel are un scop de lookup, clasificare sau listare.
@@ -77,27 +44,61 @@ async function extractTablesFromChunk(
   chunkText: string,
   chunkInfo: string,
   model: string,
-): Promise<{ tables: any[]; usage: { input_tokens: number; output_tokens: number } }> {
+): Promise<{ tables: any[]; usage: { input_tokens: number; output_tokens: number }; truncated: boolean }> {
   const response = await withAILimit(() => anthropic.messages.create({
     model,
-    max_tokens: 8000,
+    max_tokens: 12000, // Increased from 8000 — complex tables need more output space
     system: TABLE_EXTRACTION_SYSTEM,
     messages: [{ role: "user", content: TABLE_EXTRACTION_PROMPT(chunkText, chunkInfo) }],
   }));
 
   const content = response.content[0].type === "text" ? response.content[0].text : "[]";
-  const cleaned = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+  const wasTruncated = response.stop_reason === "max_tokens";
 
-  let parsed: any[];
-  try {
-    parsed = JSON.parse(cleaned);
-    if (!Array.isArray(parsed)) parsed = [parsed];
-  } catch {
-    console.error("Failed to parse reference tables JSON from chunk");
-    parsed = [];
+  if (wasTruncated) {
+    console.warn(`[processReferenceData] Chunk truncated at ${content.length} chars — attempting continuation...`);
+
+    // One continuation attempt for tables
+    const contResponse = await withAILimit(() => anthropic.messages.create({
+      model,
+      max_tokens: 12000,
+      system: TABLE_EXTRACTION_SYSTEM + "\n\nContinuă JSON-ul trunchiat. NU repeta ce a fost generat anterior.",
+      messages: [
+        { role: "user", content: TABLE_EXTRACTION_PROMPT(chunkText, chunkInfo) },
+        { role: "assistant", content },
+        { role: "user", content: "JSON-ul a fost trunchiat. Continuă EXACT de unde ai rămas:" },
+      ],
+    }));
+
+    const contText = contResponse.content[0].type === "text" ? contResponse.content[0].text : "";
+    const fullText = content + contText;
+
+    const parsed = safeJSONParse(fullText, "refData_chunk");
+    let tables: any[] = [];
+    if (parsed) {
+      tables = Array.isArray(parsed.data) ? parsed.data : [parsed.data];
+    }
+
+    return {
+      tables,
+      usage: {
+        input_tokens: response.usage.input_tokens + contResponse.usage.input_tokens,
+        output_tokens: response.usage.output_tokens + contResponse.usage.output_tokens,
+      },
+      truncated: true,
+    };
   }
 
-  return { tables: parsed, usage: response.usage };
+  // Normal (non-truncated) path
+  const parsed = safeJSONParse(content, "refData_chunk");
+  let tables: any[] = [];
+  if (parsed) {
+    tables = Array.isArray(parsed.data) ? parsed.data : [parsed.data];
+  } else {
+    console.error(`[processReferenceData] CRITICAL: Failed to parse reference tables JSON from chunk (${content.length} chars)`);
+  }
+
+  return { tables, usage: response.usage, truncated: false };
 }
 
 async function extractTables(
@@ -106,10 +107,13 @@ async function extractTables(
   documentId: string,
   organizationId: string,
 ): Promise<void> {
-  const chunks = splitTextIntoChunks(text);
+  const chunks = splitTextIntoChunks(text, CHUNK_CHAR_LIMIT, CHUNK_OVERLAP_PAGES);
   const allTables: any[] = [];
   let totalInput = 0;
   let totalOutput = 0;
+  let anyTruncated = false;
+
+  console.log(`[processReferenceData] Processing ${chunks.length} chunk(s) with ${CHUNK_OVERLAP_PAGES}-page overlap`);
 
   // Process chunks with concurrency limit
   for (let i = 0; i < chunks.length; i += MAX_CHUNK_CONCURRENCY) {
@@ -127,19 +131,34 @@ async function extractTables(
       allTables.push(...r.tables);
       totalInput += r.usage.input_tokens;
       totalOutput += r.usage.output_tokens;
+      if (r.truncated) anyTruncated = true;
     }
   }
 
-  // Deduplicate tables by name (keep first occurrence)
+  // Deduplicate tables by name + source_page (more precise than name alone)
   const seen = new Set<string>();
   const dedupedTables = allTables.filter((t) => {
-    const key = (t.name || "").toLowerCase().trim();
+    const name = (t.name || "").toLowerCase().trim();
+    const page = t.source_page || 0;
+    const key = `${name}|p${page}`;
     if (!key || !seen.has(key)) {
-      if (key) seen.add(key);
+      if (name) seen.add(key);
       return true;
     }
     return false;
   });
+
+  const dedupRemoved = allTables.length - dedupedTables.length;
+  if (dedupRemoved > 0) {
+    console.log(`[processReferenceData] Dedup: ${allTables.length} raw → ${dedupedTables.length} unique (removed ${dedupRemoved} duplicates from overlap)`);
+  }
+
+  // Quality check
+  checkExtractionQuality("processReferenceData", text.length, dedupedTables.length, 1);
+
+  if (anyTruncated) {
+    console.warn(`[processReferenceData] Some chunks were truncated — table data may be incomplete`);
+  }
 
   if (dedupedTables.length > 0) {
     await db.insert(guideReferenceTables).values(

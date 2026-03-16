@@ -113,12 +113,15 @@ print(json.dumps(placeholders))
 async function classifyElements(
   placeholders: Array<{ key: string; context: string }>,
   model: string,
+  tokenUsage?: { input: number; output: number },
 ): Promise<Array<{ key: string; label: string; fieldType: string }>> {
   if (placeholders.length === 0) return [];
 
+  const { safeJSONParse } = await import("../lib/safeExtract");
+
   const response = await withAILimit(() => anthropic.messages.create({
     model,
-    max_tokens: 4000,
+    max_tokens: 6000, // Increased from 4000 for templates with many fields
     system: `Clasifica fiecare camp placeholder dintr-un template de document de finantare.
 Pentru fiecare, returneaza label descriptiv in romana si tipul campului.
 Returneaza DOAR JSON valid — array de obiecte.`,
@@ -132,18 +135,29 @@ Returneaza:
     }],
   }));
 
-  const text = response.content[0].type === "text" ? response.content[0].text : "[]";
-  const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-  try {
-    return JSON.parse(cleaned);
-  } catch {
-    console.warn(`[processTemplate] AI label classification failed — using auto-generated labels for ${placeholders.length} fields`);
-    return placeholders.map(p => ({
-      key: p.key,
-      label: p.key.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase()),
-      fieldType: "text",
-    }));
+  // Track actual token usage for this call
+  if (tokenUsage) {
+    tokenUsage.input += response.usage.input_tokens;
+    tokenUsage.output += response.usage.output_tokens;
   }
+
+  const text = response.content[0].type === "text" ? response.content[0].text : "[]";
+
+  if (response.stop_reason === "max_tokens") {
+    console.warn(`[processTemplate] Classification truncated at ${text.length} chars for ${placeholders.length} fields`);
+  }
+
+  const parsed = safeJSONParse(text, "processTemplate_classify");
+  if (parsed && Array.isArray(parsed.data)) {
+    return parsed.data;
+  }
+
+  console.warn(`[processTemplate] AI label classification failed — using auto-generated labels for ${placeholders.length} fields`);
+  return placeholders.map(p => ({
+    key: p.key,
+    label: p.key.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase()),
+    fieldType: "text",
+  }));
 }
 
 /**
@@ -293,6 +307,9 @@ export const processTemplateWorker = new Worker<ProcessTemplatePayload>(
   async (job: Job<ProcessTemplatePayload>) => {
     const { documentId, organizationId } = job.data;
 
+    // Track actual token usage for AI cost logging
+    const classifyTokenUsage = { input: 0, output: 0 };
+
     try {
       await db.update(documents).set({ status: "processing", processingError: null }).where(eq(documents.id, documentId));
 
@@ -431,7 +448,7 @@ export const processTemplateWorker = new Worker<ProcessTemplatePayload>(
 
         await job.updateProgress(55);
         const classified = placeholders.length > 0
-          ? await classifyElements(placeholders, "claude-sonnet-4-20250514")
+          ? await classifyElements(placeholders, "claude-sonnet-4-20250514", classifyTokenUsage)
           : [];
 
         await job.updateProgress(70);
@@ -540,8 +557,8 @@ export const processTemplateWorker = new Worker<ProcessTemplatePayload>(
         organizationId,
         agent: "ghid_rules",
         model: "claude-sonnet-4-20250514",
-        tokensInput: 0,
-        tokensOutput: 0,
+        tokensInput: classifyTokenUsage.input,
+        tokensOutput: classifyTokenUsage.output,
         action: "classify_template_elements",
       });
 

@@ -1,4 +1,5 @@
 import { anthropic, withAILimit } from "../lib/anthropic";
+import { safeJSONParse, checkExtractionQuality } from "../lib/safeExtract";
 import type { ExtractionResult } from "./extractionTypes";
 
 /**
@@ -20,7 +21,7 @@ export async function extractRegistruImobilizari(pdfText: string): Promise<Extra
 
   const response = await withAILimit(() => anthropic.messages.create({
     model: "claude-sonnet-4-20250514",
-    max_tokens: 6000,
+    max_tokens: 10000,
     system: `Ești expert în contabilitate românească. Extrage registrul de imobilizări corporale (mijloace fixe) din documentul primit.
 
 IMPORTANT:
@@ -57,13 +58,31 @@ ${pdfText.slice(0, 120000)}`,
     }],
   }));
 
-  const text = response.content[0].type === "text" ? response.content[0].text : "";
-  const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+  let fullText = response.content[0].type === "text" ? response.content[0].text : "";
+
+  // Handle truncation — registre can have many equipment items
+  if (response.stop_reason === "max_tokens") {
+    console.warn(`[registruExtractor] Truncated at ${fullText.length} chars, requesting continuation...`);
+    const contResponse = await withAILimit(() => anthropic.messages.create({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 10000,
+      system: `Ești expert în contabilitate românească. Continuă JSON-ul trunchiat. NU repeta ce a fost generat anterior.`,
+      messages: [
+        { role: "user", content: `Extrage lista de imobilizări corporale. TEXT: ${pdfText.slice(0, 120000)}` },
+        { role: "assistant", content: fullText },
+        { role: "user", content: "JSON-ul a fost trunchiat. Continuă EXACT de unde ai rămas:" },
+      ],
+    }));
+    const contText = contResponse.content[0].type === "text" ? contResponse.content[0].text : "";
+    fullText += contText;
+    console.log(`[registruExtractor] Continuation: +${contText.length} chars (total: ${fullText.length})`);
+  }
 
   const fields: ExtractionResult["extracted_fields"] = [];
 
-  try {
-    const data = JSON.parse(cleaned);
+  const parsed = safeJSONParse(fullText, "registruExtractor");
+  if (parsed) {
+    const data = parsed.data;
 
     fields.push({ field_key: "total_valoare_inventar", field_value: data.total_valoare_inventar ?? null, confidence: data.total_valoare_inventar != null ? 0.85 : 0, source_page: null, extraction_method: "ai_sonnet" });
     fields.push({ field_key: "total_amortizare", field_value: data.total_amortizare ?? null, confidence: data.total_amortizare != null ? 0.85 : 0, source_page: null, extraction_method: "ai_sonnet" });
@@ -139,9 +158,11 @@ ${pdfText.slice(0, 120000)}`,
     }
 
     fields.push({ field_key: "_raw_echipamente", field_value: echipamente, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
-  } catch {
-    console.error("Failed to parse registru imobilizari extraction JSON");
+  } else {
+    console.error("[registruExtractor] CRITICAL: Failed to parse extraction JSON");
   }
+
+  checkExtractionQuality("registruExtractor", pdfText.length, fields.length);
 
   return {
     document_type: "registru_imobilizari",

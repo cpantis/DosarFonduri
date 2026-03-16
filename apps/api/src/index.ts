@@ -45,11 +45,17 @@ app.get("/", (c) => c.json({ status: "ok", service: "dosarfonduri-api" }));
 app.get("/health", async (c) => {
   let redisOk = false;
   try {
-    const { redis } = await import("./lib/redis");
-    const pong = await redis.ping();
-    redisOk = pong === "PONG";
-  } catch { /* redis down */ }
-  return c.json({ status: redisOk ? "ok" : "degraded", service: "dosarfonduri-api", redis: redisOk ? "ok" : "down", timestamp: new Date().toISOString() });
+    const { isRedisReady, redis } = await import("./lib/redis");
+    if (isRedisReady()) {
+      // Only ping if already connected — avoids hanging when Redis is unreachable
+      const pong = await Promise.race([
+        redis.ping(),
+        new Promise<null>((_, reject) => setTimeout(() => reject(new Error("timeout")), 2000)),
+      ]);
+      redisOk = pong === "PONG";
+    }
+  } catch { /* redis down or timeout */ }
+  return c.json({ status: "ok", service: "dosarfonduri-api", redis: redisOk ? "ok" : "down", timestamp: new Date().toISOString() });
 });
 
 // Global middleware
@@ -126,8 +132,8 @@ app.onError(errorHandler);
 // Temporary setup endpoint — triggers migrations + seed via HTTP
 app.get("/setup-db", async (c) => {
   const secret = c.req.query("key");
-  const expectedSecret = process.env.SETUP_DB_SECRET || "DosarSetup2026";
-  if (secret !== expectedSecret) return c.json({ error: "Forbidden" }, 403);
+  if (!process.env.SETUP_DB_SECRET) return c.json({ error: "SETUP_DB_SECRET env var not set" }, 500);
+  if (secret !== process.env.SETUP_DB_SECRET) return c.json({ error: "Forbidden" }, 403);
 
   try {
     const { db } = await import("./db");
@@ -135,14 +141,6 @@ app.get("/setup-db", async (c) => {
     const fs = await import("fs");
     const pathMod = await import("path");
     const bcrypt = await import("bcryptjs");
-
-    // Check if tables already exist
-    const result = await db.execute(sqlTag`
-      SELECT EXISTS (
-        SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'users'
-      ) as exists
-    `);
-    const tableExists = result[0]?.exists;
 
     // Find migrations directory
     const possiblePaths = [
@@ -164,7 +162,7 @@ app.get("/setup-db", async (c) => {
       return c.json({ error: "Migration SQL not found", searched: possiblePaths }, 404);
     }
 
-    // Run ALL migration SQL files in order (not just 0000)
+    // Run ALL migration SQL files in order
     const migrationFiles = fs.default.readdirSync(migrationsDir)
       .filter((f: string) => f.endsWith(".sql"))
       .sort();
@@ -183,7 +181,6 @@ app.get("/setup-db", async (c) => {
           await db.execute(sqlTag.raw(stmt));
           results.push(`${file}: OK`);
         } catch (e: any) {
-          // Ignore "already exists" errors — these are expected on re-runs
           if (!e.message?.includes("already exists") && !e.message?.includes("duplicate")) {
             results.push(`${file}: ${e.message?.substring(0, 80) || "error"}`);
           }
@@ -191,41 +188,55 @@ app.get("/setup-db", async (c) => {
       }
     }
 
-    // Seed demo user
-    const { organizations, users } = await import("./db/schema");
-    const [org] = await db.insert(organizations).values({
-      name: "Demo Cabinet",
-      code: "DEMO-2026",
-      plan: "professional",
-      maxUsers: 5,
-      status: "active",
-    }).returning();
+    // Seed users from env vars — no hardcoded credentials
+    const seedEmail = process.env.SEED_DEMO_EMAIL;
+    const seedPassword = process.env.SEED_DEMO_PASSWORD;
+    const seedName = process.env.SEED_DEMO_USER_NAME || "Admin";
+    const seedOrgName = process.env.SEED_DEMO_ORG_NAME || "Default Cabinet";
+    let userResult = null;
+    let orgResult = null;
 
-    const passwordHash = await bcrypt.hash("Demo2026!Selenade", 12);
-    const [user] = await db.insert(users).values({
-      email: "calin_pantis@yahoo.com",
-      name: "Calin Pantis",
-      passwordHash,
-      organizationId: org.id,
-      role: "admin",
-      status: "active",
-    }).returning();
+    if (seedEmail && seedPassword) {
+      const { organizations, users } = await import("./db/schema");
+      const [org] = await db.insert(organizations).values({
+        name: seedOrgName,
+        code: "SETUP-" + Date.now().toString(36).toUpperCase(),
+        plan: "professional",
+        maxUsers: 5,
+        status: "active",
+      }).returning();
 
-    // Seed provider user
-    const { providerUsers } = await import("./db/schema");
-    const providerHash = await bcrypt.hash("ChangeMeNow!2026", 12);
-    await db.insert(providerUsers).values({
-      email: "admin@dosarfonduri.ro",
-      name: "DosarFonduri Admin",
-      passwordHash: providerHash,
-    });
+      const passwordHash = await bcrypt.hash(seedPassword, 12);
+      const [user] = await db.insert(users).values({
+        email: seedEmail,
+        name: seedName,
+        passwordHash,
+        organizationId: org.id,
+        role: "admin",
+        status: "active",
+      }).returning();
+      userResult = { id: user.id, email: user.email };
+      orgResult = { id: org.id, name: org.name };
+    }
+
+    const providerEmail = process.env.SEED_PROVIDER_EMAIL;
+    const providerPassword = process.env.SEED_PROVIDER_PASSWORD;
+    if (providerEmail && providerPassword) {
+      const { providerUsers } = await import("./db/schema");
+      const providerHash = await bcrypt.hash(providerPassword, 12);
+      await db.insert(providerUsers).values({
+        email: providerEmail,
+        name: process.env.SEED_PROVIDER_NAME || "Provider Admin",
+        passwordHash: providerHash,
+      });
+    }
 
     return c.json({
       status: "success",
       migrationsDir,
       migrationsExecuted: migrationFiles.length,
-      user: { id: user.id, email: user.email },
-      org: { id: org.id, name: org.name },
+      user: userResult,
+      org: orgResult,
     });
   } catch (err: any) {
     return c.json({ error: err.message, stack: err.stack?.substring(0, 500) }, 500);

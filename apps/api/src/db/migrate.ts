@@ -106,13 +106,17 @@ async function runMigrations() {
   try {
     const existing = await db.query.providerUsers.findFirst();
     if (!existing) {
-      const email = process.env.SEED_PROVIDER_EMAIL || "admin@dosarfonduri.ro";
-      const password = process.env.SEED_PROVIDER_PASSWORD || "ChangeMeNow!2026";
+      const email = process.env.SEED_PROVIDER_EMAIL;
+      const password = process.env.SEED_PROVIDER_PASSWORD;
       const name = process.env.SEED_PROVIDER_NAME || "DosarFonduri Admin";
-      const passwordHash = await hash(password, 12);
 
-      await db.insert(schema.providerUsers).values({ email, passwordHash, name });
-      console.log(`Seed: provider user created (${email})`);
+      if (!email || !password) {
+        console.log("Seed: SEED_PROVIDER_EMAIL and SEED_PROVIDER_PASSWORD must be set to create initial provider user. Skipping.");
+      } else {
+        const passwordHash = await hash(password, 12);
+        await db.insert(schema.providerUsers).values({ email, passwordHash, name });
+        console.log(`Seed: provider user created (${email})`);
+      }
     } else {
       console.log("Seed: provider user already exists, skipping");
     }
@@ -120,34 +124,37 @@ async function runMigrations() {
     console.error("Seed provider warning:", error);
   }
 
-  // Seed: create demo organization + user if none exists
+  // Seed: create demo organization + user if none exists (only when SEED_DEMO_EMAIL is set)
   try {
     const existingUser = await db.query.users.findFirst();
     if (!existingUser) {
-      // Create demo organization
-      const [org] = await db.insert(schema.organizations).values({
-        name: "Demo Cabinet",
-        code: "DEMO-2026",
-        plan: "professional",
-        maxUsers: 5,
-        status: "active",
-      }).returning();
+      const demoEmail = process.env.SEED_DEMO_EMAIL;
+      const demoPassword = process.env.SEED_DEMO_PASSWORD;
 
-      // Create demo admin user
-      const demoEmail = "calin_pantis@yahoo.com";
-      const demoPassword = "Demo2026!Selenade";
-      const passwordHash = await hash(demoPassword, 12);
+      if (!demoEmail || !demoPassword) {
+        console.log("Seed: SEED_DEMO_EMAIL and SEED_DEMO_PASSWORD must be set to create demo user. Skipping.");
+      } else {
+        // Create demo organization
+        const [org] = await db.insert(schema.organizations).values({
+          name: process.env.SEED_DEMO_ORG_NAME || "Demo Cabinet",
+          code: "DEMO-2026",
+          plan: "professional",
+          maxUsers: 5,
+          status: "active",
+        }).returning();
 
-      await db.insert(schema.users).values({
-        email: demoEmail,
-        name: "Calin Pantis",
-        passwordHash,
-        organizationId: org.id,
-        role: "admin",
-        status: "active",
-      });
+        const passwordHash = await hash(demoPassword, 12);
+        await db.insert(schema.users).values({
+          email: demoEmail,
+          name: process.env.SEED_DEMO_USER_NAME || "Demo Admin",
+          passwordHash,
+          organizationId: org.id,
+          role: "admin",
+          status: "active",
+        });
 
-      console.log(`Seed: demo user created (${demoEmail}) in org "${org.name}"`);
+        console.log(`Seed: demo user created (${demoEmail}) in org "${org.name}"`);
+      }
     } else {
       console.log("Seed: users already exist, skipping demo user");
     }

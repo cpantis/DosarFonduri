@@ -6,6 +6,11 @@ import { users, organizations, projects, aiUsageLog, auditLog } from "../db/sche
 import { eq, and, sql, desc, count, sum, gte, lte, ilike } from "drizzle-orm";
 import type { AuthContext } from "../middleware/auth";
 
+// HTML escape to prevent XSS in email templates
+function escapeHtml(str: string): string {
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
 export const adminRoutes = new Hono<AppEnv>();
 
 // Helper: require admin role
@@ -132,16 +137,16 @@ adminRoutes.post("/users", async (c) => {
             `</div>`,
             `<h2 style="color:#1a1e28;margin:0 0 16px">Bine ai venit!</h2>`,
             `<p style="color:#5a6478;font-size:15px;line-height:1.6">`,
-            `Ai fost invitat să te alături cabinetului <strong>${org.name}</strong> cu rolul de <strong>${body.role}</strong>.`,
+            `Ai fost invitat să te alături cabinetului <strong>${escapeHtml(org.name)}</strong> cu rolul de <strong>${escapeHtml(body.role)}</strong>.`,
             `</p>`,
             `<p style="color:#5a6478;font-size:15px;line-height:1.6">`,
-            `Pentru a-ți activa contul, creează-ți un cont folosind adresa de email <strong>${body.email}</strong>:`,
+            `Pentru a-ți activa contul, creează-ți un cont folosind adresa de email <strong>${escapeHtml(body.email)}</strong>:`,
             `</p>`,
             `<div style="text-align:center;margin:28px 0">`,
             `<a href="${signupUrl}" style="display:inline-block;padding:14px 36px;background:#a78bfa;color:#fff;text-decoration:none;border-radius:10px;font-weight:700;font-size:15px">Creează cont</a>`,
             `</div>`,
             `<p style="color:#8892a8;font-size:13px;line-height:1.5">`,
-            `După înregistrare vei avea acces direct la cabinetul ${org.name} fără a fi nevoie de un cod de activare.`,
+            `După înregistrare vei avea acces direct la cabinetul ${escapeHtml(org.name)} fără a fi nevoie de un cod de activare.`,
             `</p>`,
             `<hr style="border:none;border-top:1px solid #e0e4ea;margin:24px 0"/>`,
             `<p style="color:#8892a8;font-size:12px">DosarFonduri &copy; ${new Date().getFullYear()}</p>`,
@@ -194,7 +199,9 @@ adminRoutes.put("/users/:id", async (c) => {
     .where(eq(users.id, id))
     .returning();
 
-  return c.json(updated);
+  // Strip sensitive fields before returning
+  const { passwordHash: _, ...safeUser } = updated;
+  return c.json(safeUser);
 });
 
 // ─── GET /ai-costs ───

@@ -219,6 +219,21 @@ configRoutes.post("/api-integrations/:id/test", async (c) => {
   if (!integration) return c.json({ error: "Integration not found" }, 404);
 
   try {
+    // SSRF protection: only allow HTTPS URLs to public domains
+    const parsedUrl = new URL(integration.url);
+    const blockedHosts = ["localhost", "127.0.0.1", "0.0.0.0", "[::1]", "169.254.169.254", "metadata.google.internal"];
+    if (blockedHosts.includes(parsedUrl.hostname) || parsedUrl.hostname.endsWith(".local") || parsedUrl.protocol !== "https:") {
+      return c.json({ success: false, result: "URL-ul nu este permis (doar HTTPS către domenii publice)" }, 400);
+    }
+    // Block private IP ranges
+    const ipMatch = parsedUrl.hostname.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+    if (ipMatch) {
+      const [, a, b] = ipMatch.map(Number);
+      if (a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)) {
+        return c.json({ success: false, result: "URL-ul nu este permis (adresă IP privată)" }, 400);
+      }
+    }
+
     // Attempt a HEAD/GET request to the API URL
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
@@ -233,6 +248,7 @@ configRoutes.post("/api-integrations/:id/test", async (c) => {
       method: "HEAD",
       headers,
       signal: controller.signal,
+      redirect: "manual", // Don't follow redirects (prevent SSRF via redirect)
     });
     clearTimeout(timeout);
 

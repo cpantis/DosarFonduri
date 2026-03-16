@@ -99,7 +99,8 @@ print(json.dumps(placeholders))
   fs.writeFileSync(scriptPath, script);
 
   try {
-    const result = execSync(`python3 ${scriptPath} ${inputPath}`, {
+    const { execFileSync } = await import("child_process");
+    const result = execFileSync("python3", [scriptPath, inputPath], {
       encoding: "utf-8",
       timeout: 30000,
     });
@@ -255,7 +256,8 @@ print(json.dumps(unique))
   fs.writeFileSync(scriptPath, script);
 
   try {
-    const result = execSync(`python3 ${scriptPath} ${inputPath}`, {
+    const { execFileSync } = await import("child_process");
+    const result = execFileSync("python3", [scriptPath, inputPath], {
       encoding: "utf-8",
       timeout: 30000,
     });
@@ -285,7 +287,8 @@ async function convertDocxToPdf(buffer: Buffer): Promise<Buffer | null> {
   fs.mkdirSync(outDir, { recursive: true });
 
   try {
-    execSync(`libreoffice --headless --convert-to pdf --outdir "${outDir}" "${inputPath}"`, {
+    const { execFileSync: execFileSync2 } = await import("child_process");
+    execFileSync2("libreoffice", ["--headless", "--convert-to", "pdf", "--outdir", outDir, inputPath], {
       encoding: "utf-8",
       timeout: 30000,
     });

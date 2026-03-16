@@ -70,7 +70,9 @@ exportRoutes.get("/projects-csv", async (c) => {
 
   const companyIds = [...new Set(allProjects.map(p => p.companyId))];
   const allCompanies = companyIds.length > 0
-    ? await db.query.companies.findMany()
+    ? await db.query.companies.findMany({
+        where: eq(companies.organizationId, auth.organizationId!),
+      })
     : [];
   const companyMap = Object.fromEntries(allCompanies.map(c => [c.id, c]));
 
@@ -89,10 +91,15 @@ exportRoutes.get("/projects-csv", async (c) => {
 
   const escapeCsv = (val: string | null | undefined) => {
     if (!val) return "";
-    if (val.includes(",") || val.includes('"') || val.includes("\n")) {
-      return `"${val.replace(/"/g, '""')}"`;
+    // Prevent CSV injection: prefix formula-triggering characters with a single quote
+    let safe = val;
+    if (/^[=+\-@\t\r]/.test(safe)) {
+      safe = "'" + safe;
     }
-    return val;
+    if (safe.includes(",") || safe.includes('"') || safe.includes("\n")) {
+      return `"${safe.replace(/"/g, '""')}"`;
+    }
+    return safe;
   };
 
   const header = "id,nume_proiect,status,firma,cui,program,cod_masura,valoare,deadline,elemente_total,elemente_completate,elemente_confirmate,creat_la\n";
@@ -133,12 +140,22 @@ exportRoutes.get("/activity", async (c) => {
     limit: 10000,
   });
 
+  const escapeCsvField = (val: string | null | undefined) => {
+    if (!val) return "";
+    let safe = val;
+    if (/^[=+\-@\t\r]/.test(safe)) safe = "'" + safe;
+    if (safe.includes(",") || safe.includes('"') || safe.includes("\n")) {
+      return `"${safe.replace(/"/g, '""')}"`;
+    }
+    return safe;
+  };
+
   const header = "timestamp,user_id,action,entity_type,entity_id\n";
   const rows = logs.map(l =>
-    `${l.createdAt?.toISOString()},${l.userId},${l.action},${l.entityType || ""},${l.entityId || ""}`
+    `${l.createdAt?.toISOString()},${escapeCsvField(l.userId)},${escapeCsvField(l.action)},${escapeCsvField(l.entityType)},${escapeCsvField(l.entityId)}`
   ).join("\n");
 
-  c.header("Content-Type", "text/csv");
+  c.header("Content-Type", "text/csv; charset=utf-8");
   c.header("Content-Disposition", `attachment; filename="dosarfonduri_activity_${new Date().toISOString().slice(0, 10)}.csv"`);
-  return c.text(header + rows);
+  return c.text("\ufeff" + header + rows);
 });

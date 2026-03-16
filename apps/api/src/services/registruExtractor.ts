@@ -53,7 +53,7 @@ IMPORTANT:
 }
 
 TEXT DOCUMENT:
-${pdfText.slice(0, 80000)}`,
+${pdfText.slice(0, 120000)}`,
     }],
   }));
 

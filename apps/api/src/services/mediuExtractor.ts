@@ -35,7 +35,7 @@ Returnează DOAR JSON valid, fără backticks, fără explicații.`,
 }
 
 TEXT DOCUMENT:
-${pdfText.slice(0, 30000)}`,
+${pdfText.slice(0, 60000)}`,
     }],
   }));
 

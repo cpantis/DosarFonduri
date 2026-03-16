@@ -106,8 +106,12 @@ CREATE INDEX IF NOT EXISTS "proj_el_elemdef_idx" ON "project_elements" ("element
 ALTER TABLE "project_elements" ALTER COLUMN "template_element_id" DROP NOT NULL;
 
 -- Add element_def_id to element_rule_links (nullable for backward compat)
-ALTER TABLE "element_rule_links" ADD COLUMN IF NOT EXISTS "element_def_id" uuid REFERENCES "element_definitions"("id") ON DELETE CASCADE;
-CREATE INDEX IF NOT EXISTS "elem_rule_elemdef_idx" ON "element_rule_links" ("element_def_id");
-
--- Make template_element_id nullable in element_rule_links (was NOT NULL)
-ALTER TABLE "element_rule_links" ALTER COLUMN "template_element_id" DROP NOT NULL;
+-- Wrapped in existence check because element_rule_links may not exist yet (created by 0099_alignment)
+-- Wrapped in existence check because element_rule_links may not exist yet (created by 0099_alignment)
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'element_rule_links') THEN
+    ALTER TABLE "element_rule_links" ADD COLUMN IF NOT EXISTS "element_def_id" uuid REFERENCES "element_definitions"("id") ON DELETE CASCADE;
+    ALTER TABLE "element_rule_links" ALTER COLUMN "template_element_id" DROP NOT NULL;
+    CREATE INDEX IF NOT EXISTS "elem_rule_elemdef_idx" ON "element_rule_links" ("element_def_id");
+  END IF;
+END $$;

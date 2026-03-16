@@ -545,20 +545,35 @@ companyRoutes.get("/:id/financials", async (c) => {
 });
 
 // --- UPDATE COMPANY ---
+const updateCompanySchema = z.object({
+  denumire: z.string().min(1).max(500).optional(),
+  formaJuridica: z.enum(["SRL", "SA", "SNC", "SCS", "SCA", "PFA", "II", "IF", "SC", "RA", "SA_BVB"]).optional(),
+  caen: z.string().max(10).optional().nullable(),
+  adresa: z.string().max(500).optional().nullable(),
+  localitate: z.string().max(200).optional().nullable(),
+  judet: z.string().max(100).optional().nullable(),
+  telefon: z.string().max(50).optional().nullable(),
+  email: z.string().email().optional().nullable(),
+  website: z.string().max(500).optional().nullable(),
+  capitalSocial: z.string().max(50).optional().nullable(),
+  moneda: z.string().max(10).optional().nullable(),
+  partiSociale: z.number().int().optional().nullable(),
+  valoareParte: z.string().max(50).optional().nullable(),
+});
+
 companyRoutes.put("/:id", async (c) => {
   const auth = c.get("auth") as AuthContext;
   const id = c.req.param("id");
-  const body = await c.req.json();
+  const body = updateCompanySchema.parse(await c.req.json());
 
   const company = await db.query.companies.findFirst({
     where: and(eq(companies.id, id), eq(companies.organizationId, auth.organizationId!)),
   });
   if (!company) return c.json({ error: "Not found" }, 404);
 
-  const allowedFields = ["denumire", "formaJuridica", "caen", "adresa", "localitate", "judet", "telefon", "email", "website", "capitalSocial", "moneda", "partiSociale", "valoareParte"];
   const updateData: Record<string, any> = { updatedAt: new Date() };
-  for (const field of allowedFields) {
-    if (body[field] !== undefined) updateData[field] = body[field];
+  for (const [key, value] of Object.entries(body)) {
+    if (value !== undefined) updateData[key] = value;
   }
 
   const [updated] = await db.update(companies).set(updateData).where(eq(companies.id, id)).returning();

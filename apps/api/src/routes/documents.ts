@@ -2,6 +2,7 @@ import type { AppEnv } from "../types/hono";
 import { Hono } from "hono";
 import { z } from "zod";
 import { createHash } from "crypto";
+import { updateDocElementSchema, validatePageSchema, createDocElementSchema } from "@dosarfonduri/shared";
 import { db } from "../db";
 import { documentFolders, documents, files, templateElements, rules, scoringCriteria, elementDefinitions } from "../db/schema";
 import { eq, and, isNull, sql } from "drizzle-orm";
@@ -798,7 +799,7 @@ documentRoutes.get("/documents/:id/elements", async (c) => {
 documentRoutes.put("/documents/:docId/elements/:elId", async (c) => {
   const auth = c.get("auth") as AuthContext;
   const { docId, elId } = c.req.param() as { docId: string; elId: string };
-  const body = await c.req.json();
+  const body = updateDocElementSchema.parse(await c.req.json());
 
   const el = await db.query.templateElements.findFirst({
     where: and(eq(templateElements.id, elId), eq(templateElements.documentId, docId)),
@@ -826,7 +827,7 @@ documentRoutes.put("/documents/:docId/elements/:elId", async (c) => {
 documentRoutes.put("/documents/:docId/elements-validate-page", async (c) => {
   const auth = c.get("auth") as AuthContext;
   const docId = c.req.param("docId");
-  const { pageNum, validated } = await c.req.json();
+  const { pageNum, validated } = validatePageSchema.parse(await c.req.json());
 
   const elements = await db.query.templateElements.findMany({
     where: and(eq(templateElements.documentId, docId), eq(templateElements.pageNum, pageNum)),
@@ -845,7 +846,7 @@ documentRoutes.put("/documents/:docId/elements-validate-page", async (c) => {
 documentRoutes.post("/documents/:docId/elements", async (c) => {
   const auth = c.get("auth") as AuthContext;
   const docId = c.req.param("docId");
-  const body = await c.req.json();
+  const body = createDocElementSchema.parse(await c.req.json());
 
   const doc = await db.query.documents.findFirst({
     where: and(eq(documents.id, docId), eq(documents.organizationId, auth.organizationId!)),
@@ -857,7 +858,7 @@ documentRoutes.post("/documents/:docId/elements", async (c) => {
     organizationId: auth.organizationId!,
     key: body.key,
     label: body.label,
-    fieldType: body.fieldType || "text",
+    fieldType: body.fieldType,
     pageNum: body.pageNum || 1,
     lineNum: body.lineNum || 0,
     group: body.group || null,

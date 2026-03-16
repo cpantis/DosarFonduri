@@ -60,7 +60,7 @@ async function verifyProviderOwnsCode(providerId: string, codeId: string): Promi
 
 // Login
 providerRoutes.post("/auth/login", async (c) => {
-  const { email, password } = await c.req.json();
+  const { email, password } = z.object({ email: z.string().email(), password: z.string().min(1) }).parse(await c.req.json());
   const user = await db.query.providerUsers.findFirst({ where: eq(providerUsers.email, email) });
   if (!user) return c.json({ error: "Invalid credentials" }, 401);
   const valid = await bcrypt.compare(password, user.passwordHash);

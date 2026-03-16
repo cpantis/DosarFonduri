@@ -11,6 +11,7 @@ import { extractTextFromPDF, extractTextFromDOCX, extractTextFromXLSX, extractTe
 import { processClientDocQueue, JOB_PRIORITY } from "../lib/queue";
 import { publishUploadEvent } from "../lib/sse";
 import { orgConfig } from "../db/schema";
+import { sendMessageSchema, refineSchema, updateModelSchema } from "@dosarfonduri/shared";
 
 export const solomonRoutes = new Hono<AppEnv>();
 
@@ -89,15 +90,15 @@ solomonRoutes.post("/conversations/:convId/messages", async (c) => {
   const conv = await verifyConversationOrg(convId, auth.organizationId!);
   if (!conv) return c.json({ error: "Conversation not found" }, 404);
 
-  const { content, useET } = await c.req.json();
+  const body = sendMessageSchema.parse(await c.req.json());
 
   const stream = await processSolomonMessage({
     conversationId: convId,
     projectId: conv.projectId,
     organizationId: auth.organizationId!,
     userId: auth.userId,
-    content,
-    useETOverride: typeof useET === "boolean" ? useET : undefined,
+    content: body.content,
+    useETOverride: typeof body.useET === "boolean" ? body.useET : undefined,
   });
 
   return new Response(stream, {
@@ -274,16 +275,15 @@ solomonRoutes.post("/conversations/:convId/refine", async (c) => {
   const conv = await verifyConversationOrg(convId, auth.organizationId!);
   if (!conv) return c.json({ error: "Conversation not found" }, 404);
 
-  const { selectedText, instruction } = await c.req.json();
-  if (!selectedText || !instruction) return c.json({ error: "selectedText and instruction required" }, 400);
+  const body = refineSchema.parse(await c.req.json());
 
   const stream = await processInlineRefine({
     conversationId: convId,
     projectId: conv.projectId,
     organizationId: auth.organizationId!,
     userId: auth.userId,
-    selectedText,
-    instruction,
+    selectedText: body.selectedText,
+    instruction: body.instruction,
   });
 
   return new Response(stream, {
@@ -299,16 +299,16 @@ solomonRoutes.post("/conversations/:convId/refine", async (c) => {
 solomonRoutes.put("/conversations/:convId/model", async (c) => {
   const auth = c.get("auth") as AuthContext;
   const convId = c.req.param("convId");
-  const { model } = await c.req.json();
+  const body = updateModelSchema.parse(await c.req.json());
 
   const validModels = ["claude-sonnet-4-20250514", "claude-opus-4-6"];
-  if (!validModels.includes(model)) return c.json({ error: "Model invalid" }, 400);
+  if (!validModels.includes(body.model)) return c.json({ error: "Model invalid" }, 400);
 
   const conv = await verifyConversationOrg(convId, auth.organizationId!);
   if (!conv) return c.json({ error: "Conversation not found" }, 404);
 
   const [updated] = await db.update(solomonConversations)
-    .set({ model })
+    .set({ model: body.model })
     .where(eq(solomonConversations.id, convId))
     .returning();
 

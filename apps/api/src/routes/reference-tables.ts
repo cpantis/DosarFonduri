@@ -2,6 +2,7 @@ import type { AppEnv } from "../types/hono";
 import { Hono } from "hono";
 import { z } from "zod";
 import { db } from "../db";
+import { updateRefTableSchema, createRuleRefLinkSchema, createElementRuleLinkSchema, validateElementSchema } from "@dosarfonduri/shared";
 import { guideReferenceTables, ruleReferenceLinks, elementRuleLinks, rules, templateElements, documents } from "../db/schema";
 import { eq, and } from "drizzle-orm";
 import { AuthContext } from "../middleware/auth";
@@ -110,7 +111,7 @@ referenceTableRoutes.post("/tables", async (c) => {
 referenceTableRoutes.put("/tables/:id", async (c) => {
   const auth = c.get("auth") as AuthContext;
   const id = c.req.param("id");
-  const body = await c.req.json();
+  const body = updateRefTableSchema.parse(await c.req.json());
 
   const existing = await db.query.guideReferenceTables.findFirst({
     where: and(eq(guideReferenceTables.id, id), eq(guideReferenceTables.organizationId, auth.organizationId!)),
@@ -206,7 +207,7 @@ referenceTableRoutes.get("/tables/:tableId/rule-links", async (c) => {
 // Create rule-reference link
 referenceTableRoutes.post("/rule-reference-links", async (c) => {
   const auth = c.get("auth") as AuthContext;
-  const body = await c.req.json();
+  const body = createRuleRefLinkSchema.parse(await c.req.json());
 
   // Verify both rule and table belong to org
   const rule = await db.query.rules.findFirst({
@@ -297,7 +298,9 @@ referenceTableRoutes.get("/elements/:elementId/rule-links", async (c) => {
 // Create element-rule link
 referenceTableRoutes.post("/element-rule-links", async (c) => {
   const auth = c.get("auth") as AuthContext;
-  const body = await c.req.json();
+  const body = createElementRuleLinkSchema.parse(await c.req.json());
+
+  if (!body.templateElementId) return c.json({ error: "templateElementId is required" }, 400);
 
   // Verify rule belongs to org
   const rule = await db.query.rules.findFirst({
@@ -350,7 +353,7 @@ referenceTableRoutes.delete("/element-rule-links/:id", async (c) => {
 // Cross-checks an element's value against linked rules and reference tables
 referenceTableRoutes.post("/validate-element", async (c) => {
   const auth = c.get("auth") as AuthContext;
-  const { elementId, value, projectId } = await c.req.json();
+  const { elementId, value, projectId } = validateElementSchema.parse(await c.req.json());
 
   // Get element and verify org ownership
   const element = await db.query.templateElements.findFirst({

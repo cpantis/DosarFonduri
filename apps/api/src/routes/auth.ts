@@ -125,7 +125,7 @@ authRoutes.post("/signup", async (c) => {
 // --- LOGIN ---
 authRoutes.post("/login", async (c) => {
   try {
-    const { email, password } = await c.req.json();
+    const { email, password } = z.object({ email: z.string().email(), password: z.string().min(1) }).parse(await c.req.json());
 
     const user = await db.query.users.findFirst({ where: eq(users.email, email) });
     if (!user) return c.json({ error: "Email sau parola incorecta" }, 401);
@@ -178,8 +178,7 @@ authRoutes.get("/me", async (c) => {
 // Validates a CUI via listafirme.ro and returns basic company info.
 // Rate-limited by design: only used during signup wizard.
 authRoutes.post("/lookup-cui", async (c) => {
-  const { cui } = await c.req.json();
-  if (!cui) return c.json({ error: "CUI obligatoriu" }, 400);
+  const { cui } = z.object({ cui: z.string().min(1) }).parse(await c.req.json());
 
   const cleanCUI = String(cui).replace(/\D/g, "");
   if (cleanCUI.length < 6 || cleanCUI.length > 12) {

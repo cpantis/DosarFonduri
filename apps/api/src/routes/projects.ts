@@ -10,6 +10,14 @@ import {
 } from "../db/schema";
 import { eq, and, count, asc, desc, sql } from "drizzle-orm";
 import { AuthContext } from "../middleware/auth";
+import {
+  updateProjectSchema,
+  updateElementSchema,
+  bulkConfirmElementsSchema,
+  overrideEligibilitySchema,
+  createChecklistItemSchema,
+  updateChecklistItemSchema,
+} from "@dosarfonduri/shared";
 import { checkEligibility } from "../services/eligibility";
 import { deleteFile, getFileUrl } from "../services/storage";
 import { validateElement, logElementChange } from "../services/elementValidation";
@@ -414,7 +422,7 @@ projectRoutes.put("/:id/elements/:eid", async (c) => {
   const lockErr = await requireLock(id, auth.userId);
   if (lockErr) return c.json({ error: lockErr }, 423);
 
-  const body = await c.req.json();
+  const body = updateElementSchema.parse(await c.req.json());
 
   // Snapshot old state for audit log
   const oldElement = await db.query.projectElements.findFirst({
@@ -509,10 +517,7 @@ projectRoutes.put("/:id/elements-bulk/confirm", async (c) => {
   const lockErr = await requireLock(id, auth.userId);
   if (lockErr) return c.json({ error: lockErr }, 423);
 
-  const { elementIds } = await c.req.json<{ elementIds: string[] }>();
-  if (!elementIds || !Array.isArray(elementIds) || elementIds.length === 0) {
-    return c.json({ error: "elementIds required" }, 400);
-  }
+  const { elementIds } = bulkConfirmElementsSchema.parse(await c.req.json());
 
   const results = await Promise.all(elementIds.map(eid =>
     db.update(projectElements).set({
@@ -628,12 +633,13 @@ projectRoutes.put("/:id/eligibility/:eid", async (c) => {
   const lockErr = await requireLock(id, auth.userId);
   if (lockErr) return c.json({ error: lockErr }, 423);
 
-  const body = await c.req.json();
+  const body = overrideEligibilitySchema.parse(await c.req.json());
 
+  const overrideBool = body.overrideResult === "passed" ? true : body.overrideResult === "failed" ? false : null;
   const [updated] = await db.update(projectEligibility).set({
-    overrideResult: body.overrideResult,
+    overrideResult: overrideBool,
     overrideBy: auth.userId,
-    status: body.overrideResult === true ? "passed" : body.overrideResult === false ? "failed" : "pending",
+    status: body.overrideResult === "not_applicable" ? "not_applicable" : body.overrideResult,
     notes: body.notes || null,
   }).where(eq(projectEligibility.id, eid)).returning();
 
@@ -745,12 +751,12 @@ projectRoutes.post("/:id/checklist", async (c) => {
   const lockErr = await requireLock(id, auth.userId);
   if (lockErr) return c.json({ error: lockErr }, 423);
 
-  const body = await c.req.json();
+  const body = createChecklistItemSchema.parse(await c.req.json());
 
   const [item] = await db.insert(projectChecklist).values({
     projectId: id,
     name: body.name,
-    category: body.category,
+    category: body.category || "General",
     source: "manual",
   }).returning();
 
@@ -765,7 +771,7 @@ projectRoutes.put("/:id/checklist/:itemId", async (c) => {
   const lockErr = await requireLock(id, auth.userId);
   if (lockErr) return c.json({ error: lockErr }, 423);
 
-  const body = await c.req.json();
+  const body = updateChecklistItemSchema.parse(await c.req.json());
 
   const updateData: any = {};
   if (body.done !== undefined) updateData.done = body.done;
@@ -977,7 +983,7 @@ projectRoutes.put("/:id", async (c) => {
   const lockErr = await requireLock(id, auth.userId);
   if (lockErr) return c.json({ error: lockErr }, 423);
 
-  const body = await c.req.json();
+  const body = updateProjectSchema.parse(await c.req.json());
 
   const updateData: any = { updatedAt: new Date() };
   if (body.name !== undefined) updateData.name = body.name;

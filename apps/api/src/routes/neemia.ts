@@ -13,6 +13,10 @@ import {
   composeDocument, validateComposeReadiness, buildComposeContext,
 } from "../services/neemiaCompose";
 import { getFileUrl } from "../services/storage";
+import {
+  templateDocIdSchema, generationModeSchema, composeConfigSchema,
+  updateSectionContentSchema, composeGenerateSchema,
+} from "@dosarfonduri/shared";
 
 export const neemiaRoutes = new Hono<AppEnv>();
 
@@ -42,9 +46,9 @@ neemiaRoutes.post("/projects/:projectId/validate", async (c) => {
   const project = await verifyProjectOrg(projectId, auth.organizationId!);
   if (!project) return c.json({ error: "Project not found" }, 404);
 
-  const { templateDocumentId } = await c.req.json();
+  const body = templateDocIdSchema.parse(await c.req.json());
 
-  const result = await validateBeforeGenerate(projectId, templateDocumentId);
+  const result = await validateBeforeGenerate(projectId, body.templateDocumentId);
   return c.json(result);
 });
 
@@ -56,11 +60,11 @@ neemiaRoutes.post("/projects/:projectId/generate", async (c) => {
   const project = await verifyProjectOrg(projectId, auth.organizationId!);
   if (!project) return c.json({ error: "Project not found" }, 404);
 
-  const { templateDocumentId } = await c.req.json();
+  const body = templateDocIdSchema.parse(await c.req.json());
 
   const stream = await generateDocument({
     projectId,
-    templateDocumentId,
+    templateDocumentId: body.templateDocumentId,
     organizationId: auth.organizationId!,
     userId: auth.userId,
   });
@@ -328,9 +332,9 @@ neemiaRoutes.post("/projects/:projectId/compose/validate", async (c) => {
   const project = await verifyProjectOrg(projectId, auth.organizationId!);
   if (!project) return c.json({ error: "Project not found" }, 404);
 
-  const { templateDocumentId } = await c.req.json();
+  const body = templateDocIdSchema.parse(await c.req.json());
 
-  const result = await validateComposeReadiness(projectId, templateDocumentId, auth.organizationId!);
+  const result = await validateComposeReadiness(projectId, body.templateDocumentId, auth.organizationId!);
   return c.json(result);
 });
 
@@ -342,11 +346,11 @@ neemiaRoutes.post("/projects/:projectId/compose/preview", async (c) => {
   const project = await verifyProjectOrg(projectId, auth.organizationId!);
   if (!project) return c.json({ error: "Project not found" }, 404);
 
-  const { templateDocumentId } = await c.req.json();
+  const body = templateDocIdSchema.parse(await c.req.json());
 
   const stream = await composeDocument({
     projectId,
-    templateDocumentId,
+    templateDocumentId: body.templateDocumentId,
     organizationId: auth.organizationId!,
     userId: auth.userId,
     previewOnly: true,
@@ -369,15 +373,15 @@ neemiaRoutes.post("/projects/:projectId/compose/generate", async (c) => {
   const project = await verifyProjectOrg(projectId, auth.organizationId!);
   if (!project) return c.json({ error: "Project not found" }, 404);
 
-  const { templateDocumentId, editedSections } = await c.req.json();
+  const body = composeGenerateSchema.parse(await c.req.json());
 
   const stream = await composeDocument({
     projectId,
-    templateDocumentId,
+    templateDocumentId: body.templateDocumentId,
     organizationId: auth.organizationId!,
     userId: auth.userId,
     previewOnly: false,
-    editedSections,
+    editedSections: body.editedSections as any,
   });
 
   return new Response(stream, {
@@ -428,11 +432,7 @@ neemiaRoutes.get("/templates/:docId/compose-config", async (c) => {
 neemiaRoutes.put("/templates/:docId/generation-mode", async (c) => {
   const auth = c.get("auth") as AuthContext;
   const docId = c.req.param("docId");
-  const { mode } = await c.req.json() as { mode: "fill" | "compose" };
-
-  if (!["fill", "compose"].includes(mode)) {
-    return c.json({ error: "Mode must be 'fill' or 'compose'" }, 400);
-  }
+  const body = generationModeSchema.parse(await c.req.json());
 
   const doc = await db.query.documents.findFirst({
     where: and(eq(documents.id, docId), eq(documents.organizationId, auth.organizationId!)),
@@ -440,7 +440,7 @@ neemiaRoutes.put("/templates/:docId/generation-mode", async (c) => {
   if (!doc) return c.json({ error: "Document not found" }, 404);
 
   const [updated] = await db.update(documents).set({
-    generationMode: mode,
+    generationMode: body.mode,
   } as any).where(eq(documents.id, docId)).returning();
 
   return c.json({
@@ -454,32 +454,7 @@ neemiaRoutes.put("/templates/:docId/generation-mode", async (c) => {
 neemiaRoutes.put("/templates/:docId/compose-config", async (c) => {
   const auth = c.get("auth") as AuthContext;
   const docId = c.req.param("docId");
-  const body = await c.req.json() as {
-    sections: Array<{
-      marker: string;
-      type: "narrative" | "table" | "calculation";
-      label: string;
-      referenceTableIds?: string[];
-      elementKeys?: string[];
-      instructions?: string;
-    }>;
-    aiModel?: string;
-    language?: string;
-  };
-
-  // Validate sections
-  if (!body.sections || !Array.isArray(body.sections)) {
-    return c.json({ error: "sections array is required" }, 400);
-  }
-
-  for (const s of body.sections) {
-    if (!s.marker || !s.type || !s.label) {
-      return c.json({ error: "Each section needs marker, type, and label" }, 400);
-    }
-    if (!["narrative", "table", "calculation"].includes(s.type)) {
-      return c.json({ error: `Invalid section type: ${s.type}` }, 400);
-    }
-  }
+  const body = composeConfigSchema.parse(await c.req.json());
 
   const doc = await db.query.documents.findFirst({
     where: and(eq(documents.id, docId), eq(documents.organizationId, auth.organizationId!)),
@@ -593,10 +568,7 @@ neemiaRoutes.put("/documents/:docId/sections/:marker", async (c) => {
   });
   if (!project) return c.json({ error: "Not authorized" }, 403);
 
-  const { content } = await c.req.json();
-  if (!content || typeof content !== "string") {
-    return c.json({ error: "content (string) required" }, 400);
-  }
+  const { content } = updateSectionContentSchema.parse(await c.req.json());
 
   // Get latest version number for this section
   const existing = await db.select({ version: composeSectionVersions.version })

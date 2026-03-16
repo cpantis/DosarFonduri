@@ -109,6 +109,7 @@ async function handleOnrcExtract(job: Job<CompanyExtractPayload>) {
         shares: a.shares,
         pctBenefits: a.pctBenefits?.toString(),
         pctLosses: a.pctLosses?.toString(),
+        tipAsociat: a.calitate || a.role,
       }))
     );
   }
@@ -122,6 +123,7 @@ async function handleOnrcExtract(job: Job<CompanyExtractPayload>) {
         role: a.role,
         powers: a.powers,
         mandateDuration: a.mandateDuration,
+        appointmentDate: a.appointmentDate,
       }))
     );
   }
@@ -214,6 +216,7 @@ async function handleOnrcUpdate(job: Job<CompanyOnrcUpdatePayload>) {
         shares: a.shares,
         pctBenefits: a.pctBenefits?.toString(),
         pctLosses: a.pctLosses?.toString(),
+        tipAsociat: a.calitate || a.role,
       }))
     );
   }
@@ -228,6 +231,7 @@ async function handleOnrcUpdate(job: Job<CompanyOnrcUpdatePayload>) {
         role: a.role,
         powers: a.powers,
         mandateDuration: a.mandateDuration,
+        appointmentDate: a.appointmentDate,
       }))
     );
   }

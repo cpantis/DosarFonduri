@@ -35,12 +35,26 @@ export interface ExtractedCompanyData {
     shares?: number;
     pctBenefits?: number;
     pctLosses?: number;
+    /** Extra fields from ONRC 2022+ format */
+    dataNasterii?: string;
+    locNastere?: string;
+    sex?: string;
+    stareCivila?: string;
+    aportVarsatTotal?: number;
+    cuiPJ?: string;
+    regComPJ?: string;
   }>;
   administratori: Array<{
     name: string;
     role: string;
     powers?: string;
     mandateDuration?: string;
+    /** Extra fields from ONRC 2022+ format */
+    appointmentDate?: string;
+    expiryDate?: string;
+    citizenship?: string;
+    dataNasterii?: string;
+    sex?: string;
   }>;
   financials: Array<{
     year: number;
@@ -57,6 +71,8 @@ export interface ExtractedCompanyData {
   caenDesc?: string;
   activitatiSecundare?: Array<{ cod: string; den: string }>;
   sediiSecundare?: Array<{ denumire: string; adresa: string }>;
+  /** Extra metadata from ONRC */
+  sediuSocial?: { actSediu?: string; durataSediu?: string };
 }
 
 // ─── Claude prompt (used ONLY for scanned PDFs as fallback) ───

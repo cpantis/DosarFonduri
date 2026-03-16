@@ -3038,10 +3038,10 @@ export default function ProjectViewPage() {
                         if (!confirm("Validezi toate elementele cu AI? Poate dura câteva secunde.")) return;
                         try {
                           const res = await apiPost<any>(`/api/projects/${projectId}/validate-all`, {});
-                          toast({ title: `Validate: ${res.validatedCount} ok, ${res.failedCount} eșuate, ${res.pendingCount} pending` });
+                          toast("success", `Validate: ${res.validatedCount} ok, ${res.failedCount} eșuate, ${res.pendingCount} pending`);
                           const proj = await apiGet<any>(`/api/projects/${projectId}`);
                           setElements(mapElements(proj.elements || []));
-                        } catch { toast({ title: "Eroare la validare", variant: "destructive" }); }
+                        } catch { toast("error", "Eroare la validare"); }
                       }}
                       disabled={readOnly}
                     >
@@ -3055,10 +3055,10 @@ export default function ProjectViewPage() {
                           if (!confirm(`Confirmi ${proposed.length} elemente propuse de AI?`)) return;
                           try {
                             await apiPut(`/api/projects/${projectId}/elements-bulk/confirm`, { elementIds: proposed.map(e => e.id) });
-                            toast({ title: `${proposed.length} elemente confirmate` });
+                            toast("success", `${proposed.length} elemente confirmate`);
                             const proj = await apiGet<any>(`/api/projects/${projectId}`);
                             setElements(mapElements(proj.elements || []));
-                          } catch { toast({ title: "Eroare la confirmare", variant: "destructive" }); }
+                          } catch { toast("error", "Eroare la confirmare"); }
                         }}
                         disabled={readOnly}
                       >
@@ -3631,10 +3631,10 @@ export default function ProjectViewPage() {
                       onClick={async () => {
                         try {
                           const res = await apiPost<any[]>(`/api/neemia/projects/${projectId}/calculate`, {});
-                          toast({ title: `${(res || []).length} câmpuri recalculate` });
+                          toast("success", `${(res || []).length} câmpuri recalculate`);
                           const proj = await apiGet<any>(`/api/projects/${projectId}`);
                           setElements(mapElements(proj.elements || []));
-                        } catch { toast({ title: "Eroare la recalculare", variant: "destructive" }); }
+                        } catch { toast("error", "Eroare la recalculare"); }
                       }}
                       disabled={readOnly}
                     >
@@ -3687,7 +3687,7 @@ export default function ProjectViewPage() {
                         try {
                           const res = await apiGet<any>(`/api/neemia/projects/${projectId}/consistency`);
                           setConsistencyResult(res);
-                        } catch { toast({ title: "Eroare verificare consistență", variant: "destructive" }); }
+                        } catch { toast("error", "Eroare verificare consistență"); }
                         setConsistencyLoading(false);
                       }}
                       disabled={consistencyLoading}
@@ -3801,8 +3801,8 @@ export default function ProjectViewPage() {
                                     status: doc.status, downloadUrl: doc.downloadUrl || null, generationMode: doc.generationMode || "fill",
                                     composeSections: doc.composeContent?.sections || undefined,
                                   })));
-                                  toast({ title: "Document validat de consultant" });
-                                } catch { toast({ title: "Eroare la validare", variant: "destructive" }); }
+                                  toast("success", "Document validat de consultant");
+                                } catch { toast("error", "Eroare la validare"); }
                               }}
                               disabled={readOnly}
                             >

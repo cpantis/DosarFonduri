@@ -193,18 +193,18 @@ export async function extractCompanyFromDocument(
     console.warn(`[companyExtractor] Regex parser insufficient: ${fieldCount} fields. hasScannedPages=${hasScannedPages}`);
   }
 
-  // ─── Step 2: AI fallback — ONLY for scanned PDFs ───
-  if (!hasScannedPages) {
-    // Native PDF but regex couldn't parse it — return partial or null
-    if (regexResult) {
-      console.warn(`[companyExtractor] Native PDF, regex partial — returning partial data`);
-      return regexResult;
-    }
-    console.error(`[companyExtractor] Native PDF but regex failed completely. Text sample: "${pdfText.slice(0, 200)}"`);
-    return null;
+  // ─── Step 2: AI fallback ───
+  // For scanned PDFs: always try AI (OCR text is unreliable for regex)
+  // For native PDFs: try AI only if regex failed completely (text exists but format unrecognized)
+  if (!hasScannedPages && regexResult) {
+    // Native PDF with partial regex — return what we have (no AI cost)
+    console.warn(`[companyExtractor] Native PDF, regex partial — returning partial data`);
+    return regexResult;
   }
 
-  console.log(`[companyExtractor] Scanned PDF detected — falling back to Claude Sonnet`);
+  // AI fallback: scanned PDF OR native PDF where regex failed completely
+  const reason = hasScannedPages ? "scanned PDF" : "native PDF, regex failed completely";
+  console.log(`[companyExtractor] ${reason} — falling back to Claude Sonnet. Text sample: "${pdfText.slice(0, 200)}"`);
   return await extractWithClaude(pdfText);
 }
 

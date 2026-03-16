@@ -11,7 +11,7 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { SkeletonStatCard } from "@/components/ui/Skeleton";
 
 interface DashboardData {
-  stats: { projects: number; companies: number; documents: number; approvalRate: number };
+  stats: { projects: number; companies: number; documents: number; approvalRate?: number };
   recentProjects: Array<{
     id: string; name: string; status: string; updatedAt: string;
     firma: string; program: string;
@@ -24,6 +24,7 @@ interface DashboardData {
   deadlines: Array<{
     date: string; project: string; event: string; urgent: boolean; daysLeft: number;
   }>;
+  alerts?: Array<{ message: string }>;
 }
 
 function formatRelativeTime(dateStr: string): string {

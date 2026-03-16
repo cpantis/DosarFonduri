@@ -645,7 +645,7 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
       const extractStart = Date.now();
       let rawText = "";
       if (doc.fileType === "pdf") {
-        rawText = await extractTextFromPDF(buffer);
+        rawText = (await extractTextFromPDF(buffer)).text;
       } else if (doc.fileType === "docx" || doc.fileType === "doc") {
         rawText = await extractTextFromDOCX(buffer, fileName);
       } else if (doc.fileType === "xlsx") {

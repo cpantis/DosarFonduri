@@ -49,10 +49,16 @@ async function handleOnrcExtract(job: Job<CompanyExtractPayload>) {
   const { buffer } = await getFileBuffer(fileId);
   await job.updateProgress(10);
 
-  const pdfText = await extractTextFromPDF(buffer);
+  const pdfResult = await extractTextFromPDF(buffer);
   await job.updateProgress(40);
 
-  const companyData = await extractCompanyFromDocument(pdfText);
+  if (pdfResult.hasScannedPages) {
+    console.log(`[onrc-extract] Scanned PDF detected (${pdfResult.scannedPageCount}/${pdfResult.totalPages} pages) — using OpenAI fallback`);
+  } else {
+    console.log(`[onrc-extract] Native PDF (${pdfResult.totalPages} pages) — using regex parser (no AI)`);
+  }
+
+  const companyData = await extractCompanyFromDocument(pdfResult.text, pdfResult.hasScannedPages);
   await job.updateProgress(80);
 
   if (!companyData) {
@@ -154,10 +160,10 @@ async function handleOnrcUpdate(job: Job<CompanyOnrcUpdatePayload>) {
   const { buffer } = await getFileBuffer(fileId);
   await job.updateProgress(10);
 
-  const pdfText = await extractTextFromPDF(buffer);
+  const pdfResult = await extractTextFromPDF(buffer);
   await job.updateProgress(40);
 
-  const companyData = await extractCompanyFromDocument(pdfText);
+  const companyData = await extractCompanyFromDocument(pdfResult.text, pdfResult.hasScannedPages);
   await job.updateProgress(80);
 
   if (!companyData) {
@@ -267,10 +273,10 @@ async function handleBilantParse(job: Job<CompanyBilantPayload>) {
   const { buffer } = await getFileBuffer(fileId);
   await job.updateProgress(10);
 
-  const pdfText = await extractTextFromPDF(buffer);
+  const pdfResult = await extractTextFromPDF(buffer);
   await job.updateProgress(40);
 
-  const parsed = await parseBilantPDF(pdfText, year);
+  const parsed = await parseBilantPDF(pdfResult.text, year);
   await job.updateProgress(80);
 
   const existing = await db.query.companyFinancials.findFirst({

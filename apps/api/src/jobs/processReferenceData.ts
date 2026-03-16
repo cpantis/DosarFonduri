@@ -101,7 +101,7 @@ export const processReferenceDataWorker = new Worker<ProcessReferenceDataPayload
 
       let text = "";
       if (doc.fileType === "pdf") {
-        text = await extractTextFromPDF(buffer);
+        text = (await extractTextFromPDF(buffer)).text;
       } else if (doc.fileType === "docx" || doc.fileType === "doc") {
         text = await extractTextFromDOCX(buffer, fileName);
       } else if (doc.fileType === "xlsx") {

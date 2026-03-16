@@ -120,6 +120,27 @@
       "when": 1742990400000,
       "tag": "0016_cabinet_codes_is_active",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1742990400001,
+      "tag": "0017_add_cascade_fk_constraints",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1742990400002,
+      "tag": "0018_element_rule_links_unique_constraint",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1742990400003,
+      "tag": "0019_writing_kit_and_trust_score",
+      "breakpoints": true
     }
   ]
 }

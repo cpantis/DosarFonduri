@@ -33,6 +33,8 @@ async function ensureDocumentColumns() {
       `ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "classification_confidence" decimal(3,2)`,
       `ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "processing_result" jsonb`,
       `ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "processing_error" text`,
+      `ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "trust_score" decimal(3,2)`,
+      `ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "completeness_report" jsonb`,
       // Columns on files table
       `ALTER TABLE "files" ADD COLUMN IF NOT EXISTS "size" bigint NOT NULL DEFAULT 0`,
       // Enum values (safe: IF NOT EXISTS)
@@ -52,6 +54,7 @@ async function ensureDocumentColumns() {
 documentRoutes.get("/folders", async (c) => {
   const auth = c.get("auth") as AuthContext;
   if (!auth.organizationId) return c.json({ error: "No organization" }, 403);
+  await ensureDocumentColumns();
 
   const folders = await db.query.documentFolders.findMany({
     where: eq(documentFolders.organizationId, auth.organizationId),
@@ -377,6 +380,7 @@ documentRoutes.post("/presigned-url", async (c) => {
 documentRoutes.post("/documents/:id/confirm-upload", async (c) => {
   const auth = c.get("auth") as AuthContext;
   if (!auth.organizationId) return c.json({ error: "No organization" }, 403);
+  await ensureDocumentColumns();
 
   const id = c.req.param("id");
 

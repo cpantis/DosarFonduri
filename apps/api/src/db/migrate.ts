@@ -81,7 +81,10 @@ async function runMigrations() {
       .sort();
     for (const file of extraFiles) {
       const sqlContent = fs.readFileSync(path.join(migrationsPath, file), "utf-8");
-      const statements = sqlContent.split(/;(?=\s*(?:--|ALTER|CREATE|DO|INSERT|UPDATE|DROP|$))/i)
+      // Split on semicolons that end a statement (followed by newline or EOF)
+      // Handle multi-line CREATE TABLE blocks by splitting on ";\n" or ";\r\n" or final ";"
+      const statements = sqlContent
+        .split(/;\s*$/m)  // split on ";" at end of a line
         .map(s => s.replace(/^[\s]*--[^\n]*\n/gm, "").trim())
         .filter(s => s.length > 0);
       for (const stmt of statements) {

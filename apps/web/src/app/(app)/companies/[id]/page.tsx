@@ -28,7 +28,7 @@ const fmtLei = (v: number | string | null | undefined) => {
   if (v == null) return "\u2014";
   const n = typeof v === "number" ? v : parseInt(String(v).replace(/[^0-9-]/g, ""));
   if (isNaN(n)) return String(v);
-  return n.toLocaleString("de-DE") + " LEI";
+  return n.toLocaleString("ro-RO") + " LEI";
 };
 
 /** Map API company detail to the shapes expected by JSX */

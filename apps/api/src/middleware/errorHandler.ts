@@ -25,7 +25,13 @@ export const errorHandler = (err: Error, c: Context) => {
     return c.json({ error: "Eroare la stocarea fișierului. Contactează administratorul." }, 500);
   }
 
-  // Return the actual error message so the client can report it
+  // In production, return a generic error message to avoid leaking internal details
+  const isProduction = process.env.NODE_ENV === "production" || process.env.RAILWAY_ENVIRONMENT;
+  if (isProduction) {
+    return c.json({ error: "Eroare internă. Contactează administratorul dacă problema persistă." }, 500);
+  }
+
+  // In development, return the actual error message for debugging
   const msg = err.message || "Eroare internă";
   return c.json({ error: msg.length > 300 ? msg.substring(0, 300) : msg }, 500);
 };

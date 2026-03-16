@@ -36,6 +36,14 @@ async function requireLock(projectId: string, userId: string): Promise<string | 
   return null; // ok
 }
 
+/** Verify that a project belongs to the authenticated user's organization */
+async function verifyProjectOwnership(projectId: string, orgId: string): Promise<boolean> {
+  const project = await db.query.projects.findFirst({
+    where: and(eq(projects.id, projectId), eq(projects.organizationId, orgId)),
+  });
+  return !!project;
+}
+
 // Helper: build program path (Session → Measure → Program)
 async function buildProgramPath(folderId: string): Promise<{ program: string; masura: string; sesiune: string }> {
   const folder = await db.query.documentFolders.findFirst({ where: eq(documentFolders.id, folderId) });
@@ -508,6 +516,10 @@ projectRoutes.get("/:id/eligibility", async (c) => {
   const auth = c.get("auth") as AuthContext;
   const id = c.req.param("id");
 
+  if (!await verifyProjectOwnership(id, auth.organizationId!)) {
+    return c.json({ error: "Not found" }, 404);
+  }
+
   const result = await db.query.projectEligibility.findMany({
     where: eq(projectEligibility.projectId, id),
   });
@@ -584,6 +596,10 @@ projectRoutes.post("/:id/check-eligibility", async (c) => {
   const auth = c.get("auth") as AuthContext;
   const id = c.req.param("id");
 
+  if (!await verifyProjectOwnership(id, auth.organizationId!)) {
+    return c.json({ error: "Not found" }, 404);
+  }
+
   await checkEligibility(id, auth.organizationId!);
 
   return c.json({ ok: true });
@@ -615,6 +631,10 @@ projectRoutes.get("/:id/scores", async (c) => {
   const auth = c.get("auth") as AuthContext;
   const id = c.req.param("id");
 
+  if (!await verifyProjectOwnership(id, auth.organizationId!)) {
+    return c.json({ error: "Not found" }, 404);
+  }
+
   const result = await computeProjectScores(id);
   return c.json(result);
 });
@@ -622,6 +642,10 @@ projectRoutes.get("/:id/scores", async (c) => {
 projectRoutes.post("/:id/recompute-scores", async (c) => {
   const auth = c.get("auth") as AuthContext;
   const id = c.req.param("id");
+
+  if (!await verifyProjectOwnership(id, auth.organizationId!)) {
+    return c.json({ error: "Not found" }, 404);
+  }
 
   const result = await computeProjectScores(id);
   return c.json(result);
@@ -632,6 +656,10 @@ projectRoutes.post("/:id/validate-all", async (c) => {
   const auth = c.get("auth") as AuthContext;
   const id = c.req.param("id");
 
+  if (!await verifyProjectOwnership(id, auth.organizationId!)) {
+    return c.json({ error: "Not found" }, 404);
+  }
+
   const { validateAllProjectElements } = await import("../services/elementValidation");
   const stats = await validateAllProjectElements(id);
   return c.json(stats);
@@ -639,7 +667,13 @@ projectRoutes.post("/:id/validate-all", async (c) => {
 
 // ─── ELEMENT AUDIT LOG ───
 projectRoutes.get("/:id/elements/:eid/history", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const id = c.req.param("id");
   const { eid } = c.req.param();
+
+  if (!await verifyProjectOwnership(id, auth.organizationId!)) {
+    return c.json({ error: "Not found" }, 404);
+  }
 
   const logs = await db.select().from(elementAuditLog)
     .where(eq(elementAuditLog.projectElementId, eid))
@@ -650,7 +684,12 @@ projectRoutes.get("/:id/elements/:eid/history", async (c) => {
 
 // ─── CHECKLIST ───
 projectRoutes.get("/:id/checklist", async (c) => {
+  const auth = c.get("auth") as AuthContext;
   const id = c.req.param("id");
+
+  if (!await verifyProjectOwnership(id, auth.organizationId!)) {
+    return c.json({ error: "Not found" }, 404);
+  }
 
   const items = await db.query.projectChecklist.findMany({
     where: eq(projectChecklist.projectId, id),

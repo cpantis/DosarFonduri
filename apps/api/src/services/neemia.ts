@@ -923,11 +923,23 @@ export async function generateAllDocuments(params: {
               userId,
             );
 
+            // Compute next version number for this template
+            const existingVersions = await db.query.projectDocuments.findMany({
+              where: and(
+                eq(projectDocuments.projectId, projectId),
+                eq(projectDocuments.templateDocumentId, doc.id),
+              ),
+              orderBy: (pd, { desc }) => [desc(pd.version)],
+              limit: 1,
+            });
+            const nextVersion = (existingVersions[0]?.version || 0) + 1;
+
             const [projectDoc] = await db.insert(projectDocuments).values({
               projectId,
               templateDocumentId: doc.id,
               generatedFileId: fileId,
               status: "generated",
+              version: nextVersion,
               pagesCompleted: doc.pageCount || 0,
               totalPages: doc.pageCount || 0,
             }).returning();

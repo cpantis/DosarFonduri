@@ -14,6 +14,7 @@ export interface ExtractedCompanyData {
   regCom: string;
   euid?: string;
   formaJuridica: string;
+  formaJuridicaCod?: string;
   adresa: string;
   localitate: string;
   judet: string;
@@ -63,7 +64,7 @@ export interface ExtractedCompanyData {
     profitNet: number;
     angajati: number;
     angajatiEfectiv?: number;
-    capitaluriProprii: number;
+    capitaluriProprii?: number;
     activeImobilizate?: number;
     activeCirculante?: number;
   }>;

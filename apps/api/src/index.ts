@@ -174,7 +174,7 @@ app.get("/setup-db", async (c) => {
     for (const file of migrationFiles) {
       const sqlContent = fs.default.readFileSync(pathMod.default.join(migrationsDir, file), "utf-8");
       const statements = sqlContent
-        .split(/;(?=\s*(?:--|ALTER|CREATE|DO|INSERT|UPDATE|DROP|$))/i)
+        .split(/;\s*$/m)
         .map((s: string) => s.replace(/^[\s]*--[^\n]*\n/gm, "").trim())
         .filter((s: string) => s.length > 0);
 

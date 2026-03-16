@@ -64,6 +64,27 @@ function parseRoDate(s: string): string | undefined {
   return `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
 }
 
+/** Normalize legal form text with proper Romanian diacritics and capitalization */
+function normalizeFormaJuridica(text: string): string {
+  const t = text.toLowerCase().trim();
+  // Map common ONRC forms to proper Romanian text
+  if (/s\.?r\.?l\.?[\s-]*d/i.test(t)) return "Societate cu răspundere limitată - debutant";
+  if (/s\.?r\.?l\.?/i.test(t) || /raspundere\s+limitata/i.test(t) || /răspundere\s+limitată/i.test(t))
+    return "Societate cu răspundere limitată";
+  if (/s\.?a\.?\b/.test(t) && !/s\.?r\.?l/i.test(t)) return "Societate pe acțiuni";
+  if (/p\.?f\.?a\.?/.test(t) || /persoana\s+fizica\s+autorizata/i.test(t)) return "Persoană fizică autorizată";
+  if (/i\.?i\.?\b/.test(t) && /individual/i.test(t)) return "Întreprindere individuală";
+  if (/i\.?f\.?\b/.test(t) && /familial/i.test(t)) return "Întreprindere familială";
+  if (/s\.?n\.?c\.?/.test(t)) return "Societate în nume colectiv";
+  if (/s\.?c\.?s\.?/.test(t)) return "Societate în comandită simplă";
+  if (/s\.?c\.?a\.?/.test(t)) return "Societate în comandită pe acțiuni";
+  if (/asocia[tț]i[ea]/i.test(t)) return "Asociație";
+  if (/funda[tț]i[ea]/i.test(t)) return "Fundație";
+  if (/r\.?a\.?\b/.test(t)) return "Regie autonomă";
+  // Fallback: capitalize first letter
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
 /** Map Romanian legal form text to code */
 function mapFormaJuridica(text: string): string {
   const t = text.toUpperCase();
@@ -240,10 +261,14 @@ function parseIdentification(text: string): Partial<ExtractedCompanyData> {
     // Store for raw data; not a direct company field but useful
   }
 
-  // Address
+  // Address — normalize common diacritics issues
   const adresaMatch = text.match(/Adres[aă]\s+sediu\s+social\s*:\s*(.+?)(?:\n|$)/i);
   if (adresaMatch) {
-    result.adresa = clean(adresaMatch[1]);
+    let addr = clean(adresaMatch[1]);
+    // Normalize "Judet X" → "Județul X" (ONRC PDFs often miss diacritics)
+    addr = addr.replace(/\bJudet\b/g, "Județul");
+    addr = addr.replace(/\bjudet\b/g, "județul");
+    result.adresa = addr;
     parseAddressComponents(result.adresa, result);
   }
 
@@ -261,26 +286,43 @@ function parseIdentification(text: string): Partial<ExtractedCompanyData> {
     }
   }
 
-  // Email
+  // Email — filter out ONRC institutional emails (onrc@onrc.ro, etc.)
   const emailMatch = text.match(/(?:e-?mail|email)\s*:\s*([\w.+-]+@[\w.-]+\.\w{2,})/i);
-  if (emailMatch) result.email = emailMatch[1];
+  if (emailMatch) {
+    const email = emailMatch[1].toLowerCase();
+    const isOnrcEmail = /onrc\.ro$|registrul\.ro$|ornc\.ro$|just\.ro$/i.test(email);
+    if (!isOnrcEmail) result.email = emailMatch[1];
+  }
 
-  // Status
+  // Status — preserve original text with proper capitalization
   const stareMatch = text.match(/Stare\s+firm[aă]\s*:\s*(.+?)(?:\n|$)/i);
   if (stareMatch) {
-    const stareText = stareMatch[1].toLowerCase();
-    result.stare = /radia|dizolv|lichidar/i.test(stareText) ? "radiata" : "functiune";
+    const stareRaw = clean(stareMatch[1]);
+    if (/radia|dizolv|lichidar/i.test(stareRaw)) {
+      result.stare = "Radiată";
+    } else if (/func[tț]iune/i.test(stareRaw)) {
+      result.stare = "Funcțiune";
+    } else {
+      // Capitalize first letter, preserve rest
+      result.stare = stareRaw.charAt(0).toUpperCase() + stareRaw.slice(1);
+    }
   }
 
-  // Legal form
+  // Legal form — preserve original text (capitalize words), also store code
   const formaMatch = text.match(/Forma\s+de\s+organizare\s*:\s*(.+?)(?:\n|$)/i);
   if (formaMatch) {
-    result.formaJuridica = mapFormaJuridica(formaMatch[1]);
+    const rawForma = clean(formaMatch[1]);
+    // Capitalize each word for clean display: "societate cu raspundere limitata" → "Societate cu răspundere limitată"
+    result.formaJuridica = normalizeFormaJuridica(rawForma);
+    result.formaJuridicaCod = mapFormaJuridica(rawForma);
   }
 
-  // Duration
+  // Duration — capitalize first letter
   const durataMatch = text.match(/Durat[aă]\s*:\s*(.+?)(?:[;\n]|$)/i);
-  if (durataMatch) result.durata = clean(durataMatch[1]);
+  if (durataMatch) {
+    const raw = clean(durataMatch[1]);
+    result.durata = raw.charAt(0).toUpperCase() + raw.slice(1);
+  }
 
   // Last update date
   const lastUpdateMatch = text.match(/Data\s+ultimei\s+[iî]nregistr[aă]ri\s*:\s*(\d{1,2}\.\d{1,2}\.\d{4})/i);
@@ -667,8 +709,8 @@ export function parseOnrcText(text: string): ExtractedCompanyData | null {
     judet: ident.judet || "",
     telefon: ident.telefon,
     email: ident.email,
-    stare: ident.stare || "functiune",
-    durata: ident.durata || "nelimitată",
+    stare: ident.stare || "Funcțiune",
+    durata: ident.durata || "Nelimitată",
     anInfiintare: ident.anInfiintare || 0,
     capitalSocial: capitalData.capitalSocial,
     moneda: capitalData.moneda,
@@ -686,35 +728,88 @@ export function parseOnrcText(text: string): ExtractedCompanyData | null {
   } as ExtractedCompanyData;
 }
 
+/**
+ * Parse ONRC financial data blocks.
+ * ONRC format repeats per year:
+ *   SITUAȚIA FINANCIARĂ PE ANUL 2021
+ *   - Profit (rd.01+02-03-04-05-06-07): 624987 LEI
+ *   - Pierdere (rd.03+04+05+06+07-01-02): 0 LEI
+ *   18. PROFITUL SAU PIERDEREA BRUT(Ă): - Profit (rd. 228-229): 630444 LEI
+ *   Numar mediu de salariati: 1
+ *   "1. Cifra de afaceri netă ...": 1036522 LEI
+ *   ACTIVE IMOBILIZATE - TOTAL (rd. 01 + 02 + 03): 4218 LEI
+ */
 function parseFinancials(text: string): ExtractedCompanyData["financials"] {
   const financials: ExtractedCompanyData["financials"] = [];
   if (!text || text.length < 20) return financials;
 
-  // Look for year-based data
-  const yearPattern = /(\d{4})\s/g;
-  let m;
-  const years = new Set<number>();
-  while ((m = yearPattern.exec(text)) !== null) {
-    const y = parseInt(m[1]);
-    if (y >= 2000 && y <= 2030) years.add(y);
+  // Split on "SITUAȚIA FINANCIARĂ PE ANUL XXXX" headers
+  const yearBlocks = text.split(/SITUA[ȚT]IA\s+FINANCIAR[ĂA]\s+PE\s+ANUL\s+/i);
+
+  for (const block of yearBlocks) {
+    if (!block.trim()) continue;
+
+    // First token should be the year
+    const yearMatch = block.match(/^(\d{4})/);
+    if (!yearMatch) continue;
+    const year = parseInt(yearMatch[1]);
+    if (year < 2000 || year > 2030) continue;
+
+    const entry: {
+      year: number;
+      cifraAfaceri: number;
+      profitBrut: number;
+      profitNet: number;
+      angajati: number;
+      activeImobilizate?: number;
+    } = {
+      year,
+      cifraAfaceri: 0,
+      profitBrut: 0,
+      profitNet: 0,
+      angajati: 0,
+    };
+
+    // Profit net: "- Profit (rd.01+02-03-04-05-06-07): 624987 LEI"
+    // This is the FIRST "Profit" line (not the "PROFITUL SAU PIERDEREA" line)
+    const profitNetMatch = block.match(/^-\s*Profit\s*\(rd[^)]*\)\s*:\s*([\d.,]+)/m);
+    if (profitNetMatch) entry.profitNet = parseRoNumber(profitNetMatch[1]) || 0;
+
+    // Pierdere net (if company had a loss instead of profit)
+    const pierdereNetMatch = block.match(/^-\s*Pierdere\s*\(rd[^)]*\)\s*:\s*([\d.,]+)/m);
+    if (pierdereNetMatch) {
+      const loss = parseRoNumber(pierdereNetMatch[1]) || 0;
+      if (loss > 0 && entry.profitNet === 0) entry.profitNet = -loss;
+    }
+
+    // Profit brut: "18. PROFITUL SAU PIERDEREA BRUT(Ă): - Profit (rd. 228-229): 630444 LEI"
+    const profitBrutMatch = block.match(/PROFITUL\s+SAU\s+PIERDEREA\s+BRUT[^:]*:\s*-\s*Profit\s*\([^)]*\)\s*:\s*([\d.,]+)/i);
+    if (profitBrutMatch) entry.profitBrut = parseRoNumber(profitBrutMatch[1]) || 0;
+
+    // Check for brut loss
+    const pierdereBrutMatch = block.match(/PROFITUL\s+SAU\s+PIERDEREA\s+BRUT[^:]*:\s*-\s*Pierdere\s*\([^)]*\)\s*:\s*([\d.,]+)/i);
+    if (pierdereBrutMatch) {
+      const loss = parseRoNumber(pierdereBrutMatch[1]) || 0;
+      if (loss > 0 && entry.profitBrut === 0) entry.profitBrut = -loss;
+    }
+
+    // Numar mediu de salariati: 1
+    const salariatiMatch = block.match(/Numar\s+mediu\s+de\s+salariati\s*:\s*(\d+)/i);
+    if (salariatiMatch) entry.angajati = parseInt(salariatiMatch[1]) || 0;
+
+    // Cifra de afaceri: "1. Cifra de afaceri netă ...": 1036522 LEI
+    const cifraMatch = block.match(/Cifra\s+de\s+afaceri[^"]*"\s*:\s*([\d.,]+)/i);
+    if (cifraMatch) entry.cifraAfaceri = parseRoNumber(cifraMatch[1]) || 0;
+
+    // ACTIVE IMOBILIZATE - TOTAL (rd. 01 + 02 + 03): 4218 LEI
+    const activeMatch = block.match(/ACTIVE\s+IMOBILIZATE\s*-\s*TOTAL\s*\([^)]*\)\s*:\s*([\d.,]+)/i);
+    if (activeMatch) entry.activeImobilizate = parseRoNumber(activeMatch[1]) || 0;
+
+    financials.push(entry);
   }
 
-  for (const year of years) {
-    const yearSection = text.match(new RegExp(`${year}[\\s\\S]{0,500}`, "i"));
-    if (yearSection) {
-      const numbers = yearSection[0].match(/[\d.,]{3,}/g);
-      if (numbers && numbers.length >= 2) {
-        financials.push({
-          year,
-          cifraAfaceri: parseRoNumber(numbers[0]) || 0,
-          profitBrut: parseRoNumber(numbers[1]) || 0,
-          profitNet: parseRoNumber(numbers[2]) || 0,
-          angajati: parseInt(numbers[3] || "0") || 0,
-          capitaluriProprii: parseRoNumber(numbers[4]) || 0,
-        });
-      }
-    }
-  }
+  // Sort by year ascending
+  financials.sort((a, b) => a.year - b.year);
 
   return financials;
 }

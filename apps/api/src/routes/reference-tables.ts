@@ -412,11 +412,30 @@ referenceTableRoutes.post("/validate-element", async (c) => {
       const tableData = refTable.data as Array<Record<string, any>>;
       const lookupKey = refTable.lookupKey || "key";
 
-      // Try to find value in reference table
+      // Try to find value in reference table (supports exact, substring, and numeric range matching)
+      const searchValue = String(value || "").toLowerCase().trim();
+      const searchNum = parseFloat(searchValue.replace(/\./g, "").replace(",", "."));
       const matchedRow = tableData.find(row => {
         const cellValue = String(row[lookupKey] || "").toLowerCase();
-        const searchValue = String(value || "").toLowerCase().trim();
-        return cellValue === searchValue || cellValue.includes(searchValue) || searchValue.includes(cellValue);
+        // Exact or substring match
+        if (cellValue === searchValue || cellValue.includes(searchValue) || searchValue.includes(cellValue)) {
+          return true;
+        }
+        // Numeric range match: check for "min" and "max" columns (e.g., Anexa 3 correlation tables)
+        if (!isNaN(searchNum)) {
+          const minKeys = Object.keys(row).filter(k => /min|de_la|lower|start/i.test(k));
+          const maxKeys = Object.keys(row).filter(k => /max|pana_la|upper|end/i.test(k));
+          for (const minK of minKeys) {
+            for (const maxK of maxKeys) {
+              const minVal = parseFloat(String(row[minK] || "0").replace(/\./g, "").replace(",", "."));
+              const maxVal = parseFloat(String(row[maxK] || "0").replace(/\./g, "").replace(",", "."));
+              if (!isNaN(minVal) && !isNaN(maxVal) && searchNum >= minVal && searchNum <= maxVal) {
+                return true;
+              }
+            }
+          }
+        }
+        return false;
       });
 
       if (refLink.usage === "validates") {

@@ -865,7 +865,14 @@ documentRoutes.post("/documents/:docId/elements", async (c) => {
 
 // --- DELETE TEMPLATE ELEMENT ---
 documentRoutes.delete("/documents/:docId/elements/:elId", async (c) => {
+  const auth = c.get("auth") as AuthContext;
   const { docId, elId } = c.req.param() as { docId: string; elId: string };
+
+  // Verify document belongs to user's org
+  const doc = await db.query.documents.findFirst({
+    where: and(eq(documents.id, docId), eq(documents.organizationId, auth.organizationId!)),
+  });
+  if (!doc) return c.json({ error: "Not found" }, 404);
 
   await db.delete(templateElements).where(
     and(eq(templateElements.id, elId), eq(templateElements.documentId, docId))

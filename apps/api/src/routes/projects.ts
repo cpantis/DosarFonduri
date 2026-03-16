@@ -6,12 +6,12 @@ import { db } from "../db";
 import {
   projects, projectElements, projectEligibility, projectDocuments,
   projectChecklist, templateElements, elementDefinitions, rules, companies, companyFinancials,
-  documentFolders, documents, auditLog, orgConfig, users, elementAuditLog,
+  documentFolders, documents, auditLog, orgConfig, users, elementAuditLog, scoringCriteria,
 } from "../db/schema";
 import { eq, and, count, asc, desc, sql } from "drizzle-orm";
 import { AuthContext } from "../middleware/auth";
 import { checkEligibility } from "../services/eligibility";
-import { deleteFile } from "../services/storage";
+import { deleteFile, getFileUrl } from "../services/storage";
 import { validateElement, logElementChange } from "../services/elementValidation";
 import { computeProjectScores } from "../services/scoring";
 import { publishElementValidated, publishEligibilityUpdated, publishScoreUpdated } from "../lib/sse";
@@ -963,4 +963,82 @@ projectRoutes.get("/:id/learnings", async (c) => {
 
   const learnings = await getApprovedProjectLearnings(id, auth.organizationId!);
   return c.json(learnings);
+});
+
+// ─── GHID VIEWER: guide PDF URL + rules grouped by page ───
+projectRoutes.get("/:id/ghid-viewer", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const id = c.req.param("id");
+
+  const project = await db.query.projects.findFirst({
+    where: and(eq(projects.id, id), eq(projects.organizationId, auth.organizationId!)),
+  });
+  if (!project) return c.json({ error: "Not found" }, 404);
+
+  // Find the "Ghiduri" subfolder under the project's session folder
+  const ghiduriFolder = await db.query.documentFolders.findFirst({
+    where: and(
+      eq(documentFolders.parentId, project.folderId),
+      eq(documentFolders.type, "ghiduri"),
+      eq(documentFolders.organizationId, auth.organizationId!),
+    ),
+  });
+  if (!ghiduriFolder) return c.json({ error: "No ghiduri folder found" }, 404);
+
+  // Find all processed guide documents in this folder
+  const guideDocs = await db.query.documents.findMany({
+    where: and(
+      eq(documents.folderId, ghiduriFolder.id),
+      eq(documents.organizationId, auth.organizationId!),
+      eq(documents.processingType, "ghid"),
+    ),
+    orderBy: (d, { desc: descFn }) => [descFn(d.uploadedAt)],
+  });
+
+  if (guideDocs.length === 0) return c.json({ error: "No guide documents found" }, 404);
+
+  // Build response for each guide document
+  const guides = await Promise.all(guideDocs.map(async (doc) => {
+    // Presigned download URL
+    let downloadUrl: string | null = null;
+    try {
+      downloadUrl = await getFileUrl(doc.fileId, auth.organizationId!);
+    } catch { /* file might be missing */ }
+
+    // Get rules for this document, ordered by page
+    const docRules = await db.query.rules.findMany({
+      where: and(eq(rules.documentId, doc.id), eq(rules.organizationId, auth.organizationId!)),
+      orderBy: (r, { asc: ascFn }) => [ascFn(r.sourcePage), ascFn(r.createdAt)],
+    });
+
+    // Get scoring criteria for this document
+    const docScoring = await db.query.scoringCriteria.findMany({
+      where: and(eq(scoringCriteria.documentId, doc.id), eq(scoringCriteria.organizationId, auth.organizationId!)),
+      orderBy: (s, { asc: ascFn }) => [ascFn(s.sourcePage), ascFn(s.sortOrder)],
+    });
+
+    // Group rules by page
+    const rulesByPage: Record<number, typeof docRules> = {};
+    for (const rule of docRules) {
+      const page = rule.sourcePage || 0;
+      if (!rulesByPage[page]) rulesByPage[page] = [];
+      rulesByPage[page].push(rule);
+    }
+
+    return {
+      id: doc.id,
+      name: doc.name,
+      fileType: doc.fileType,
+      pageCount: doc.pageCount,
+      status: doc.status,
+      downloadUrl,
+      totalRules: docRules.length,
+      totalScoring: docScoring.length,
+      rules: docRules,
+      scoringCriteria: docScoring,
+      rulesByPage,
+    };
+  }));
+
+  return c.json({ projectId: id, guides });
 });

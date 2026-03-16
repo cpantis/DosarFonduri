@@ -291,6 +291,15 @@ export default function ProjectViewPage() {
   const [selectedRefTable, setSelectedRefTable] = useState<string | null>(null);
   const [refTablesLoading, setRefTablesLoading] = useState(false);
   const [ghidCategoryFilter, setGhidCategoryFilter] = useState<string>("all");
+  const [ghidViewerData, setGhidViewerData] = useState<{
+    guides: Array<{
+      id: string; name: string; fileType: string; pageCount: number | null;
+      status: string; downloadUrl: string | null; totalRules: number; totalScoring: number;
+      rules: any[]; scoringCriteria: any[]; rulesByPage: Record<string, any[]>;
+    }>;
+  } | null>(null);
+  const [ghidViewerLoading, setGhidViewerLoading] = useState(false);
+  const [ghidViewerPage, setGhidViewerPage] = useState(1);
   const [collapsedCats, setCollapsedCats] = useState<Record<string, boolean>>({});
   const [checkAddOpen, setCheckAddOpen] = useState(false);
   const [checkNewName, setCheckNewName] = useState("");
@@ -494,6 +503,16 @@ export default function ProjectViewPage() {
     }
     fetchData();
   }, [projectId]);
+
+  // Lazy-load ghid-viewer data when "Ghid complet" tab is selected
+  useEffect(() => {
+    if (ghidTab !== "ghid" || ghidViewerData || ghidViewerLoading) return;
+    setGhidViewerLoading(true);
+    apiGet<any>(`/api/projects/${projectId}/ghid-viewer`)
+      .then(data => { setGhidViewerData(data); setGhidViewerPage(1); })
+      .catch(() => {})
+      .finally(() => setGhidViewerLoading(false));
+  }, [ghidTab, projectId, ghidViewerData, ghidViewerLoading]);
 
   useEffect(() => {
     if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
@@ -2598,15 +2617,190 @@ export default function ProjectViewPage() {
                       </div>
                     </>
                   ) : (
-                    <div className="pdf-viewer" style={{ width: "100%" }}>
-                      <div className="pdf-page-mock">
-                        <h3>Ghid de Finanțare — {project.programPath?.masura || "Măsura"}</h3>
-                        {Array.from({ length: 15 }).map((_, i) => (
-                          <div className="pdf-text-line" key={i} style={{ width: `${60 + Math.random() * 35}%` }} />
-                        ))}
-                        <div className="pdf-page-num">Pag. 1 / 42</div>
+                    /* ─── GHID COMPLET: PDF Viewer + Rules sidebar ─── */
+                    ghidViewerLoading ? (
+                      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontSize: 13, gap: 8 }}>
+                        <span style={{ fontSize: 20 }}>{"\u2699"}</span> Se \u00EEncarc\u0103 ghidul...
                       </div>
-                    </div>
+                    ) : !ghidViewerData || ghidViewerData.guides.length === 0 ? (
+                      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, color: "#94a3b8" }}>
+                        <span style={{ fontSize: 40, opacity: 0.3 }}>{"\u{1F4D6}"}</span>
+                        <span style={{ fontWeight: 600, fontSize: 14 }}>Niciun ghid uploadat</span>
+                        <span style={{ fontSize: 12 }}>Upload\u0103 un ghid \u00EEn folderul Ghiduri al sesiunii</span>
+                      </div>
+                    ) : (() => {
+                      const guide = ghidViewerData.guides[0];
+                      const pageRules = guide.rulesByPage[String(ghidViewerPage)] || [];
+                      const totalPages = guide.pageCount || 1;
+                      const CATEGORY_COLORS: Record<string, string> = {
+                        eligibilitate: "#2563eb", financiar: "#34d399", tehnic: "#a78bfa", administrativ: "#64748b",
+                        achizitii: "#fb923c", documente: "#fbbf24", selectie: "#f87171", intensitate: "#34d399",
+                      };
+                      return (
+                        <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+                          {/* PDF iframe */}
+                          <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
+                            {/* Page navigation bar */}
+                            <div style={{
+                              display: "flex", alignItems: "center", gap: 10, padding: "8px 16px",
+                              background: "#f8fafc", borderBottom: "1px solid rgba(226,232,240,.8)", flexShrink: 0,
+                            }}>
+                              <button
+                                onClick={() => setGhidViewerPage(p => Math.max(1, p - 1))}
+                                disabled={ghidViewerPage <= 1}
+                                style={{
+                                  background: "none", border: "1px solid rgba(226,232,240,.8)", borderRadius: 6,
+                                  padding: "4px 10px", cursor: ghidViewerPage <= 1 ? "not-allowed" : "pointer",
+                                  color: ghidViewerPage <= 1 ? "#cbd5e1" : "#0f172a", fontSize: 12, fontWeight: 600,
+                                }}
+                              >
+                                {"\u25C0"} Anterior
+                              </button>
+                              <span style={{ fontSize: 12, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600, color: "#0f172a" }}>
+                                Pag. {ghidViewerPage} / {totalPages}
+                              </span>
+                              <button
+                                onClick={() => setGhidViewerPage(p => Math.min(totalPages, p + 1))}
+                                disabled={ghidViewerPage >= totalPages}
+                                style={{
+                                  background: "none", border: "1px solid rgba(226,232,240,.8)", borderRadius: 6,
+                                  padding: "4px 10px", cursor: ghidViewerPage >= totalPages ? "not-allowed" : "pointer",
+                                  color: ghidViewerPage >= totalPages ? "#cbd5e1" : "#0f172a", fontSize: 12, fontWeight: 600,
+                                }}
+                              >
+                                Urm\u0103tor {"\u25B6"}
+                              </button>
+                              <div style={{ flex: 1 }} />
+                              <span style={{ fontSize: 11, color: "#64748b" }}>
+                                {guide.name}
+                              </span>
+                              {guide.downloadUrl && (
+                                <a
+                                  href={guide.downloadUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style={{
+                                    fontSize: 11, color: "#2563eb", fontWeight: 600, textDecoration: "none",
+                                    padding: "3px 8px", borderRadius: 6, border: "1px solid rgba(37,99,235,.2)",
+                                  }}
+                                >
+                                  {"\u{1F4E5}"} Descarc\u0103
+                                </a>
+                              )}
+                            </div>
+                            {/* PDF embed */}
+                            {guide.downloadUrl ? (
+                              <iframe
+                                src={`${guide.downloadUrl}#page=${ghidViewerPage}`}
+                                style={{ flex: 1, border: "none", background: "#f0f2f5" }}
+                                title="Ghid PDF"
+                              />
+                            ) : (
+                              <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontSize: 13 }}>
+                                PDF-ul nu este disponibil pentru vizualizare
+                              </div>
+                            )}
+                          </div>
+                          {/* Rules sidebar for current page */}
+                          <div style={{
+                            width: 280, flexShrink: 0, borderLeft: "1px solid rgba(226,232,240,.8)",
+                            display: "flex", flexDirection: "column", overflow: "hidden", background: "#ffffff",
+                          }}>
+                            <div style={{
+                              padding: "10px 14px", borderBottom: "1px solid rgba(226,232,240,.8)",
+                              fontSize: 11, fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: ".6px", color: "#94a3b8",
+                              display: "flex", justifyContent: "space-between", alignItems: "center",
+                            }}>
+                              <span>Reguli pe pagina {ghidViewerPage}</span>
+                              <span style={{ fontFamily: "'JetBrains Mono', monospace", color: pageRules.length > 0 ? "#2563eb" : "#cbd5e1" }}>
+                                {pageRules.length}
+                              </span>
+                            </div>
+                            <div style={{ flex: 1, overflowY: "auto", padding: "4px 0" }}>
+                              {pageRules.length === 0 ? (
+                                <div style={{ padding: "24px 14px", textAlign: "center", color: "#cbd5e1", fontSize: 12 }}>
+                                  Nicio regul\u0103 pe aceast\u0103 pagin\u0103
+                                </div>
+                              ) : pageRules.map((rule: any) => (
+                                <div
+                                  key={rule.id}
+                                  style={{
+                                    padding: "8px 12px", margin: "2px 6px", borderRadius: 8,
+                                    border: "1px solid rgba(226,232,240,.6)", cursor: "pointer",
+                                    transition: "all .15s",
+                                  }}
+                                  onClick={() => { setGhidTab("reguli"); setSelectedRule(rule.id); }}
+                                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "#f8fafc"; (e.currentTarget as HTMLElement).style.borderColor = "rgba(37,99,235,.3)"; }}
+                                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.borderColor = "rgba(226,232,240,.6)"; }}
+                                >
+                                  <div style={{ display: "flex", gap: 5, marginBottom: 4, alignItems: "center" }}>
+                                    <span style={{
+                                      fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 3,
+                                      background: rule.type === "fixed" ? "rgba(52,211,153,.1)" : "rgba(251,191,36,.1)",
+                                      color: rule.type === "fixed" ? "#059669" : "#d97706",
+                                    }}>
+                                      {rule.type === "fixed" ? "FIX\u0102" : "INTER"}
+                                    </span>
+                                    {rule.category && (
+                                      <span style={{
+                                        fontSize: 9, padding: "1px 5px", borderRadius: 9999,
+                                        background: (CATEGORY_COLORS[rule.category] || "#64748b") + "15",
+                                        color: CATEGORY_COLORS[rule.category] || "#64748b", fontWeight: 600,
+                                      }}>
+                                        {rule.category}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div style={{
+                                    fontSize: 11, color: "#0f172a", lineHeight: 1.4,
+                                    display: "-webkit-box", WebkitLineClamp: 3,
+                                    WebkitBoxOrient: "vertical" as const, overflow: "hidden",
+                                  }}>
+                                    {rule.description}
+                                  </div>
+                                  <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+                                    <span style={{
+                                      fontSize: 10, fontFamily: "'JetBrains Mono', monospace",
+                                      color: parseFloat(rule.confidence) >= 0.85 ? "#059669" : "#d97706", fontWeight: 600,
+                                    }}>
+                                      {Math.round(parseFloat(rule.confidence || "0") * 100)}%
+                                    </span>
+                                    {rule.validated && <span style={{ fontSize: 10, color: "#059669" }}>{"\u2713"}</span>}
+                                    {!rule.validated && parseFloat(rule.confidence || "0") < 0.85 && (
+                                      <span style={{ fontSize: 10, color: "#f59e0b" }}>{"\u26A0"} Review</span>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                            {/* Quick page jump: show pages that have rules */}
+                            <div style={{
+                              padding: "8px 12px", borderTop: "1px solid rgba(226,232,240,.8)",
+                              fontSize: 10, color: "#94a3b8",
+                            }}>
+                              <div style={{ marginBottom: 4, fontWeight: 600 }}>Pagini cu reguli:</div>
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
+                                {Object.keys(guide.rulesByPage).filter(p => p !== "0").sort((a, b) => Number(a) - Number(b)).map(pageNum => (
+                                  <button
+                                    key={pageNum}
+                                    onClick={() => setGhidViewerPage(Number(pageNum))}
+                                    style={{
+                                      padding: "2px 6px", borderRadius: 4, border: "1px solid rgba(226,232,240,.8)",
+                                      background: Number(pageNum) === ghidViewerPage ? "rgba(37,99,235,.08)" : "transparent",
+                                      color: Number(pageNum) === ghidViewerPage ? "#2563eb" : "#64748b",
+                                      fontWeight: Number(pageNum) === ghidViewerPage ? 700 : 400,
+                                      cursor: "pointer", fontSize: 10, fontFamily: "'JetBrains Mono', monospace",
+                                    }}
+                                  >
+                                    {pageNum} ({(guide.rulesByPage[pageNum] || []).length})
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()
                   )}
                 </div>
               </div>

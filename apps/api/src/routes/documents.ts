@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { createHash } from "crypto";
 import { db } from "../db";
-import { documentFolders, documents, files, templateElements } from "../db/schema";
+import { documentFolders, documents, files, templateElements, rules, scoringCriteria, elementDefinitions } from "../db/schema";
 import { eq, and, isNull, sql } from "drizzle-orm";
 import { uploadFile, getFileUrl, deleteFile, createPresignedUploadUrl, verifyFileUploaded, isLocalStorage } from "../services/storage";
 import { AuthContext } from "../middleware/auth";
@@ -159,7 +159,36 @@ documentRoutes.get("/folders/:folderId/documents", async (c) => {
     orderBy: (d, { desc }) => [desc(d.uploadedAt)],
   });
 
-  return c.json(docs);
+  // Enrich with processing summary counts for processed documents
+  const enriched = await Promise.all(docs.map(async (doc) => {
+    if (doc.status !== "processed") return doc;
+
+    try {
+      if (doc.processingType === "ghid") {
+        const [rulesResult] = await db.select({ count: sql<number>`count(*)` }).from(rules).where(eq(rules.documentId, doc.id));
+        const [scoringResult] = await db.select({ count: sql<number>`count(*)` }).from(scoringCriteria).where(eq(scoringCriteria.documentId, doc.id));
+        const [elemDefResult] = await db.select({ count: sql<number>`count(*)` }).from(elementDefinitions).where(eq(elementDefinitions.guideDocumentId, doc.id));
+        return {
+          ...doc,
+          _summary: {
+            rulesCount: Number(rulesResult?.count || 0),
+            scoringCount: Number(scoringResult?.count || 0),
+            elementsCount: Number(elemDefResult?.count || 0),
+          },
+        };
+      }
+      if (doc.processingType === "template") {
+        const [elResult] = await db.select({ count: sql<number>`count(*)` }).from(templateElements).where(eq(templateElements.documentId, doc.id));
+        return {
+          ...doc,
+          _summary: { fieldsCount: Number(elResult?.count || 0) },
+        };
+      }
+    } catch { /* non-critical enrichment */ }
+    return doc;
+  }));
+
+  return c.json(enriched);
 });
 
 // --- UPLOAD VALIDATION ---

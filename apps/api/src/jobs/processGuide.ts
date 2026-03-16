@@ -26,6 +26,75 @@ const evaluationLogicSchema = z.object({
   formula: z.string().optional(),
 }).passthrough();
 
+// ─── COMPLETENESS VERIFICATION (Faza 3.5) ───
+
+interface CompletenessReport {
+  trustScore: number;
+  categoriesFound: string[];
+  categoriesMissing: string[];
+  rulesNeedingReview: number;
+  sectionsWithoutRules: string[];
+  warnings: string[];
+}
+
+const REQUIRED_RULE_CATEGORIES = [
+  "beneficiary_eligible",
+  "beneficiary_excluded",
+  "expenses_eligible",
+  "expenses_excluded",
+  "intensity",
+  "scoring",
+  "documents",
+];
+
+function verifyExtractionCompleteness(
+  extractedRules: Array<{ category?: string; confidence?: number; sourceSection?: string }>,
+  scoringResults: unknown[],
+): CompletenessReport {
+  // 1. Category coverage
+  const categoriesFound = [...new Set(
+    extractedRules.map(r => r.category).filter(Boolean) as string[],
+  )];
+  const categoriesMissing = REQUIRED_RULE_CATEGORIES.filter(
+    cat => !categoriesFound.includes(cat),
+  );
+
+  // 2. Rules needing review (confidence < 0.85)
+  const rulesNeedingReview = extractedRules.filter(
+    r => (r.confidence ?? 0.5) < 0.85,
+  ).length;
+
+  // 3. Warnings
+  const warnings: string[] = [];
+  if (scoringResults.length === 0) {
+    warnings.push("Zero criterii de selecție extrase");
+  }
+  if (categoriesMissing.length > 0) {
+    warnings.push(`Categorii lipsă: ${categoriesMissing.join(", ")}`);
+  }
+
+  // 4. Trust score = weighted average
+  const categoryScore = categoriesFound.length / REQUIRED_RULE_CATEGORIES.length;
+  const confidenceScore = extractedRules.length > 0
+    ? extractedRules.reduce((sum, r) => sum + (r.confidence ?? 0.5), 0) / extractedRules.length
+    : 0;
+  // Section coverage: approximate from category coverage (no section IDs available at this stage)
+  const sectionScore = categoryScore; // correlates with category coverage
+
+  const trustScore = Math.round(
+    (categoryScore * 0.4 + confidenceScore * 0.3 + sectionScore * 0.3) * 100,
+  ) / 100;
+
+  return {
+    trustScore,
+    categoriesFound,
+    categoriesMissing,
+    rulesNeedingReview,
+    sectionsWithoutRules: [], // not available at this extraction stage
+    warnings,
+  };
+}
+
 /** Character limit for a single Opus + ET pass (200K context window) */
 const OPUS_CHAR_LIMIT = 150000;
 
@@ -955,6 +1024,37 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         saveScoringCriteria(allScoring, documentId, organizationId),
         saveElementDefinitions(allElementDefs, documentId, organizationId),
       ]);
+
+      // ─── STEP 4.5 (Faza 3.5): Verify extraction completeness ───
+      const completenessReport = verifyExtractionCompleteness(
+        [...allFixed, ...allInterpreted],
+        allScoring,
+      );
+
+      // Save trust score on document
+      await db.update(documents)
+        .set({
+          trustScore: String(completenessReport.trustScore),
+          completenessReport,
+        })
+        .where(eq(documents.id, documentId));
+
+      // SSE: broadcast trust score
+      publishJobProgress(organizationId, {
+        jobId: job.id || "",
+        jobType: "ghid",
+        documentId,
+        documentName: doc.name,
+        progress: 88,
+        status: "processing",
+        message: `Verificare completitudine: trust score ${completenessReport.trustScore}`,
+        trustScore: completenessReport.trustScore,
+        warnings: completenessReport.warnings,
+      }).catch(() => {});
+
+      if (completenessReport.trustScore < 0.7) {
+        console.log(`[processGuide] ⚠ Low trust score (${completenessReport.trustScore}): ${completenessReport.warnings.join("; ")}`);
+      }
 
       // ─── STEP 5: Auto-link rules to template elements and reference tables ───
       await job.updateProgress(92);

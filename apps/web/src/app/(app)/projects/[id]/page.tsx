@@ -2339,8 +2339,53 @@ export default function ProjectViewPage() {
               const filteredRules = ghidCategoryFilter === "all" ? guideRules : guideRules.filter(r => r.category === ghidCategoryFilter);
               const sel = selectedRule ? guideRules.find(r => r.id === selectedRule) : null;
 
+              const guideTrustScore = (project as any)?.guideTrustScore as number | null;
+
               return (
               <div className="ghid-layout">
+                {guideTrustScore != null && guideTrustScore < 0.7 && (
+                  <div style={{
+                    padding: "10px 14px",
+                    marginBottom: 10,
+                    background: "rgba(251,191,36,.1)",
+                    border: "1px solid rgba(251,191,36,.3)",
+                    borderRadius: 8,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    fontSize: 13,
+                    color: "#d97706",
+                  }}>
+                    <span style={{ fontSize: 16 }}>&#9888;</span>
+                    <span>
+                      Procesarea ghidului poate fi incomplet&#259; (trust score: {Math.round(guideTrustScore * 100)}%).
+                      Verifica&#539;i regulile extrase.
+                    </span>
+                  </div>
+                )}
+                {guideTrustScore != null && (
+                  <div style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    marginBottom: 8,
+                    fontSize: 12,
+                  }}>
+                    <span style={{
+                      display: "inline-block",
+                      padding: "2px 8px",
+                      borderRadius: 4,
+                      fontWeight: 700,
+                      fontFamily: "'JetBrains Mono', monospace",
+                      fontSize: 11,
+                      background: guideTrustScore >= 0.8 ? "rgba(52,211,153,.15)" : guideTrustScore >= 0.6 ? "rgba(251,191,36,.15)" : "rgba(248,113,113,.15)",
+                      color: guideTrustScore >= 0.8 ? "#059669" : guideTrustScore >= 0.6 ? "#d97706" : "#dc2626",
+                    }}>
+                      Trust: {Math.round(guideTrustScore * 100)}%
+                    </span>
+                    <span style={{ color: "#94a3b8" }}>completitudine extragere ghid</span>
+                  </div>
+                )}
                 <div className="ghid-sub-tabs">
                   <button className={`ghid-sub-tab ${ghidTab === "reguli" ? "active" : ""}`} onClick={() => setGhidTab("reguli")}>Reguli ({guideRules.length})</button>
                   <button className={`ghid-sub-tab ${ghidTab === "anexe" ? "active" : ""}`} onClick={() => setGhidTab("anexe")}>Anexe & Date ({referenceTables.length})</button>

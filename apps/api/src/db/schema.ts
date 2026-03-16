@@ -252,6 +252,15 @@ export const documents = pgTable("documents", {
   uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
   processedAt: timestamp("processed_at"),
   processingError: text("processing_error"),
+  trustScore: decimal("trust_score", { precision: 3, scale: 2 }),
+  completenessReport: jsonb("completeness_report").$type<{
+    trustScore: number;
+    categoriesFound: string[];
+    categoriesMissing: string[];
+    rulesNeedingReview: number;
+    sectionsWithoutRules: string[];
+    warnings: string[];
+  }>(),
 }, (table) => ({
   orgIdx: index("doc_org_idx").on(table.organizationId),
   folderIdx: index("doc_folder_idx").on(table.folderId),
@@ -511,6 +520,18 @@ export const projectDocuments = pgTable("project_documents", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// === COMPOSE SECTION VERSIONS (feedback loop — AI vs consultant edits) ===
+export const composeSectionVersions = pgTable("compose_section_versions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  projectDocumentId: uuid("project_document_id").references(() => projectDocuments.id, { onDelete: "cascade" }).notNull(),
+  sectionMarker: varchar("section_marker", { length: 255 }).notNull(),
+  version: integer("version").notNull().default(1),
+  content: text("content").notNull(),
+  source: varchar("source", { length: 50 }).notNull(), // "neemia_ai" or "consultant_edit"
+  editedBy: uuid("edited_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 // === PROJECT CHECKLIST ===
 export const projectChecklist = pgTable("project_checklist", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -661,8 +682,8 @@ export const orgConfig = pgTable("org_config", {
 // === SOLOMON KNOWLEDGE BASE (actualizări legislative, bune practici, corecții) ===
 export const solomonKnowledge = pgTable("solomon_knowledge", {
   id: uuid("id").defaultRandom().primaryKey(),
-  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
-  category: varchar("category", { length: 100 }).notNull(), // "legislatie", "praguri", "proceduri", "ghid_specific", "bune_practici", "corectii"
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
+  category: varchar("category", { length: 100 }).notNull(), // "legislatie", "praguri", "proceduri", "ghid_specific", "bune_practici", "corectii", "wk_*" (writing kit)
   title: varchar("title", { length: 500 }).notNull(),
   content: text("content").notNull(), // the actual knowledge/rule/update
   sourceUrl: varchar("source_url", { length: 1000 }), // link to MO, regulation, etc.

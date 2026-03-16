@@ -59,6 +59,8 @@ interface ApiDocument {
     scoringCount?: number;
     elementsCount?: number;
     fieldsCount?: number;
+    trustScore?: number | null;
+    completenessReport?: any;
   };
 }
 
@@ -84,6 +86,8 @@ interface DocItem {
     scoringCount?: number;
     elementsCount?: number;
     fieldsCount?: number;
+    trustScore?: number | null;
+    completenessReport?: any;
   };
 }
 
@@ -988,6 +992,23 @@ export default function DocumentsPage() {
                               <span style={{ fontSize: 13 }}>{"\u{1F4CB}"}</span>
                               <span style={{ color: "#64748b" }}>Elemente:</span>
                               <span style={{ fontWeight: 700, color: "#4d8bff", fontFamily: "'JetBrains Mono', monospace" }}>{d.summary?.elementsCount}</span>
+                            </div>
+                          )}
+                          {d.summary?.trustScore != null && (
+                            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                              <span style={{
+                                display: "inline-block",
+                                fontSize: 9,
+                                fontWeight: 700,
+                                padding: "2px 6px",
+                                borderRadius: 4,
+                                background: d.summary.trustScore >= 0.8 ? "rgba(52,211,153,.15)" : d.summary.trustScore >= 0.6 ? "rgba(251,191,36,.15)" : "rgba(248,113,113,.15)",
+                                color: d.summary.trustScore >= 0.8 ? "#059669" : d.summary.trustScore >= 0.6 ? "#d97706" : "#dc2626",
+                                letterSpacing: ".3px",
+                                fontFamily: "'JetBrains Mono', monospace",
+                              }}>
+                                Trust: {Math.round(d.summary.trustScore * 100)}%
+                              </span>
                             </div>
                           )}
                         </>

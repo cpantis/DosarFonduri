@@ -175,6 +175,8 @@ documentRoutes.get("/folders/:folderId/documents", async (c) => {
             rulesCount: Number(rulesResult?.count || 0),
             scoringCount: Number(scoringResult?.count || 0),
             elementsCount: Number(elemDefResult?.count || 0),
+            trustScore: doc.trustScore ? Number(doc.trustScore) : null,
+            completenessReport: doc.completenessReport || null,
           },
         };
       }

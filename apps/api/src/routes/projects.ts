@@ -350,6 +350,16 @@ projectRoutes.get("/:id", async (c) => {
 
   const programPath = await buildProgramPath(project.folderId);
 
+  // Fetch guide trust score for this project's folder
+  const guideDoc = await db.query.documents.findFirst({
+    where: and(
+      eq(documents.folderId, project.folderId),
+      eq(documents.processingType, "ghid"),
+      eq(documents.status, "processed"),
+    ),
+    columns: { trustScore: true, completenessReport: true },
+  });
+
   return c.json({
     ...project,
     company,
@@ -359,6 +369,8 @@ projectRoutes.get("/:id", async (c) => {
     eligibility,
     generatedDocs,
     checklist,
+    guideTrustScore: guideDoc?.trustScore ? Number(guideDoc.trustScore) : null,
+    guideCompletenessReport: guideDoc?.completenessReport || null,
   });
 });
 

@@ -788,6 +788,11 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         message: `Salvare: ${allFixed.length} reguli fixe, ${allInterpreted.length} interpretate, ${allScoring.length} criterii, ${allElementDefs.length} elemente...`,
       }).catch(() => {});
 
+      // Clean up old data before re-insert (handles guide re-processing)
+      // elementRuleLinks and ruleReferenceLinks cascade from rules, but clean elementDefinitions separately
+      await db.delete(rules).where(and(eq(rules.documentId, documentId), eq(rules.organizationId, organizationId)));
+      await db.delete(elementDefinitions).where(and(eq(elementDefinitions.guideDocumentId, documentId), eq(elementDefinitions.organizationId, organizationId)));
+
       const [fixedCount, interpCount, scoringCount, elemDefCount] = await Promise.all([
         saveFixedRules(allFixed, documentId, organizationId),
         saveInterpretedRules(allInterpreted, documentId, organizationId),

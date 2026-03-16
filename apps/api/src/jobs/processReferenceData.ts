@@ -14,21 +14,49 @@ interface ProcessReferenceDataPayload {
   organizationId: string;
 }
 
-async function extractTables(
-  text: string,
-  model: string,
-  documentId: string,
-  organizationId: string,
-): Promise<void> {
-  const response = await withAILimit(() => anthropic.messages.create({
-    model,
-    max_tokens: 8000,
-    system: `Extragi tabele structurate din anexele ghidurilor de finanțare europeană.
+const CHUNK_CHAR_LIMIT = 80000;
+const MAX_CHUNK_CONCURRENCY = 3;
+
+/**
+ * Split text into chunks at page boundaries (--- Pagina N ---),
+ * each chunk staying under CHUNK_CHAR_LIMIT.
+ */
+function splitTextIntoChunks(text: string): string[] {
+  if (text.length <= CHUNK_CHAR_LIMIT) return [text];
+
+  const pageMarker = /^--- Pagina \d+/gm;
+  const pageStarts: number[] = [0];
+  let m: RegExpExecArray | null;
+  while ((m = pageMarker.exec(text)) !== null) {
+    pageStarts.push(m.index);
+  }
+
+  const chunks: string[] = [];
+  let currentChunk = "";
+
+  for (let i = 0; i < pageStarts.length; i++) {
+    const end = i + 1 < pageStarts.length ? pageStarts[i + 1] : text.length;
+    const pageText = text.slice(pageStarts[i], end);
+
+    if (currentChunk.length + pageText.length > CHUNK_CHAR_LIMIT && currentChunk.length > 0) {
+      chunks.push(currentChunk);
+      currentChunk = pageText;
+    } else {
+      currentChunk += pageText;
+    }
+  }
+  if (currentChunk.length > 0) {
+    chunks.push(currentChunk);
+  }
+
+  return chunks;
+}
+
+const TABLE_EXTRACTION_SYSTEM = `Extragi tabele structurate din anexele ghidurilor de finanțare europeană.
 Fiecare tabel are un scop de lookup, clasificare sau listare.
-Returnează DOAR JSON valid — array de obiecte. Fără backticks.`,
-    messages: [{
-      role: "user",
-      content: `Extrage TOATE tabelele structurate din acest document.
+Returnează DOAR JSON valid — array de obiecte. Fără backticks.`;
+
+const TABLE_EXTRACTION_PROMPT = (chunkText: string, chunkInfo: string) => `Extrage TOATE tabelele structurate din acest document.${chunkInfo}
 
 Pentru fiecare tabel returnează:
 {
@@ -43,8 +71,18 @@ Pentru fiecare tabel returnează:
 }
 
 TEXT DOCUMENT:
-${text.slice(0, 80000)}`,
-    }],
+${chunkText}`;
+
+async function extractTablesFromChunk(
+  chunkText: string,
+  chunkInfo: string,
+  model: string,
+): Promise<{ tables: any[]; usage: { input_tokens: number; output_tokens: number } }> {
+  const response = await withAILimit(() => anthropic.messages.create({
+    model,
+    max_tokens: 8000,
+    system: TABLE_EXTRACTION_SYSTEM,
+    messages: [{ role: "user", content: TABLE_EXTRACTION_PROMPT(chunkText, chunkInfo) }],
   }));
 
   const content = response.content[0].type === "text" ? response.content[0].text : "[]";
@@ -53,14 +91,59 @@ ${text.slice(0, 80000)}`,
   let parsed: any[];
   try {
     parsed = JSON.parse(cleaned);
+    if (!Array.isArray(parsed)) parsed = [parsed];
   } catch {
-    console.error("Failed to parse reference tables JSON");
+    console.error("Failed to parse reference tables JSON from chunk");
     parsed = [];
   }
 
-  if (parsed.length > 0) {
+  return { tables: parsed, usage: response.usage };
+}
+
+async function extractTables(
+  text: string,
+  model: string,
+  documentId: string,
+  organizationId: string,
+): Promise<void> {
+  const chunks = splitTextIntoChunks(text);
+  const allTables: any[] = [];
+  let totalInput = 0;
+  let totalOutput = 0;
+
+  // Process chunks with concurrency limit
+  for (let i = 0; i < chunks.length; i += MAX_CHUNK_CONCURRENCY) {
+    const batch = chunks.slice(i, i + MAX_CHUNK_CONCURRENCY);
+    const results = await Promise.all(
+      batch.map((chunk, j) => {
+        const idx = i + j;
+        const chunkInfo = chunks.length > 1
+          ? `\n\nAcesta este chunk-ul ${idx + 1} din ${chunks.length}. Extrage doar tabelele din această secțiune.`
+          : "";
+        return extractTablesFromChunk(chunk, chunkInfo, model);
+      })
+    );
+    for (const r of results) {
+      allTables.push(...r.tables);
+      totalInput += r.usage.input_tokens;
+      totalOutput += r.usage.output_tokens;
+    }
+  }
+
+  // Deduplicate tables by name (keep first occurrence)
+  const seen = new Set<string>();
+  const dedupedTables = allTables.filter((t) => {
+    const key = (t.name || "").toLowerCase().trim();
+    if (!key || !seen.has(key)) {
+      if (key) seen.add(key);
+      return true;
+    }
+    return false;
+  });
+
+  if (dedupedTables.length > 0) {
     await db.insert(guideReferenceTables).values(
-      parsed.map((t: any) => ({
+      dedupedTables.map((t: any) => ({
         documentId,
         organizationId,
         name: t.name || "Tabel fără nume",
@@ -80,8 +163,8 @@ ${text.slice(0, 80000)}`,
     organizationId,
     agent: "ghid_rules",
     model,
-    tokensInput: response.usage.input_tokens,
-    tokensOutput: response.usage.output_tokens,
+    tokensInput: totalInput,
+    tokensOutput: totalOutput,
     action: "extract_reference_tables",
   });
 }

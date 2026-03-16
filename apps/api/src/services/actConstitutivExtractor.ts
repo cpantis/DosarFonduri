@@ -61,7 +61,7 @@ REGULI:
 }
 
 TEXT DOCUMENT:
-${pdfText.slice(0, 60000)}`,
+${pdfText.slice(0, 120000)}`,
     }],
   }));
 

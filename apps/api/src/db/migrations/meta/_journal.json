@@ -29,6 +29,97 @@
       "when": 1741867200000,
       "tag": "0003_validation_scoring",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1741953600000,
+      "tag": "0004_document_flow_audit_fixes",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1742040000000,
+      "tag": "0005_project_deadline",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1742126400000,
+      "tag": "0006_element_source_document_extracted",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1742212800000,
+      "tag": "0007_document_types_and_images",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1742299200000,
+      "tag": "0008_cabinet_codes_cui_handshake",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1742385600000,
+      "tag": "0009_organizations_cabinet_document_style",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1742472000000,
+      "tag": "0010_companies_processing_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1742558400000,
+      "tag": "0011_element_definitions_refactor",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1742644800000,
+      "tag": "0012_add_reference_data_processing_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1742731200000,
+      "tag": "0013_add_processing_error",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1742817600000,
+      "tag": "0014_add_factura_document_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1742904000000,
+      "tag": "0015_extraction_cache",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1742990400000,
+      "tag": "0016_cabinet_codes_is_active",
+      "breakpoints": true
     }
   ]
 }

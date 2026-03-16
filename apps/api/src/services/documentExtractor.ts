@@ -253,7 +253,7 @@ Returnează:
 }
 
 TEXT:
-${chunkText.slice(0, 60000)}`,
+${chunkText.slice(0, 100000)}`,
     }],
   }));
 
@@ -364,7 +364,7 @@ Gândește pas cu pas:
 Returnează JSON: { "fields": [...], "structured": {...} }
 
 TEXT:
-${fullText.slice(0, 80000)}`,
+${fullText.slice(0, 150000)}`,
     }],
   }));
 

@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { isPF, FORME_JURIDICE } from "@/hooks/useFormaJuridica";
 import { apiGet, apiPost, api } from "@/lib/api";
+import { getCaenDescription } from "@/lib/caen";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { TypeBadge } from "@/components/ui/TypeBadge";
@@ -227,22 +228,34 @@ export default function CompaniesPage() {
           <div>
             {filtered.map(c => {
               const forma = c.formaJuridica || "SRL";
+              const hasRestrictions = c.stare === "dizolvata" || c.stare === "lichidare" || c.stare === "radiata";
+              const capitalSocialNum = c.capitalSocial ? Number(c.capitalSocial) : null;
               return (
                 <a
                   key={c.id}
                   href={`/companies/${c.id}`}
                   className="co-card"
+                  style={hasRestrictions ? { borderColor: "rgba(248,113,113,.4)" } : undefined}
                 >
                   <div style={{ minWidth: 0 }}>
+                    {/* GAP 7: Insolvency/restriction banner */}
+                    {hasRestrictions && (
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "#dc2626", marginBottom: 4 }}>
+                        {"\u26A0"} {c.stare === "dizolvata" ? "Dizolvare" : c.stare === "lichidare" ? "Lichidare" : "Radiată"}
+                      </div>
+                    )}
                     <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
                       <span style={{ fontSize: 15, fontWeight: 600, color: "#0f172a" }}>{c.denumire}</span>
                       <TypeBadge type={forma} />
-                      <StatusBadge status={c.stare || "funcțiune"} />
+                      <StatusBadge status={c.stare || "func\u021biune"} />
                     </div>
                     <div className="co-stat">
                       <span style={{ fontFamily: "'JetBrains Mono', monospace", fontVariantNumeric: "tabular-nums", color: "#94a3b8", fontSize: 12 }}>CUI: {c.cui}</span>
-                      {c.caen && <><span className="sep">·</span><span>CAEN: {c.caen}</span></>}
-                      {c.judet && <><span className="sep">·</span><span>{c.judet}</span></>}
+                      {c.caen && <><span className="sep">{"\u00B7"}</span><span title={getCaenDescription(c.caen) || undefined}>CAEN: {c.caen}{getCaenDescription(c.caen) ? ` — ${getCaenDescription(c.caen)!.slice(0, 40)}${getCaenDescription(c.caen)!.length > 40 ? "…" : ""}` : ""}</span></>}
+                      {c.judet && <><span className="sep">{"\u00B7"}</span><span>{c.judet}</span></>}
+                      {/* GAP 6: Financial data */}
+                      {capitalSocialNum != null && capitalSocialNum > 0 && <><span className="sep">{"\u00B7"}</span><span style={{ fontFamily: "'JetBrains Mono', monospace" }}>Cap: {capitalSocialNum.toLocaleString("ro-RO")} RON</span></>}
+                      {c.anInfiintare && <><span className="sep">{"\u00B7"}</span><span>Din {c.anInfiintare}</span></>}
                     </div>
                   </div>
                   <svg style={{ width: 16, height: 16, color: "#cbd5e1", flexShrink: 0, marginLeft: 16 }} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>

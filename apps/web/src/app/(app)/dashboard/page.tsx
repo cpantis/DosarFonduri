@@ -70,10 +70,25 @@ export default function DashboardPage() {
           </div>
         ) : (
           <div className="grid grid-cols-4 gap-4">
-            <StatCard icon="🏢" label="Firme" value={stats?.companies ?? 0} color="blue" />
-            <StatCard icon="📁" label="Proiecte active" value={stats?.projects ?? 0} color="amber" />
-            <StatCard icon="✅" label="Conforme" value={stats?.documents ?? 0} color="emerald" />
-            <StatCard icon="⚠️" label="Blocate" value={stats?.approvalRate ?? 0} color="red" />
+            <StatCard icon={"\u{1F3E2}"} label="Firme" value={stats?.companies ?? 0} color="blue" />
+            <StatCard icon={"\u{1F4C1}"} label="Proiecte active" value={stats?.projects ?? 0} color="amber" />
+            <StatCard icon={"\u2705"} label="Documente" value={stats?.documents ?? 0} color="emerald" />
+            <StatCard icon={"\u{1F3AF}"} label="Rata succes" value={stats?.approvalRate != null ? `${stats.approvalRate}%` : "-"} color={stats?.approvalRate >= 70 ? "emerald" : stats?.approvalRate >= 50 ? "amber" : "red"} />
+          </div>
+        )}
+
+        {/* GAP 15: Alerts */}
+        {!loading && data?.alerts && data.alerts.length > 0 && (
+          <div className="mt-4 p-4 rounded-xl border border-amber-200/80 bg-amber-50/50">
+            <div className="text-sm font-semibold text-amber-800 mb-2">{"\u26A0"} Aten&#539;ie</div>
+            <div className="space-y-1.5">
+              {data.alerts.map((a: any, i: number) => (
+                <div key={i} className="text-[13px] text-amber-700 flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+                  {a.message || a}
+                </div>
+              ))}
+            </div>
           </div>
         )}
 

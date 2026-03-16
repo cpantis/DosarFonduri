@@ -142,6 +142,8 @@ export function publishJobProgress(
     attempt?: number;
     maxAttempts?: number;
     message: string;
+    trustScore?: number;
+    warnings?: string[];
   },
 ): Promise<void> {
   return publishEvent(

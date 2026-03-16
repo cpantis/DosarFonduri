@@ -1,8 +1,8 @@
 import type { AppEnv } from "../types/hono";
 import { Hono } from "hono";
 import { db } from "../db";
-import { projectDocuments, documents, templateElements, projectElements, guideReferenceTables, projects } from "../db/schema";
-import { eq, and } from "drizzle-orm";
+import { projectDocuments, documents, templateElements, projectElements, guideReferenceTables, projects, composeSectionVersions } from "../db/schema";
+import { eq, and, desc } from "drizzle-orm";
 import { AuthContext } from "../middleware/auth";
 import {
   generateDocument, validateBeforeGenerate,
@@ -574,4 +574,89 @@ neemiaRoutes.post("/templates/:docId/detect-compose-markers", async (c) => {
       ? "compose"
       : "fill",
   });
+});
+
+// ─── FEEDBACK LOOP: Save consultant section edit ───
+neemiaRoutes.put("/documents/:docId/sections/:marker", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const docId = c.req.param("docId");
+  const marker = c.req.param("marker");
+
+  const projDoc = await db.query.projectDocuments.findFirst({
+    where: eq(projectDocuments.id, docId),
+  });
+  if (!projDoc) return c.json({ error: "Document not found" }, 404);
+
+  // Verify project belongs to org
+  const project = await db.query.projects.findFirst({
+    where: and(eq(projects.id, projDoc.projectId), eq(projects.organizationId, auth.organizationId!)),
+  });
+  if (!project) return c.json({ error: "Not authorized" }, 403);
+
+  const { content } = await c.req.json();
+  if (!content || typeof content !== "string") {
+    return c.json({ error: "content (string) required" }, 400);
+  }
+
+  // Get latest version number for this section
+  const existing = await db.select({ version: composeSectionVersions.version })
+    .from(composeSectionVersions)
+    .where(and(
+      eq(composeSectionVersions.projectDocumentId, docId),
+      eq(composeSectionVersions.sectionMarker, marker),
+    ))
+    .orderBy(desc(composeSectionVersions.version))
+    .limit(1);
+
+  const nextVersion = existing.length > 0 ? existing[0].version + 1 : 1;
+
+  const [ver] = await db.insert(composeSectionVersions).values({
+    projectDocumentId: docId,
+    sectionMarker: marker,
+    version: nextVersion,
+    content,
+    source: "consultant_edit",
+    editedBy: auth.userId,
+  }).returning();
+
+  // Also update the composeContent in projectDocuments to reflect the edit
+  const composeContent = projDoc.composeContent as any;
+  if (composeContent?.sections) {
+    const sectionIdx = composeContent.sections.findIndex((s: any) => s.marker === marker);
+    if (sectionIdx >= 0) {
+      composeContent.sections[sectionIdx].content = content;
+      composeContent.sections[sectionIdx].approved = true;
+      await db.update(projectDocuments)
+        .set({ composeContent })
+        .where(eq(projectDocuments.id, docId));
+    }
+  }
+
+  return c.json({ version: ver });
+});
+
+// ─── FEEDBACK LOOP: Get section version history ───
+neemiaRoutes.get("/documents/:docId/sections/:marker/versions", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const docId = c.req.param("docId");
+  const marker = c.req.param("marker");
+
+  const projDoc = await db.query.projectDocuments.findFirst({
+    where: eq(projectDocuments.id, docId),
+  });
+  if (!projDoc) return c.json({ error: "Document not found" }, 404);
+
+  const project = await db.query.projects.findFirst({
+    where: and(eq(projects.id, projDoc.projectId), eq(projects.organizationId, auth.organizationId!)),
+  });
+  if (!project) return c.json({ error: "Not authorized" }, 403);
+
+  const versions = await db.select().from(composeSectionVersions)
+    .where(and(
+      eq(composeSectionVersions.projectDocumentId, docId),
+      eq(composeSectionVersions.sectionMarker, marker),
+    ))
+    .orderBy(desc(composeSectionVersions.version));
+
+  return c.json(versions);
 });

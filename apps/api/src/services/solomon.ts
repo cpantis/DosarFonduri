@@ -252,7 +252,7 @@ async function buildSystemPrompt(projectId: string, organizationId: string): Pro
     // For larger tables: include first 50 rows + note about total
     let sampleData = "";
     if (rowCount > 0 && Array.isArray(rt.data)) {
-      const maxRows = rowCount <= 100 ? rowCount : 50;
+      const maxRows = rowCount <= 200 ? rowCount : 200;
       sampleData = "\n    Date:\n" + rt.data.slice(0, maxRows).map(row =>
         "    " + Object.entries(row).map(([k, v]) => `${k}: ${v}`).join(" | ")
       ).join("\n");

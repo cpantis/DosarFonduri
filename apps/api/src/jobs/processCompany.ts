@@ -77,6 +77,12 @@ async function handleOnrcExtract(job: Job<CompanyExtractPayload>) {
       processingStatus: "error",
       processingError: "Nu s-au putut extrage date din document.",
     }).where(eq(companies.id, companyId));
+    // W1.3: SSE event on extraction failure
+    publishEvent(`org:${organizationId}:uploads`, "extraction_warning", {
+      companyId,
+      documentName: name,
+      message: "Extragerea datelor din documentul ONRC a eșuat. Verificați calitatea documentului.",
+    }).catch(() => {});
     throw new Error("Nu s-au putut extrage date din documentul ONRC");
   }
 
@@ -211,6 +217,12 @@ async function handleOnrcUpdate(job: Job<CompanyOnrcUpdatePayload>) {
       processingStatus: "error",
       processingError: "Nu s-au putut extrage date din document.",
     }).where(eq(companies.id, companyId));
+    // W1.3: SSE event on extraction failure
+    publishEvent(`org:${organizationId}:uploads`, "extraction_warning", {
+      companyId,
+      documentName: name,
+      message: "Actualizare ONRC eșuată — nu s-au putut extrage date din noul document.",
+    }).catch(() => {});
     throw new Error("Nu s-au putut extrage date din documentul ONRC");
   }
 

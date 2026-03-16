@@ -9,6 +9,7 @@ import { uploadFile, getFileUrl, deleteFile, createPresignedUploadUrl, verifyFil
 import { AuthContext } from "../middleware/auth";
 import { processGuideQueue, processTemplateQueue, processReferenceDataQueue, processClientDocQueue, JOB_PRIORITY } from "../lib/queue";
 import { publishUploadEvent } from "../lib/sse";
+import { isRedisReady } from "../lib/redis";
 
 export const documentRoutes = new Hono<AppEnv>();
 
@@ -174,6 +175,8 @@ documentRoutes.get("/folders/:folderId/documents", async (c) => {
             rulesCount: Number(rulesResult?.count || 0),
             scoringCount: Number(scoringResult?.count || 0),
             elementsCount: Number(elemDefResult?.count || 0),
+            trustScore: doc.trustScore ? Number(doc.trustScore) : null,
+            completenessReport: doc.completenessReport || null,
           },
         };
       }
@@ -402,30 +405,35 @@ documentRoutes.post("/documents/:id/confirm-upload", async (c) => {
 
   // Dispatch BullMQ processing job and set status to "processing"
   const warnings: string[] = [];
-  try {
-    const jobPayload = { documentId: doc.id, organizationId: auth.organizationId };
-    const dedup = { jobId: `doc-${doc.id}` };
-    let dispatched = false;
-    if (doc.processingType === "ghid") {
-      await processGuideQueue.add("process-guide", jobPayload, { priority: JOB_PRIORITY.GUIDE, ...dedup });
-      dispatched = true;
-    } else if (doc.processingType === "template") {
-      await processTemplateQueue.add("process-template", jobPayload, { priority: JOB_PRIORITY.TEMPLATE, ...dedup });
-      dispatched = true;
-    } else if (doc.processingType === "reference_data") {
-      await processReferenceDataQueue.add("process-reference-data", jobPayload, { priority: JOB_PRIORITY.REFERENCE_DATA, ...dedup });
-      dispatched = true;
-    } else if (doc.processingType === "client_doc") {
-      await processClientDocQueue.add("process-client-doc", jobPayload, { priority: JOB_PRIORITY.CLIENT_DOC, ...dedup });
-      dispatched = true;
-    }
-    // Mark as processing only if a job was actually dispatched
-    if (dispatched) {
-      await db.update(documents).set({ status: "processing" }).where(eq(documents.id, id));
-    }
-  } catch (queueErr: any) {
-    console.error(`Queue dispatch failed for document ${doc.id}:`, queueErr.message);
+  // W6.5: Check Redis readiness before attempting queue dispatch
+  if (!isRedisReady()) {
     warnings.push("Procesarea automată nu a pornit (Redis indisponibil). Poți reporni manual din meniul documentului.");
+  } else {
+    try {
+      const jobPayload = { documentId: doc.id, organizationId: auth.organizationId };
+      const dedup = { jobId: `doc-${doc.id}` };
+      let dispatched = false;
+      if (doc.processingType === "ghid") {
+        await processGuideQueue.add("process-guide", jobPayload, { priority: JOB_PRIORITY.GUIDE, ...dedup });
+        dispatched = true;
+      } else if (doc.processingType === "template") {
+        await processTemplateQueue.add("process-template", jobPayload, { priority: JOB_PRIORITY.TEMPLATE, ...dedup });
+        dispatched = true;
+      } else if (doc.processingType === "reference_data") {
+        await processReferenceDataQueue.add("process-reference-data", jobPayload, { priority: JOB_PRIORITY.REFERENCE_DATA, ...dedup });
+        dispatched = true;
+      } else if (doc.processingType === "client_doc") {
+        await processClientDocQueue.add("process-client-doc", jobPayload, { priority: JOB_PRIORITY.CLIENT_DOC, ...dedup });
+        dispatched = true;
+      }
+      // Mark as processing only if a job was actually dispatched
+      if (dispatched) {
+        await db.update(documents).set({ status: "processing" }).where(eq(documents.id, id));
+      }
+    } catch (queueErr: any) {
+      console.error(`Queue dispatch failed for document ${doc.id}:`, queueErr.message);
+      warnings.push("Procesarea automată nu a pornit (Redis indisponibil). Poți reporni manual din meniul documentului.");
+    }
   }
 
   // SSE notification
@@ -592,31 +600,36 @@ documentRoutes.post("/folders/:folderId/documents", async (c) => {
   if (docWarning) warnings.push(docWarning);
 
   // --- Dispatch BullMQ job with priority and set status to "processing" ---
-  try {
-    const jobPayload = { documentId: doc.id, organizationId: auth.organizationId! };
-    const dedup = { jobId: `doc-${doc.id}` };
-    let dispatched = false;
-    if (processingType === "ghid") {
-      await processGuideQueue.add("process-guide", jobPayload, { priority: JOB_PRIORITY.GUIDE, ...dedup });
-      dispatched = true;
-    } else if (processingType === "template") {
-      await processTemplateQueue.add("process-template", jobPayload, { priority: JOB_PRIORITY.TEMPLATE, ...dedup });
-      dispatched = true;
-    } else if (processingType === "reference_data") {
-      await processReferenceDataQueue.add("process-reference-data", jobPayload, { priority: JOB_PRIORITY.REFERENCE_DATA, ...dedup });
-      dispatched = true;
-    } else if (processingType === "client_doc") {
-      await processClientDocQueue.add("process-client-doc", jobPayload, { priority: JOB_PRIORITY.CLIENT_DOC, ...dedup });
-      dispatched = true;
-    }
-    // Mark as processing only if a job was actually dispatched
-    if (dispatched) {
-      await db.update(documents).set({ status: "processing" }).where(eq(documents.id, doc.id));
-      doc = { ...doc, status: "processing" };
-    }
-  } catch (queueErr: any) {
-    console.error(`Queue dispatch failed for document ${doc.id}:`, queueErr.message);
+  // W6.5: Check Redis readiness before attempting queue dispatch
+  if (!isRedisReady()) {
     warnings.push("Procesarea automată nu a pornit (Redis indisponibil). Poți reporni manual din meniul documentului.");
+  } else {
+    try {
+      const jobPayload = { documentId: doc.id, organizationId: auth.organizationId! };
+      const dedup = { jobId: `doc-${doc.id}` };
+      let dispatched = false;
+      if (processingType === "ghid") {
+        await processGuideQueue.add("process-guide", jobPayload, { priority: JOB_PRIORITY.GUIDE, ...dedup });
+        dispatched = true;
+      } else if (processingType === "template") {
+        await processTemplateQueue.add("process-template", jobPayload, { priority: JOB_PRIORITY.TEMPLATE, ...dedup });
+        dispatched = true;
+      } else if (processingType === "reference_data") {
+        await processReferenceDataQueue.add("process-reference-data", jobPayload, { priority: JOB_PRIORITY.REFERENCE_DATA, ...dedup });
+        dispatched = true;
+      } else if (processingType === "client_doc") {
+        await processClientDocQueue.add("process-client-doc", jobPayload, { priority: JOB_PRIORITY.CLIENT_DOC, ...dedup });
+        dispatched = true;
+      }
+      // Mark as processing only if a job was actually dispatched
+      if (dispatched) {
+        await db.update(documents).set({ status: "processing" }).where(eq(documents.id, doc.id));
+        doc = { ...doc, status: "processing" };
+      }
+    } catch (queueErr: any) {
+      console.error(`Queue dispatch failed for document ${doc.id}:`, queueErr.message);
+      warnings.push("Procesarea automată nu a pornit (Redis indisponibil). Poți reporni manual din meniul documentului.");
+    }
   }
 
   // --- SSE notification ---
@@ -702,6 +715,11 @@ documentRoutes.post("/documents/:id/process", async (c) => {
   const dispatchableTypes = ["ghid", "template", "reference_data", "client_doc"];
   if (!dispatchableTypes.includes(doc.processingType || "")) {
     return c.json({ error: `Tipul "${doc.processingType}" nu necesită procesare AI.` }, 400);
+  }
+
+  // W6.5: Check Redis readiness before attempting reprocess
+  if (!isRedisReady()) {
+    return c.json({ error: "Serviciul de procesare nu este disponibil (Redis offline). Reîncercați mai târziu." }, 503);
   }
 
   await db.update(documents).set({ status: "processing", processingError: null }).where(eq(documents.id, id));
@@ -854,6 +872,23 @@ documentRoutes.delete("/documents/:docId/elements/:elId", async (c) => {
   );
 
   return c.json({ ok: true });
+});
+
+// --- SCORING SUMMARY for a document (GAP 21) ---
+documentRoutes.get("/documents/:docId/scoring-summary", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const { docId } = c.req.param() as { docId: string };
+
+  const criteria = await db.query.scoringCriteria.findMany({
+    where: and(eq(scoringCriteria.documentId, docId), eq(scoringCriteria.organizationId, auth.organizationId!)),
+  });
+
+  return c.json(criteria.map(cr => ({
+    name: cr.name,
+    maxPoints: cr.maxPoints,
+    evaluationLogic: cr.evaluationLogic,
+    category: cr.category,
+  })));
 });
 
 // --- SSE: subscribe to upload events for organization ---

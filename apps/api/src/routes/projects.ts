@@ -120,6 +120,15 @@ projectRoutes.get("/", async (c) => {
 
     const programPath = await buildProgramPath(p.folderId);
 
+    // Scoring summary (lightweight — catch errors silently)
+    let scoreSummary: { totalPoints: number; maxTotalPoints: number; percentage: number } | null = null;
+    try {
+      const scoreResult = await computeProjectScores(p.id);
+      if (scoreResult && scoreResult.maxTotalPoints > 0) {
+        scoreSummary = { totalPoints: scoreResult.totalPoints, maxTotalPoints: scoreResult.maxTotalPoints, percentage: scoreResult.percentage };
+      }
+    } catch { /* non-critical */ }
+
     // Lock info
     const lockActive = p.lockedBy && !isLockExpired(p.lockedAt);
     let lockedByName: string | null = null;
@@ -139,6 +148,7 @@ projectRoutes.get("/", async (c) => {
         docs: { done: doneDocs, total: totalDocs },
         templates: { done: doneTemplates, total: totalTemplates },
       },
+      scoreSummary,
     };
   }));
 
@@ -350,6 +360,16 @@ projectRoutes.get("/:id", async (c) => {
 
   const programPath = await buildProgramPath(project.folderId);
 
+  // Fetch guide trust score for this project's folder
+  const guideDoc = await db.query.documents.findFirst({
+    where: and(
+      eq(documents.folderId, project.folderId),
+      eq(documents.processingType, "ghid"),
+      eq(documents.status, "processed"),
+    ),
+    columns: { trustScore: true, completenessReport: true },
+  });
+
   return c.json({
     ...project,
     company,
@@ -359,6 +379,8 @@ projectRoutes.get("/:id", async (c) => {
     eligibility,
     generatedDocs,
     checklist,
+    guideTrustScore: guideDoc?.trustScore ? Number(guideDoc.trustScore) : null,
+    guideCompletenessReport: guideDoc?.completenessReport || null,
   });
 });
 

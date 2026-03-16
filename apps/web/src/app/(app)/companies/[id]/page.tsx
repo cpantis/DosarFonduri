@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { isSOC, isPF, FORME_JURIDICE, getCompanyTabs, getFieldLabel } from "@/hooks/useFormaJuridica";
 import { apiGet, apiPost, apiDelete, api } from "@/lib/api";
+import { getCaenDescription } from "@/lib/caen";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { TypeBadge } from "@/components/ui/TypeBadge";
 import { SectionTitle } from "@/components/ui/SectionTitle";
@@ -302,6 +303,20 @@ export default function CompanyDetailPage() {
           <BtnDanger size="sm" icon={<IconTrash />} onClick={handleDelete}>Șterge firma</BtnDanger>
         </PageHeader>
 
+        {/* GAP 7: Insolvency/restriction banner */}
+        {(sel.stare === "dizolvata" || sel.stare === "lichidare" || sel.stare === "radiata") && (
+          <div style={{ maxWidth: 1152, margin: "0 auto", padding: "12px 32px" }}>
+            <div style={{ padding: "12px 16px", borderRadius: 10, background: "rgba(248,113,113,.08)", border: "1px solid rgba(248,113,113,.3)", display: "flex", alignItems: "center", gap: 10, fontSize: 14, color: "#dc2626" }}>
+              <span style={{ fontSize: 20 }}>{"\u26A0"}</span>
+              <div>
+                <strong>Aten&#539;ie:</strong> Aceast&#259; firm&#259; are statut{" "}
+                <strong>{sel.stare === "dizolvata" ? "dizolvat\u0103" : sel.stare === "lichidare" ? "\u00een lichidare" : "radiat\u0103"}</strong>.
+                {" "}Nu este eligibil&#259; pentru finan&#539;are.
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* TABS */}
         <div style={{ background: "#ffffff", borderBottom: "1px solid rgba(226,232,240,.8)" }}>
           <div style={{ maxWidth: 1152, margin: "0 auto", padding: "0 32px", display: "flex", overflowX: "auto", gap: 0 }}>
@@ -368,7 +383,7 @@ export default function CompanyDetailPage() {
               <div className="cd-info">
                 <div className="cd-info-label">CAEN</div>
                 <div className="cd-info-value">{sel.caen || "\u2014"}</div>
-                <div className="cd-info-sub">{sel.caenDesc}</div>
+                <div className="cd-info-sub">{sel.caenDesc !== "\u2014" ? sel.caenDesc : getCaenDescription(sel.caen) || "\u2014"}</div>
               </div>
               {sel.regCom && (
                 <div className="cd-info">
@@ -617,7 +632,7 @@ export default function CompanyDetailPage() {
             <SectionTitle>Activitate principala</SectionTitle>
             <div style={{ padding: 16, borderRadius: 12, background: "rgba(37,99,235,.04)", border: "1px solid rgba(37,99,235,.12)", marginBottom: 20 }}>
               <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".06em", fontWeight: 600, color: "#2563eb", marginBottom: 4 }}>CAEN {sel.caen || "\u2014"}</div>
-              <div style={{ fontSize: 15, fontWeight: 600, color: "#0f172a" }}>{sel.caenDesc}</div>
+              <div style={{ fontSize: 15, fontWeight: 600, color: "#0f172a" }}>{sel.caenDesc !== "\u2014" ? sel.caenDesc : getCaenDescription(sel.caen) || "\u2014"}</div>
             </div>
             {sel.activitatiSecundare.length > 0 && (<>
               <SectionTitle>Activitati secundare ({sel.activitatiSecundare.length})</SectionTitle>
@@ -628,7 +643,7 @@ export default function CompanyDetailPage() {
                     style={{ display: "flex", alignItems: "center", gap: 16, padding: "10px 16px", borderBottom: i < sel.activitatiSecundare.length - 1 ? "1px solid #f1f5f9" : "none" }}
                   >
                     <span style={{ fontFamily: "'JetBrains Mono', monospace", fontVariantNumeric: "tabular-nums", fontSize: 12, minWidth: 55, color: "#94a3b8" }}>{a.cod}</span>
-                    <span style={{ fontSize: 13, color: "#0f172a" }}>{a.den}</span>
+                    <span style={{ fontSize: 13, color: "#0f172a" }}>{a.den || getCaenDescription(a.cod) || a.cod}</span>
                   </div>
                 ))}
               </div>
@@ -689,6 +704,49 @@ export default function CompanyDetailPage() {
                     </tbody>
                   </table>
                 </div>
+                {/* GAP 22: Financial trend chart */}
+                {sel.situatiiFinanciare.length >= 2 && (() => {
+                  const sorted = [...sel.situatiiFinanciare].sort((a: any, b: any) => a.an - b.an);
+                  const years = sorted.map((s: any) => s.an);
+                  const revenues = sorted.map((s: any) => Number(s.cifraAfaceri) || 0);
+                  const profits = sorted.map((s: any) => Number(s.profitNet) || 0);
+                  const allVals = [...revenues, ...profits];
+                  const maxVal = Math.max(...allVals, 1);
+                  const minVal = Math.min(...allVals, 0);
+                  const range = maxVal - minVal || 1;
+                  const W = 440, H = 160, PL = 10, PR = 10, PT = 10, PB = 25;
+                  const chartW = W - PL - PR, chartH = H - PT - PB;
+                  const toX = (i: number) => PL + (i / (years.length - 1)) * chartW;
+                  const toY = (v: number) => PT + chartH - ((v - minVal) / range) * chartH;
+                  const makePath = (vals: number[]) => vals.map((v, i) => `${i === 0 ? "M" : "L"}${toX(i).toFixed(1)},${toY(v).toFixed(1)}`).join(" ");
+                  return (
+                    <div className="cd-card" style={{ padding: 16, marginTop: 16, marginBottom: 12 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", color: "#64748b", marginBottom: 12, display: "flex", alignItems: "center", gap: 16 }}>
+                        Evoluție financiară
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 600, color: "#2563eb" }}>
+                          <span style={{ width: 12, height: 2, background: "#2563eb", borderRadius: 1 }} /> Cifra afaceri
+                        </span>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 600, color: profits[profits.length - 1] >= 0 ? "#059669" : "#dc2626" }}>
+                          <span style={{ width: 12, height: 2, background: profits[profits.length - 1] >= 0 ? "#059669" : "#dc2626", borderRadius: 1 }} /> Profit net
+                        </span>
+                      </div>
+                      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", maxWidth: W }}>
+                        {/* Zero line if needed */}
+                        {minVal < 0 && <line x1={PL} y1={toY(0)} x2={W - PR} y2={toY(0)} stroke="#e2e8f0" strokeWidth={1} strokeDasharray="4,3" />}
+                        {/* Revenue line */}
+                        <path d={makePath(revenues)} fill="none" stroke="#2563eb" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+                        {revenues.map((v, i) => <circle key={`r${i}`} cx={toX(i)} cy={toY(v)} r={3} fill="#2563eb" />)}
+                        {/* Profit line */}
+                        <path d={makePath(profits)} fill="none" stroke={profits[profits.length - 1] >= 0 ? "#059669" : "#dc2626"} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+                        {profits.map((v, i) => <circle key={`p${i}`} cx={toX(i)} cy={toY(v)} r={3} fill={v >= 0 ? "#059669" : "#dc2626"} />)}
+                        {/* Year labels */}
+                        {years.map((y: number, i: number) => (
+                          <text key={y} x={toX(i)} y={H - 4} textAnchor="middle" fontSize={10} fill="#94a3b8" fontFamily="'JetBrains Mono', monospace">{y}</text>
+                        ))}
+                      </svg>
+                    </div>
+                  );
+                })()}
                 <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 12 }}>Sursa: Date publice ONRC / termene.ro</div>
               </>
             ) : (

@@ -10,6 +10,90 @@ import { redis, isRedisReady } from "../lib/redis";
 import { upsertElementDefinition, autoMapTemplatePlaceholders } from "../services/elementDefinitionService";
 import { anthropic, withAILimit } from "../lib/anthropic";
 import { repairTruncatedJSON } from "../lib/safeExtract";
+import { z } from "zod";
+
+// W2.3: Zod schema for evaluationLogic JSONB validation
+const evaluationLogicSchema = z.object({
+  type: z.enum(["lookup", "range", "boolean", "formula"]),
+  elementKey: z.string().optional(),
+  referenceTableId: z.string().optional(),
+  lookupColumn: z.string().optional(),
+  ranges: z.array(z.object({
+    min: z.number().optional(),
+    max: z.number().optional(),
+    points: z.number(),
+  })).optional(),
+  formula: z.string().optional(),
+}).passthrough();
+
+// ─── COMPLETENESS VERIFICATION (Faza 3.5) ───
+
+interface CompletenessReport {
+  trustScore: number;
+  categoriesFound: string[];
+  categoriesMissing: string[];
+  rulesNeedingReview: number;
+  sectionsWithoutRules: string[];
+  warnings: string[];
+}
+
+const REQUIRED_RULE_CATEGORIES = [
+  "beneficiary_eligible",
+  "beneficiary_excluded",
+  "expenses_eligible",
+  "expenses_excluded",
+  "intensity",
+  "scoring",
+  "documents",
+];
+
+function verifyExtractionCompleteness(
+  extractedRules: Array<{ category?: string; confidence?: number; sourceSection?: string }>,
+  scoringResults: unknown[],
+): CompletenessReport {
+  // 1. Category coverage
+  const categoriesFound = [...new Set(
+    extractedRules.map(r => r.category).filter(Boolean) as string[],
+  )];
+  const categoriesMissing = REQUIRED_RULE_CATEGORIES.filter(
+    cat => !categoriesFound.includes(cat),
+  );
+
+  // 2. Rules needing review (confidence < 0.85)
+  const rulesNeedingReview = extractedRules.filter(
+    r => (r.confidence ?? 0.5) < 0.85,
+  ).length;
+
+  // 3. Warnings
+  const warnings: string[] = [];
+  if (scoringResults.length === 0) {
+    warnings.push("Zero criterii de selecție extrase");
+  }
+  if (categoriesMissing.length > 0) {
+    warnings.push(`Categorii lipsă: ${categoriesMissing.join(", ")}`);
+  }
+
+  // 4. Trust score = weighted average
+  const categoryScore = categoriesFound.length / REQUIRED_RULE_CATEGORIES.length;
+  const confidenceScore = extractedRules.length > 0
+    ? extractedRules.reduce((sum, r) => sum + (r.confidence ?? 0.5), 0) / extractedRules.length
+    : 0;
+  // Section coverage: approximate from category coverage (no section IDs available at this stage)
+  const sectionScore = categoryScore; // correlates with category coverage
+
+  const trustScore = Math.round(
+    (categoryScore * 0.4 + confidenceScore * 0.3 + sectionScore * 0.3) * 100,
+  ) / 100;
+
+  return {
+    trustScore,
+    categoriesFound,
+    categoriesMissing,
+    rulesNeedingReview,
+    sectionsWithoutRules: [], // not available at this extraction stage
+    warnings,
+  };
+}
 
 /** Character limit for a single Opus + ET pass (200K context window) */
 const OPUS_CHAR_LIMIT = 150000;
@@ -359,7 +443,15 @@ async function saveScoringCriteria(criteria: any[], documentId: string, organiza
       name: c.name || "Criteriu neprecizat",
       description: c.description || null,
       maxPoints: String(Number(c.maxPoints) || 0),
-      evaluationLogic: (c.evaluationLogic && typeof c.evaluationLogic === "object") ? c.evaluationLogic : null,
+      evaluationLogic: (() => {
+        if (!c.evaluationLogic || typeof c.evaluationLogic !== "object") return null;
+        const parsed = evaluationLogicSchema.safeParse(c.evaluationLogic);
+        if (!parsed.success) {
+          console.warn(`[processGuide] Invalid evaluationLogic for criterion "${c.code}":`, parsed.error.message);
+          return null;
+        }
+        return parsed.data;
+      })(),
       category: c.category || null,
       sortOrder: idx,
       sourcePage: c.sourcePage || null,
@@ -372,6 +464,7 @@ async function saveElementDefinitions(defs: any[], documentId: string, organizat
   if (defs.length === 0) return 0;
 
   let created = 0;
+  let failedCount = 0;
   for (let i = 0; i < defs.length; i++) {
     const el = defs[i];
     if (!el.element_key || !el.display_name) continue;
@@ -395,8 +488,18 @@ async function saveElementDefinitions(defs: any[], documentId: string, organizat
       });
       created++;
     } catch (err) {
+      failedCount++;
       console.warn(`[processGuide] Failed to upsert element "${el.element_key}":`, err);
     }
+  }
+  // W2.4: Aggregate and warn on upsert failures
+  if (failedCount > 0) {
+    console.warn(`[processGuide] ${failedCount}/${defs.length} element definitions failed to upsert`);
+    publishJobProgress(organizationId, {
+      jobId: "", jobType: "ghid", documentId, documentName: "",
+      progress: -1, status: "processing",
+      message: `Atenție: ${failedCount} definiții de elemente nu au putut fi salvate din ${defs.length} total`,
+    }).catch(() => {});
   }
   return created;
 }
@@ -921,6 +1024,37 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         saveScoringCriteria(allScoring, documentId, organizationId),
         saveElementDefinitions(allElementDefs, documentId, organizationId),
       ]);
+
+      // ─── STEP 4.5 (Faza 3.5): Verify extraction completeness ───
+      const completenessReport = verifyExtractionCompleteness(
+        [...allFixed, ...allInterpreted],
+        allScoring,
+      );
+
+      // Save trust score on document
+      await db.update(documents)
+        .set({
+          trustScore: String(completenessReport.trustScore),
+          completenessReport,
+        })
+        .where(eq(documents.id, documentId));
+
+      // SSE: broadcast trust score
+      publishJobProgress(organizationId, {
+        jobId: job.id || "",
+        jobType: "ghid",
+        documentId,
+        documentName: doc.name,
+        progress: 88,
+        status: "processing",
+        message: `Verificare completitudine: trust score ${completenessReport.trustScore}`,
+        trustScore: completenessReport.trustScore,
+        warnings: completenessReport.warnings,
+      }).catch(() => {});
+
+      if (completenessReport.trustScore < 0.7) {
+        console.log(`[processGuide] ⚠ Low trust score (${completenessReport.trustScore}): ${completenessReport.warnings.join("; ")}`);
+      }
 
       // ─── STEP 5: Auto-link rules to template elements and reference tables ───
       await job.updateProgress(92);

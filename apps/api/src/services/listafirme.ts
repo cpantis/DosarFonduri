@@ -193,9 +193,9 @@ function transformResponse(raw: any, cui: string): ListaFirmeCompany {
     email: raw.Email || "",
     web: raw.Web || "",
 
-    turnover: parseFinancial(raw.Turnover),
-    profit: parseFinancial(raw.Profit),
-    employees: parseFinancial(raw.Employees),
+    turnover: parseFinancial(raw.Turnover) ?? 0,
+    profit: parseFinancial(raw.Profit) ?? 0,
+    employees: parseFinancial(raw.Employees) ?? 0,
 
     administrators: parseAdministrators(raw.Administrators),
     shareholders: parseShareholders(raw.Shareholders),

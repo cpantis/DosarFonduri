@@ -19,9 +19,9 @@ import {
   projects, projectElements, projectDocuments,
   templateElements, documents, orgConfig, companies,
   guideReferenceTables, rules, ruleReferenceLinks, elementRuleLinks,
-  organizations,
+  organizations, solomonKnowledge, composeSectionVersions,
 } from "../db/schema";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, isNull, or, like } from "drizzle-orm";
 import { getFileBuffer, uploadFile } from "./storage";
 import { logAIUsage } from "./aiUsage";
 import crypto from "crypto";
@@ -228,7 +228,7 @@ async function generateComposeContent(
   aiModel: string,
   organizationId: string,
   userId: string,
-): Promise<{ sections: ComposeSection[]; tokensInput: number; tokensOutput: number }> {
+): Promise<{ sections: ComposeSection[]; tokensInput: number; tokensOutput: number; placeholders: Array<{ section: string; placeholder: string }> }> {
 
   // Build element context string
   const elementsList = Object.entries(context.elements)
@@ -276,7 +276,57 @@ async function generateComposeContent(
 ${s.instructions ? `- Instrucțiuni specifice: ${s.instructions}` : ""}`;
   }).join("\n");
 
-  const systemPrompt = `Ești Neemia, un expert în scrierea documentelor pentru proiecte cu finanțare europeană (fonduri AFIR/PNDR/PNRR).
+  // Load writing kit from solomonKnowledge (global + org-specific)
+  const writingKit = await db.select().from(solomonKnowledge)
+    .where(and(
+      like(solomonKnowledge.category, "wk_%"),
+      eq(solomonKnowledge.enabled, true),
+      or(
+        isNull(solomonKnowledge.organizationId),
+        eq(solomonKnowledge.organizationId, organizationId),
+      ),
+    ));
+
+  // Load cabinet preferences from previous consultant edits (feedback loop)
+  const cabinetEditHistory = await db.select({
+    sectionMarker: composeSectionVersions.sectionMarker,
+    source: composeSectionVersions.source,
+  }).from(composeSectionVersions)
+    .innerJoin(projectDocuments, eq(projectDocuments.id, composeSectionVersions.projectDocumentId))
+    .innerJoin(projects, eq(projects.id, projectDocuments.projectId))
+    .where(and(
+      eq(projects.organizationId, organizationId),
+      eq(composeSectionVersions.source, "consultant_edit"),
+    ))
+    .limit(50);
+
+  const editedSectionCounts = new Map<string, number>();
+  for (const edit of cabinetEditHistory) {
+    editedSectionCounts.set(edit.sectionMarker, (editedSectionCounts.get(edit.sectionMarker) || 0) + 1);
+  }
+
+  const cabinetPreferences = editedSectionCounts.size > 0
+    ? `\nPREFERINȚE CABINET (din editări anterioare):\n${
+        [...editedSectionCounts.entries()]
+          .filter(([, count]) => count >= 2)
+          .map(([marker, count]) => `- Secțiunea "${marker}": consultantul a editat de ${count} ori — adaptează stilul`)
+          .join("\n")
+      }\n`
+    : "";
+
+  const writingKitContext = writingKit.length > 0
+    ? writingKit.map(wk => {
+        try {
+          const parsed = JSON.parse(wk.content);
+          return `## ${wk.title}\n${JSON.stringify(parsed, null, 2)}`;
+        } catch {
+          return `## ${wk.title}\n${wk.content}`;
+        }
+      }).join("\n\n")
+    : "";
+
+  const systemPrompt = `Ești Neemia, un expert senior în redactarea documentelor pentru proiecte cu finanțare europeană (fonduri AFIR/PNDR/PNRR).
+Scrii documente profesionale care respectă standardele AFIR/PNRR — ca un consultant cu 10+ ani experiență.
 
 REGULI STRICTE:
 1. Scrii EXCLUSIV în limba română, cu terminologie profesională de consultanță fonduri europene.
@@ -287,7 +337,12 @@ REGULI STRICTE:
 6. Pentru narrative: scrie profesional, concis, cu argumente bazate pe date.
 7. Argumentează legătura între datele proiectului și regulile din ghidul de finanțare.
 8. Evidențiază (prin highlight) rândurile din tabele care sunt relevante pentru proiect.
-
+9. Dacă o dată lipsește, marchează cu {{PLACEHOLDER_DESCRIERE}} — nu inventa.
+10. Numere formatate RO: 1.234.567,89 RON (punct separare mii, virgulă zecimale).
+${writingKitContext ? `
+WRITING KIT — Terminologie și keywords profesionale:
+${writingKitContext}
+` : ""}${cabinetPreferences}
 CONTEXT PROIECT:
 - Nume proiect: ${context.projectName}
 - Firmă: ${context.companyName} (CUI: ${context.companyCui})
@@ -319,6 +374,11 @@ IMPORTANT: Răspunde cu un JSON valid care conține un array "sections", unde fi
 
 SECȚIUNI DE GENERAT:
 ${sectionsRequest}
+
+INSTRUCȚIUNI:
+- Folosește keywords-urile din writing kit relevante pentru criteriile de selecție ale proiectului.
+- Scrie în română, cu date concrete din contextul de mai sus.
+- Dacă datele sunt insuficiente pentru o secțiune, marchează lipsurile cu {{PLACEHOLDER_DESCRIERE}}.
 
 Răspunde DOAR cu JSON-ul, fără markdown code blocks, fără text suplimentar.`;
 
@@ -371,7 +431,20 @@ Răspunde DOAR cu JSON-ul, fără markdown code blocks, fără text suplimentar.
     approved: false,
   }));
 
-  return { sections: composeSections, tokensInput, tokensOutput };
+  // Detect unresolved placeholders in narrative sections
+  const placeholderRegex = /\{\{([^}]+)\}\}/g;
+  const allPlaceholders: Array<{ section: string; placeholder: string }> = [];
+  for (const section of composeSections) {
+    if (section.content) {
+      let match;
+      while ((match = placeholderRegex.exec(section.content)) !== null) {
+        allPlaceholders.push({ section: section.label, placeholder: match[1] });
+      }
+      placeholderRegex.lastIndex = 0;
+    }
+  }
+
+  return { sections: composeSections, tokensInput, tokensOutput, placeholders: allPlaceholders };
 }
 
 // ═══ COMPOSE DOCUMENT (main flow, SSE streaming) ═══
@@ -446,6 +519,15 @@ export async function composeDocument(params: ComposeDocParams): Promise<Readabl
             tokensUsed,
             model: aiModel,
           });
+
+          // Warn about unresolved placeholders
+          if (aiResult.placeholders && aiResult.placeholders.length > 0) {
+            emit({
+              type: "compose_warning",
+              message: `${aiResult.placeholders.length} câmpuri necompletate detectate — marchează date lipsă`,
+              missing: aiResult.placeholders,
+            });
+          }
         }
 
         // If preview only, stop here — frontend will show sections for review
@@ -549,6 +631,20 @@ export async function composeDocument(params: ComposeDocParams): Promise<Readabl
           },
           generatedBy: userId,
         }).returning();
+
+        // Feedback loop: save AI-generated text as version 1 per section
+        const narrativeSections = composeSections.filter(s => s.content);
+        if (narrativeSections.length > 0) {
+          await db.insert(composeSectionVersions).values(
+            narrativeSections.map(s => ({
+              projectDocumentId: projectDoc.id,
+              sectionMarker: s.marker,
+              version: 1,
+              content: s.content!,
+              source: "neemia_ai" as const,
+            })),
+          );
+        }
 
         emit({
           type: "complete",

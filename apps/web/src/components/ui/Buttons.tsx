@@ -3,17 +3,22 @@ import { ReactNode, ButtonHTMLAttributes } from "react";
 interface BtnProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   children: ReactNode;
   icon?: ReactNode;
-  size?: "sm" | "md";
+  size?: "sm" | "md" | "lg" | "xl";
 }
 
+const SIZE_MAP = {
+  sm: "text-[12px] h-[30px] px-3 gap-1.5 rounded-md",
+  md: "text-[13px] h-[36px] px-4 gap-2 rounded-lg",
+  lg: "text-[14px] h-[40px] px-5 gap-2 rounded-lg",
+  xl: "text-[15px] h-[44px] px-6 gap-2.5 rounded-lg",
+};
+
 export function BtnPrimary({ children, icon, size = "md", className = "", ...props }: BtnProps) {
-  const sz = size === "sm"
-    ? "text-[12px] h-[30px] px-3.5 gap-1.5"
-    : "text-[13px] h-[36px] px-5 gap-2";
+  const sz = SIZE_MAP[size];
   return (
     <button
       {...props}
-      className={`bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg transition-all inline-flex items-center justify-center whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed shadow-sm shadow-blue-500/20 hover:shadow-md hover:shadow-blue-500/25 ${sz} ${className}`}
+      className={`bg-blue-500 hover:bg-blue-600 text-white font-semibold transition-all inline-flex items-center justify-center whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed shadow-sm shadow-blue-500/20 hover:shadow-md hover:shadow-blue-500/25 ${sz} ${className}`}
     >
       {icon && <span className="shrink-0 [&>svg]:w-[14px] [&>svg]:h-[14px]">{icon}</span>}
       {children}
@@ -22,13 +27,11 @@ export function BtnPrimary({ children, icon, size = "md", className = "", ...pro
 }
 
 export function BtnSecondary({ children, icon, size = "md", className = "", ...props }: BtnProps) {
-  const sz = size === "sm"
-    ? "text-[12px] h-[30px] px-3.5 gap-1.5"
-    : "text-[13px] h-[36px] px-5 gap-2";
+  const sz = SIZE_MAP[size];
   return (
     <button
       {...props}
-      className={`bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-600 font-medium rounded-lg transition-all inline-flex items-center justify-center whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed ${sz} ${className}`}
+      className={`bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-600 font-medium transition-all inline-flex items-center justify-center whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed ${sz} ${className}`}
     >
       {icon && <span className="shrink-0 [&>svg]:w-[14px] [&>svg]:h-[14px] text-slate-400">{icon}</span>}
       {children}
@@ -37,13 +40,11 @@ export function BtnSecondary({ children, icon, size = "md", className = "", ...p
 }
 
 export function BtnDanger({ children, icon, size = "md", className = "", ...props }: BtnProps) {
-  const sz = size === "sm"
-    ? "text-[12px] h-[30px] px-3.5 gap-1.5"
-    : "text-[13px] h-[36px] px-5 gap-2";
+  const sz = SIZE_MAP[size];
   return (
     <button
       {...props}
-      className={`text-red-500 bg-white border border-red-200 hover:bg-red-50 hover:border-red-300 font-medium rounded-lg transition-all inline-flex items-center justify-center whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed ${sz} ${className}`}
+      className={`text-red-500 bg-white border border-red-200 hover:bg-red-50 hover:border-red-300 font-medium transition-all inline-flex items-center justify-center whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed ${sz} ${className}`}
     >
       {icon && <span className="shrink-0 [&>svg]:w-[14px] [&>svg]:h-[14px]">{icon}</span>}
       {children}

@@ -3,6 +3,21 @@ import { elementDefinitions, templatePlaceholderMapping, templateElements } from
 import { eq, and, ilike } from "drizzle-orm";
 import { anthropic, withAILimit } from "../lib/anthropic";
 import { logAIUsage } from "./aiUsage";
+import { z } from "zod";
+
+// W2.5: Zod schema for validationRules JSONB
+const validationRulesSchema = z.object({
+  min: z.number().optional(),
+  max: z.number().optional(),
+  pattern: z.string().optional(),
+  required: z.boolean().optional(),
+  lookupTableId: z.string().optional(),
+  lookupColumn: z.string().optional(),
+  crossCheck: z.array(z.object({
+    elementKey: z.string(),
+    condition: z.string(),
+  })).optional(),
+}).passthrough();
 
 // ─── TYPES ───
 
@@ -42,7 +57,11 @@ export async function upsertElementDefinition(input: ElementDefInput) {
       unit: input.unit ?? existing.unit,
       enumValues: input.enumValues ?? existing.enumValues,
       sourcePriority: input.sourcePriority ?? existing.sourcePriority,
-      validationRules: (input.validationRules && typeof input.validationRules === "object") ? input.validationRules : existing.validationRules,
+      validationRules: (() => {
+        if (!input.validationRules || typeof input.validationRules !== "object") return existing.validationRules;
+        const parsed = validationRulesSchema.safeParse(input.validationRules);
+        return parsed.success ? parsed.data : existing.validationRules;
+      })(),
       required: input.required ?? existing.required,
       helpText: input.helpText ?? existing.helpText,
       isDerived: input.isDerived ?? existing.isDerived,
@@ -255,7 +274,7 @@ export async function autoMapTemplatePlaceholders(
         placeholderKey: te.key,
         elementDefId: match.id,
         mappedBy: "auto",
-        confidence: String(match.score) as any,
+        confidence: String(Number(match.score) || 0.85),
       }).onConflictDoNothing();
       mapped++;
     } catch {

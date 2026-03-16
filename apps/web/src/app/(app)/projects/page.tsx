@@ -65,6 +65,10 @@ export default function ProjectsPage() {
   const [projects, setProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [companies, setCompanies] = useState<any[]>([]);
+  // GAP 17: Filters
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [searchFilter, setSearchFilter] = useState("");
+  const [sortBy, setSortBy] = useState<"date" | "name" | "value">("date");
   const [folderTree, setFolderTree] = useState<ProgramTree[]>([]);
 
   useEffect(() => {
@@ -113,21 +117,64 @@ export default function ProjectsPage() {
       </PageHeader>
 
       <div className="max-w-6xl mx-auto px-8 py-6">
+        {/* GAP 17: Filters */}
+        {!loading && projects.length > 0 && (
+          <div className="flex items-center gap-3 mb-4 flex-wrap">
+            <input
+              className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg bg-white outline-none focus:border-blue-300 transition-colors"
+              placeholder="Caut\u0103 proiect..."
+              value={searchFilter}
+              onChange={e => setSearchFilter(e.target.value)}
+              style={{ width: 200 }}
+            />
+            <div className="flex rounded-lg p-0.5 gap-px bg-slate-100">
+              {[
+                { id: "all", label: "Toate" },
+                { id: "draft", label: "Draft" },
+                { id: "in_progress", label: "\u00cen progres" },
+                { id: "review", label: "Review" },
+                { id: "approved", label: "Aprobat" },
+                { id: "rejected", label: "Respins" },
+              ].map(f => (
+                <button key={f.id}
+                  className={`px-2 py-1 rounded-md text-[11px] font-semibold border-none cursor-pointer transition-all ${statusFilter === f.id ? "bg-blue-600 text-white" : "bg-transparent text-slate-400 hover:text-slate-600"}`}
+                  onClick={() => setStatusFilter(f.id)}
+                >{f.label}</button>
+              ))}
+            </div>
+            <select className="px-2 py-1.5 text-[12px] border border-slate-200 rounded-lg bg-white" value={sortBy} onChange={e => setSortBy(e.target.value as any)}>
+              <option value="date">Sort: Dat\u0103</option>
+              <option value="name">Sort: Nume</option>
+              <option value="value">Sort: Valoare</option>
+            </select>
+          </div>
+        )}
+
         {loading ? (
           <div className="space-y-3">
             <SkeletonCard /><SkeletonCard /><SkeletonCard />
           </div>
         ) : projects.length === 0 ? (
-          <EmptyState icon="📁" title="Niciun proiect încă" description="Creează un proiect nou pentru a începe pregătirea dosarului." actionLabel="Creează primul proiect" onAction={openCreate} />
+          <EmptyState icon={"\u{1F4C1}"} title="Niciun proiect \u00eenc\u0103" description="Creaz\u0103 un proiect nou pentru a \u00eencepe preg\u0103tirea dosarului." actionLabel="Creaz\u0103 primul proiect" onAction={openCreate} />
         ) : (
           <div className="space-y-2">
-            {projects.map(p => {
+            {projects
+              .filter(p => statusFilter === "all" || p.status === statusFilter)
+              .filter(p => !searchFilter || p.name?.toLowerCase().includes(searchFilter.toLowerCase()) || p.company?.denumire?.toLowerCase().includes(searchFilter.toLowerCase()))
+              .sort((a, b) => {
+                if (sortBy === "name") return (a.name || "").localeCompare(b.name || "");
+                if (sortBy === "value") return (Number(b.valoare) || 0) - (Number(a.valoare) || 0);
+                return new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime();
+              })
+              .map(p => {
               const prog = p.progress || {};
               const eligibility = prog.eligibility || { passed: 0, total: 0 };
               const elements = prog.elements || { filled: 0, total: 0 };
+              const docs = prog.docs || { done: 0, total: 0 };
               const programPath = p.programPath || {};
               const eligPct = pct(eligibility.passed, eligibility.total);
               const elemPct = pct(elements.filled, elements.total);
+              const docsPct = pct(docs.done, docs.total);
               return (
                 <div
                   key={p.id}
@@ -139,6 +186,12 @@ export default function ProjectsPage() {
                       <div className="flex items-center gap-2.5">
                         <span className="text-[15px] font-semibold text-slate-900 group-hover:text-blue-600 transition-colors">{p.name}</span>
                         <StatusBadge status={p.status} />
+                        {p.scoreSummary && p.scoreSummary.maxTotalPoints > 0 && (
+                          <span className="text-[12px] font-mono font-bold tabular-nums px-1.5 py-0.5 rounded" style={{
+                            background: p.scoreSummary.percentage >= 80 ? "rgba(52,211,153,.15)" : p.scoreSummary.percentage >= 60 ? "rgba(251,191,36,.15)" : "rgba(248,113,113,.15)",
+                            color: p.scoreSummary.percentage >= 80 ? "#059669" : p.scoreSummary.percentage >= 60 ? "#d97706" : "#dc2626",
+                          }}>{p.scoreSummary.totalPoints}/{p.scoreSummary.maxTotalPoints}</span>
+                        )}
                         {p.valoare && <span className="text-[13px] font-mono font-semibold text-emerald-600 tabular-nums">{formatValoare(p.valoare)}</span>}
                       </div>
                       <div className="text-[13px] text-slate-500 mt-1 flex items-center gap-2">
@@ -168,6 +221,18 @@ export default function ProjectsPage() {
                               <div className="h-full rounded-full transition-all" style={{ width: `${elemPct}%`, background: elemPct >= 80 ? "#059669" : elemPct >= 50 ? "#2563eb" : "#d97706" }} />
                             </div>
                             <span className="text-[12px] font-medium text-slate-600 tabular-nums">{elements.filled}/{elements.total}</span>
+                          </div>
+                        </div>
+                      )}
+                      {/* GAP 18: Docs generated progress */}
+                      {docs.total > 0 && (
+                        <div className="text-right">
+                          <div className="text-[11px] text-slate-400 mb-1">Documente</div>
+                          <div className="flex items-center gap-2">
+                            <div className="w-16 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                              <div className="h-full rounded-full transition-all" style={{ width: `${docsPct}%`, background: docsPct >= 80 ? "#a78bfa" : "#94a3b8" }} />
+                            </div>
+                            <span className="text-[12px] font-medium text-slate-600 tabular-nums">{docs.done}/{docs.total}</span>
                           </div>
                         </div>
                       )}

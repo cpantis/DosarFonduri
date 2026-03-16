@@ -584,8 +584,13 @@ export async function invalidateCache(contentHash: string, organizationId: strin
 
   if (isRedisReady()) {
     const pattern = `extract:${contentHash}:*`;
-    const keys = await redis.keys(pattern);
-    if (keys.length > 0) await redis.del(...keys);
+    // Use SCAN instead of KEYS to avoid blocking Redis on large keyspaces
+    const stream = redis.scanStream({ match: pattern, count: 100 });
+    const keysToDelete: string[] = [];
+    for await (const batch of stream) {
+      keysToDelete.push(...(batch as string[]));
+    }
+    if (keysToDelete.length > 0) await redis.del(...keysToDelete);
   }
 }
 

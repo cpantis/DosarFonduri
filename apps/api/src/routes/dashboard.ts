@@ -5,7 +5,7 @@ import {
   projects, companies, documents, projectElements, projectEligibility,
   projectDocuments, projectChecklist, auditLog, documentFolders, users,
 } from "../db/schema";
-import { eq, count, desc, and, ne } from "drizzle-orm";
+import { eq, count, desc, and, ne, sql, inArray } from "drizzle-orm";
 import type { AuthContext } from "../middleware/auth";
 
 export const dashboardRoutes = new Hono<AppEnv>();
@@ -15,71 +15,123 @@ dashboardRoutes.get("/", async (c) => {
   if (!auth.organizationId) return c.json({ error: "No organization" }, 403);
   const orgId = auth.organizationId;
 
-  // KPI counts
-  const [projectCount] = await db.select({ count: count() }).from(projects)
-    .where(and(eq(projects.organizationId, orgId), ne(projects.status, "approved"), ne(projects.status, "rejected")));
-  const [companyCount] = await db.select({ count: count() }).from(companies)
-    .where(eq(companies.organizationId, orgId));
-  const [docCount] = await db.select({ count: count() }).from(documents)
-    .where(eq(documents.organizationId, orgId));
+  // KPI counts + approval rate — parallel independent queries
+  const [
+    [projectCount],
+    [companyCount],
+    [docCount],
+    [approvalStats],
+    recentProjects,
+  ] = await Promise.all([
+    db.select({ count: count() }).from(projects)
+      .where(and(eq(projects.organizationId, orgId), ne(projects.status, "approved"), ne(projects.status, "rejected"))),
+    db.select({ count: count() }).from(companies)
+      .where(eq(companies.organizationId, orgId)),
+    db.select({ count: count() }).from(documents)
+      .where(eq(documents.organizationId, orgId)),
+    db.select({
+      approved: sql<number>`count(case when ${projects.status} = 'approved' then 1 end)`,
+      nonDraft: sql<number>`count(case when ${projects.status} != 'draft' then 1 end)`,
+    }).from(projects).where(eq(projects.organizationId, orgId)),
+    db.query.projects.findMany({
+      where: eq(projects.organizationId, orgId),
+      orderBy: (p, { desc: d }) => [d(p.updatedAt)],
+      limit: 5,
+    }),
+  ]);
 
-  // Approval rate (submitted+approved vs total non-draft)
-  const [submittedCount] = await db.select({ count: count() }).from(projects)
-    .where(and(eq(projects.organizationId, orgId), eq(projects.status, "approved")));
-  const [totalNonDraft] = await db.select({ count: count() }).from(projects)
-    .where(and(eq(projects.organizationId, orgId), ne(projects.status, "draft")));
-  const approvalRate = totalNonDraft.count > 0 ? Math.round((submittedCount.count / totalNonDraft.count) * 100) : 0;
+  const approvalRate = approvalStats.nonDraft > 0
+    ? Math.round((approvalStats.approved / approvalStats.nonDraft) * 100) : 0;
 
-  // Recent projects (top 5) with full progress
-  const recentProjects = await db.query.projects.findMany({
-    where: eq(projects.organizationId, orgId),
-    orderBy: (p, { desc: d }) => [d(p.updatedAt)],
-    limit: 5,
-  });
+  // Enrich recent projects with batch queries instead of N+1
+  const projectIds = recentProjects.map(p => p.id);
+  const companyIds = [...new Set(recentProjects.map(p => p.companyId).filter(Boolean))] as string[];
+  const folderIds = [...new Set(recentProjects.map(p => p.folderId).filter(Boolean))] as string[];
 
-  const enrichedProjects = await Promise.all(recentProjects.map(async (p) => {
-    const company = await db.query.companies.findFirst({
-      where: eq(companies.id, p.companyId),
-    });
+  let companyMap: Record<string, string> = {};
+  let folderMap: Record<string, { name: string; parentId: string | null }> = {};
+  let elementStats: Array<{ projectId: string; total: number; filled: number }> = [];
+  let eligStats: Array<{ projectId: string; total: number; passed: number }> = [];
+  let checkStats: Array<{ projectId: string; total: number; done: number }> = [];
+  let docStats: Array<{ projectId: string; total: number; generated: number }> = [];
 
-    const elements = await db.query.projectElements.findMany({
-      where: eq(projectElements.projectId, p.id),
-    });
-    const eligibility = await db.query.projectEligibility.findMany({
-      where: eq(projectEligibility.projectId, p.id),
-    });
-    const checklist = await db.query.projectChecklist.findMany({
-      where: eq(projectChecklist.projectId, p.id),
-    });
-    const docs = await db.query.projectDocuments.findMany({
-      where: eq(projectDocuments.projectId, p.id),
-    });
+  if (projectIds.length > 0) {
+    const [companiesRaw, foldersRaw, elemRaw, eligRaw, checkRaw, docRaw] = await Promise.all([
+      companyIds.length > 0
+        ? db.select({ id: companies.id, denumire: companies.denumire })
+            .from(companies).where(inArray(companies.id, companyIds))
+        : Promise.resolve([]),
+      folderIds.length > 0
+        ? db.select({ id: documentFolders.id, name: documentFolders.name, parentId: documentFolders.parentId })
+            .from(documentFolders).where(inArray(documentFolders.id, folderIds))
+        : Promise.resolve([]),
+      db.select({
+        projectId: projectElements.projectId,
+        total: count(),
+        filled: sql<number>`count(case when ${projectElements.value} is not null and trim(${projectElements.value}) != '' then 1 end)`,
+      }).from(projectElements).where(inArray(projectElements.projectId, projectIds)).groupBy(projectElements.projectId),
+      db.select({
+        projectId: projectEligibility.projectId,
+        total: count(),
+        passed: sql<number>`count(case when ${projectEligibility.status} = 'passed' then 1 end)`,
+      }).from(projectEligibility).where(inArray(projectEligibility.projectId, projectIds)).groupBy(projectEligibility.projectId),
+      db.select({
+        projectId: projectChecklist.projectId,
+        total: count(),
+        done: sql<number>`count(case when ${projectChecklist.done} = true then 1 end)`,
+      }).from(projectChecklist).where(inArray(projectChecklist.projectId, projectIds)).groupBy(projectChecklist.projectId),
+      db.select({
+        projectId: projectDocuments.projectId,
+        total: count(),
+        generated: sql<number>`count(case when ${projectDocuments.status} in ('generated', 'validated') then 1 end)`,
+      }).from(projectDocuments).where(inArray(projectDocuments.projectId, projectIds)).groupBy(projectDocuments.projectId),
+    ]);
 
-    // Build program path from folder
-    const folder = await db.query.documentFolders.findFirst({ where: eq(documentFolders.id, p.folderId) });
-    let programLabel = folder?.name || "";
-    if (folder?.parentId) {
-      const parent = await db.query.documentFolders.findFirst({ where: eq(documentFolders.id, folder.parentId) });
-      if (parent) programLabel = parent.name;
-    }
+    for (const c of companiesRaw) companyMap[c.id] = c.denumire || "";
+    for (const f of foldersRaw) folderMap[f.id] = { name: f.name, parentId: f.parentId };
+    elementStats = elemRaw;
+    eligStats = eligRaw;
+    checkStats = checkRaw;
+    docStats = docRaw;
+  }
+
+  // Resolve parent folder names for program labels
+  const parentIds = [...new Set(
+    Object.values(folderMap).map(f => f.parentId).filter(Boolean)
+  )] as string[];
+  let parentMap: Record<string, string> = {};
+  if (parentIds.length > 0) {
+    const parents = await db.select({ id: documentFolders.id, name: documentFolders.name })
+      .from(documentFolders).where(inArray(documentFolders.id, parentIds));
+    for (const p of parents) parentMap[p.id] = p.name;
+  }
+
+  const enrichedProjects = recentProjects.map(p => {
+    const folder = p.folderId ? folderMap[p.folderId] : null;
+    const programLabel = folder?.parentId && parentMap[folder.parentId]
+      ? parentMap[folder.parentId] : (folder?.name || "");
+    const elem = elementStats.find(e => e.projectId === p.id);
+    const elig = eligStats.find(e => e.projectId === p.id);
+    const check = checkStats.find(e => e.projectId === p.id);
+    const doc = docStats.find(e => e.projectId === p.id);
 
     return {
       id: p.id,
       name: p.name,
       status: p.status,
       updatedAt: p.updatedAt,
-      firma: company?.denumire || "",
+      firma: p.companyId ? (companyMap[p.companyId] || "") : "",
       program: programLabel,
-      eligibility: eligibility.filter(e => e.status === "passed").length,
-      eligTotal: eligibility.length,
-      elements: elements.filter(e => e.value && e.value.trim() !== "").length,
-      elemTotal: elements.length,
-      checkDone: checklist.filter(e => e.done).length,
-      checkTotal: checklist.length,
-      docsGenerated: docs.filter(e => e.status === "generated" || e.status === "validated").length,
-      docsTotal: docs.length,
+      eligibility: elig?.passed ?? 0,
+      eligTotal: elig?.total ?? 0,
+      elements: elem?.filled ?? 0,
+      elemTotal: elem?.total ?? 0,
+      checkDone: check?.done ?? 0,
+      checkTotal: check?.total ?? 0,
+      docsGenerated: doc?.generated ?? 0,
+      docsTotal: doc?.total ?? 0,
     };
-  }));
+  });
 
   // Activity feed (last 15) enriched with user name
   const activityRaw = await db
@@ -112,7 +164,10 @@ dashboardRoutes.get("/", async (c) => {
     ),
   });
 
-  // Build deadlines from projects that reference session folders
+  // Build deadlines — batch query for projects in all session folders at once
+  const sessionFolderIds = sessionFolders.map(sf => sf.id);
+  const sessionFolderMap = new Map(sessionFolders.map(sf => [sf.id, sf]));
+
   const deadlines: Array<{
     date: string;
     project: string;
@@ -121,19 +176,19 @@ dashboardRoutes.get("/", async (c) => {
     daysLeft: number;
   }> = [];
 
-  for (const sf of sessionFolders) {
-    const projectsInSession = await db.query.projects.findMany({
+  if (sessionFolderIds.length > 0) {
+    const projectsInSessions = await db.query.projects.findMany({
       where: and(
         eq(projects.organizationId, orgId),
-        eq(projects.folderId, sf.id),
+        inArray(projects.folderId, sessionFolderIds),
         ne(projects.status, "approved"),
         ne(projects.status, "rejected"),
       ),
-      limit: 3,
     });
 
-    for (const proj of projectsInSession) {
-      // Use session name as event, and createdAt + 30 days as estimated deadline
+    for (const proj of projectsInSessions) {
+      const sf = sessionFolderMap.get(proj.folderId!);
+      if (!sf) continue;
       const estimatedDeadline = new Date(sf.createdAt.getTime() + 60 * 86400000);
       if (estimatedDeadline <= thirtyDays && estimatedDeadline >= now) {
         const daysLeft = Math.ceil((estimatedDeadline.getTime() - now.getTime()) / 86400000);
@@ -166,22 +221,18 @@ dashboardRoutes.get("/", async (c) => {
     }
   }
 
-  // Alert for companies with processing errors
-  const errorCompanies = await db.query.companies.findMany({
-    where: and(eq(companies.organizationId, orgId), eq(companies.processingStatus, "error")),
-    limit: 3,
-  });
-  if (errorCompanies.length > 0) {
-    alerts.push({ message: `${errorCompanies.length} firmă/firme cu erori de procesare`, type: "error" });
+  // Alert for companies/documents with errors — parallel count queries
+  const [[errorCompanyCount], [errorDocCount]] = await Promise.all([
+    db.select({ count: count() }).from(companies)
+      .where(and(eq(companies.organizationId, orgId), eq(companies.processingStatus, "error"))),
+    db.select({ count: count() }).from(documents)
+      .where(and(eq(documents.organizationId, orgId), eq(documents.status, "error"))),
+  ]);
+  if (errorCompanyCount.count > 0) {
+    alerts.push({ message: `${errorCompanyCount.count} firmă/firme cu erori de procesare`, type: "error" });
   }
-
-  // Alert for documents with errors
-  const errorDocs = await db.query.documents.findMany({
-    where: and(eq(documents.organizationId, orgId), eq(documents.status, "error")),
-    limit: 3,
-  });
-  if (errorDocs.length > 0) {
-    alerts.push({ message: `${errorDocs.length} document(e) cu erori de procesare`, type: "error" });
+  if (errorDocCount.count > 0) {
+    alerts.push({ message: `${errorDocCount.count} document(e) cu erori de procesare`, type: "error" });
   }
 
   return c.json({

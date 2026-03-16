@@ -958,12 +958,12 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         totalAIOutputTokens = result._meta.totalOutputTokens;
       } else {
         // Multiple chunks — process with limited concurrency, then merge + dedup
-        let nextChunk = 0;
         const chunkResults: Array<Awaited<ReturnType<typeof unifiedExtraction>>> = new Array(chunks.length);
+        const chunkQueue = chunks.map((_, i) => i);
 
         async function opusWorker() {
-          while (nextChunk < chunks.length) {
-            const idx = nextChunk++;
+          let idx: number | undefined;
+          while ((idx = chunkQueue.shift()) !== undefined) {
             chunkResults[idx] = await unifiedExtraction(chunks[idx], organizationId, `chunk_${idx + 1}`, useET);
 
             const chunkProgress = 30 + Math.round(((idx + 1) / chunks.length) * 55);

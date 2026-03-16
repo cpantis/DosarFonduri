@@ -314,6 +314,8 @@ export default function DocumentsPage() {
   const [docs, setDocs] = useState<DocItem[]>([]);
   const [docsLoading, setDocsLoading] = useState(false);
   const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
+  const [docRules, setDocRules] = useState<Record<string, any[]>>({});
+  const [docRulesLoading, setDocRulesLoading] = useState<Record<string, boolean>>({});
   const searchRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
@@ -526,6 +528,24 @@ export default function DocumentsPage() {
       console.error("Failed to get download URL:", err);
     }
   }, []);
+
+  const toggleExpandCard = useCallback(async (docId: string) => {
+    const wasExpanded = expandedCards[docId];
+    setExpandedCards(prev => ({ ...prev, [docId]: !prev[docId] }));
+    // Fetch rules on first expand if not already loaded
+    if (!wasExpanded && !docRules[docId] && !docRulesLoading[docId]) {
+      setDocRulesLoading(prev => ({ ...prev, [docId]: true }));
+      try {
+        const rules = await apiGet<any[]>(`/api/rules/documents/${docId}/rules`);
+        setDocRules(prev => ({ ...prev, [docId]: rules }));
+      } catch (err) {
+        console.error("Failed to fetch rules for document:", err);
+        setDocRules(prev => ({ ...prev, [docId]: [] }));
+      } finally {
+        setDocRulesLoading(prev => ({ ...prev, [docId]: false }));
+      }
+    }
+  }, [expandedCards, docRules, docRulesLoading]);
 
   const handleDocProcess = useCallback(async (docId: string) => {
     try {
@@ -913,7 +933,7 @@ export default function DocumentsPage() {
                   {d.campuri != null && d.campuri > 0 && <span className="doc-stat-num">{d.campuri} c\u00E2mpuri</span>}
                   {hasSummary && (
                     <button
-                      onClick={(e) => { e.stopPropagation(); setExpandedCards(prev => ({ ...prev, [d.id]: !prev[d.id] })); }}
+                      onClick={(e) => { e.stopPropagation(); toggleExpandCard(d.id); }}
                       style={{
                         background: "none", border: "none", cursor: "pointer",
                         color: "#4d8bff", fontSize: 11, fontWeight: 600, padding: "2px 6px",
@@ -926,54 +946,150 @@ export default function DocumentsPage() {
                 </div>
               </div>
               {/* Expandable results section */}
-              {hasSummary && isExpanded && (
-                <div style={{
-                  margin: "0 4px 8px 4px",
-                  padding: "10px 14px",
-                  borderRadius: "0 0 10px 10px",
-                  border: "1px solid var(--border, #e0e4ea)",
-                  borderTop: "none",
-                  background: "var(--bg-elevated, #f8f9fb)",
-                  fontSize: 12,
-                  display: "flex",
-                  gap: 16,
-                  flexWrap: "wrap",
-                  animation: "docFadeIn .2s ease-out",
-                }}>
-                  {d.processingType === "ghid" && (
-                    <>
-                      {(d.summary?.rulesCount || 0) > 0 && (
-                        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                          <span style={{ fontSize: 14 }}>{"\u{1F6E1}"}</span>
-                          <span style={{ color: "var(--text-secondary, #5a6478)" }}>Reguli eligibilitate:</span>
-                          <span style={{ fontWeight: 700, color: "#34d399", fontFamily: "'JetBrains Mono', monospace" }}>{d.summary?.rulesCount}</span>
+              {hasSummary && isExpanded && (() => {
+                const rules = docRules[d.id] || [];
+                const isLoading = docRulesLoading[d.id];
+                const CATEGORY_COLORS: Record<string, string> = {
+                  eligibilitate: "#34d399", financiar: "#fbbf24", tehnic: "#4d8bff",
+                  administrativ: "#a78bfa", achizitii: "#fb923c", documente: "#64748b",
+                  selectie: "#f87171", intensitate: "#06b6d4", ajutor_stat: "#ec4899",
+                };
+                return (
+                  <div style={{
+                    margin: "0 4px 8px 4px",
+                    borderRadius: "0 0 10px 10px",
+                    border: "1px solid rgba(226,232,240,.8)",
+                    borderTop: "none",
+                    background: "#ffffff",
+                    fontSize: 12,
+                    animation: "docFadeIn .2s ease-out",
+                    overflow: "hidden",
+                  }}>
+                    {/* Summary counts bar */}
+                    <div style={{ display: "flex", gap: 14, flexWrap: "wrap", padding: "8px 14px", background: "#f8fafc", borderBottom: "1px solid rgba(226,232,240,.6)" }}>
+                      {d.processingType === "ghid" && (
+                        <>
+                          {(d.summary?.rulesCount || 0) > 0 && (
+                            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                              <span style={{ fontSize: 13 }}>{"\u{1F6E1}"}</span>
+                              <span style={{ color: "#64748b" }}>Reguli:</span>
+                              <span style={{ fontWeight: 700, color: "#34d399", fontFamily: "'JetBrains Mono', monospace" }}>{d.summary?.rulesCount}</span>
+                            </div>
+                          )}
+                          {(d.summary?.scoringCount || 0) > 0 && (
+                            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                              <span style={{ fontSize: 13 }}>{"\u{1F4CA}"}</span>
+                              <span style={{ color: "#64748b" }}>Criterii:</span>
+                              <span style={{ fontWeight: 700, color: "#a78bfa", fontFamily: "'JetBrains Mono', monospace" }}>{d.summary?.scoringCount}</span>
+                            </div>
+                          )}
+                          {(d.summary?.elementsCount || 0) > 0 && (
+                            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                              <span style={{ fontSize: 13 }}>{"\u{1F4CB}"}</span>
+                              <span style={{ color: "#64748b" }}>Elemente:</span>
+                              <span style={{ fontWeight: 700, color: "#4d8bff", fontFamily: "'JetBrains Mono', monospace" }}>{d.summary?.elementsCount}</span>
+                            </div>
+                          )}
+                        </>
+                      )}
+                      {d.processingType === "template" && (d.summary?.fieldsCount || 0) > 0 && (
+                        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                          <span style={{ fontSize: 13 }}>{"\u{1F4DD}"}</span>
+                          <span style={{ color: "#64748b" }}>C\u00E2mpuri:</span>
+                          <span style={{ fontWeight: 700, color: "#4d8bff", fontFamily: "'JetBrains Mono', monospace" }}>{d.summary?.fieldsCount}</span>
                         </div>
                       )}
-                      {(d.summary?.scoringCount || 0) > 0 && (
-                        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                          <span style={{ fontSize: 14 }}>{"\u{1F4CA}"}</span>
-                          <span style={{ color: "var(--text-secondary, #5a6478)" }}>Criterii punctaj:</span>
-                          <span style={{ fontWeight: 700, color: "#a78bfa", fontFamily: "'JetBrains Mono', monospace" }}>{d.summary?.scoringCount}</span>
-                        </div>
-                      )}
-                      {(d.summary?.elementsCount || 0) > 0 && (
-                        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                          <span style={{ fontSize: 14 }}>{"\u{1F4CB}"}</span>
-                          <span style={{ color: "var(--text-secondary, #5a6478)" }}>Elemente definite:</span>
-                          <span style={{ fontWeight: 700, color: "#4d8bff", fontFamily: "'JetBrains Mono', monospace" }}>{d.summary?.elementsCount}</span>
-                        </div>
-                      )}
-                    </>
-                  )}
-                  {d.processingType === "template" && (d.summary?.fieldsCount || 0) > 0 && (
-                    <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                      <span style={{ fontSize: 14 }}>{"\u{1F4DD}"}</span>
-                      <span style={{ color: "var(--text-secondary, #5a6478)" }}>C\u00E2mpuri detectate:</span>
-                      <span style={{ fontWeight: 700, color: "#4d8bff", fontFamily: "'JetBrains Mono', monospace" }}>{d.summary?.fieldsCount}</span>
                     </div>
-                  )}
-                </div>
-              )}
+                    {/* Rules list for guides */}
+                    {d.processingType === "ghid" && (
+                      <div style={{ maxHeight: 280, overflowY: "auto" }}>
+                        {isLoading ? (
+                          <div style={{ padding: "16px", textAlign: "center", color: "#94a3b8", fontSize: 12 }}>
+                            Se \u00EEncarc\u0103 regulile...
+                          </div>
+                        ) : rules.length === 0 ? (
+                          <div style={{ padding: "16px", textAlign: "center", color: "#94a3b8", fontSize: 12 }}>
+                            Nicio regul\u0103 extras\u0103
+                          </div>
+                        ) : rules.map((rule: any) => (
+                          <div key={rule.id} style={{
+                            padding: "8px 14px",
+                            borderBottom: "1px solid rgba(226,232,240,.4)",
+                            display: "flex",
+                            gap: 8,
+                            alignItems: "flex-start",
+                            transition: "background .15s",
+                          }}
+                          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "#f8fafc"; }}
+                          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                          >
+                            <div style={{ flexShrink: 0, marginTop: 2 }}>
+                              <span style={{
+                                display: "inline-block",
+                                fontSize: 9,
+                                fontWeight: 700,
+                                padding: "1px 5px",
+                                borderRadius: 4,
+                                background: rule.type === "fixed" ? "rgba(52,211,153,.1)" : "rgba(251,191,36,.1)",
+                                color: rule.type === "fixed" ? "#059669" : "#d97706",
+                                letterSpacing: ".3px",
+                              }}>
+                                {rule.type === "fixed" ? "FIX\u0102" : "INTER"}
+                              </span>
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{
+                                fontSize: 12,
+                                color: "#0f172a",
+                                lineHeight: 1.4,
+                                display: "-webkit-box",
+                                WebkitLineClamp: 2,
+                                WebkitBoxOrient: "vertical" as const,
+                                overflow: "hidden",
+                              }}>
+                                {rule.description}
+                              </div>
+                              <div style={{ display: "flex", gap: 8, marginTop: 3, alignItems: "center" }}>
+                                {rule.category && (
+                                  <span style={{
+                                    fontSize: 10,
+                                    padding: "0 6px",
+                                    borderRadius: 9999,
+                                    background: (CATEGORY_COLORS[rule.category] || "#64748b") + "15",
+                                    color: CATEGORY_COLORS[rule.category] || "#64748b",
+                                    fontWeight: 600,
+                                  }}>
+                                    {rule.category}
+                                  </span>
+                                )}
+                                {rule.sourcePage && (
+                                  <span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'JetBrains Mono', monospace" }}>
+                                    p.{rule.sourcePage}
+                                  </span>
+                                )}
+                                <span style={{
+                                  fontSize: 10,
+                                  color: parseFloat(rule.confidence) >= 0.85 ? "#059669" : "#d97706",
+                                  fontFamily: "'JetBrains Mono', monospace",
+                                  fontWeight: 600,
+                                }}>
+                                  {Math.round(parseFloat(rule.confidence || "0") * 100)}%
+                                </span>
+                                {rule.validated && (
+                                  <span style={{ fontSize: 11, color: "#059669" }}>{"\u2713"}</span>
+                                )}
+                                {rule.needsReview && (
+                                  <span style={{ fontSize: 10, color: "#f59e0b" }}>{"\u26A0"}</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           );
         })}
@@ -1015,11 +1131,30 @@ export default function DocumentsPage() {
             </button>
           </div>
         )}
-        {selDoc.status === "procesare" && (
-          <div style={{ marginTop: 10, color: "#fbbf24", fontSize: 13 }}>
-            {"\u2699"} Procesare în curs... Rezultatele vor apărea automat.
-          </div>
-        )}
+        {selDoc.status === "procesare" && (() => {
+          const jp = jobProgressMap.get(selDoc.id);
+          return jp ? (
+            <div style={{ marginTop: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#fbbf24", marginBottom: 4 }}>
+                <span>{jp.message}</span>
+                <span style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700 }}>{jp.progress}%</span>
+              </div>
+              <div style={{ height: 6, borderRadius: 3, background: "rgba(251,191,36,.12)", overflow: "hidden" }}>
+                <div style={{
+                  height: "100%",
+                  width: `${jp.progress}%`,
+                  borderRadius: 3,
+                  background: "linear-gradient(90deg, #fbbf24, #f59e0b)",
+                  transition: "width 0.5s ease-out",
+                }} />
+              </div>
+            </div>
+          ) : (
+            <div style={{ marginTop: 10, color: "#fbbf24", fontSize: 13 }}>
+              {"\u2699"} Procesare \u00EEn curs... Rezultatele vor ap\u0103rea automat.
+            </div>
+          );
+        })()}
         {selDoc.status === "eroare" && (
           <div style={{ marginTop: 10 }}>
             {selDoc.processingError && (

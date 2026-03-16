@@ -237,4 +237,41 @@ console.log(`DosarFonduri API running on port ${port}`);
 console.log(`  FRONTEND_URL: ${process.env.FRONTEND_URL || "http://localhost:3000"}`);
 console.log(`  DATABASE_URL: ${process.env.DATABASE_URL ? "✅ set" : "❌ missing"}`);
 console.log(`  REDIS_URL: ${process.env.REDIS_URL ? "✅ set" : "⚠️ default"}`);
+
+// Run schema safety checks in background (non-blocking)
+// This ensures columns added by recent migrations exist even if migrate.ts failed
+(async () => {
+  try {
+    const { db: database } = await import("./db");
+    const { sql: sqlTag } = await import("drizzle-orm");
+    const stmts = [
+      `DO $$ BEGIN CREATE TYPE "generation_mode" AS ENUM('fill','compose'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+      `DO $$ BEGIN CREATE TYPE "document_type_class" AS ENUM('guide','guide_annex_table','guide_annex_form','certificat_constatator','bilant_anaf','contract_arenda','oferta_pret','registru_imobilizari','declaratie_expert_contabil','document_mediu','extras_cont','certificat_fiscal','memoriu_template','cerere_finantare_template','anexa_b_template','anexa_c_template','carte_identitate','diploma_studii','act_constitutiv','statut','descriere_proiect','adeverinta','foto_echipament','other'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+      `ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "mime_type" varchar(100) NOT NULL DEFAULT 'application/octet-stream'`,
+      `ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "file_hash" varchar(64)`,
+      `ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "generation_mode" "generation_mode" DEFAULT 'fill'`,
+      `ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "compose_config" jsonb`,
+      `ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "document_type_class" "document_type_class"`,
+      `ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "classification_confidence" decimal(3,2)`,
+      `ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "processing_result" jsonb`,
+      `ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "processing_error" text`,
+      `ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "trust_score" decimal(3,2)`,
+      `ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "completeness_report" jsonb`,
+      `ALTER TABLE "files" ADD COLUMN IF NOT EXISTS "size" bigint NOT NULL DEFAULT 0`,
+      // 0020: upgrade files.size from integer to bigint (supports >2GB files)
+      `ALTER TABLE "files" ALTER COLUMN "size" SET DATA TYPE bigint`,
+      `ALTER TYPE "doc_processing_type" ADD VALUE IF NOT EXISTS 'reference_data'`,
+      // 0019: solomon_knowledge nullable org + compose_section_versions
+      `ALTER TABLE "solomon_knowledge" ALTER COLUMN "organization_id" DROP NOT NULL`,
+      `CREATE TABLE IF NOT EXISTS "compose_section_versions" (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), project_document_id UUID NOT NULL REFERENCES project_documents(id) ON DELETE CASCADE, section_marker VARCHAR(255) NOT NULL, version INTEGER NOT NULL DEFAULT 1, content TEXT NOT NULL, source VARCHAR(50) NOT NULL, edited_by UUID REFERENCES users(id), created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
+    ];
+    for (const stmt of stmts) {
+      try { await database.execute(sqlTag.raw(stmt)); } catch { /* ignore individual failures */ }
+    }
+    console.log("[startup] Schema safety check complete");
+  } catch (e) {
+    console.warn("[startup] Schema safety check failed (non-fatal):", (e as Error).message?.substring(0, 100));
+  }
+})();
+
 serve({ fetch: app.fetch, port });

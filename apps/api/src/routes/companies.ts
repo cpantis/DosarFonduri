@@ -398,13 +398,9 @@ companyRoutes.post("/from-listafirme", async (c) => {
   const lfData = await lookupCUI_ListaFirme(cleanCUI);
   if (!lfData) return c.json({ error: "CUI-ul nu a fost găsit pe ListaFirme.ro" }, 404);
 
-  // Map legal form
-  const LISTAFIRME_FORMA_MAP: Record<string, string> = {
-    "SRL": "SRL", "SA": "SA", "PFA": "PFA", "II": "II", "IF": "IF",
-    "SNC": "SNC", "SCS": "SCS", "SCA": "SCA", "SC": "SC", "RA": "RA",
-  };
+  // Map legal form (reuse FORMA_MAP from onrc.ts for consistency)
   const formaRaw = (lfData.legalForm || "").toUpperCase();
-  const formaCode = Object.entries(LISTAFIRME_FORMA_MAP).find(([k]) => formaRaw.includes(k))?.[1] || "SRL";
+  const formaCode = Object.entries(FORMA_MAP).find(([k]) => formaRaw.includes(k))?.[1] || "SRL";
 
   // Parse founded year
   const foundedYear = lfData.foundedDate ? parseInt(lfData.foundedDate.slice(0, 4)) : undefined;

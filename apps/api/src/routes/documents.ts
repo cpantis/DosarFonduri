@@ -457,6 +457,7 @@ documentRoutes.post("/documents/:id/confirm-upload", async (c) => {
 documentRoutes.put("/local-upload/:fileId", async (c) => {
   const auth = c.get("auth") as AuthContext;
   if (!auth.organizationId) return c.json({ error: "No organization" }, 403);
+  await ensureDocumentColumns();
   if (!isLocalStorage) return c.json({ error: "Local upload not available in S3 mode" }, 400);
 
   const fileId = c.req.param("fileId");

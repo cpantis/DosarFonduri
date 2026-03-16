@@ -8,7 +8,7 @@ import {
 import { eq, and, sql } from "drizzle-orm";
 import { createHash } from "crypto";
 import { getFileBuffer } from "../services/storage";
-import { extractTextFromPDF, extractTextFromDOCX, extractTextFromXLSX, extractTextFromImage, extractTextFromDOC, classifyDocument } from "../services/ocr";
+import { extractTextFromPDF, extractTextFromDOCX, extractTextFromXLSX, extractTextFromImage, extractTextFromDOC, classifyDocument, shouldPreStructure, preStructureClientText } from "../services/ocr";
 import { logAIUsage } from "../services/aiUsage";
 import { publishEvent, publishEligibilityUpdated, publishScoreUpdated, publishFieldExtracted, publishExtractionStarted } from "../lib/sse";
 import { redis } from "../lib/redis";
@@ -847,10 +847,53 @@ export const processClientDocWorker = new Worker<ProcessClientDocPayload>(
         action: "classify_client_document",
       });
 
+      // Step 2.5: Optional Sonnet pre-structuring for large/messy documents
+      const pageCount = (text.match(/--- Pagina|--- Sheet/g) || []).length || 1;
+      let extractionText = text; // text used for extraction (may be pre-structured)
+      let preStructured = false;
+
+      if (shouldPreStructure(classification.documentType, pageCount, text.length)) {
+        try {
+          const preStructStart = Date.now();
+          publishEvent(`org:${organizationId}:uploads`, "extraction_progress", {
+            documentId,
+            documentName: doc.name,
+            progress: 45,
+            message: `Pre-structurare text cu Sonnet (${pageCount} pagini, ${(text.length / 1000).toFixed(0)}K chars)...`,
+          }).catch(() => {});
+
+          const preStructResult = await preStructureClientText(text);
+          extractionText = preStructResult.cleanedText;
+          preStructured = true;
+
+          const preStructDuration = Date.now() - preStructStart;
+          console.log(
+            `[processClientDoc] Sonnet pre-structuring: ${preStructDuration}ms for "${doc.name}" ` +
+            `(${preStructResult.pageCount} pages, ${preStructResult.tableCount} tables, ` +
+            `quality=${preStructResult.qualityScore.toFixed(2)})`,
+          );
+
+          await logAIUsage({
+            organizationId,
+            agent: "ocr",
+            model: "claude-sonnet-4-20250514",
+            tokensInput: Math.min(Math.round(text.length / 4), 30000),
+            tokensOutput: Math.min(Math.round(text.length / 4), 25000),
+            action: "pre_structure_client_doc",
+          });
+        } catch (err) {
+          // Pre-structuring failure is non-fatal — fall back to raw text
+          console.warn(`[processClientDoc] Pre-structuring failed for "${doc.name}", using raw text:`, err);
+          extractionText = text;
+        }
+      }
+
+      await job.updateProgress(50);
+
       // Step 3: Extract structured data (with cache dedup)
       let extractionResult: ExtractionResult | null = null;
       let cacheHit = false;
-      const contentHash = getContentHash(text);
+      const contentHash = getContentHash(extractionText);
 
       // Load vocabulary from element_definitions for vocabulary-guided extraction
       let vocab: string[] | undefined;
@@ -887,7 +930,7 @@ export const processClientDocWorker = new Worker<ProcessClientDocPayload>(
           // P4 fix: Check for compound documents before extraction.
           // A compound doc (e.g. act constitutiv + certificat constatator in one PDF)
           // should be split into sub-documents, each processed by the appropriate extractor.
-          const subDocs = detectCompoundDocument(text);
+          const subDocs = detectCompoundDocument(extractionText);
 
           if (subDocs && subDocs.length > 1) {
             // Compound document: extract from each sub-document and merge results
@@ -923,13 +966,13 @@ export const processClientDocWorker = new Worker<ProcessClientDocPayload>(
               extractionResult = {
                 document_type: `compound_${classification.documentType}`,
                 extracted_fields: allFields,
-                raw_text: text.slice(0, 5000),
+                raw_text: extractionText.slice(0, 5000),
                 processing_time_ms: totalTimeMs,
               };
             }
           } else {
-            // Single document — normal extraction
-            extractionResult = await runExtractor(classification.documentType, text, vocab);
+            // Single document — normal extraction (uses pre-structured text if available)
+            extractionResult = await runExtractor(classification.documentType, extractionText, vocab);
           }
 
           await job.updateProgress(80);
@@ -951,7 +994,7 @@ export const processClientDocWorker = new Worker<ProcessClientDocPayload>(
               classification.documentType,
               organizationId,
               extractionResult,
-              text.length,
+              extractionText.length,
             );
           }
         }
@@ -981,7 +1024,6 @@ export const processClientDocWorker = new Worker<ProcessClientDocPayload>(
       }
 
       // Step 4: Save classification + extraction results to DB
-      const pageCount = (text.match(/--- Pagina|--- Sheet/g) || []).length || 1;
       await db.update(documents).set({
         status: "processed",
         pageCount,
@@ -1023,7 +1065,10 @@ export const processClientDocWorker = new Worker<ProcessClientDocPayload>(
         processingType: "client_doc",
         documentType: classification.documentType,
         confidence: classification.confidence,
-        message: `Document procesat "${doc.name}" — clasificat ca ${classification.documentType}`,
+        preStructured,
+        message: preStructured
+          ? `Document procesat "${doc.name}" — clasificat ca ${classification.documentType} (pre-structurat cu Sonnet)`
+          : `Document procesat "${doc.name}" — clasificat ca ${classification.documentType}`,
       }).catch(() => {});
 
       if (extractionResult && extractionResult.extracted_fields.length > 0) {

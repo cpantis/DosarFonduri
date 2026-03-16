@@ -453,6 +453,199 @@ IMPORTANT:
   };
 }
 
+// ─── SONNET PRE-STRUCTURING FOR CLIENT DOCUMENTS ───
+
+/**
+ * Pre-structure client document text using Sonnet.
+ * Lighter than preStructurePages (guide-oriented) — focuses on:
+ * - Cleaning OCR artifacts, headers/footers, page numbers
+ * - Formatting messy tables as markdown
+ * - Normalizing whitespace and paragraph breaks
+ * - Preserving all original content (no summarization)
+ *
+ * Use for client docs >10 pages or >20K chars where raw PyMuPDF
+ * text has quality issues (scanned, multi-column, broken tables).
+ *
+ * Cost: ~$0.03-0.08 per document (much cheaper than guide pre-structuring).
+ */
+
+export interface PreStructuredClientDoc {
+  cleanedText: string;
+  tableCount: number;
+  pageCount: number;
+  qualityScore: number; // 0-1, how much the text improved
+}
+
+/** Max pages per Sonnet batch for client doc pre-structuring */
+const CLIENT_PRE_STRUCTURE_BATCH_SIZE = 8;
+
+/** Max parallel Sonnet calls for client doc pre-structuring */
+const CLIENT_PRE_STRUCTURE_CONCURRENCY = 3;
+
+/** Thresholds for triggering pre-structuring */
+export const PRE_STRUCTURE_THRESHOLDS = {
+  minPages: 10,
+  minChars: 20000,
+} as const;
+
+/**
+ * Document types that should SKIP pre-structuring (already well-structured
+ * or too short to benefit, or have dedicated extractors that handle raw text fine).
+ */
+export const SKIP_PRE_STRUCTURE_TYPES = new Set([
+  "bilant_anaf",           // XFA/formular fix, structured
+  "certificat_constatator", // ONRC, regex+AI extractor handles it
+  "carte_identitate",      // 1-2 pages, Vision OCR already clean
+  "certificat_fiscal",     // Short, structured
+  "factura",               // Short, dedicated extractor
+  "diploma_studii",        // 1 page
+  "extras_cont",           // Tabular, dedicated extractor
+  "declaratie_expert_contabil", // Short, structured
+  "guide",                 // Has its own preStructurePages pipeline
+  "guide_annex_table",
+  "guide_annex_form",
+]);
+
+/**
+ * Check whether a document qualifies for Sonnet pre-structuring.
+ */
+export function shouldPreStructure(
+  documentType: string,
+  pageCount: number,
+  charCount: number,
+): boolean {
+  if (SKIP_PRE_STRUCTURE_TYPES.has(documentType)) return false;
+  return pageCount >= PRE_STRUCTURE_THRESHOLDS.minPages
+    || charCount >= PRE_STRUCTURE_THRESHOLDS.minChars;
+}
+
+/**
+ * Pre-structure client document text using Claude Sonnet.
+ * Cleans text, formats tables, removes noise — without changing content.
+ */
+export async function preStructureClientText(rawText: string): Promise<PreStructuredClientDoc> {
+  // Split by page delimiters
+  const pageDelimiter = /--- Pagina (\d+)(?: \([^)]+\))? ---/g;
+  const pageBreaks: Array<{ page: number; index: number }> = [];
+  let match: RegExpExecArray | null;
+  while ((match = pageDelimiter.exec(rawText)) !== null) {
+    pageBreaks.push({ page: parseInt(match[1]), index: match.index });
+  }
+
+  if (pageBreaks.length === 0) {
+    return { cleanedText: rawText, tableCount: 0, pageCount: 1, qualityScore: 0 };
+  }
+
+  // Split into individual pages
+  const rawPages: Array<{ page: number; text: string }> = [];
+  for (let i = 0; i < pageBreaks.length; i++) {
+    const startIdx = pageBreaks[i].index;
+    const endIdx = i + 1 < pageBreaks.length ? pageBreaks[i + 1].index : rawText.length;
+    rawPages.push({ page: pageBreaks[i].page, text: rawText.slice(startIdx, endIdx) });
+  }
+
+  // Batch pages
+  const batches: Array<Array<{ page: number; text: string }>> = [];
+  for (let i = 0; i < rawPages.length; i += CLIENT_PRE_STRUCTURE_BATCH_SIZE) {
+    batches.push(rawPages.slice(i, i + CLIENT_PRE_STRUCTURE_BATCH_SIZE));
+  }
+
+  const cleanedPages: Array<{ page: number; cleanedText: string; tableCount: number }> = [];
+
+  const processBatch = async (batch: Array<{ page: number; text: string }>) => {
+    const pagesText = batch
+      .map(p => `=== PAGINA ${p.page} ===\n${p.text}`)
+      .join("\n\n");
+
+    const response = await withAILimit(() => anthropic.messages.create({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 6000,
+      system: `Ești un pre-procesor de text pentru documente client din dosare de finanțare europeană.
+
+Primești pagini brute extrase cu PyMuPDF (pot avea artefacte OCR, tabele stricate, coloane amestecate).
+
+Pentru FIECARE pagină returnezi un JSON cu:
+- "page": numărul paginii
+- "cleaned_text": textul curățat — fără headere/footere repetitive, fără numere de pagină izolate, cu paragrafe corecte, coloane re-aliniate
+- "tables": număr de tabele detectate și formatate ca markdown în cleaned_text
+
+REGULI STRICTE:
+- Păstrează EXACT conținutul original — NU inventa, NU rezuma, NU traduce
+- Corectează doar: spații duble, linii goale excesive, coloane amestecate, tabele stricate
+- Tabelele detectate se formatează ca markdown (| col1 | col2 |) direct în cleaned_text
+- NU adăuga metadate, clasificări sau comentarii
+- Returnează DOAR un JSON array valid. Fără backticks, fără explicații.`,
+      messages: [{
+        role: "user",
+        content: pagesText,
+      }],
+    }));
+
+    const textBlock = response.content.find((b: any) => b.type === "text");
+    const content = textBlock ? (textBlock as any).text : "[]";
+    const cleaned = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+
+    try {
+      const parsed = JSON.parse(cleaned);
+      if (!Array.isArray(parsed)) {
+        return batch.map(p => ({ page: p.page, cleanedText: p.text, tableCount: 0 }));
+      }
+      return parsed.map((item: any, idx: number) => ({
+        page: item.page || batch[idx]?.page || idx + 1,
+        cleanedText: item.cleaned_text || batch[idx]?.text || "",
+        tableCount: typeof item.tables === "number" ? item.tables : 0,
+      }));
+    } catch {
+      console.warn("[preStructureClientText] Failed to parse Sonnet batch response, using raw text");
+      return batch.map(p => ({ page: p.page, cleanedText: p.text, tableCount: 0 }));
+    }
+  };
+
+  // Run batches with concurrency limit
+  let nextBatch = 0;
+  async function worker() {
+    while (nextBatch < batches.length) {
+      const idx = nextBatch++;
+      const result = await processBatch(batches[idx]);
+      cleanedPages.push(...result);
+    }
+  }
+
+  const workers = Array.from(
+    { length: Math.min(CLIENT_PRE_STRUCTURE_CONCURRENCY, batches.length) },
+    () => worker(),
+  );
+  await Promise.all(workers);
+
+  // Sort by page number
+  cleanedPages.sort((a, b) => a.page - b.page);
+
+  // Build cleaned text
+  const cleanedText = cleanedPages
+    .map(p => `--- Pagina ${p.page} ---\n${p.cleanedText}`)
+    .join("\n\n");
+
+  const totalTables = cleanedPages.reduce((sum, p) => sum + p.tableCount, 0);
+
+  // Quality score: how different is cleaned vs raw (normalized edit distance approximation)
+  const rawLen = rawText.length;
+  const cleanLen = cleanedText.length;
+  const lenDiff = Math.abs(rawLen - cleanLen) / Math.max(rawLen, 1);
+  const qualityScore = Math.min(1, lenDiff * 5); // 20%+ length change = 1.0 quality improvement
+
+  console.log(
+    `[preStructureClientText] Pre-structured ${cleanedPages.length} pages ` +
+    `(${totalTables} tables, quality=${qualityScore.toFixed(2)}) via Claude Sonnet`,
+  );
+
+  return {
+    cleanedText,
+    tableCount: totalTables,
+    pageCount: cleanedPages.length,
+    qualityScore,
+  };
+}
+
 // ─── GPT-4o VISION TEMPLATE FIELD DETECTION ───
 
 export interface VisualField {

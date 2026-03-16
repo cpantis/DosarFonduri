@@ -25,10 +25,23 @@ export const errorHandler = (err: Error, c: Context) => {
     return c.json({ error: "Eroare la stocarea fișierului. Contactează administratorul." }, 500);
   }
 
-  // In production, return a generic error message to avoid leaking internal details
+  // Database connection errors
+  if (err.message.includes("ECONNREFUSED") || err.message.includes("connection") || err.message.includes("timeout")) {
+    return c.json({ error: "Eroare de conexiune la baza de date. Reîncearcă." }, 500);
+  }
+
+  // Column/schema errors (missing columns, wrong types)
+  if (err.message.includes("column") || err.message.includes("relation") || err.message.includes("does not exist")) {
+    console.error("Schema error — run migrations:", err.message);
+    return c.json({ error: `Eroare schemă DB: ${err.message.substring(0, 150)}` }, 500);
+  }
+
+  // In production, include sanitized error category for debugging
   const isProduction = process.env.NODE_ENV === "production" || process.env.RAILWAY_ENVIRONMENT;
   if (isProduction) {
-    return c.json({ error: "Eroare internă. Contactează administratorul dacă problema persistă." }, 500);
+    // Include first 100 chars of error message — enough for debugging without leaking secrets
+    const hint = err.message ? err.message.substring(0, 100) : "unknown";
+    return c.json({ error: `Eroare internă. Contactează administratorul dacă problema persistă. [${hint}]` }, 500);
   }
 
   // In development, return the actual error message for debugging

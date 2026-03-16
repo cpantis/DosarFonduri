@@ -65,11 +65,11 @@ export default function DashboardPage() {
       <div className="max-w-6xl mx-auto px-8 py-6">
         {/* Stat cards */}
         {loading ? (
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <SkeletonStatCard /><SkeletonStatCard /><SkeletonStatCard /><SkeletonStatCard />
           </div>
         ) : (
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <StatCard icon={"\u{1F3E2}"} label="Firme" value={stats?.companies ?? 0} color="blue" />
             <StatCard icon={"\u{1F4C1}"} label="Proiecte active" value={stats?.projects ?? 0} color="amber" />
             <StatCard icon={"\u2705"} label="Documente" value={stats?.documents ?? 0} color="emerald" />
@@ -94,7 +94,7 @@ export default function DashboardPage() {
 
         {/* Content grid */}
         {!loading && (
-          <div className="grid grid-cols-3 gap-6 mt-8">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-8">
             {/* Recent projects — takes 2 cols */}
             <div className="col-span-2">
               <SectionTitle>Proiecte recente</SectionTitle>

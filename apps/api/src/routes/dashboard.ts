@@ -150,6 +150,40 @@ dashboardRoutes.get("/", async (c) => {
 
   deadlines.sort((a, b) => a.daysLeft - b.daysLeft);
 
+  // F12.1: Generate alerts from real data
+  const alerts: Array<{ message: string; type: "warning" | "error" | "info" }> = [];
+
+  // Alert for urgent deadlines (<=7 days)
+  const urgentDeadlines = deadlines.filter(d => d.urgent);
+  if (urgentDeadlines.length > 0) {
+    alerts.push({ message: `${urgentDeadlines.length} termen(e) urgent(e) în următoarele 7 zile`, type: "warning" });
+  }
+
+  // Alert for projects with failed eligibility
+  for (const p of enrichedProjects) {
+    if (p.eligTotal > 0 && p.eligibility < p.eligTotal * 0.5) {
+      alerts.push({ message: `Proiectul „${p.name}" are doar ${p.eligibility}/${p.eligTotal} criterii de eligibilitate îndeplinite`, type: "warning" });
+    }
+  }
+
+  // Alert for companies with processing errors
+  const errorCompanies = await db.query.companies.findMany({
+    where: and(eq(companies.organizationId, orgId), eq(companies.processingStatus, "error")),
+    limit: 3,
+  });
+  if (errorCompanies.length > 0) {
+    alerts.push({ message: `${errorCompanies.length} firmă/firme cu erori de procesare`, type: "error" });
+  }
+
+  // Alert for documents with errors
+  const errorDocs = await db.query.documents.findMany({
+    where: and(eq(documents.organizationId, orgId), eq(documents.status, "error")),
+    limit: 3,
+  });
+  if (errorDocs.length > 0) {
+    alerts.push({ message: `${errorDocs.length} document(e) cu erori de procesare`, type: "error" });
+  }
+
   return c.json({
     stats: {
       projects: projectCount.count,
@@ -160,5 +194,6 @@ dashboardRoutes.get("/", async (c) => {
     recentProjects: enrichedProjects,
     activity: activityRaw,
     deadlines: deadlines.slice(0, 5),
+    alerts,
   });
 });

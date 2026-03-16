@@ -161,6 +161,7 @@ export default function CompaniesPage() {
         .co-modal-overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:100;background:rgba(0,0,0,.35);backdrop-filter:blur(4px)}
         .co-modal{background:#ffffff;border-radius:16px;width:540px;max-height:85vh;overflow-y:auto;padding:28px;border:1px solid rgba(226,232,240,.8);box-shadow:0 20px 60px rgba(0,0,0,.08);animation:fadeUp .2s ease-out}
         @keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+        @keyframes statusPulse{0%,100%{opacity:1}50%{opacity:.3}}
         .co-mode-toggle{display:flex;gap:4px;padding:4px;background:#f1f5f9;border-radius:8px;margin-bottom:20px}
         .co-mode-btn{flex:1;padding:8px;font-size:13px;font-weight:500;border-radius:8px;border:none;cursor:pointer;transition:all .15s;background:transparent;color:#64748b}
         .co-mode-btn.on{background:#ffffff;color:#0f172a;box-shadow:0 1px 2px rgba(0,0,0,.05)}
@@ -211,10 +212,24 @@ export default function CompaniesPage() {
           </div>
         )}
 
-        {/* Error state */}
+        {/* F1.3: Error state with retry button */}
         {error && (
           <div className="co-result err" style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#dc2626" }}>
-            <span>⚠️</span> {error}
+            <span>⚠️</span>
+            <span style={{ flex: 1 }}>{error}</span>
+            <button
+              onClick={fetchCompanies}
+              style={{
+                padding: "6px 14px", borderRadius: 8, border: "1px solid #f87171",
+                background: "rgba(248,113,113,.08)", color: "#dc2626", fontSize: 12,
+                fontWeight: 600, cursor: "pointer", fontFamily: "'Inter', system-ui, sans-serif",
+                transition: "all .15s", flexShrink: 0,
+              }}
+              onMouseEnter={e => { (e.target as HTMLElement).style.background = "rgba(248,113,113,.15)"; }}
+              onMouseLeave={e => { (e.target as HTMLElement).style.background = "rgba(248,113,113,.08)"; }}
+            >
+              🔄 Reîncearcă
+            </button>
           </div>
         )}
 
@@ -230,30 +245,64 @@ export default function CompaniesPage() {
               const forma = c.formaJuridica || "SRL";
               const hasRestrictions = c.stare === "dizolvata" || c.stare === "lichidare" || c.stare === "radiata";
               const capitalSocialNum = c.capitalSocial ? Number(c.capitalSocial) : null;
+              const isProcessing = c.processingStatus === "processing";
+              const cuiDisplay = (c.cui || "").startsWith("PROC-") ? "Se procesează..." : c.cui;
+              // F1.6: Compute IMM category from onrcRawData
+              const rawData = c.onrcRawData || {};
+              const angajati = rawData.f30?.numarMediuSalariati ?? rawData.angajati;
+              const caNet = rawData.f20?.cifraAfaceriNeta ?? rawData.cifraAfaceri;
+              let immLabel: string | null = null;
+              let immColor = "#64748b";
+              if (angajati != null || caNet != null) {
+                const emp = Number(angajati) || 0;
+                const ca = Number(caNet) || 0;
+                if (emp < 10 && ca < 2_000_000) { immLabel = "Micro"; immColor = "#34d399"; }
+                else if (emp < 50 && ca < 10_000_000) { immLabel = "Mică"; immColor = "#2563eb"; }
+                else if (emp < 250 && ca < 50_000_000) { immLabel = "Mijlocie"; immColor = "#a78bfa"; }
+                else { immLabel = "Mare"; immColor = "#fb923c"; }
+              }
               return (
                 <a
                   key={c.id}
                   href={`/companies/${c.id}`}
                   className="co-card"
-                  style={hasRestrictions ? { borderColor: "rgba(248,113,113,.4)" } : undefined}
+                  style={hasRestrictions ? { borderColor: "rgba(248,113,113,.4)" } : isProcessing ? { borderColor: "rgba(251,191,36,.4)" } : undefined}
                 >
                   <div style={{ minWidth: 0 }}>
-                    {/* GAP 7: Insolvency/restriction banner */}
+                    {/* F1.2: Processing status indicator */}
+                    {isProcessing && (
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "#d97706", marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: "#fbbf24", animation: "statusPulse 1.5s ease infinite" }} />
+                        Se procesează datele firmei...
+                      </div>
+                    )}
+                    {/* Insolvency/restriction banner */}
                     {hasRestrictions && (
                       <div style={{ fontSize: 11, fontWeight: 700, color: "#dc2626", marginBottom: 4 }}>
                         {"\u26A0"} {c.stare === "dizolvata" ? "Dizolvare" : c.stare === "lichidare" ? "Lichidare" : "Radiată"}
+                      </div>
+                    )}
+                    {/* Processing error indicator */}
+                    {c.processingStatus === "error" && c.processingError && (
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "#dc2626", marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}>
+                        ⚠️ Eroare procesare: {c.processingError.slice(0, 80)}{c.processingError.length > 80 ? "…" : ""}
                       </div>
                     )}
                     <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
                       <span style={{ fontSize: 15, fontWeight: 600, color: "#0f172a" }}>{c.denumire}</span>
                       <TypeBadge type={forma} />
                       <StatusBadge status={c.stare || "func\u021biune"} />
+                      {immLabel && (
+                        <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 10, background: `color-mix(in srgb, ${immColor} 12%, transparent)`, color: immColor, letterSpacing: ".3px" }}>
+                          {immLabel}
+                        </span>
+                      )}
                     </div>
                     <div className="co-stat">
-                      <span style={{ fontFamily: "'JetBrains Mono', monospace", fontVariantNumeric: "tabular-nums", color: "#94a3b8", fontSize: 12 }}>CUI: {c.cui}</span>
+                      {/* F1.1: Hide raw PROC-* CUI, show friendly text instead */}
+                      <span style={{ fontFamily: "'JetBrains Mono', monospace", fontVariantNumeric: "tabular-nums", color: "#94a3b8", fontSize: 12 }}>CUI: {cuiDisplay}</span>
                       {c.caen && <><span className="sep">{"\u00B7"}</span><span title={getCaenDescription(c.caen) || undefined}>CAEN: {c.caen}{getCaenDescription(c.caen) ? ` — ${getCaenDescription(c.caen)!.slice(0, 40)}${getCaenDescription(c.caen)!.length > 40 ? "…" : ""}` : ""}</span></>}
                       {c.judet && <><span className="sep">{"\u00B7"}</span><span>{c.judet}</span></>}
-                      {/* GAP 6: Financial data */}
                       {capitalSocialNum != null && capitalSocialNum > 0 && <><span className="sep">{"\u00B7"}</span><span style={{ fontFamily: "'JetBrains Mono', monospace" }}>Cap: {capitalSocialNum.toLocaleString("ro-RO")} RON</span></>}
                       {c.anInfiintare && <><span className="sep">{"\u00B7"}</span><span>Din {c.anInfiintare}</span></>}
                     </div>

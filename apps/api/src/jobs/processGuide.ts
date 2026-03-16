@@ -1116,7 +1116,7 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         cost: { extraction: +actualAICost.toFixed(4), total: +actualAICost.toFixed(4) },
         counts: { fixedRules: fixedCount, interpretedRules: interpCount, scoringCriteria: scoringCount, elementDefinitions: elemDefCount },
         links: { elements: linkResult.elementLinks, references: linkResult.referenceLinks, templateMappings },
-        duration: { total: totalDuration, extract: extractDuration, preStruct: preStructDuration, ai: opusDuration },
+        duration: { total: totalDuration, extract: extractDuration, preStruct: preStructDuration, extraction: opusDuration },
       };
 
       await db.update(documents).set({

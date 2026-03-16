@@ -258,6 +258,8 @@ console.log(`  REDIS_URL: ${process.env.REDIS_URL ? "✅ set" : "⚠️ default"
       `ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "trust_score" decimal(3,2)`,
       `ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "completeness_report" jsonb`,
       `ALTER TABLE "files" ADD COLUMN IF NOT EXISTS "size" bigint NOT NULL DEFAULT 0`,
+      // 0020: upgrade files.size from integer to bigint (supports >2GB files)
+      `ALTER TABLE "files" ALTER COLUMN "size" SET DATA TYPE bigint`,
       `ALTER TYPE "doc_processing_type" ADD VALUE IF NOT EXISTS 'reference_data'`,
       // 0019: solomon_knowledge nullable org + compose_section_versions
       `ALTER TABLE "solomon_knowledge" ALTER COLUMN "organization_id" DROP NOT NULL`,

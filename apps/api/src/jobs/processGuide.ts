@@ -288,7 +288,7 @@ async function saveScoringCriteria(criteria: any[], documentId: string, organiza
       name: c.name || "Criteriu neprecizat",
       description: c.description || null,
       maxPoints: String(Number(c.maxPoints) || 0),
-      evaluationLogic: c.evaluationLogic || null,
+      evaluationLogic: (c.evaluationLogic && typeof c.evaluationLogic === "object") ? c.evaluationLogic : null,
       category: c.category || null,
       sortOrder: idx,
       sourcePage: c.sourcePage || null,

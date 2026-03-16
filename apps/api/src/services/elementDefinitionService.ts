@@ -42,7 +42,7 @@ export async function upsertElementDefinition(input: ElementDefInput) {
       unit: input.unit ?? existing.unit,
       enumValues: input.enumValues ?? existing.enumValues,
       sourcePriority: input.sourcePriority ?? existing.sourcePriority,
-      validationRules: input.validationRules ?? existing.validationRules,
+      validationRules: (input.validationRules && typeof input.validationRules === "object") ? input.validationRules : existing.validationRules,
       required: input.required ?? existing.required,
       helpText: input.helpText ?? existing.helpText,
       isDerived: input.isDerived ?? existing.isDerived,

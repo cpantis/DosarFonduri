@@ -45,3 +45,8 @@ ALTER TABLE "ai_usage_log" ADD CONSTRAINT "ai_usage_log_organization_id_organiza
 ALTER TABLE "audit_log" DROP CONSTRAINT IF EXISTS "audit_log_organization_id_organizations_id_fk";
 ALTER TABLE "audit_log" ADD CONSTRAINT "audit_log_organization_id_organizations_id_fk"
   FOREIGN KEY ("organization_id") REFERENCES "organizations"("id") ON DELETE CASCADE;
+
+-- element_rule_links: at least one of template_element_id or element_def_id must be non-null
+ALTER TABLE "element_rule_links" DROP CONSTRAINT IF EXISTS "erl_at_least_one_element_ref";
+ALTER TABLE "element_rule_links" ADD CONSTRAINT "erl_at_least_one_element_ref"
+  CHECK ("template_element_id" IS NOT NULL OR "element_def_id" IS NOT NULL);

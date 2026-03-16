@@ -11,6 +11,18 @@ import { extractCompanyFromDocument } from "../services/companyExtractor";
 import { parseBilantPDF } from "../services/bilantParser";
 import { publishEvent } from "../lib/sse";
 import { redis } from "../lib/redis";
+import { FORMA_MAP } from "../services/onrc";
+
+/** Map full-text formaJuridica to enum code, fallback to "SRL" */
+function mapFormaToCode(raw: string): string {
+  if (!raw) return "SRL";
+  // Already a valid code?
+  const validCodes = ["SRL", "SA", "SNC", "SCS", "SCA", "PFA", "II", "IF", "SC", "RA", "SA_BVB"];
+  const upper = raw.toUpperCase().trim();
+  if (validCodes.includes(upper)) return upper;
+  // Look up in FORMA_MAP (partial match like companies.ts does)
+  return Object.entries(FORMA_MAP).find(([k]) => raw.includes(k))?.[1] || "SRL";
+}
 
 // --- Job payload types ---
 
@@ -112,7 +124,7 @@ async function handleOnrcExtract(job: Job<CompanyExtractPayload>) {
   if (companyData.judet) updateData.judet = companyData.judet;
   if (companyData.telefon) updateData.telefon = companyData.telefon;
   if (companyData.email) updateData.email = companyData.email;
-  if (companyData.formaJuridica) updateData.formaJuridica = companyData.formaJuridica;
+  if (companyData.formaJuridica) updateData.formaJuridica = mapFormaToCode(companyData.formaJuridica) as any;
   if (companyData.stare) updateData.stare = companyData.stare;
   if (companyData.durata) updateData.durata = companyData.durata;
   if (companyData.anInfiintare) updateData.anInfiintare = companyData.anInfiintare;
@@ -239,7 +251,7 @@ async function handleOnrcUpdate(job: Job<CompanyOnrcUpdatePayload>) {
   if (companyData.judet) updateData.judet = companyData.judet;
   if (companyData.telefon) updateData.telefon = companyData.telefon;
   if (companyData.email) updateData.email = companyData.email;
-  if (companyData.formaJuridica) updateData.formaJuridica = companyData.formaJuridica;
+  if (companyData.formaJuridica) updateData.formaJuridica = mapFormaToCode(companyData.formaJuridica) as any;
   if (companyData.stare) updateData.stare = companyData.stare;
   if (companyData.durata) updateData.durata = companyData.durata;
   if (companyData.anInfiintare) updateData.anInfiintare = companyData.anInfiintare;

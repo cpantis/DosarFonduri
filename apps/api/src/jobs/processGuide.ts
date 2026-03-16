@@ -98,16 +98,19 @@ function verifyExtractionCompleteness(
   };
 }
 
-/** Character limit for a single Opus + ET pass (200K context window) */
-const OPUS_CHAR_LIMIT = 150000;
+/** Default model for guide extraction (Sonnet = higher rate limits, 10x cheaper) */
+const DEFAULT_EXTRACTION_MODEL = "claude-sonnet-4-6";
 
-/** Max concurrent Opus chunks when guide exceeds OPUS_CHAR_LIMIT */
-const MAX_PARALLEL_OPUS_CHUNKS = 2;
+/** Character limit for a single extraction pass (200K context window) */
+const EXTRACTION_CHAR_LIMIT = 150000;
 
-// ─── UNIFIED OPUS + ET EXTRACTION ───
+/** Max concurrent extraction chunks when guide exceeds EXTRACTION_CHAR_LIMIT */
+const MAX_PARALLEL_CHUNKS = 2;
+
+// ─── UNIFIED AI + ET EXTRACTION ───
 
 /**
- * Unified system prompt for Opus + ET. Extracts ALL rule types + element definitions
+ * Unified system prompt for AI + ET. Extracts ALL rule types + element definitions
  * in a single pass for maximum accuracy and cost efficiency.
  */
 const UNIFIED_EXTRACTION_SYSTEM = `Ești Solomon — expert în pregătirea și conformitatea proiectelor cu finanțare europeană, cu cunoștințe integrate de achiziții publice, eligibilitate cheltuieli, specificații tehnice și cerințe documentare per program.
@@ -220,7 +223,7 @@ TEXT GHID PRE-STRUCTURAT:
 
 /**
  * Extract all rules + element definitions from a chunk of pre-structured guide text
- * using Opus + Extended Thinking. Returns parsed results (not saved to DB).
+ * using AI + Extended Thinking. Returns parsed results (not saved to DB).
  */
 /** Max continuation attempts when output is truncated */
 const MAX_CONTINUATION_ATTEMPTS = 2;
@@ -253,7 +256,7 @@ async function unifiedExtraction(
 
   for (let attempt = 0; attempt <= MAX_CONTINUATION_ATTEMPTS; attempt++) {
     const requestParams: any = {
-      model: "claude-opus-4-6",
+      model: DEFAULT_EXTRACTION_MODEL,
       max_tokens: 16000,
       system: UNIFIED_EXTRACTION_SYSTEM,
       messages,
@@ -279,7 +282,7 @@ async function unifiedExtraction(
     await logAIUsage({
       organizationId,
       agent: "ghid_rules",
-      model: "claude-opus-4-6",
+      model: DEFAULT_EXTRACTION_MODEL,
       tokensInput: response.usage.input_tokens,
       tokensOutput: response.usage.output_tokens,
       action: attempt === 0 ? `unified_extraction_${chunkLabel}` : `unified_extraction_${chunkLabel}_continuation_${attempt}`,
@@ -776,12 +779,12 @@ async function cacheGuideText(documentId: string, text: string): Promise<void> {
 const CHUNK_OVERLAP_PAGES = 3;
 
 /**
- * Split structured text into chunks that fit within Opus context.
+ * Split structured text into chunks that fit within the extraction model context.
  * Uses page delimiters for clean splits with overlap to prevent
  * losing rules that span chunk boundaries.
  */
 function splitStructuredText(structuredText: string): string[] {
-  if (structuredText.length <= OPUS_CHAR_LIMIT) {
+  if (structuredText.length <= EXTRACTION_CHAR_LIMIT) {
     return [structuredText];
   }
 
@@ -803,7 +806,7 @@ function splitStructuredText(structuredText: string): string[] {
     let chunkEndPage = chunkStartPage;
     for (let i = chunkStartPage + 1; i < pageStarts.length; i++) {
       const chunkSize = pageStarts[i] - pageStarts[chunkStartPage];
-      if (chunkSize > OPUS_CHAR_LIMIT) break;
+      if (chunkSize > EXTRACTION_CHAR_LIMIT) break;
       chunkEndPage = i;
     }
 
@@ -919,11 +922,11 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         progress: 30,
         status: "processing",
         message: needsPreStructure
-          ? `Pre-structurare completă: ${preStructPageCount} pagini, ${preStructTableCount} tabele. Extragere reguli cu Opus + ET...`
-          : `Text nativ extras: ${preStructPageCount} pagini. Extragere reguli cu Opus + ET...`,
+          ? `Pre-structurare completă: ${preStructPageCount} pagini, ${preStructTableCount} tabele. Extragere reguli cu AI + ET...`
+          : `Text nativ extras: ${preStructPageCount} pagini. Extragere reguli cu AI + ET...`,
       }).catch(() => {});
 
-      // ─── STEP 3: Unified Opus + ET extraction (~$0.40, ~20s) ───
+      // ─── STEP 3: Unified AI extraction (Sonnet default, ~$0.04/chunk) ───
       const config = await db.query.orgConfig.findFirst({
         where: eq(orgConfig.organizationId, organizationId),
       });
@@ -931,7 +934,7 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
 
       const opusStart = Date.now();
       const chunks = splitStructuredText(structuredText);
-      console.log(`[processGuide] Processing "${doc.name}" with ${chunks.length} Opus chunk(s), ET=${useET}`);
+      console.log(`[processGuide] Processing "${doc.name}" with ${chunks.length} chunk(s), model=${DEFAULT_EXTRACTION_MODEL}, ET=${useET}`);
 
       let allFixed: any[] = [];
       let allInterpreted: any[] = [];
@@ -971,13 +974,13 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
               documentName: doc.name,
               progress: chunkProgress,
               status: "processing",
-              message: `Opus + ET: chunk ${idx + 1}/${chunks.length} procesat`,
+              message: `AI + ET: chunk ${idx + 1}/${chunks.length} procesat`,
             }).catch(() => {});
           }
         }
 
         const opusWorkers = Array.from(
-          { length: Math.min(MAX_PARALLEL_OPUS_CHUNKS, chunks.length) },
+          { length: Math.min(MAX_PARALLEL_CHUNKS, chunks.length) },
           () => opusWorker(),
         );
         await Promise.all(opusWorkers);
@@ -1003,7 +1006,7 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
       }
 
       const opusDuration = Date.now() - opusStart;
-      console.log(`[processGuide] Opus + ET extraction: ${opusDuration}ms — ${allFixed.length} fixed, ${allInterpreted.length} interpreted, ${allScoring.length} scoring, ${allElementDefs.length} element defs`);
+      console.log(`[processGuide] AI + ET extraction: ${opusDuration}ms — ${allFixed.length} fixed, ${allInterpreted.length} interpreted, ${allScoring.length} scoring, ${allElementDefs.length} element defs`);
 
       // ─── STEP 4: Save to DB ───
       await job.updateProgress(85);
@@ -1097,18 +1100,20 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
       const pageCount = preStructPageCount;
       const totalDuration = Date.now() - startTime;
 
-      // Compute actual cost from tokens
-      const opusPricing = { input: 15 / 1_000_000, output: 75 / 1_000_000 };
-      const actualOpusCost = (totalAIInputTokens * opusPricing.input) + (totalAIOutputTokens * opusPricing.output);
+      // Compute actual cost from tokens (Sonnet pricing)
+      const modelPricing = DEFAULT_EXTRACTION_MODEL.includes("opus")
+        ? { input: 15 / 1_000_000, output: 75 / 1_000_000 }
+        : { input: 3 / 1_000_000, output: 15 / 1_000_000 };
+      const actualAICost = (totalAIInputTokens * modelPricing.input) + (totalAIOutputTokens * modelPricing.output);
 
       // Quality metrics stored on the document
       const qualityMetrics = {
-        pipeline: needsPreStructure ? "pymupdf+sonnet_prestruct+opus_et" : "pymupdf+opus_et",
+        pipeline: needsPreStructure ? `pymupdf+sonnet_prestruct+${DEFAULT_EXTRACTION_MODEL}` : `pymupdf+${DEFAULT_EXTRACTION_MODEL}`,
         chunks: chunks.length,
         truncated: extractionTruncated,
         continuations: totalContinuations,
         tokens: { input: totalAIInputTokens, output: totalAIOutputTokens },
-        cost: { opus: +actualOpusCost.toFixed(4), total: +actualOpusCost.toFixed(4) },
+        cost: { opus: +actualAICost.toFixed(4), total: +actualAICost.toFixed(4) },
         counts: { fixedRules: fixedCount, interpretedRules: interpCount, scoringCriteria: scoringCount, elementDefinitions: elemDefCount },
         links: { elements: linkResult.elementLinks, references: linkResult.referenceLinks, templateMappings },
         duration: { total: totalDuration, extract: extractDuration, preStruct: preStructDuration, opus: opusDuration },
@@ -1124,11 +1129,11 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
       await job.updateProgress(100);
 
       const pipelineDesc = needsPreStructure
-        ? `PyMuPDF + Sonnet pre-struct (${(preStructDuration / 1000).toFixed(1)}s) + Opus+ET (${(opusDuration / 1000).toFixed(1)}s)`
-        : `PyMuPDF nativ + Opus+ET (${(opusDuration / 1000).toFixed(1)}s)`;
-      const costDesc = `$${actualOpusCost.toFixed(2)}`;
+        ? `PyMuPDF + Sonnet pre-struct (${(preStructDuration / 1000).toFixed(1)}s) + ${DEFAULT_EXTRACTION_MODEL} (${(opusDuration / 1000).toFixed(1)}s)`
+        : `PyMuPDF nativ + ${DEFAULT_EXTRACTION_MODEL} (${(opusDuration / 1000).toFixed(1)}s)`;
+      const costDesc = `$${actualAICost.toFixed(2)}`;
 
-      console.log(`[processGuide] Pipeline complete: ${totalDuration}ms total (extract: ${extractDuration}ms, pre-struct: ${preStructDuration}ms, Opus+ET: ${opusDuration}ms) for "${doc.name}" (${pageCount} pages, native=${!needsPreStructure})`);
+      console.log(`[processGuide] Pipeline complete: ${totalDuration}ms total (extract: ${extractDuration}ms, pre-struct: ${preStructDuration}ms, AI: ${opusDuration}ms) for "${doc.name}" (${pageCount} pages, model=${DEFAULT_EXTRACTION_MODEL}, native=${!needsPreStructure})`);
 
       publishEvent(`org:${organizationId}:uploads`, "document_processed", {
         documentId,
@@ -1144,10 +1149,10 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         referenceLinks: linkResult.referenceLinks,
         templateMappings,
         totalDurationMs: totalDuration,
-        pipeline: needsPreStructure ? "gpt4o_prestructure + opus_et_unified" : "native_pymupdf + opus_et_unified",
+        pipeline: needsPreStructure ? `gpt4o_prestructure + ${DEFAULT_EXTRACTION_MODEL}_et` : `native_pymupdf + ${DEFAULT_EXTRACTION_MODEL}_et`,
         costs: {
           preStructure: needsPreStructure ? "~$0.15" : "$0",
-          opusET: "~$0.40",
+          extraction: `~$${actualAICost.toFixed(2)}`,
           total: costDesc,
         },
         message: `Ghid procesat "${doc.name}". ${pageCount} pagini. Pipeline: ${pipelineDesc}. ${fixedCount} reguli fixe, ${interpCount} interpretate, ${scoringCount} criterii selecție, ${elemDefCount} definiții elemente. ${linkResult.elementLinks + linkResult.referenceLinks} link-uri, ${templateMappings} mapări template. Total: ${(totalDuration / 1000).toFixed(1)}s, ${costDesc}.`,

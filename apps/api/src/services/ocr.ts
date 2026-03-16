@@ -15,15 +15,33 @@ export interface PageResult {
   confidence: number;
 }
 
-export async function extractTextFromPDF(buffer: Buffer): Promise<string> {
+export interface PDFExtractionResult {
+  text: string;
+  hasScannedPages: boolean;
+  totalPages: number;
+  scannedPageCount: number;
+}
+
+export async function extractTextFromPDF(buffer: Buffer): Promise<PDFExtractionResult> {
   // Try XFA extraction first — XFA PDFs contain form data in XML, not in page text
   const xfaText = await tryExtractXFA(buffer);
   if (xfaText) {
-    return `--- Pagina 1 (XFA) ---\n${xfaText}`;
+    return {
+      text: `--- Pagina 1 (XFA) ---\n${xfaText}`,
+      hasScannedPages: false,
+      totalPages: 1,
+      scannedPageCount: 0,
+    };
   }
 
   const pages = await extractPDFPages(buffer);
-  return pages.map(p => `--- Pagina ${p.page} ---\n${p.text}`).join("\n\n");
+  const scannedCount = pages.filter(p => p.is_scanned).length;
+  return {
+    text: pages.map(p => `--- Pagina ${p.page} ---\n${p.text}`).join("\n\n"),
+    hasScannedPages: scannedCount > 0,
+    totalPages: pages.length,
+    scannedPageCount: scannedCount,
+  };
 }
 
 /**

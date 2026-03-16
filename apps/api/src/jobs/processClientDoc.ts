@@ -818,7 +818,7 @@ export const processClientDocWorker = new Worker<ProcessClientDocPayload>(
       // Step 1: Extract text
       let text = "";
       if (doc.fileType === "pdf") {
-        text = await extractTextFromPDF(buffer);
+        text = (await extractTextFromPDF(buffer)).text;
       } else if (doc.fileType === "docx") {
         text = await extractTextFromDOCX(buffer, fileName);
       } else if (doc.fileType === "doc") {

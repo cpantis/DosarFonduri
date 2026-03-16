@@ -130,7 +130,7 @@ solomonRoutes.post("/conversations/:convId/upload", async (c) => {
   let extractedText = "";
   const isImage = /^image\/(png|jpe?g)$/i.test(file.type) || /\.(png|jpe?g)$/i.test(file.name);
   if (file.type === "application/pdf" || file.name.endsWith(".pdf")) {
-    extractedText = await extractTextFromPDF(buffer);
+    extractedText = (await extractTextFromPDF(buffer)).text;
   } else if (file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" || file.name.endsWith(".docx")) {
     extractedText = await extractTextFromDOCX(buffer, file.name);
   } else if (file.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" || file.name.endsWith(".xlsx")) {

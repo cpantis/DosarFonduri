@@ -99,7 +99,7 @@ export const files = pgTable("files", {
 // === COMPANIES ===
 export const companies = pgTable("companies", {
   id: uuid("id").defaultRandom().primaryKey(),
-  organizationId: uuid("organization_id").references(() => organizations.id).notNull(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
   formaJuridica: formaJuridicaEnum("forma_juridica").notNull(),
   denumire: varchar("denumire", { length: 500 }).notNull(),
   cui: varchar("cui", { length: 20 }).notNull(),
@@ -458,7 +458,7 @@ export const projectElements = pgTable("project_elements", {
 export const projectEligibility = pgTable("project_eligibility", {
   id: uuid("id").defaultRandom().primaryKey(),
   projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
-  ruleId: uuid("rule_id").references(() => rules.id).notNull(),
+  ruleId: uuid("rule_id").references(() => rules.id, { onDelete: "cascade" }).notNull(),
   status: eligibilityStatusEnum("status").notNull().default("pending"),
   autoResult: boolean("auto_result"),
   overrideResult: boolean("override_result"),
@@ -471,7 +471,7 @@ export const projectEligibility = pgTable("project_eligibility", {
 export const projectDocuments = pgTable("project_documents", {
   id: uuid("id").defaultRandom().primaryKey(),
   projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
-  templateDocumentId: uuid("template_document_id").references(() => documents.id).notNull(),
+  templateDocumentId: uuid("template_document_id").references(() => documents.id, { onDelete: "cascade" }).notNull(),
   generatedFileId: uuid("generated_file_id").references(() => files.id),
   status: generatedDocStatusEnum("status").notNull().default("generating"),
   version: integer("version").notNull().default(1),
@@ -514,7 +514,7 @@ export const projectChecklist = pgTable("project_checklist", {
   name: varchar("name", { length: 255 }).notNull(),
   category: varchar("category", { length: 100 }).notNull(),
   source: varchar("source", { length: 20 }).notNull().default("manual"),
-  templateId: uuid("template_id").references(() => documents.id),
+  templateId: uuid("template_id").references(() => documents.id, { onDelete: "cascade" }),
   done: boolean("done").notNull().default(false),
   notes: text("notes"),
   sortOrder: integer("sort_order").default(0),
@@ -606,7 +606,7 @@ export const solomonMessages = pgTable("solomon_messages", {
 // === AI USAGE LOG ===
 export const aiUsageLog = pgTable("ai_usage_log", {
   id: uuid("id").defaultRandom().primaryKey(),
-  organizationId: uuid("organization_id").references(() => organizations.id).notNull(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
   projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
   userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
   agent: aiAgentEnum("agent").notNull(),
@@ -624,7 +624,7 @@ export const aiUsageLog = pgTable("ai_usage_log", {
 // === AUDIT LOG ===
 export const auditLog = pgTable("audit_log", {
   id: uuid("id").defaultRandom().primaryKey(),
-  organizationId: uuid("organization_id").references(() => organizations.id).notNull(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
   userId: uuid("user_id").references(() => users.id).notNull(),
   action: varchar("action", { length: 100 }).notNull(),
   entityType: varchar("entity_type", { length: 50 }),
@@ -638,7 +638,7 @@ export const auditLog = pgTable("audit_log", {
 // === CONFIG (per organization) ===
 export const orgConfig = pgTable("org_config", {
   id: uuid("id").defaultRandom().primaryKey(),
-  organizationId: uuid("organization_id").references(() => organizations.id).notNull().unique(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull().unique(),
   solomonModel: varchar("solomon_model", { length: 100 }).default("claude-opus-4-6"),
   solomonET: boolean("solomon_et").default(true),
   neemiaModel: varchar("neemia_model", { length: 100 }).default("claude-sonnet-4-20250514"),
@@ -657,7 +657,7 @@ export const orgConfig = pgTable("org_config", {
 // === SOLOMON KNOWLEDGE BASE (actualizări legislative, bune practici, corecții) ===
 export const solomonKnowledge = pgTable("solomon_knowledge", {
   id: uuid("id").defaultRandom().primaryKey(),
-  organizationId: uuid("organization_id").references(() => organizations.id).notNull(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
   category: varchar("category", { length: 100 }).notNull(), // "legislatie", "praguri", "proceduri", "ghid_specific", "bune_practici", "corectii"
   title: varchar("title", { length: 500 }).notNull(),
   content: text("content").notNull(), // the actual knowledge/rule/update
@@ -675,7 +675,7 @@ export const solomonKnowledge = pgTable("solomon_knowledge", {
 // === API INTEGRATIONS ===
 export const apiIntegrations = pgTable("api_integrations", {
   id: uuid("id").defaultRandom().primaryKey(),
-  organizationId: uuid("organization_id").references(() => organizations.id).notNull(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
   name: varchar("name", { length: 255 }).notNull(),
   type: varchar("type", { length: 50 }).notNull(),
   url: varchar("url", { length: 500 }).notNull(),

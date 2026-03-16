@@ -320,7 +320,7 @@ export const processTemplateWorker = new Worker<ProcessTemplatePayload>(
       let visualCrossCheckStats: { textOnly: number; visualOnly: number; both: number; total: number } | null = null;
 
       if (doc.fileType === "pdf") {
-        // ─── PDF: XFA extraction + GPT-4o Vision cross-check ───
+        // ─── PDF: XFA extraction (no visual detection — XFA PDFs render as "Please wait...") ───
         await job.updateProgress(10);
         publishJobProgress(organizationId, {
           jobId: job.id || "", jobType: "template", documentId,
@@ -329,54 +329,39 @@ export const processTemplateWorker = new Worker<ProcessTemplatePayload>(
         }).catch(() => {});
 
         const { extractXFAFields } = await import("../services/xfaFiller");
-        const [xfaFields, visualFields] = await Promise.all([
-          extractXFAFields(buffer),
-          detectFieldsVisually(buffer),
-        ]);
+        const xfaFields = await extractXFAFields(buffer);
 
         await job.updateProgress(50);
         publishJobProgress(organizationId, {
           jobId: job.id || "", jobType: "template", documentId,
           documentName: doc.name, progress: 50, status: "processing",
-          message: `XFA: ${xfaFields.length} câmpuri. Vizual: ${visualFields.length} câmpuri. Cross-check...`,
+          message: `XFA: ${xfaFields.length} câmpuri extrase programatic (zero AI cost).`,
         }).catch(() => {});
 
-        // Build text fields from XFA for cross-check
-        const xfaAsTextFields = xfaFields.map(f => ({
-          key: f.key,
-          label: f.label,
-          fieldType: f.fieldType === "checkbox" ? "select" : f.fieldType,
-          pageNum: 1,
-        }));
+        console.log(`[processTemplate] PDF XFA: ${xfaFields.length} câmpuri extrase programatic, skip detectFieldsVisually()`);
 
-        const { merged, stats } = crossCheckFields(xfaAsTextFields, visualFields);
-        visualCrossCheckStats = stats;
-
-        console.log(`[processTemplate] PDF cross-check: ${stats.both} matched, ${stats.textOnly} XFA-only, ${stats.visualOnly} visual-only (total: ${stats.total})`);
-
-        // Convert merged results to template elements
-        uniqueElements = merged.map((m, idx) => ({
-          documentId,
-          organizationId,
-          key: m.key,
-          label: m.label,
-          fieldType: m.fieldType as any,
-          pageNum: m.pageNum,
-          lineNum: idx,
-          group: "general",
-          isRepeating: false,
-          rowIndex: null,
-          detected: true,
-          validated: m.source === "both", // auto-validate if found in both
-        }));
-
-        // Deduplicate by key
+        // Convert XFA fields directly to template elements
         const seen = new Set<string>();
-        uniqueElements = uniqueElements.filter(el => {
-          if (seen.has(el.key)) return false;
-          seen.add(el.key);
-          return true;
-        });
+        uniqueElements = xfaFields
+          .filter(f => {
+            if (seen.has(f.key)) return false;
+            seen.add(f.key);
+            return true;
+          })
+          .map((f, idx) => ({
+            documentId,
+            organizationId,
+            key: f.key,
+            label: f.label,
+            fieldType: (f.fieldType === "checkbox" ? "select" : f.fieldType) as any,
+            pageNum: 1,
+            lineNum: idx,
+            group: f.group || "general",
+            isRepeating: false,
+            rowIndex: null,
+            detected: true,
+            validated: true, // XFA fields are structurally certain
+          }));
 
       } else {
         // ─── DOCX/XLSX: text placeholder extraction + optional visual cross-check ───
@@ -400,7 +385,7 @@ export const processTemplateWorker = new Worker<ProcessTemplatePayload>(
               publishJobProgress(organizationId, {
                 jobId: job.id || "", jobType: "template", documentId,
                 documentName: doc.name, progress: 40, status: "processing",
-                message: `Scanare vizuală GPT-4o Vision pe "${doc.name}"...`,
+                message: `Scanare vizuală Claude Vision pe "${doc.name}"...`,
               }).catch(() => {});
               visualFields = await detectFieldsVisually(pdfBuffer);
             }

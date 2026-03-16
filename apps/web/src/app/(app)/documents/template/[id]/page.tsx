@@ -68,6 +68,10 @@ export default function TemplateViewerPage() {
   const [composeSaving, setComposeSaving] = useState(false);
   const [composeDetecting, setComposeDetecting] = useState(false);
 
+  // Rule links + scoring per element (GAP 20 & 21)
+  const [elementRuleLinks, setElementRuleLinks] = useState<Record<string, Array<{ rule?: { description: string; sourcePage: number | null; category: string } }>>>({});
+  const [elementScoring, setElementScoring] = useState<Record<string, Array<{ criterionName: string; maxPoints: number }>>>({});
+
   // Split pane
   const [splitWidth, setSplitWidth] = useState(400);
   const splitDragging = useRef(false);
@@ -107,6 +111,33 @@ export default function TemplateViewerPage() {
   }, [docId]);
 
   useEffect(() => { loadTemplate(); }, [loadTemplate]);
+
+  // Fetch rule links for selected element (GAP 20)
+  useEffect(() => {
+    if (!selectedEl || elementRuleLinks[selectedEl]) return;
+    apiGet<Array<{ rule?: { description: string; sourcePage: number | null; category: string } }>>(`/api/reference/elements/${selectedEl}/rule-links`)
+      .then(data => setElementRuleLinks(prev => ({ ...prev, [selectedEl]: data || [] })))
+      .catch(() => setElementRuleLinks(prev => ({ ...prev, [selectedEl]: [] })));
+  }, [selectedEl, elementRuleLinks]);
+
+  // Build scoring map by elementKey (GAP 21) — from scoring criteria with evaluationLogic.elementKey
+  useEffect(() => {
+    if (!template) return;
+    apiGet<Array<{ name: string; maxPoints: string; evaluationLogic?: { elementKey?: string } }>>(`/api/documents/documents/${docId}/scoring-summary`)
+      .then(criteria => {
+        const map: Record<string, Array<{ criterionName: string; maxPoints: number }>> = {};
+        for (const c of criteria) {
+          const key = c.evaluationLogic?.elementKey;
+          if (!key) continue;
+          const el = allElements.find(e => e.key === key);
+          if (!el) continue;
+          if (!map[el.id]) map[el.id] = [];
+          map[el.id].push({ criterionName: c.name, maxPoints: parseFloat(c.maxPoints) || 0 });
+        }
+        setElementScoring(map);
+      })
+      .catch(() => {});
+  }, [template, docId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── SPLIT PANE DRAG ───
   useEffect(() => {
@@ -579,6 +610,36 @@ export default function TemplateViewerPage() {
                               {el.validated ? "Invalidare" : "Valideaza"}
                             </button>
                           </div>
+                          {/* GAP 20: Rule link (shown when selected) */}
+                          {isActive && elementRuleLinks[el.id] && elementRuleLinks[el.id].length > 0 && (
+                            <div style={{ marginTop: 4, display: "flex", flexDirection: "column", gap: 3 }}>
+                              {elementRuleLinks[el.id].map((rl, ri) => rl.rule && (
+                                <span key={ri} title={rl.rule.description} style={{
+                                  fontSize: 10, padding: "2px 6px", borderRadius: 4,
+                                  background: "rgba(77,139,255,.08)", color: "#2563eb",
+                                  display: "inline-flex", alignItems: "center", gap: 3,
+                                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                                }}>
+                                  {"\u{1F4D6}"} Regulă: {rl.rule.description.slice(0, 60)}{rl.rule.description.length > 60 ? "…" : ""}
+                                  {rl.rule.sourcePage && <span style={{ fontFamily: "'JetBrains Mono', monospace", opacity: 0.7 }}>(p.{rl.rule.sourcePage})</span>}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          {/* GAP 21: Scoring contribution */}
+                          {elementScoring[el.id] && elementScoring[el.id].length > 0 && (
+                            <div style={{ marginTop: 3, display: "flex", flexWrap: "wrap", gap: 4 }}>
+                              {elementScoring[el.id].map((sc, si) => (
+                                <span key={si} style={{
+                                  fontSize: 10, padding: "1px 6px", borderRadius: 4,
+                                  background: "rgba(251,191,36,.1)", color: "#d97706",
+                                  display: "inline-flex", alignItems: "center", gap: 3,
+                                }}>
+                                  {"\u{1F3AF}"} {sc.criterionName} (max {sc.maxPoints}pt)
+                                </span>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       );
                     })}

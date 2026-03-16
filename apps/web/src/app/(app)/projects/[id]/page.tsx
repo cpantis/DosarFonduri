@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api";
+import { getCaenDescription } from "@/lib/caen";
 import { useToast } from "@/components/shared/Toast";
 
 const API_URL = "";
@@ -140,6 +141,7 @@ const STATUS_MAP: Record<string, { label: string; color: string; bg: string }> =
 };
 
 const pct = (a: number, b: number) => b > 0 ? Math.round((a / b) * 100) : 0;
+const formatRON = (v: number | null | undefined) => v != null ? `${Number(v).toLocaleString("ro-RO", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} RON` : "-";
 
 type LeafType = "sumar" | "eligibilitate" | "ghid" | "solomon" | "elemente" | "checklist" | "neemia";
 
@@ -325,6 +327,13 @@ export default function ProjectViewPage() {
 
   const [recheckLoading, setRecheckLoading] = useState(false);
 
+  // GAP 1: Project scores
+  const [projectScores, setProjectScores] = useState<{ scores: any[]; totalPoints: number; maxTotalPoints: number; percentage: number } | null>(null);
+  // GAP 2: Budget validation
+  const [budgetValidation, setBudgetValidation] = useState<{ results: any[]; summary: any } | null>(null);
+  // GAP 8: Learnings
+  const [learnings, setLearnings] = useState<any | null>(null);
+
   const [neemiaActiveTemplate, setNeemiaActiveTemplate] = useState(0);
   const [neemiaActivePage, setNeemiaActivePage] = useState(0);
   const [neemiaAnimKey, setNeemiaAnimKey] = useState(0);
@@ -360,6 +369,9 @@ export default function ProjectViewPage() {
 
   const [neemiaGenStatus, setNeemiaGenStatus] = useState<string | null>(null);
   const [neemiaValidation, setNeemiaValidation] = useState<{ warnings: string[]; stats?: any } | null>(null);
+  // GAP 3: Consistency check
+  const [consistencyResult, setConsistencyResult] = useState<{ consistent: boolean; conflicts: any[] } | null>(null);
+  const [consistencyLoading, setConsistencyLoading] = useState(false);
   const [neemiaBulkGenerating, setNeemiaBulkGenerating] = useState(false);
 
   // ─── LOCK STATE ───
@@ -495,6 +507,11 @@ export default function ProjectViewPage() {
           composeSections: doc.composeContent?.sections || undefined,
         }));
         setNeemiaTemplates(neemiaMapped);
+
+        // GAP 1+2+8: Load scores, budget validation, learnings in parallel (non-blocking)
+        apiGet<any>(`/api/projects/${projectId}/scores`).then(setProjectScores).catch(() => {});
+        apiGet<any>(`/api/projects/${projectId}/budget-validation`).then(setBudgetValidation).catch(() => {});
+        apiGet<any>(`/api/projects/${projectId}/learnings`).then(setLearnings).catch(() => {});
       } catch (err) {
         console.error("Failed to load project:", err);
       } finally {
@@ -2217,12 +2234,93 @@ export default function ProjectViewPage() {
                   ))}
                 </div>
 
+                {/* GAP 1: Scor estimat proiect */}
+                {projectScores && projectScores.maxTotalPoints > 0 && (
+                  <div className="si-card" style={{ marginBottom: 12 }}>
+                    <h3>Scor estimat</h3>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
+                      <span style={{
+                        fontSize: 28, fontWeight: 800, fontFamily: "'JetBrains Mono', monospace",
+                        color: projectScores.percentage >= 80 ? "#059669" : projectScores.percentage >= 60 ? "#d97706" : "#dc2626",
+                      }}>
+                        {projectScores.totalPoints}/{projectScores.maxTotalPoints}
+                      </span>
+                      <span style={{
+                        fontSize: 14, fontWeight: 700,
+                        padding: "2px 8px", borderRadius: 6,
+                        background: projectScores.percentage >= 80 ? "rgba(52,211,153,.15)" : projectScores.percentage >= 60 ? "rgba(251,191,36,.15)" : "rgba(248,113,113,.15)",
+                        color: projectScores.percentage >= 80 ? "#059669" : projectScores.percentage >= 60 ? "#d97706" : "#dc2626",
+                      }}>
+                        {Math.round(projectScores.percentage)}%
+                      </span>
+                    </div>
+                    <div style={{ height: 8, borderRadius: 4, background: "rgba(0,0,0,.06)", overflow: "hidden", marginBottom: 10 }}>
+                      <div style={{
+                        height: "100%", borderRadius: 4, transition: "width .4s",
+                        width: `${projectScores.percentage}%`,
+                        background: projectScores.percentage >= 80 ? "#34d399" : projectScores.percentage >= 60 ? "#fbbf24" : "#f87171",
+                      }} />
+                    </div>
+                    {projectScores.scores.length > 0 && (
+                      <div style={{ fontSize: 12 }}>
+                        {projectScores.scores.map((s: any, i: number) => (
+                          <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", borderBottom: "1px solid rgba(0,0,0,.04)" }}>
+                            <span style={{ color: "#64748b" }}>{s.code || s.name}</span>
+                            <span style={{ fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" }}>
+                              {s.points ?? "-"}/{s.maxPoints}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* GAP 2: Validare buget */}
+                {budgetValidation?.summary && (
+                  <div className="si-card" style={{ marginBottom: 12, borderColor: budgetValidation.summary.totalErrors > 0 ? "rgba(248,113,113,.4)" : undefined }}>
+                    <h3 style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      Buget
+                      {budgetValidation.summary.totalErrors > 0 && <span style={{ fontSize: 11, padding: "1px 6px", borderRadius: 4, background: "rgba(248,113,113,.15)", color: "#dc2626", fontWeight: 700 }}>{budgetValidation.summary.totalErrors} erori</span>}
+                      {budgetValidation.summary.totalWarnings > 0 && <span style={{ fontSize: 11, padding: "1px 6px", borderRadius: 4, background: "rgba(251,191,36,.15)", color: "#d97706", fontWeight: 700 }}>{budgetValidation.summary.totalWarnings} atenționări</span>}
+                    </h3>
+                    <div className="si-row"><span className="si-label">Valoare totală</span><span className="si-value">{formatRON(budgetValidation.summary.totalBudget)}</span></div>
+                    <div className="si-row"><span className="si-label">Valoare eligibilă</span><span className="si-value">{formatRON(budgetValidation.summary.eligibleAmount)}</span></div>
+                    <div className="si-row"><span className="si-label">Grant ({budgetValidation.summary.grantPct}%)</span><span className="si-value">{formatRON(budgetValidation.summary.grantAmount)}</span></div>
+                    <div className="si-row"><span className="si-label">Cofinanțare ({budgetValidation.summary.coFinancingPct}%)</span><span className="si-value">{formatRON(budgetValidation.summary.coFinancingAmount)}</span></div>
+                    {budgetValidation.results.filter((r: any) => r.status !== "valid").map((r: any, i: number) => (
+                      <div key={i} style={{ fontSize: 11, padding: "4px 6px", marginTop: 4, borderRadius: 4, background: r.status === "invalid" ? "rgba(248,113,113,.08)" : "rgba(251,191,36,.08)", color: r.status === "invalid" ? "#dc2626" : "#d97706" }}>
+                        {r.label}: {r.validations?.filter((v: any) => !v.passed).map((v: any) => v.message).join("; ")}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* GAP 8: Learnings din proiecte similare */}
+                {learnings && learnings.totalApprovedSimilar > 0 && (
+                  <div className="si-card" style={{ marginBottom: 12 }}>
+                    <h3>Sfaturi din proiecte similare ({learnings.totalApprovedSimilar} aprobate)</h3>
+                    {learnings.eligibilityInsights?.slice(0, 3).map((ins: any, i: number) => (
+                      <div key={i} style={{ fontSize: 12, padding: "4px 0", borderBottom: "1px solid rgba(0,0,0,.04)" }}>
+                        <span style={{ color: ins.commonOutcome === "passed" ? "#059669" : "#dc2626" }}>{ins.commonOutcome === "passed" ? "\u2713" : "\u2717"}</span>{" "}
+                        <span style={{ color: "#64748b" }}>{ins.tip || ins.ruleDescription}</span>
+                        <span style={{ float: "right", fontSize: 11, color: "#94a3b8" }}>{Math.round(ins.successRate * 100)}%</span>
+                      </div>
+                    ))}
+                    {learnings.budgetPatterns?.avgBudget && (
+                      <div style={{ fontSize: 12, marginTop: 6, color: "#64748b" }}>
+                        Buget mediu similar: {formatRON(learnings.budgetPatterns.avgBudget)}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div className="sumar-info">
                   <div className="si-card">
                     <h3>Date firmă</h3>
                     <div className="si-row"><span className="si-label">CUI</span><span className="si-value">{projectCui}</span></div>
                     <div className="si-row"><span className="si-label">Forma juridică</span><span className="si-value">{companyData?.formaJuridica || "-"}</span></div>
-                    <div className="si-row"><span className="si-label">CAEN</span><span className="si-value">{companyData?.caen || "-"}</span></div>
+                    <div className="si-row"><span className="si-label">CAEN</span><span className="si-value" title={getCaenDescription(companyData?.caen) || undefined}>{companyData?.caen || "-"}{getCaenDescription(companyData?.caen) ? ` — ${getCaenDescription(companyData?.caen)!.slice(0, 35)}…` : ""}</span></div>
                     <div className="si-row"><span className="si-label">Localitate</span><span className="si-value">{localitate}, {judet}</span></div>
                   </div>
                   <div className="si-card">
@@ -2875,6 +2973,43 @@ export default function ProjectViewPage() {
                     </div>
                   </div>
 
+                  {/* GAP 9: Validate-all + Bulk confirm */}
+                  <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+                    <button
+                      style={{ flex: 1, padding: "6px 10px", fontSize: 11, fontWeight: 600, borderRadius: 6, border: "1px solid rgba(0,0,0,.08)", background: "#fff", cursor: "pointer" }}
+                      onClick={async () => {
+                        if (!confirm("Validezi toate elementele cu AI? Poate dura câteva secunde.")) return;
+                        try {
+                          const res = await apiPost<any>(`/api/projects/${projectId}/validate-all`, {});
+                          toast({ title: `Validate: ${res.validatedCount} ok, ${res.failedCount} eșuate, ${res.pendingCount} pending` });
+                          const proj = await apiGet<any>(`/api/projects/${projectId}`);
+                          setElements(mapElements(proj.elements || []));
+                        } catch { toast({ title: "Eroare la validare", variant: "destructive" }); }
+                      }}
+                      disabled={readOnly}
+                    >
+                      {"\u2713"} Validează toate
+                    </button>
+                    {elements.filter(e => e.status === "propus_ai").length > 0 && (
+                      <button
+                        style={{ flex: 1, padding: "6px 10px", fontSize: 11, fontWeight: 600, borderRadius: 6, border: "1px solid rgba(52,211,153,.3)", background: "rgba(52,211,153,.06)", color: "#059669", cursor: "pointer" }}
+                        onClick={async () => {
+                          const proposed = elements.filter(e => e.status === "propus_ai");
+                          if (!confirm(`Confirmi ${proposed.length} elemente propuse de AI?`)) return;
+                          try {
+                            await apiPut(`/api/projects/${projectId}/elements-bulk/confirm`, { elementIds: proposed.map(e => e.id) });
+                            toast({ title: `${proposed.length} elemente confirmate` });
+                            const proj = await apiGet<any>(`/api/projects/${projectId}`);
+                            setElements(mapElements(proj.elements || []));
+                          } catch { toast({ title: "Eroare la confirmare", variant: "destructive" }); }
+                        }}
+                        disabled={readOnly}
+                      >
+                        {"\u2713\u2713"} Confirmă toate propuse ({elements.filter(e => e.status === "propus_ai").length})
+                      </button>
+                    )}
+                  </div>
+
                   <div className="elemente-filter-bar">
                     <input className="elem-search" placeholder="Caută element..." value={elemSearch} onChange={e => setElemSearch(e.target.value)} />
                     <div className="fp-group">
@@ -3416,13 +3551,31 @@ export default function ProjectViewPage() {
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
                     <h3 style={{ margin: 0 }}>Template-uri Proiect</h3>
                   </div>
-                  <button
-                    className="neemia-bulk-btn"
-                    onClick={handleNeemiaBulkGenerate}
-                    disabled={neemiaBulkGenerating || readOnly}
-                  >
-                    {neemiaBulkGenerating ? "Se generează..." : "Generează tot dosarul"}
-                  </button>
+                  <div style={{ display: "flex", gap: 6, marginBottom: 0 }}>
+                    <button
+                      className="neemia-bulk-btn"
+                      style={{ flex: 1 }}
+                      onClick={handleNeemiaBulkGenerate}
+                      disabled={neemiaBulkGenerating || readOnly}
+                    >
+                      {neemiaBulkGenerating ? "Se generează..." : "Generează tot dosarul"}
+                    </button>
+                    {/* GAP 10: Recalculează câmpuri */}
+                    <button
+                      style={{ padding: "6px 10px", fontSize: 11, fontWeight: 600, borderRadius: 8, border: "1px solid rgba(0,0,0,.08)", background: "#fff", cursor: "pointer", whiteSpace: "nowrap" }}
+                      onClick={async () => {
+                        try {
+                          const res = await apiPost<any[]>(`/api/neemia/projects/${projectId}/calculate`, {});
+                          toast({ title: `${(res || []).length} câmpuri recalculate` });
+                          const proj = await apiGet<any>(`/api/projects/${projectId}`);
+                          setElements(mapElements(proj.elements || []));
+                        } catch { toast({ title: "Eroare la recalculare", variant: "destructive" }); }
+                      }}
+                      disabled={readOnly}
+                    >
+                      {"\u{1F4CA}"} Recalculează
+                    </button>
+                  </div>
 
                   {neemiaGenStatus && (
                     <div className="neemia-gen-status">
@@ -3433,7 +3586,34 @@ export default function ProjectViewPage() {
                   {neemiaValidation && neemiaValidation.warnings.length > 0 && (
                     <div className="neemia-warnings">
                       {neemiaValidation.warnings.map((w, i) => (
-                        <div key={i} className="nw-item">⚠ {w}</div>
+                        <div key={i} className="nw-item">&#9888; {w}</div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* GAP 3: Consistency check */}
+                  {neemiaTemplates.filter(t => t.status === "generated" || t.status === "validated").length >= 2 && (
+                    <button
+                      style={{ width: "100%", padding: "6px 10px", fontSize: 12, fontWeight: 600, border: "1px solid rgba(0,0,0,.08)", borderRadius: 8, background: consistencyResult?.consistent === false ? "rgba(248,113,113,.08)" : "rgba(0,0,0,.02)", cursor: "pointer", marginBottom: 8 }}
+                      onClick={async () => {
+                        setConsistencyLoading(true);
+                        try {
+                          const res = await apiGet<any>(`/api/neemia/projects/${projectId}/consistency`);
+                          setConsistencyResult(res);
+                        } catch { toast({ title: "Eroare verificare consistență", variant: "destructive" }); }
+                        setConsistencyLoading(false);
+                      }}
+                      disabled={consistencyLoading}
+                    >
+                      {consistencyLoading ? "Se verifică..." : consistencyResult ? (consistencyResult.consistent ? "\u2713 Documente consistente" : `\u26A0 ${consistencyResult.conflicts.length} inconsistențe`) : "Verifică consistența"}
+                    </button>
+                  )}
+                  {consistencyResult && !consistencyResult.consistent && (
+                    <div style={{ fontSize: 11, marginBottom: 8 }}>
+                      {consistencyResult.conflicts.map((c: any, i: number) => (
+                        <div key={i} style={{ padding: "4px 6px", marginBottom: 2, borderRadius: 4, background: "rgba(248,113,113,.06)", color: "#dc2626" }}>
+                          <strong>{c.label || c.key}</strong>: {c.values?.map((v: any) => `${v.templateName}: "${v.value}"`).join(" vs ")}
+                        </div>
                       ))}
                     </div>
                   )}
@@ -3510,6 +3690,35 @@ export default function ProjectViewPage() {
                             >
                               {neemiaVersionsOpen === tmpl.templateDocumentId ? "Ascunde istoric" : "Istoric versiuni"}
                             </button>
+                          )}
+                          {/* GAP 11: Validate consultant per document */}
+                          {tmpl.status === "generated" && tmpl.id && (
+                            <button
+                              className="tc-action-btn"
+                              style={{ background: "rgba(52,211,153,.08)", color: "#059669", borderColor: "rgba(52,211,153,.3)" }}
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                try {
+                                  await apiPut(`/api/neemia/documents/${tmpl.id}/validate`, {});
+                                  const docs = await apiGet<any[]>(`/api/neemia/projects/${projectId}/documents`);
+                                  setNeemiaTemplates((docs || []).map((doc: any) => ({
+                                    id: doc.id, name: doc.templateName || "Document", type: (doc.templateFileType || "DOCX").toUpperCase(),
+                                    pages: [], totalFields: 0, filledFields: 0, templateDocumentId: doc.templateDocumentId,
+                                    status: doc.status, downloadUrl: doc.downloadUrl || null, generationMode: doc.generationMode || "fill",
+                                    composeSections: doc.composeContent?.sections || undefined,
+                                  })));
+                                  toast({ title: "Document validat de consultant" });
+                                } catch { toast({ title: "Eroare la validare", variant: "destructive" }); }
+                              }}
+                              disabled={readOnly}
+                            >
+                              {"\u2713"} Validat consultant
+                            </button>
+                          )}
+                          {tmpl.status === "validated" && (
+                            <span style={{ fontSize: 10, fontWeight: 700, color: "#059669", padding: "2px 6px", borderRadius: 4, background: "rgba(52,211,153,.1)" }}>
+                              {"\u2713"} VALIDAT
+                            </span>
                           )}
                         </div>
                         {/* Version history panel */}

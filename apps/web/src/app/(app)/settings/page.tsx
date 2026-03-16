@@ -42,13 +42,23 @@ const AI_MODELS = [
 ];
 
 const SECTIONS = [
-  { id: "solomon", icon: "🤖", label: "Solomon (Expert Fonduri)" },
-  { id: "neemia", icon: "📝", label: "Neemia (Generare Dosar)" },
-  { id: "ghid", icon: "📖", label: "Ghid Finantare (Reguli)" },
-  { id: "api", icon: "🔌", label: "Integrare API" },
-  { id: "branding", icon: "🎨", label: "Branding Documente" },
-  { id: "notificari", icon: "🔔", label: "Notificari" },
-  { id: "export", icon: "📤", label: "Export & Backup" },
+  { id: "solomon", icon: "\u{1F916}", label: "Solomon (Expert Fonduri)" },
+  { id: "neemia", icon: "\u{1F4DD}", label: "Neemia (Generare Dosar)" },
+  { id: "ghid", icon: "\u{1F4D6}", label: "Ghid Finantare (Reguli)" },
+  { id: "knowledge", icon: "\u{1F4DA}", label: "Baz\u0103 de cuno\u0219tin\u021be" },
+  { id: "api", icon: "\u{1F50C}", label: "Integrare API" },
+  { id: "branding", icon: "\u{1F3A8}", label: "Branding Documente" },
+  { id: "notificari", icon: "\u{1F514}", label: "Notificari" },
+  { id: "export", icon: "\u{1F4E4}", label: "Export & Backup" },
+];
+
+const KNOWLEDGE_CATEGORIES = [
+  { value: "legislatie", label: "Legisla\u021bie" },
+  { value: "bune_practici", label: "Bune practici" },
+  { value: "corectii", label: "Corec\u021bii" },
+  { value: "praguri", label: "Praguri \u0219i plafoane" },
+  { value: "proceduri", label: "Proceduri" },
+  { value: "ghid_specific", label: "Ghid specific" },
 ];
 
 const TYPE_ICONS: Record<string, string> = { ONRC: "🏛", ANAF: "📊", Email: "📧", SMS: "📱", Storage: "☁️", Custom: "🔗" };
@@ -86,6 +96,13 @@ export default function SettingsPage() {
   });
   const [brandingSaved, setBrandingSaved] = useState(false);
 
+  // GAP 4: Knowledge Base
+  const [knowledgeEntries, setKnowledgeEntries] = useState<any[]>([]);
+  const [knowledgeLoading, setKnowledgeLoading] = useState(false);
+  const [showAddKnowledge, setShowAddKnowledge] = useState(false);
+  const [editingKnowledge, setEditingKnowledge] = useState<string | null>(null);
+  const [newKnowledge, setNewKnowledge] = useState({ category: "legislatie", title: "", content: "", sourceReference: "", validFrom: "", validUntil: "" });
+
   const loadConfig = useCallback(async () => {
     try {
       setConfigError(null);
@@ -117,11 +134,21 @@ export default function SettingsPage() {
     } catch {}
   }, []);
 
+  const loadKnowledge = useCallback(async () => {
+    setKnowledgeLoading(true);
+    try {
+      const data = await apiGet<any[]>("/api/config/knowledge");
+      setKnowledgeEntries(data || []);
+    } catch { /* non-critical */ }
+    setKnowledgeLoading(false);
+  }, []);
+
   useEffect(() => {
     loadConfig();
     loadApis();
     loadBranding();
-  }, [loadConfig, loadApis, loadBranding]);
+    loadKnowledge();
+  }, [loadConfig, loadApis, loadBranding, loadKnowledge]);
 
   const updateConfig = async (updates: Partial<OrgConfig>) => {
     if (!config) return;
@@ -492,6 +519,119 @@ export default function SettingsPage() {
                 <span className="text-xs flex-1 text-slate-400">Cost estimat procesare completa ghid (60 pag.):</span>
                 <span className="text-sm font-bold font-mono text-amber-500">~$0.30 (~50s)</span>
               </div>
+            </>
+          )}
+
+          {/* ═══ BAZĂ DE CUNOȘTINȚE ═══ */}
+          {activeSection === "knowledge" && (
+            <>
+              <div className="text-lg font-semibold mb-1 text-slate-900">{"\u{1F4DA}"} Baz&#259; de cuno&#537;tin&#539;e</div>
+              <div className="text-sm mb-5 leading-relaxed text-slate-500">
+                Legisla&#539;ie, bune practici, corec&#539;ii &#537;i praguri folosite de Solomon &#238;n r&#259;spunsuri.
+              </div>
+
+              <button
+                className="mb-4 px-4 py-2 text-sm font-semibold rounded-lg text-white"
+                style={{ background: "#2563eb" }}
+                onClick={() => { setShowAddKnowledge(true); setEditingKnowledge(null); setNewKnowledge({ category: "legislatie", title: "", content: "", sourceReference: "", validFrom: "", validUntil: "" }); }}
+              >
+                + Adaug&#259; cuno&#537;tin&#539;&#259;
+              </button>
+
+              {/* Add/Edit form */}
+              {showAddKnowledge && (
+                <div className="mb-5 p-4 rounded-xl border border-slate-200 bg-slate-50">
+                  <div className="grid grid-cols-2 gap-3 mb-3">
+                    <div>
+                      <label className="text-xs font-semibold text-slate-500 mb-1 block">Categorie</label>
+                      <select className="w-full px-3 py-2 text-sm border rounded-lg" value={newKnowledge.category} onChange={e => setNewKnowledge(p => ({ ...p, category: e.target.value }))}>
+                        {KNOWLEDGE_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-slate-500 mb-1 block">Referin&#539;&#259; surs&#259;</label>
+                      <input className="w-full px-3 py-2 text-sm border rounded-lg" placeholder="OUG 12/2026, Reg. UE..." value={newKnowledge.sourceReference} onChange={e => setNewKnowledge(p => ({ ...p, sourceReference: e.target.value }))} />
+                    </div>
+                  </div>
+                  <div className="mb-3">
+                    <label className="text-xs font-semibold text-slate-500 mb-1 block">Titlu</label>
+                    <input className="w-full px-3 py-2 text-sm border rounded-lg" placeholder="Titlu..." value={newKnowledge.title} onChange={e => setNewKnowledge(p => ({ ...p, title: e.target.value }))} />
+                  </div>
+                  <div className="mb-3">
+                    <label className="text-xs font-semibold text-slate-500 mb-1 block">Con&#539;inut</label>
+                    <textarea className="w-full px-3 py-2 text-sm border rounded-lg" rows={5} placeholder="Con&#539;inutul..." value={newKnowledge.content} onChange={e => setNewKnowledge(p => ({ ...p, content: e.target.value }))} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 mb-3">
+                    <div>
+                      <label className="text-xs font-semibold text-slate-500 mb-1 block">Valid de la</label>
+                      <input type="date" className="w-full px-3 py-2 text-sm border rounded-lg" value={newKnowledge.validFrom} onChange={e => setNewKnowledge(p => ({ ...p, validFrom: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-slate-500 mb-1 block">Valid p&#226;n&#259; la</label>
+                      <input type="date" className="w-full px-3 py-2 text-sm border rounded-lg" value={newKnowledge.validUntil} onChange={e => setNewKnowledge(p => ({ ...p, validUntil: e.target.value }))} />
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      className="px-4 py-2 text-sm font-semibold rounded-lg text-white"
+                      style={{ background: "#2563eb" }}
+                      onClick={async () => {
+                        try {
+                          if (editingKnowledge) {
+                            await apiPut(`/api/config/knowledge/${editingKnowledge}`, newKnowledge);
+                          } else {
+                            await apiPost("/api/config/knowledge", newKnowledge);
+                          }
+                          setShowAddKnowledge(false);
+                          loadKnowledge();
+                        } catch (err: any) { alert(err.message); }
+                      }}
+                    >
+                      {editingKnowledge ? "Salveaz\u0103" : "Adaug\u0103"}
+                    </button>
+                    <button className="px-4 py-2 text-sm font-semibold rounded-lg text-slate-600 bg-white border" onClick={() => setShowAddKnowledge(false)}>Anuleaz&#259;</button>
+                  </div>
+                </div>
+              )}
+
+              {/* Entries list */}
+              {knowledgeLoading ? (
+                <div className="text-sm text-slate-400 py-4">Se &#238;ncarc&#259;...</div>
+              ) : knowledgeEntries.length === 0 ? (
+                <div className="text-sm text-slate-400 py-4">Nicio intrare &#238;n baza de cuno&#537;tin&#539;e.</div>
+              ) : (
+                <div className="space-y-2">
+                  {knowledgeEntries.filter(e => !e.category?.startsWith("wk_")).map(entry => {
+                    const isExpired = entry.validUntil && new Date(entry.validUntil) < new Date();
+                    return (
+                      <div key={entry.id} className="p-3 rounded-lg border bg-white" style={{ opacity: entry.enabled ? 1 : 0.5, borderColor: isExpired ? "rgba(248,113,113,.4)" : undefined }}>
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-semibold text-slate-800">{entry.title}</span>
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">{KNOWLEDGE_CATEGORIES.find(c => c.value === entry.category)?.label || entry.category}</span>
+                            {isExpired && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-50 text-red-500">EXPIRAT</span>}
+                            {!entry.enabled && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-400">DEZACTIVAT</span>}
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <button className="text-xs text-blue-600 hover:underline" onClick={() => {
+                              setEditingKnowledge(entry.id);
+                              setNewKnowledge({ category: entry.category, title: entry.title, content: entry.content, sourceReference: entry.sourceReference || "", validFrom: entry.validFrom ? entry.validFrom.slice(0, 10) : "", validUntil: entry.validUntil ? entry.validUntil.slice(0, 10) : "" });
+                              setShowAddKnowledge(true);
+                            }}>Editează</button>
+                            <button className="text-xs text-slate-400 hover:text-red-500" onClick={async () => {
+                              if (!confirm("Ștergi această intrare?")) return;
+                              await apiDelete(`/api/config/knowledge/${entry.id}`);
+                              loadKnowledge();
+                            }}>&#10005;</button>
+                          </div>
+                        </div>
+                        <div className="text-xs text-slate-500 line-clamp-2">{entry.content?.slice(0, 200)}</div>
+                        {entry.sourceReference && <div className="text-[11px] text-slate-400 mt-1">Ref: {entry.sourceReference}</div>}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </>
           )}
 

@@ -874,6 +874,23 @@ documentRoutes.delete("/documents/:docId/elements/:elId", async (c) => {
   return c.json({ ok: true });
 });
 
+// --- SCORING SUMMARY for a document (GAP 21) ---
+documentRoutes.get("/documents/:docId/scoring-summary", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const { docId } = c.req.param() as { docId: string };
+
+  const criteria = await db.query.scoringCriteria.findMany({
+    where: and(eq(scoringCriteria.documentId, docId), eq(scoringCriteria.organizationId, auth.organizationId!)),
+  });
+
+  return c.json(criteria.map(cr => ({
+    name: cr.name,
+    maxPoints: cr.maxPoints,
+    evaluationLogic: cr.evaluationLogic,
+    category: cr.category,
+  })));
+});
+
 // --- SSE: subscribe to upload events for organization ---
 documentRoutes.get("/uploads/events", async (c) => {
   const auth = c.get("auth") as AuthContext;

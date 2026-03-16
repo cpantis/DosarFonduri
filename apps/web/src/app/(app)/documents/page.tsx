@@ -320,6 +320,8 @@ export default function DocumentsPage() {
   const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
   const [docRules, setDocRules] = useState<Record<string, any[]>>({});
   const [docRulesLoading, setDocRulesLoading] = useState<Record<string, boolean>>({});
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
+  const [pdfPreviewName, setPdfPreviewName] = useState<string>("");
   const searchRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
@@ -530,6 +532,18 @@ export default function DocumentsPage() {
       }
     } catch (err) {
       console.error("Failed to get download URL:", err);
+    }
+  }, []);
+
+  const handleDocPreview = useCallback(async (docId: string) => {
+    try {
+      const detail = await apiGet<{ downloadUrl: string; name: string }>(`/api/documents/documents/${docId}`);
+      if (detail.downloadUrl) {
+        setPdfPreviewUrl(detail.downloadUrl);
+        setPdfPreviewName(detail.name || "Document");
+      }
+    } catch (err) {
+      console.error("Failed to get preview URL:", err);
     }
   }, []);
 
@@ -1287,7 +1301,7 @@ export default function DocumentsPage() {
           </svg>
           Descarca
         </button>
-        <button className="doc-detail-btn">
+        <button className="doc-detail-btn" onClick={() => handleDocPreview(selDoc.id)}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
           </svg>
@@ -1609,6 +1623,67 @@ export default function DocumentsPage() {
           </div>
         );
       })()}
+
+      {/* PDF Preview Modal */}
+      {pdfPreviewUrl && (
+        <div
+          style={{
+            position: "fixed", inset: 0, zIndex: 9999,
+            background: "rgba(0,0,0,.6)", backdropFilter: "blur(4px)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            animation: "docFadeIn .2s ease-out",
+          }}
+          onClick={() => setPdfPreviewUrl(null)}
+        >
+          <div
+            style={{
+              width: "85vw", height: "88vh", maxWidth: 1100,
+              background: "#fff", borderRadius: 16,
+              boxShadow: "0 24px 80px rgba(0,0,0,.3)",
+              display: "flex", flexDirection: "column", overflow: "hidden",
+              animation: "docSlideUp .25s ease both",
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{
+              padding: "14px 20px", borderBottom: "1px solid rgba(226,232,240,.8)",
+              display: "flex", alignItems: "center", gap: 12,
+            }}>
+              <span style={{ fontSize: 15, fontWeight: 700, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {pdfPreviewName}
+              </span>
+              <button
+                onClick={() => window.open(pdfPreviewUrl, "_blank")}
+                style={{
+                  padding: "6px 14px", borderRadius: 8, border: "1px solid rgba(226,232,240,.8)",
+                  background: "#fff", color: "#2563eb", fontSize: 12, fontWeight: 600,
+                  cursor: "pointer", fontFamily: "'Inter', system-ui, sans-serif",
+                }}
+              >
+                Descarcă
+              </button>
+              <button
+                onClick={() => setPdfPreviewUrl(null)}
+                style={{
+                  width: 32, height: 32, borderRadius: 8, border: "none",
+                  background: "rgba(226,232,240,.5)", color: "#64748b",
+                  fontSize: 16, cursor: "pointer", display: "flex",
+                  alignItems: "center", justifyContent: "center",
+                }}
+              >
+                {"\u2715"}
+              </button>
+            </div>
+            <div style={{ flex: 1, overflow: "hidden" }}>
+              <iframe
+                src={pdfPreviewUrl}
+                style={{ width: "100%", height: "100%", border: "none" }}
+                title="Preview document"
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

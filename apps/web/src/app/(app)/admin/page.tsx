@@ -67,9 +67,10 @@ const AUDIT_ICONS: Record<string, string> = {
 };
 
 const TAB_ITEMS = [
-  { key: "users", icon: "👥", label: "Utilizatori" },
-  { key: "costs", icon: "💰", label: "Audit AI / Costuri" },
-  { key: "audit", icon: "📋", label: "Jurnal activitate" },
+  { key: "users", icon: "\u{1F465}", label: "Utilizatori" },
+  { key: "costs", icon: "\u{1F4B0}", label: "Audit AI / Costuri" },
+  { key: "audit", icon: "\u{1F4CB}", label: "Jurnal activitate" },
+  { key: "export", icon: "\u{1F4E4}", label: "Export" },
 ];
 
 function timeAgo(dateStr: string | null): string {
@@ -571,6 +572,30 @@ export default function AdminPage() {
                 Nicio activitate inregistrata.
               </div>
             )}
+          </>
+        )}
+        {/* ═══ EXPORT ═══ */}
+        {activeTab === "export" && (
+          <>
+            <div className="text-lg font-semibold mb-4 text-slate-900">Export date</div>
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { label: "Proiecte JSON", desc: "Export complet al tuturor proiectelor cu elemente", href: "/api/export/projects" },
+                { label: "Proiecte CSV", desc: "Export tabelar al proiectelor pentru Excel", href: "/api/export/projects-csv" },
+                { label: "Configurație", desc: "Export setări organizație (modele AI, praguri)", href: "/api/export/config" },
+                { label: "Activitate CSV", desc: "Jurnal complet de activitate", href: "/api/export/activity" },
+              ].map(item => (
+                <a
+                  key={item.href}
+                  href={item.href}
+                  download
+                  className="p-4 rounded-xl border border-slate-200/80 bg-white hover:shadow-sm hover:border-slate-300/80 transition-all cursor-pointer group"
+                >
+                  <div className="text-sm font-semibold text-slate-800 group-hover:text-blue-600 transition-colors">{"\u{1F4E5}"} {item.label}</div>
+                  <div className="text-xs text-slate-400 mt-1">{item.desc}</div>
+                </a>
+              ))}
+            </div>
           </>
         )}
       </div>

@@ -120,6 +120,15 @@ projectRoutes.get("/", async (c) => {
 
     const programPath = await buildProgramPath(p.folderId);
 
+    // Scoring summary (lightweight — catch errors silently)
+    let scoreSummary: { totalPoints: number; maxTotalPoints: number; percentage: number } | null = null;
+    try {
+      const scoreResult = await computeProjectScores(p.id);
+      if (scoreResult && scoreResult.maxTotalPoints > 0) {
+        scoreSummary = { totalPoints: scoreResult.totalPoints, maxTotalPoints: scoreResult.maxTotalPoints, percentage: scoreResult.percentage };
+      }
+    } catch { /* non-critical */ }
+
     // Lock info
     const lockActive = p.lockedBy && !isLockExpired(p.lockedAt);
     let lockedByName: string | null = null;
@@ -139,6 +148,7 @@ projectRoutes.get("/", async (c) => {
         docs: { done: doneDocs, total: totalDocs },
         templates: { done: doneTemplates, total: totalTemplates },
       },
+      scoreSummary,
     };
   }));
 

@@ -1031,13 +1031,17 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         allScoring,
       );
 
-      // Save trust score on document
-      await db.update(documents)
-        .set({
-          trustScore: String(completenessReport.trustScore),
-          completenessReport,
-        })
-        .where(eq(documents.id, documentId));
+      // Save trust score on document (column added in migration 0019)
+      try {
+        await db.update(documents)
+          .set({
+            trustScore: String(completenessReport.trustScore),
+            completenessReport,
+          })
+          .where(eq(documents.id, documentId));
+      } catch (trustErr: any) {
+        console.warn(`[processGuide] Could not save trust score (migration 0019 may not have run): ${trustErr.message?.substring(0, 100)}`);
+      }
 
       // SSE: broadcast trust score
       publishJobProgress(organizationId, {

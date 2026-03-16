@@ -113,7 +113,13 @@ async function handleOnrcExtract(job: Job<CompanyExtractPayload>) {
   if (companyData.capitalSocial) updateData.capitalSocial = companyData.capitalSocial.toString();
   if (companyData.moneda) updateData.moneda = companyData.moneda;
   if (companyData.partiSociale) updateData.partiSociale = companyData.partiSociale;
-  if (companyData.naturaCapital) updateData.naturaCapital = companyData.naturaCapital;
+  if (companyData.naturaCapital && typeof companyData.naturaCapital === "object") {
+    updateData.naturaCapital = {
+      privatAutohton: Number(companyData.naturaCapital.privatAutohton) || 0,
+      privatStrain: Number(companyData.naturaCapital.privatStrain) || 0,
+      stat: Number(companyData.naturaCapital.stat) || 0,
+    };
+  }
   if (companyData.caenPrincipal) updateData.caen = companyData.caenPrincipal;
   updateData.onrcRawData = companyData;
 
@@ -228,7 +234,13 @@ async function handleOnrcUpdate(job: Job<CompanyOnrcUpdatePayload>) {
   if (companyData.capitalSocial) updateData.capitalSocial = companyData.capitalSocial.toString();
   if (companyData.moneda) updateData.moneda = companyData.moneda;
   if (companyData.partiSociale) updateData.partiSociale = companyData.partiSociale;
-  if (companyData.naturaCapital) updateData.naturaCapital = companyData.naturaCapital;
+  if (companyData.naturaCapital && typeof companyData.naturaCapital === "object") {
+    updateData.naturaCapital = {
+      privatAutohton: Number(companyData.naturaCapital.privatAutohton) || 0,
+      privatStrain: Number(companyData.naturaCapital.privatStrain) || 0,
+      stat: Number(companyData.naturaCapital.stat) || 0,
+    };
+  }
   if (companyData.caenPrincipal) updateData.caen = companyData.caenPrincipal;
   updateData.onrcRawData = companyData;
 

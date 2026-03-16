@@ -121,7 +121,9 @@ function cleanWatermarks(text: string): string {
     // Page footer: "Raport generat în data de 21.06.2024 : 13:18:30"
     .replace(/Raport generat [iî]n data de[^\n]*\n/g, "\n")
     // Page numbers: "1/15", "2/15", etc. on standalone lines (NOT J2/1981/2017)
-    .replace(/^\d{1,2}\/\d{1,2}$/gm, "")
+    .replace(/^\d{1,3}\/\d{1,3}$/gm, "")
+    // Page numbers at end of line: "... text 3/15"
+    .replace(/\s+\d{1,3}\/\d{1,3}\s*$/gm, "")
     // ONRC digital signature watermark (vertical text from PDF rendering)
     .replace(/OFICIUL\s*\n\s*NATIONAL\s*\n\s*AL\s*\n\s*REGISTRU\s*\n\s*LUI\s*\n\s*COMER[TȚ]U\s*\n\s*LUI\s*/gi, "")
     // Digitally signed block
@@ -649,6 +651,9 @@ export function parseOnrcText(text: string): ExtractedCompanyData | null {
   // ─── Validate minimum data ───
   if (!ident.cui && !ident.denumire && !ident.regCom) {
     return null;
+  }
+  if (!ident.cui && !ident.regCom) {
+    console.warn(`[onrcParser] Parsed company "${ident.denumire}" without CUI or RegCom — data may be incomplete`);
   }
 
   return {

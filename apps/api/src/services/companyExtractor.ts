@@ -248,7 +248,8 @@ async function extractWithClaude(pdfText: string): Promise<ExtractedCompanyData 
 
       console.error(
         `[companyExtractor] Claude attempt ${attempt}/${MAX_ATTEMPTS}: JSON parse failed. ` +
-        `Response length: ${responseText.length}, first 300 chars: "${responseText.slice(0, 300)}"`,
+        `Response length: ${responseText.length}, first 300 chars: "${responseText.slice(0, 300)}"` +
+        `\nHint: AI returned non-JSON response. This usually means the document format is unusual or the text quality is poor.`,
       );
     } catch (err: any) {
       console.error(`[companyExtractor] Claude attempt ${attempt} error: ${err.message}`);

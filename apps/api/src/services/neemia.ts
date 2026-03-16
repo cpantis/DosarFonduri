@@ -110,6 +110,25 @@ cabinet_style = payload.get('cabinetStyle', {}) if isinstance(payload, dict) els
 doc = Document(template_path)
 current_page = 1
 
+# W5.1: Romanian number formatting (125.5 → "125,5", 1234567.89 → "1.234.567,89")
+def format_ro(value):
+    """Format value for Romanian locale: decimal comma, dot thousands separator."""
+    s = str(value) if value else ''
+    # Check if it looks like a number
+    try:
+        num = float(s.replace(',', '.'))
+        if num == int(num) and '.' not in s and ',' not in s:
+            # Integer — format with dot thousands separator
+            return '{:,.0f}'.format(num).replace(',', '.')
+        else:
+            # Decimal — format with comma decimal and dot thousands
+            formatted = '{:,.2f}'.format(num)
+            # Swap: comma→temp, dot→comma, temp→dot
+            formatted = formatted.replace(',', '_').replace('.', ',').replace('_', '.')
+            return formatted
+    except (ValueError, TypeError):
+        return s
+
 def replace_in_paragraph(paragraph, data):
     full_text = paragraph.text
     replacements_made = []
@@ -125,7 +144,7 @@ def replace_in_paragraph(paragraph, data):
     combined = ''.join(runs_text)
     for key, value in data.items():
         placeholder = '{{' + key + '}}'
-        combined = combined.replace(placeholder, str(value) if value else '')
+        combined = combined.replace(placeholder, format_ro(value) if value else '')
     if paragraph.runs:
         paragraph.runs[0].text = combined
         for run in paragraph.runs[1:]:

@@ -10,6 +10,21 @@ import { redis, isRedisReady } from "../lib/redis";
 import { upsertElementDefinition, autoMapTemplatePlaceholders } from "../services/elementDefinitionService";
 import { anthropic, withAILimit } from "../lib/anthropic";
 import { repairTruncatedJSON } from "../lib/safeExtract";
+import { z } from "zod";
+
+// W2.3: Zod schema for evaluationLogic JSONB validation
+const evaluationLogicSchema = z.object({
+  type: z.enum(["lookup", "range", "boolean", "formula"]),
+  elementKey: z.string().optional(),
+  referenceTableId: z.string().optional(),
+  lookupColumn: z.string().optional(),
+  ranges: z.array(z.object({
+    min: z.number().optional(),
+    max: z.number().optional(),
+    points: z.number(),
+  })).optional(),
+  formula: z.string().optional(),
+}).passthrough();
 
 /** Character limit for a single Opus + ET pass (200K context window) */
 const OPUS_CHAR_LIMIT = 150000;
@@ -359,7 +374,15 @@ async function saveScoringCriteria(criteria: any[], documentId: string, organiza
       name: c.name || "Criteriu neprecizat",
       description: c.description || null,
       maxPoints: String(Number(c.maxPoints) || 0),
-      evaluationLogic: (c.evaluationLogic && typeof c.evaluationLogic === "object") ? c.evaluationLogic : null,
+      evaluationLogic: (() => {
+        if (!c.evaluationLogic || typeof c.evaluationLogic !== "object") return null;
+        const parsed = evaluationLogicSchema.safeParse(c.evaluationLogic);
+        if (!parsed.success) {
+          console.warn(`[processGuide] Invalid evaluationLogic for criterion "${c.code}":`, parsed.error.message);
+          return null;
+        }
+        return parsed.data;
+      })(),
       category: c.category || null,
       sortOrder: idx,
       sourcePage: c.sourcePage || null,
@@ -372,6 +395,7 @@ async function saveElementDefinitions(defs: any[], documentId: string, organizat
   if (defs.length === 0) return 0;
 
   let created = 0;
+  let failedCount = 0;
   for (let i = 0; i < defs.length; i++) {
     const el = defs[i];
     if (!el.element_key || !el.display_name) continue;
@@ -395,8 +419,18 @@ async function saveElementDefinitions(defs: any[], documentId: string, organizat
       });
       created++;
     } catch (err) {
+      failedCount++;
       console.warn(`[processGuide] Failed to upsert element "${el.element_key}":`, err);
     }
+  }
+  // W2.4: Aggregate and warn on upsert failures
+  if (failedCount > 0) {
+    console.warn(`[processGuide] ${failedCount}/${defs.length} element definitions failed to upsert`);
+    publishJobProgress(organizationId, {
+      jobId: "", jobType: "ghid", documentId, documentName: "",
+      progress: -1, status: "processing",
+      message: `Atenție: ${failedCount} definiții de elemente nu au putut fi salvate din ${defs.length} total`,
+    }).catch(() => {});
   }
   return created;
 }

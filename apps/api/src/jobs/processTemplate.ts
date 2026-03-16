@@ -516,6 +516,14 @@ export const processTemplateWorker = new Worker<ProcessTemplatePayload>(
       }
 
       // For compose mode: detect COMPOSE: and TABLE: markers in the document
+      if (isCompose && doc.fileType === "pdf") {
+        console.warn(`[processTemplate] Compose mode not supported for PDF templates — skipping marker detection for "${doc.name}"`);
+        publishJobProgress(organizationId, {
+          jobId: job.id || "", jobType: "template", documentId,
+          documentName: doc.name, progress: 75, status: "processing",
+          message: `Modul Compose nu este suportat pentru PDF. Folosiți DOCX/XLSX pentru documente cu secțiuni generate AI.`,
+        }).catch(() => {});
+      }
       if (isCompose && (doc.fileType === "docx" || doc.fileType === "xlsx")) {
         try {
           const composeSections = await detectComposeSections(buffer, name);

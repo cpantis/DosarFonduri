@@ -6,7 +6,7 @@ import {
 } from "../db/schema";
 import { eq, and } from "drizzle-orm";
 import { getFileBuffer } from "../services/storage";
-import { extractTextFromPDF } from "../services/ocr";
+import { extractTextFromPDF, extractTextFromImage } from "../services/ocr";
 import { extractCompanyFromDocument } from "../services/companyExtractor";
 import { parseBilantPDF } from "../services/bilantParser";
 import { publishEvent } from "../lib/sse";
@@ -46,19 +46,30 @@ export type ProcessCompanyPayload =
 async function handleOnrcExtract(job: Job<CompanyExtractPayload>) {
   const { companyId, fileId, organizationId } = job.data;
 
-  const { buffer } = await getFileBuffer(fileId);
+  const { buffer, name, mimeType } = await getFileBuffer(fileId);
   await job.updateProgress(10);
 
-  const pdfResult = await extractTextFromPDF(buffer);
+  const isImage = mimeType.startsWith("image/");
+  let extractedText: string;
+  let useAiFallback = false;
+
+  if (isImage) {
+    console.log(`[onrc-extract] Image file detected (${mimeType}) — using OCR`);
+    extractedText = await extractTextFromImage(buffer, name);
+    useAiFallback = true; // image OCR text always needs AI parsing
+  } else {
+    const pdfResult = await extractTextFromPDF(buffer);
+    extractedText = pdfResult.text;
+    useAiFallback = pdfResult.hasScannedPages;
+    if (pdfResult.hasScannedPages) {
+      console.log(`[onrc-extract] Scanned PDF detected (${pdfResult.scannedPageCount}/${pdfResult.totalPages} pages) — using OpenAI fallback`);
+    } else {
+      console.log(`[onrc-extract] Native PDF (${pdfResult.totalPages} pages) — using regex parser (no AI)`);
+    }
+  }
   await job.updateProgress(40);
 
-  if (pdfResult.hasScannedPages) {
-    console.log(`[onrc-extract] Scanned PDF detected (${pdfResult.scannedPageCount}/${pdfResult.totalPages} pages) — using OpenAI fallback`);
-  } else {
-    console.log(`[onrc-extract] Native PDF (${pdfResult.totalPages} pages) — using regex parser (no AI)`);
-  }
-
-  const companyData = await extractCompanyFromDocument(pdfResult.text, pdfResult.hasScannedPages);
+  const companyData = await extractCompanyFromDocument(extractedText, useAiFallback);
   await job.updateProgress(80);
 
   if (!companyData) {
@@ -171,13 +182,22 @@ async function handleOnrcExtract(job: Job<CompanyExtractPayload>) {
 async function handleOnrcUpdate(job: Job<CompanyOnrcUpdatePayload>) {
   const { companyId, fileId, organizationId } = job.data;
 
-  const { buffer } = await getFileBuffer(fileId);
+  const { buffer, name, mimeType } = await getFileBuffer(fileId);
   await job.updateProgress(10);
 
-  const pdfResult = await extractTextFromPDF(buffer);
+  let extractedText: string;
+  let useAiFallback = false;
+  if (mimeType.startsWith("image/")) {
+    extractedText = await extractTextFromImage(buffer, name);
+    useAiFallback = true;
+  } else {
+    const pdfResult = await extractTextFromPDF(buffer);
+    extractedText = pdfResult.text;
+    useAiFallback = pdfResult.hasScannedPages;
+  }
   await job.updateProgress(40);
 
-  const companyData = await extractCompanyFromDocument(pdfResult.text, pdfResult.hasScannedPages);
+  const companyData = await extractCompanyFromDocument(extractedText, useAiFallback);
   await job.updateProgress(80);
 
   if (!companyData) {

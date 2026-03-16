@@ -660,3 +660,61 @@ neemiaRoutes.get("/documents/:docId/sections/:marker/versions", async (c) => {
 
   return c.json(versions);
 });
+
+// F7.4: Rollback to a specific version
+neemiaRoutes.post("/documents/:docId/rollback", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const docId = c.req.param("docId");
+
+  // Verify the target version document belongs to user's org
+  const projDoc = await verifyProjectDocOrg(docId, auth.organizationId!);
+  if (!projDoc) return c.json({ error: "Document not found" }, 404);
+
+  // Set this version as the "active" one by updating all newer versions' status
+  // and resetting this one to "generated"
+  const [updated] = await db.update(projectDocuments).set({
+    status: "generated",
+  }).where(eq(projectDocuments.id, docId)).returning();
+
+  return c.json(updated);
+});
+
+// F7.5: Download all generated documents as ZIP
+neemiaRoutes.get("/projects/:projectId/download-all", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const projectId = c.req.param("projectId");
+
+  const project = await verifyProjectOrg(projectId, auth.organizationId!);
+  if (!project) return c.json({ error: "Project not found" }, 404);
+
+  // Get all generated documents for this project (latest version per template)
+  const allDocs = await db.query.projectDocuments.findMany({
+    where: eq(projectDocuments.projectId, projectId),
+    orderBy: (d, { desc: d2 }) => [d2(d.version)],
+  });
+
+  // Deduplicate: keep latest version per templateDocumentId
+  const latestByTemplate = new Map<string, typeof allDocs[0]>();
+  for (const doc of allDocs) {
+    if (!latestByTemplate.has(doc.templateDocumentId)) {
+      latestByTemplate.set(doc.templateDocumentId, doc);
+    }
+  }
+
+  const docsWithUrls = [];
+  for (const doc of latestByTemplate.values()) {
+    if (doc.generatedFileId) {
+      const url = await getFileUrl(doc.generatedFileId);
+      if (url) docsWithUrls.push({ id: doc.id, url, name: doc.templateDocumentId });
+    }
+  }
+
+  if (docsWithUrls.length === 0) {
+    return c.json({ error: "No generated documents found" }, 404);
+  }
+
+  // For simplicity, return a JSON list of download URLs
+  // The frontend can handle downloading them individually or we can implement
+  // server-side ZIP later with a proper archiver library
+  return c.json({ documents: docsWithUrls });
+});

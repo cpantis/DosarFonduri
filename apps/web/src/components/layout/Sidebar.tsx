@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
+import { useState, useEffect } from "react";
 
 const navItems = [
   { key: "dashboard", label: "Panou",      icon: "📊", href: "/dashboard" },
@@ -71,6 +72,10 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 export function Sidebar() {
   const pathname = usePathname();
   const { organization, user } = useAuth();
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Close mobile sidebar on route change
+  useEffect(() => { setMobileOpen(false); }, [pathname]);
 
   const isActive = (key: string, href: string) => {
     if (key === "dashboard") return pathname === href;
@@ -81,7 +86,44 @@ export function Sidebar() {
   const initials = cabinetName.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
 
   return (
-    <div style={{
+    <>
+      {/* T4: Mobile hamburger toggle */}
+      <button
+        onClick={() => setMobileOpen(v => !v)}
+        className="sidebar-mobile-toggle"
+        style={{
+          display: "none",
+          position: "fixed", top: 12, left: 12, zIndex: 200,
+          width: 40, height: 40, borderRadius: 10,
+          background: "#fff", border: "1px solid #e2e8f0",
+          boxShadow: "0 2px 8px rgba(0,0,0,.08)",
+          alignItems: "center", justifyContent: "center",
+          fontSize: 18, cursor: "pointer",
+        }}
+      >
+        {mobileOpen ? "\u2715" : "\u2630"}
+      </button>
+      {/* T4: Mobile overlay */}
+      {mobileOpen && (
+        <div
+          onClick={() => setMobileOpen(false)}
+          className="sidebar-mobile-overlay"
+          style={{
+            display: "none",
+            position: "fixed", inset: 0, zIndex: 149,
+            background: "rgba(0,0,0,.3)",
+          }}
+        />
+      )}
+      <style>{`
+        @media (max-width: 768px) {
+          .sidebar-mobile-toggle { display: flex !important; }
+          .sidebar-mobile-overlay { display: block !important; }
+          .sidebar-panel { position: fixed !important; z-index: 150 !important; transform: translateX(-100%); transition: transform .2s ease; }
+          .sidebar-panel.open { transform: translateX(0); }
+        }
+      `}</style>
+    <div className={`sidebar-panel ${mobileOpen ? "open" : ""}`} style={{
       width: 248,
       minHeight: "100vh",
       background: "#ffffff",
@@ -160,5 +202,6 @@ export function Sidebar() {
         </div>
       )}
     </div>
+    </>
   );
 }

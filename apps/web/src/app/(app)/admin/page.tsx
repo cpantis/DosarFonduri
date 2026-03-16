@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { BtnPrimary, BtnSecondary, BtnDanger, IconUserPlus, IconEdit, IconSend, IconBan } from "@/components/ui/Buttons";
 import { Tabs } from "@/components/ui/Tabs";
+import { useToast } from "@/components/shared/Toast";
 
 // ─── Types ───
 interface OrgUser {
@@ -95,6 +96,7 @@ const MODEL_COLORS: Record<string, string> = {
 
 export default function AdminPage() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("users");
   const [users, setUsers] = useState<OrgUser[]>([]);
   const [selectedUser, setSelectedUser] = useState<string | null>(null);
@@ -110,6 +112,7 @@ export default function AdminPage() {
   const [auditLogs, setAuditLogs] = useState<AuditEntry[]>([]);
   const [auditTotal, setAuditTotal] = useState(0);
   const [auditFilter, setAuditFilter] = useState("all");
+  const [auditSearch, setAuditSearch] = useState("");
 
   const loadUsers = useCallback(async () => {
     try {
@@ -161,7 +164,7 @@ export default function AdminPage() {
       setInviteEmail("");
       await loadUsers();
     } catch (err: any) {
-      alert(err.message);
+      toast("error", err.message || "Eroare la operațiune.");
     }
   };
 
@@ -170,7 +173,7 @@ export default function AdminPage() {
       await apiPut(`/api/admin/users/${userId}`, { role: newRole });
       await loadUsers();
     } catch (err: any) {
-      alert(err.message);
+      toast("error", err.message || "Eroare la operațiune.");
     }
   };
 
@@ -180,7 +183,7 @@ export default function AdminPage() {
       await apiPut(`/api/admin/users/${userId}`, { status: newStatus });
       await loadUsers();
     } catch (err: any) {
-      alert(err.message);
+      toast("error", err.message || "Eroare la operațiune.");
     }
   };
 
@@ -518,8 +521,15 @@ export default function AdminPage() {
         {/* ═══ JURNAL ACTIVITATE ═══ */}
         {activeTab === "audit" && (
           <>
-            <div className="flex items-center gap-2.5 mb-4">
+            <div className="flex items-center gap-2.5 mb-4 flex-wrap">
               <div className="text-lg font-semibold flex-1 text-slate-900">Jurnal activitate</div>
+              <input
+                type="text"
+                placeholder="Caută în activitate..."
+                value={auditSearch}
+                onChange={(e) => setAuditSearch(e.target.value)}
+                className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-sm text-slate-700 w-48"
+              />
               <div className="flex rounded-lg p-0.5 gap-px bg-slate-50">
                 {[
                   { id: "all", label: "Toate" },
@@ -544,7 +554,11 @@ export default function AdminPage() {
             </div>
 
             <div className="flex flex-col gap-0.5">
-              {auditLogs.map((a) => (
+              {auditLogs.filter((a) => {
+                if (!auditSearch) return true;
+                const q = auditSearch.toLowerCase();
+                return a.action.toLowerCase().includes(q) || (a.userName || "").toLowerCase().includes(q) || (a.entityType || "").toLowerCase().includes(q);
+              }).map((a) => (
                 <div
                   key={a.id}
                   className="flex items-start gap-3 px-4 py-3 rounded-md transition-colors border-b border-slate-200 hover:bg-slate-100"

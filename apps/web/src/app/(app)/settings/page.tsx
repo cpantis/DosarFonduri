@@ -4,6 +4,7 @@ import { apiGet, apiPut, apiPost, apiDelete } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { BtnPrimary, BtnSecondary, BtnDanger, IconSave, IconRefresh, IconZap, IconPlus, IconEdit, IconTrash } from "@/components/ui/Buttons";
+import { useToast } from "@/components/shared/Toast";
 
 // ─── Types ───
 interface OrgConfig {
@@ -64,6 +65,7 @@ const KNOWLEDGE_CATEGORIES = [
 const TYPE_ICONS: Record<string, string> = { ONRC: "🏛", ANAF: "📊", Email: "📧", SMS: "📱", Storage: "☁️", Custom: "🔗" };
 
 export default function SettingsPage() {
+  const { toast } = useToast();
   const [activeSection, setActiveSection] = useState("solomon");
   const [config, setConfig] = useState<OrgConfig | null>(null);
   const [apis, setApis] = useState<ApiIntegration[]>([]);
@@ -169,7 +171,7 @@ export default function SettingsPage() {
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (err: any) {
-      alert(err.message);
+      toast("error", err.message || "Eroare la salvarea setărilor.");
     }
   };
 
@@ -179,7 +181,7 @@ export default function SettingsPage() {
       setBrandingSaved(true);
       setTimeout(() => setBrandingSaved(false), 2000);
     } catch (err: any) {
-      alert(err.message);
+      toast("error", err.message || "Eroare la salvarea setărilor.");
     }
   };
 
@@ -215,7 +217,7 @@ export default function SettingsPage() {
       setNewApi({ name: "", type: "ONRC", url: "", apiKey: "" });
       setShowAddApi(false);
     } catch (err: any) {
-      alert(err.message);
+      toast("error", err.message || "Eroare la salvarea setărilor.");
     }
   };
 
@@ -234,7 +236,7 @@ export default function SettingsPage() {
       a.click();
       URL.revokeObjectURL(url);
     } catch (err: any) {
-      alert(err.message);
+      toast("error", err.message || "Eroare la salvarea setărilor.");
     }
   };
 
@@ -244,7 +246,7 @@ export default function SettingsPage() {
       setApis((prev) => prev.filter((a) => a.id !== id));
       setDeleteConfirmId(null);
     } catch (err: any) {
-      alert(err.message);
+      toast("error", err.message || "Eroare la salvarea setărilor.");
     }
   };
 
@@ -584,7 +586,7 @@ export default function SettingsPage() {
                           }
                           setShowAddKnowledge(false);
                           loadKnowledge();
-                        } catch (err: any) { alert(err.message); }
+                        } catch (err: any) { toast("error", err.message || "Eroare la salvarea cunoștințelor."); }
                       }}
                     >
                       {editingKnowledge ? "Salveaz\u0103" : "Adaug\u0103"}

@@ -91,15 +91,19 @@ export default function ProjectsPage() {
     }).catch(() => setFolderTree([]));
   }, [showCreate]);
 
+  const [createError, setCreateError] = useState<string | null>(null);
+
   const handleCreate = async () => {
     if (!createData.name.trim() || !createData.firmaId || !createData.folderId) return;
     setCreating(true);
+    setCreateError(null);
     try {
       const result: any = await apiPost("/api/projects", { name: createData.name.trim(), companyId: createData.firmaId, folderId: createData.folderId });
       setShowCreate(false);
       router.push(`/projects/${result.id}`);
-    } catch (err) {
-      console.error("Failed to create project:", err);
+    } catch (err: any) {
+      const msg = err?.message || "Eroare necunoscută la crearea proiectului";
+      setCreateError(msg);
       setCreating(false);
     }
   };
@@ -133,6 +137,7 @@ export default function ProjectsPage() {
                 { id: "draft", label: "Draft" },
                 { id: "in_progress", label: "\u00cen progres" },
                 { id: "review", label: "Review" },
+                { id: "submitted", label: "Depus" },
                 { id: "approved", label: "Aprobat" },
                 { id: "rejected", label: "Respins" },
               ].map(f => (
@@ -368,6 +373,15 @@ export default function ProjectsPage() {
                 <p className="text-[11px] text-slate-400 leading-relaxed mb-5">
                   La creare, proiectul va prelua automat ghidurile, template-urile și regulile din sesiunea selectată.
                 </p>
+
+                {/* F2.4: Show creation errors */}
+                {createError && (
+                  <div className="mb-4 p-3 rounded-lg border border-red-200 bg-red-50/50 text-[13px] text-red-600 flex items-center gap-2">
+                    <span>⚠️</span>
+                    <span className="flex-1">{createError}</span>
+                    <button className="text-red-400 hover:text-red-600 text-xs" onClick={() => setCreateError(null)}>✕</button>
+                  </div>
+                )}
 
                 <div className="flex gap-2.5 justify-end pt-2 border-t border-slate-100">
                   <BtnSecondary icon={<IconArrowLeft />} onClick={() => setCreateStep(2)}>Înapoi</BtnSecondary>

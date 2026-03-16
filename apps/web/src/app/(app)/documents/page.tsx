@@ -576,7 +576,7 @@ export default function DocumentsPage() {
     } catch (err: any) {
       console.error("Failed to trigger AI processing:", err);
       setDocs(prev => prev.map(d => d.id === docId ? { ...d, status: "eroare" as const } : d));
-      toast("error", err.message || "Procesarea nu a pornit. Verifică dacă Redis și worker-ul sunt active.");
+      toast("error", err.message || "Procesarea documentului nu a putut fi pornită. Încearcă din nou.");
     }
   }, [selectedFolder, fetchDocs, toast]);
 
@@ -1023,6 +1023,31 @@ export default function DocumentsPage() {
                               }}>
                                 Trust: {Math.round(d.summary.trustScore * 100)}%
                               </span>
+                            </div>
+                          )}
+                          {/* F8.2: Completeness report */}
+                          {d.summary?.completenessReport && typeof d.summary.completenessReport === "object" && (
+                            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                              {d.summary.completenessReport.missingFields?.length > 0 && (
+                                <span style={{
+                                  display: "inline-block", fontSize: 9, fontWeight: 600,
+                                  padding: "2px 6px", borderRadius: 4,
+                                  background: "rgba(251,191,36,.12)", color: "#d97706",
+                                  fontFamily: "'JetBrains Mono', monospace",
+                                }}>
+                                  {d.summary.completenessReport.missingFields.length} câmpuri lipsă
+                                </span>
+                              )}
+                              {d.summary.completenessReport.completeness != null && (
+                                <span style={{
+                                  display: "inline-block", fontSize: 9, fontWeight: 600,
+                                  padding: "2px 6px", borderRadius: 4,
+                                  background: "rgba(77,139,255,.1)", color: "#4d8bff",
+                                  fontFamily: "'JetBrains Mono', monospace",
+                                }}>
+                                  {Math.round(d.summary.completenessReport.completeness * 100)}% complet
+                                </span>
+                              )}
                             </div>
                           )}
                         </>

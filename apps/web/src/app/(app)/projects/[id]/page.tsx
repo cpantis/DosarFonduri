@@ -4,6 +4,7 @@ import { useRouter, useParams } from "next/navigation";
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api";
 import { getCaenDescription } from "@/lib/caen";
 import { useToast } from "@/components/shared/Toast";
+import { useSSE } from "@/hooks/useSSE";
 
 const API_URL = "";
 
@@ -281,6 +282,25 @@ export default function ProjectViewPage() {
   const [neemiaTemplates, setNeemiaTemplates] = useState<NeemiaTemplate[]>([]);
 
   const { toast } = useToast();
+
+  // F5.2: SSE live update — auto-refresh elements when backend pushes updates
+  useSSE({
+    projectId,
+    enabled: !loading,
+    onEvent: useCallback((evt: { event: string; data: any }) => {
+      if (evt.event === "elements_updated" || evt.event === "element_validated" || evt.event === "extraction_complete") {
+        apiGet<any>(`/api/projects/${projectId}`).then(proj => {
+          setElements(mapElements(proj.elements || []));
+        }).catch(() => {});
+      }
+      if (evt.event === "eligibility_updated") {
+        apiGet<any>(`/api/projects/${projectId}/eligibility`).then(eligData => {
+          setEligibilityRules(mapEligibilityRules(eligData.flat || []));
+        }).catch(() => {});
+      }
+    }, [projectId]),
+  });
+
   const [activeLeaf, setActiveLeaf] = useState<LeafType>("sumar");
   const [branches, setBranches] = useState<Record<string, boolean>>({ scriere: true, implementare: false, monitorizare: false });
   const [selectedRule, setSelectedRule] = useState<string | null>(null);
@@ -324,6 +344,8 @@ export default function ProjectViewPage() {
   const popupRef = useRef<HTMLDivElement>(null);
   const solomonFileRef = useRef<HTMLInputElement>(null);
   const [solomonDragOver, setSolomonDragOver] = useState(false);
+  const [solomonTimedOut, setSolomonTimedOut] = useState(false);
+  const solomonTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [recheckLoading, setRecheckLoading] = useState(false);
 
@@ -600,6 +622,11 @@ export default function ProjectViewPage() {
     setSolomonMessages(prev => [...prev, { role: "user", text: userText, extractions: null }]);
     setSolomonInput("");
     setSolomonStreaming(true);
+    setSolomonTimedOut(false);
+
+    // F6.1: Start a 60s timeout — if no data arrives, show warning
+    if (solomonTimeoutRef.current) clearTimeout(solomonTimeoutRef.current);
+    solomonTimeoutRef.current = setTimeout(() => setSolomonTimedOut(true), 60000);
 
     try {
       const token = typeof window !== "undefined" ? localStorage.getItem("df-token") : null;
@@ -627,6 +654,11 @@ export default function ProjectViewPage() {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
+        // F6.1: Reset timeout on each data chunk
+        if (solomonTimeoutRef.current) clearTimeout(solomonTimeoutRef.current);
+        solomonTimeoutRef.current = setTimeout(() => setSolomonTimedOut(true), 60000);
+        setSolomonTimedOut(false);
+
         buffer += decoder.decode(value, { stream: true });
 
         const lines = buffer.split("\n");
@@ -690,6 +722,8 @@ export default function ProjectViewPage() {
       });
     } finally {
       setSolomonStreaming(false);
+      setSolomonTimedOut(false);
+      if (solomonTimeoutRef.current) clearTimeout(solomonTimeoutRef.current);
     }
   };
 
@@ -832,7 +866,7 @@ export default function ProjectViewPage() {
           console.error("Failed to persist Solomon extraction:", err);
         }
       } else {
-        console.warn(`Solomon extraction key "${ext.key}" not found in template elements — value not saved to project`);
+        toast("warning", `Elementul extras „${ext.label || ext.key}" nu corespunde niciunui câmp din template — valoarea nu a fost salvată.`);
       }
     }
   };
@@ -2328,6 +2362,19 @@ export default function ProjectViewPage() {
                     <div className="si-row"><span className="si-label">Capital social</span><span className="si-value">{capitalSocial}</span></div>
                     <div className="si-row"><span className="si-label">Cifra afaceri</span><span className="si-value">{cifraAfaceri}</span></div>
                     <div className="si-row"><span className="si-label">Valoare proiect</span><span className="si-value">{projectValoare}</span></div>
+                    {/* F3.2: Intensitate sprijin — computed from budget validation */}
+                    {budgetValidation?.summary?.grantPct != null && (
+                      <div className="si-row">
+                        <span className="si-label">Intensitate sprijin</span>
+                        <span className="si-value" style={{ color: "#2563eb" }}>{budgetValidation.summary.grantPct}%</span>
+                      </div>
+                    )}
+                    {budgetValidation?.summary?.grantAmount != null && (
+                      <div className="si-row">
+                        <span className="si-label">Grant estimat</span>
+                        <span className="si-value" style={{ color: "#059669" }}>{formatRON(budgetValidation.summary.grantAmount)}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -2393,7 +2440,7 @@ export default function ProjectViewPage() {
                     <div className={`elig-icon ${rule.status}`}>
                       {rule.status === "pass" ? "✓" : rule.status === "fail" ? "✕" : "?"}
                     </div>
-                    <div className="elig-name">
+                    <div className="elig-name" style={{ flex: 1 }}>
                       {rule.name}
                       <span className={`elig-type-badge ${rule.type}`}>
                         {rule.type === "fixed" ? "⚡ FIXĂ" : "🧠 INTERPRETATĂ"}
@@ -2401,8 +2448,18 @@ export default function ProjectViewPage() {
                       {rule.type === "interpreted" && rule.confidence != null && rule.confidence < 0.85 && (
                         <span className="text-[10px] text-amber-500 ml-1.5">⚠️ Review</span>
                       )}
+                      {/* F4.1: Show hint for PENDING rules about missing data */}
+                      {rule.status === "pending" && (
+                        <div style={{ fontSize: 11, color: "#d97706", marginTop: 4, display: "flex", alignItems: "center", gap: 4 }}>
+                          <span style={{ fontSize: 12 }}>⏳</span>
+                          {rule.detail
+                            ? <span>Câmpuri necesare: {rule.detail}</span>
+                            : <span>Completează elementele lipsă pentru a evalua această regulă</span>
+                          }
+                        </div>
+                      )}
                     </div>
-                    <div className="elig-detail">{rule.detail}</div>
+                    <div className="elig-detail">{rule.status !== "pending" ? rule.detail : ""}</div>
                     {rule.hasReferenceData && rule.referenceTableNames && rule.referenceTableNames.length > 0 && (
                       <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }}>
                         {rule.referenceTableNames.map((name: string, ri: number) => (
@@ -3442,6 +3499,14 @@ export default function ProjectViewPage() {
                     ))}
                   </div>
 
+                  {/* F6.1: Timeout warning */}
+                  {solomonStreaming && solomonTimedOut && (
+                    <div style={{ padding: "8px 16px", background: "#fef3c7", borderTop: "1px solid #fde68a", display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: 14 }}>&#9888;</span>
+                      <span style={{ fontSize: 12, color: "#92400e" }}>Răspunsul durează mai mult decât de obicei. Modelul Extended Thinking poate necesita până la 2 minute.</span>
+                    </div>
+                  )}
+
                   {/* Input area */}
                   <div className="chat-input-area">
                     <div className="chat-input-row">
@@ -3575,6 +3640,28 @@ export default function ProjectViewPage() {
                     >
                       {"\u{1F4CA}"} Recalculează
                     </button>
+                    {/* F7.5: ZIP download all generated documents */}
+                    {neemiaTemplates.some(t => t.downloadUrl) && (
+                      <button
+                        style={{ padding: "6px 10px", fontSize: 11, fontWeight: 600, borderRadius: 8, border: "1px solid rgba(0,0,0,.08)", background: "#fff", cursor: "pointer", whiteSpace: "nowrap" }}
+                        onClick={async () => {
+                          try {
+                            const result = await apiGet<{ documents: Array<{ id: string; url: string; name: string }> }>(`/api/neemia/projects/${projectId}/download-all`);
+                            if (!result?.documents?.length) { toast("warning", "Nu există documente generate."); return; }
+                            for (const doc of result.documents) {
+                              const a = document.createElement("a");
+                              a.href = doc.url;
+                              a.download = doc.name;
+                              a.target = "_blank";
+                              a.click();
+                            }
+                            toast("success", `${result.documents.length} documente descărcate.`);
+                          } catch { toast("error", "Eroare la descărcarea documentelor."); }
+                        }}
+                      >
+                        &#128230; Descarcă tot (ZIP)
+                      </button>
+                    )}
                   </div>
 
                   {neemiaGenStatus && (
@@ -3646,6 +3733,13 @@ export default function ProjectViewPage() {
                             {tmpl.generationMode === "compose"
                               ? `${tmpl.composeSections?.filter(s => s.approved).length || 0}/${tmpl.composeSections?.length || 0} secțiuni aprobate`
                               : `${tmpl.filledFields}/${tmpl.totalFields} câmpuri completate`}
+                          </div>
+                        )}
+                        {/* F7.1: Show missing keys warning pre-generation */}
+                        {tmpl.generationMode !== "compose" && tmpl.totalFields > 0 && tmpl.filledFields < tmpl.totalFields && (
+                          <div style={{ fontSize: 11, color: "#d97706", marginTop: 4, display: "flex", alignItems: "center", gap: 4 }}>
+                            <span>&#9888;</span>
+                            <span>{tmpl.totalFields - tmpl.filledFields} câmpuri lipsă — documentul generat va avea valori goale</span>
                           </div>
                         )}
                         <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
@@ -3733,6 +3827,30 @@ export default function ProjectViewPage() {
                                 {v.downloadUrl && (
                                   <button className="tv-download" onClick={(e) => { e.stopPropagation(); window.open(v.downloadUrl, "_blank"); }}>
                                     &#8595;
+                                  </button>
+                                )}
+                                {/* F7.4: Version rollback */}
+                                {!readOnly && vi > 0 && (
+                                  <button
+                                    className="tv-download"
+                                    title="Restaurează această versiune"
+                                    style={{ color: "#d97706" }}
+                                    onClick={async (e) => {
+                                      e.stopPropagation();
+                                      try {
+                                        await apiPost(`/api/neemia/documents/${v.id}/rollback`, {});
+                                        const docs = await apiGet<any[]>(`/api/neemia/projects/${projectId}/documents`);
+                                        setNeemiaTemplates((docs || []).map((doc: any) => ({
+                                          id: doc.id, name: doc.templateName || "Document", type: (doc.templateFileType || "DOCX").toUpperCase(),
+                                          pages: [], totalFields: 0, filledFields: 0, templateDocumentId: doc.templateDocumentId,
+                                          status: doc.status, downloadUrl: doc.downloadUrl || null, generationMode: doc.generationMode || "fill",
+                                          composeSections: doc.composeContent?.sections || undefined,
+                                        })));
+                                        toast("success", `Versiunea v${v.version} a fost restaurată.`);
+                                      } catch { toast("error", "Eroare la restaurarea versiunii."); }
+                                    }}
+                                  >
+                                    &#8634;
                                   </button>
                                 )}
                               </div>

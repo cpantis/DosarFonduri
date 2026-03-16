@@ -137,6 +137,7 @@ Returneaza:
   try {
     return JSON.parse(cleaned);
   } catch {
+    console.warn(`[processTemplate] AI label classification failed — using auto-generated labels for ${placeholders.length} fields`);
     return placeholders.map(p => ({
       key: p.key,
       label: p.key.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase()),

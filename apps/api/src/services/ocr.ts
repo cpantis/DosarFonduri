@@ -1,5 +1,4 @@
 import { anthropic, withAILimit } from "../lib/anthropic";
-import { openai } from "../lib/openai";
 import crypto from "crypto";
 
 function safeTmpPath(prefix: string, ext: string): string {
@@ -269,15 +268,15 @@ print(json.dumps(pages))
 }
 
 export async function ocrPageWithVision(pageImageBase64: string, mediaType: string = "image/png"): Promise<string> {
-  const response = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
+  const response = await withAILimit(() => anthropic.messages.create({
+    model: "claude-sonnet-4-20250514",
     max_tokens: 4000,
     messages: [{
       role: "user",
       content: [
         {
-          type: "image_url",
-          image_url: { url: `data:${mediaType};base64,${pageImageBase64}`, detail: "high" },
+          type: "image",
+          source: { type: "base64", media_type: mediaType as "image/png" | "image/jpeg" | "image/gif" | "image/webp", data: pageImageBase64 },
         },
         {
           type: "text",
@@ -285,9 +284,10 @@ export async function ocrPageWithVision(pageImageBase64: string, mediaType: stri
         },
       ],
     }],
-  });
+  }));
 
-  return response.choices[0]?.message?.content || "";
+  const textBlock = response.content.find((b: any) => b.type === "text");
+  return textBlock ? (textBlock as any).text : "";
 }
 
 // ─── GPT-4o PRE-STRUCTURING PER PAGE ───
@@ -359,13 +359,10 @@ export async function preStructurePages(rawText: string): Promise<PreStructuredG
       .map(p => `=== PAGINA ${p.page} ===\n${p.text}`)
       .join("\n\n");
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+    const response = await withAILimit(() => anthropic.messages.create({
+      model: "claude-sonnet-4-20250514",
       max_tokens: 4000,
-      temperature: 0,
-      messages: [{
-        role: "system",
-        content: `Ești un pre-procesor de documente de finanțare europeană. Primești pagini brute dintr-un ghid de finanțare și returnezi o versiune structurată.
+      system: `Ești un pre-procesor de documente de finanțare europeană. Primești pagini brute dintr-un ghid de finanțare și returnezi o versiune structurată.
 
 Pentru FIECARE pagină din input returnează un obiect JSON cu:
 - "page": numărul paginii
@@ -379,14 +376,14 @@ IMPORTANT:
 - Tabelele se formatează ca markdown (| col1 | col2 |)
 - Identifică secțiunea pe baza titlurilor de capitol și conținutului
 - Returnează DOAR un JSON array valid. Fără backticks, fără explicații.`,
-      },
-      {
+      messages: [{
         role: "user",
         content: pagesText,
       }],
-    });
+    }));
 
-    const content = response.choices[0]?.message?.content || "[]";
+    const textBlock = response.content.find((b: any) => b.type === "text");
+    const content = textBlock ? (textBlock as any).text : "[]";
     const cleaned = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
 
     try {
@@ -406,7 +403,7 @@ IMPORTANT:
         keyTerms: Array.isArray(item.key_terms) ? item.key_terms : [],
       }));
     } catch {
-      console.warn("[preStructurePages] Failed to parse GPT-4o batch response, using raw text");
+      console.warn("[preStructurePages] Failed to parse Sonnet batch response, using raw text");
       return batch.map(p => ({
         page: p.page, sectionType: "general" as const, cleanedText: p.text, tables: [], keyTerms: [],
       }));
@@ -446,7 +443,7 @@ IMPORTANT:
     return pageText;
   }).join("\n\n");
 
-  console.log(`[preStructurePages] Pre-structured ${allPages.length} pages (${totalTables} tables detected) via GPT-4o`);
+  console.log(`[preStructurePages] Pre-structured ${allPages.length} pages (${totalTables} tables detected) via Claude Sonnet`);
 
   return {
     pages: allPages,
@@ -520,13 +517,10 @@ print(json.dumps(pages))
   const allFields: VisualField[] = [];
 
   const processPage = async (pageData: { page: number; image: string; width: number; height: number }): Promise<VisualField[]> => {
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+    const response = await withAILimit(() => anthropic.messages.create({
+      model: "claude-sonnet-4-20250514",
       max_tokens: 4000,
-      temperature: 0,
-      messages: [{
-        role: "system",
-        content: `Ești un detector de câmpuri de completat din template-uri de documente de finanțare europeană.
+      system: `Ești un detector de câmpuri de completat din template-uri de documente de finanțare europeană.
 
 Analizezi VIZUAL o pagină de template și identifici TOATE zonele care trebuie completate:
 - Linii goale cu/fără etichetă (ex: "Denumire solicitant: ___________")
@@ -554,13 +548,12 @@ IMPORTANT:
 - NU include câmpuri pre-completate (care au deja text)
 - Detectează TOATE câmpurile, inclusiv cele mici sau greu vizibile
 - Returnează DOAR un JSON array valid. Fără backticks, fără explicații.`,
-      },
-      {
+      messages: [{
         role: "user",
         content: [
           {
-            type: "image_url",
-            image_url: { url: `data:image/png;base64,${pageData.image}`, detail: "high" },
+            type: "image",
+            source: { type: "base64", media_type: "image/png", data: pageData.image },
           },
           {
             type: "text",
@@ -568,9 +561,10 @@ IMPORTANT:
           },
         ],
       }],
-    });
+    }));
 
-    const content = response.choices[0]?.message?.content || "[]";
+    const textBlock = response.content.find((b: any) => b.type === "text");
+    const content = textBlock ? (textBlock as any).text : "[]";
     const cleaned = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
 
     try {
@@ -593,7 +587,7 @@ IMPORTANT:
         confidence: Math.min(1, Math.max(0, item.confidence || 0.7)),
       }));
     } catch {
-      console.warn(`[detectFieldsVisually] Failed to parse GPT-4o Vision response for page ${pageData.page}`);
+      console.warn(`[detectFieldsVisually] Failed to parse Claude Vision response for page ${pageData.page}`);
       return [];
     }
   };
@@ -620,7 +614,7 @@ IMPORTANT:
     return (a.position?.y || 0) - (b.position?.y || 0);
   });
 
-  console.log(`[detectFieldsVisually] Detected ${allFields.length} visual fields across ${pageImages.length} pages via GPT-4o Vision`);
+  console.log(`[detectFieldsVisually] Detected ${allFields.length} visual fields across ${pageImages.length} pages via Claude Vision`);
   return allFields;
 }
 

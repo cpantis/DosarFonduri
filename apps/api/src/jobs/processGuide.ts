@@ -99,7 +99,7 @@ function verifyExtractionCompleteness(
 }
 
 /** Default model for guide extraction (Sonnet = higher rate limits, 10x cheaper) */
-const DEFAULT_EXTRACTION_MODEL = "claude-sonnet-4-6";
+const DEFAULT_EXTRACTION_MODEL = "claude-sonnet-4-20250514";
 
 /** Character limit for a single extraction pass (200K context window) */
 const EXTRACTION_CHAR_LIMIT = 150000;
@@ -1113,10 +1113,10 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         truncated: extractionTruncated,
         continuations: totalContinuations,
         tokens: { input: totalAIInputTokens, output: totalAIOutputTokens },
-        cost: { opus: +actualAICost.toFixed(4), total: +actualAICost.toFixed(4) },
+        cost: { extraction: +actualAICost.toFixed(4), total: +actualAICost.toFixed(4) },
         counts: { fixedRules: fixedCount, interpretedRules: interpCount, scoringCriteria: scoringCount, elementDefinitions: elemDefCount },
         links: { elements: linkResult.elementLinks, references: linkResult.referenceLinks, templateMappings },
-        duration: { total: totalDuration, extract: extractDuration, preStruct: preStructDuration, opus: opusDuration },
+        duration: { total: totalDuration, extract: extractDuration, preStruct: preStructDuration, ai: opusDuration },
       };
 
       await db.update(documents).set({

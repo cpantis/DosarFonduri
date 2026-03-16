@@ -25,15 +25,21 @@ export const errorHandler = (err: Error, c: Context) => {
     return c.json({ error: "Eroare la stocarea fișierului. Contactează administratorul." }, 500);
   }
 
-  // Database connection errors
-  if (err.message.includes("ECONNREFUSED") || err.message.includes("connection") || err.message.includes("timeout")) {
+  // Database connection errors (PostgreSQL-specific patterns)
+  if (err.message.includes("ECONNREFUSED") || err.message.includes("Connection terminated") || err.message.includes("connect ETIMEDOUT")) {
     return c.json({ error: "Eroare de conexiune la baza de date. Reîncearcă." }, 500);
   }
 
-  // Column/schema errors (missing columns, wrong types)
-  if (err.message.includes("column") || err.message.includes("relation") || err.message.includes("does not exist")) {
+  // PostgreSQL schema errors (missing columns, tables, types)
+  if (err.message.includes("does not exist") && (err.message.includes("column") || err.message.includes("relation") || err.message.includes("type"))) {
     console.error("Schema error — run migrations:", err.message);
     return c.json({ error: `Eroare schemă DB: ${err.message.substring(0, 150)}` }, 500);
+  }
+
+  // PostgreSQL enum errors (invalid enum value)
+  if (err.message.includes("invalid input value for enum")) {
+    console.error("Enum error:", err.message);
+    return c.json({ error: `Eroare date: ${err.message.substring(0, 150)}` }, 400);
   }
 
   // In production, include sanitized error category for debugging

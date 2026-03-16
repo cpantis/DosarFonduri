@@ -506,7 +506,7 @@ async function saveElementDefinitions(defs: any[], documentId: string, organizat
       jobId: "", jobType: "ghid", documentId, documentName: "",
       progress: -1, status: "processing",
       message: `Atenție: ${failedCount} definiții de elemente nu au putut fi salvate din ${defs.length} total`,
-    }).catch(() => {});
+    }).catch((e: any) => console.warn("[processGuide] sse element def upsert warning:", e.message));
   }
   return created;
 }
@@ -877,7 +877,7 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
       console.log(`[processGuide] Text extraction: ${extractDuration}ms for "${doc.name}"`);
 
       // Cache raw text in Redis for Solomon/Neemia
-      cacheGuideText(documentId, rawText).catch(() => {});
+      cacheGuideText(documentId, rawText).catch((e: any) => console.warn("[processGuide] redis cache guide text:", e.message));
 
       await job.updateProgress(5);
 
@@ -897,7 +897,7 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
           progress: 5,
           status: "processing",
           message: `Text extras din "${doc.name}". Pre-structurare cu GPT-4o (${pdfResult!.scannedPageCount} pagini scanate)...`,
-        }).catch(() => {});
+        }).catch((e: any) => console.warn("[processGuide] sse pre-structure progress:", e.message));
 
         const preStructStart = Date.now();
         const preStructured = await preStructurePages(rawText, organizationId);
@@ -924,7 +924,7 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         message: needsPreStructure
           ? `Pre-structurare completă: ${preStructPageCount} pagini, ${preStructTableCount} tabele. Extragere reguli cu AI + ET...`
           : `Text nativ extras: ${preStructPageCount} pagini. Extragere reguli cu AI + ET...`,
-      }).catch(() => {});
+      }).catch((e: any) => console.warn("[processGuide] sse extraction start:", e.message));
 
       // ─── STEP 3: Unified AI extraction (Sonnet default, ~$0.04/chunk) ───
       const config = await db.query.orgConfig.findFirst({
@@ -975,7 +975,7 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
               progress: chunkProgress,
               status: "processing",
               message: `AI + ET: chunk ${idx + 1}/${chunks.length} procesat`,
-            }).catch(() => {});
+            }).catch((e: any) => console.warn("[processGuide] sse chunk progress:", e.message));
           }
         }
 
@@ -1018,7 +1018,7 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         progress: 85,
         status: "processing",
         message: `Salvare: ${allFixed.length} reguli fixe, ${allInterpreted.length} interpretate, ${allScoring.length} criterii, ${allElementDefs.length} elemente...`,
-      }).catch(() => {});
+      }).catch((e: any) => console.warn("[processGuide] sse save progress:", e.message));
 
       // Clean up old data before re-insert (handles guide re-processing)
       // elementRuleLinks and ruleReferenceLinks cascade from rules, but clean elementDefinitions separately
@@ -1061,7 +1061,7 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         message: `Verificare completitudine: trust score ${completenessReport.trustScore}`,
         trustScore: completenessReport.trustScore,
         warnings: completenessReport.warnings,
-      }).catch(() => {});
+      }).catch((e: any) => console.warn("[processGuide] sse completeness check:", e.message));
 
       if (completenessReport.trustScore < 0.7) {
         console.log(`[processGuide] ⚠ Low trust score (${completenessReport.trustScore}): ${completenessReport.warnings.join("; ")}`);
@@ -1077,7 +1077,7 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         progress: 92,
         status: "processing",
         message: `Creare link-uri reguli ↔ elemente...`,
-      }).catch(() => {});
+      }).catch((e: any) => console.warn("[processGuide] sse linking progress:", e.message));
       const linkResult = await autoLinkRulesAndReferences(documentId, organizationId);
 
       // ─── STEP 6: Auto-map template placeholders to element definitions ───
@@ -1156,7 +1156,7 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
           total: costDesc,
         },
         message: `Ghid procesat "${doc.name}". ${pageCount} pagini. Pipeline: ${pipelineDesc}. ${fixedCount} reguli fixe, ${interpCount} interpretate, ${scoringCount} criterii selecție, ${elemDefCount} definiții elemente. ${linkResult.elementLinks + linkResult.referenceLinks} link-uri, ${templateMappings} mapări template. Total: ${(totalDuration / 1000).toFixed(1)}s, ${costDesc}.`,
-      }).catch(() => {});
+      }).catch((e: any) => console.warn("[processGuide] sse guide processed:", e.message));
     } catch (error) {
       console.error(`Process guide error (attempt ${job.attemptsMade + 1}/${job.opts.attempts || 3}):`, error);
 
@@ -1175,7 +1175,7 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         message: isLastAttempt
           ? `Procesare eșuată definitiv "${job.data.documentId}": ${errorMsg}`
           : `Eroare la procesare (încercare ${job.attemptsMade + 1}/${job.opts.attempts || 3}), se reîncearcă...`,
-      }).catch(() => {});
+      }).catch((e: any) => console.warn("[processGuide] sse document failed:", e.message));
 
       throw error;
     }

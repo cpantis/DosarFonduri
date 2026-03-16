@@ -595,7 +595,7 @@ companyRoutes.delete("/:id", async (c) => {
 
   // Delete R2 files: certificat constatator
   if (company.certificatFileId) {
-    await deleteFile(company.certificatFileId).catch(() => {});
+    await deleteFile(company.certificatFileId).catch((e: any) => console.warn("[companies] certificat file cleanup:", e.message));
   }
 
   // Delete R2 files: bilant PDFs
@@ -604,7 +604,7 @@ companyRoutes.delete("/:id", async (c) => {
   });
   for (const fin of financials) {
     if (fin.fileId) {
-      await deleteFile(fin.fileId).catch(() => {});
+      await deleteFile(fin.fileId).catch((e: any) => console.warn("[companies] bilant file cleanup:", e.message));
     }
   }
 

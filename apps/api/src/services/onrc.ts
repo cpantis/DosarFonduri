@@ -121,12 +121,20 @@ export async function lookupCUI(
   const apiKey = decrypt(integration.apiKeyEncrypted);
 
   try {
-    const response = await fetch(`${integration.url}/company/${cleanCUI}`, {
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    let response: Response;
+    try {
+      response = await fetch(`${integration.url}/company/${cleanCUI}`, {
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
 
     if (!response.ok) {
       if (response.status === 404) return null;
@@ -225,9 +233,17 @@ export async function testONRCConnection(integrationId: string): Promise<{ ok: b
 
   try {
     const apiKey = decrypt(integration.apiKeyEncrypted!);
-    const response = await fetch(`${integration.url}/health`, {
-      headers: { "Authorization": `Bearer ${apiKey}` },
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    let response: Response;
+    try {
+      response = await fetch(`${integration.url}/health`, {
+        headers: { "Authorization": `Bearer ${apiKey}` },
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
     if (response.ok) return { ok: true, message: "Conexiune OK" };
     return { ok: false, message: `HTTP ${response.status}` };
   } catch (err: any) {

@@ -26,19 +26,26 @@ export async function sendEmail(params: EmailParams) {
   }
 
   try {
-    await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: `DosarFonduri <${from}>`,
-        to: params.to,
-        subject: params.subject,
-        html: params.html,
-      }),
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    try {
+      await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          from: `DosarFonduri <${from}>`,
+          to: params.to,
+          subject: params.subject,
+          html: params.html,
+        }),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
   } catch (error) {
     console.error("Email send error:", error);
   }

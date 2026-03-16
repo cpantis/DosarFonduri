@@ -402,7 +402,7 @@ IMPORTANT:
         tokensInput: response.usage.input_tokens,
         tokensOutput: response.usage.output_tokens,
         action: `prestructure_batch_${batch[0]?.page || 0}-${batch[batch.length - 1]?.page || 0}`,
-      }).catch(() => {});
+      }).catch((e: any) => console.warn("[ocr] AI usage logging:", e.message));
     }
 
     const textBlock = response.content.find((b: any) => b.type === "text");

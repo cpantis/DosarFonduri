@@ -235,7 +235,7 @@ export const processReferenceDataWorker = new Worker<ProcessReferenceDataPayload
         status: "processed",
         processingType: "reference_data",
         message: `Tabele de referință extrase din "${doc.name}"`,
-      }).catch(() => {});
+      }).catch((e: any) => console.warn("[processReferenceData] sse document processed:", e.message));
 
     } catch (error) {
       console.error(`Process reference data error (attempt ${job.attemptsMade + 1}/${job.opts.attempts || 3}):`, error);
@@ -255,7 +255,7 @@ export const processReferenceDataWorker = new Worker<ProcessReferenceDataPayload
         message: isLastAttempt
           ? `Eroare la extragerea tabelelor de referință (toate ${job.opts.attempts || 3} încercări eșuate): ${errorMsg}`
           : `Eroare la extragerea tabelelor (încercare ${job.attemptsMade + 1}/${job.opts.attempts || 3}, se reîncearcă): ${errorMsg}`,
-      }).catch(() => {});
+      }).catch((e: any) => console.warn("[processReferenceData] sse document failed:", e.message));
       throw error;
     }
   },

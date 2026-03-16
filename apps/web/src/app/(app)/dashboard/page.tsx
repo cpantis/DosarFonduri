@@ -48,11 +48,12 @@ export default function DashboardPage() {
   const router = useRouter();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     apiGet<DashboardData>("/api/dashboard")
       .then(setData)
-      .catch(() => {})
+      .catch((err) => setError(err?.message || "Eroare la încărcarea datelor"))
       .finally(() => setLoading(false));
   }, []);
 
@@ -64,6 +65,11 @@ export default function DashboardPage() {
     <div className="animate-[fadeIn_.2s_ease-out]">
       <PageHeader title={`Bun venit, ${userName}`} subtitle={`${cabinetName} · Panou de control`} />
       <div className="max-w-6xl mx-auto px-8 py-6">
+        {error && (
+          <div className="mb-4 p-4 rounded-xl border border-red-300/60 bg-red-50/30" style={{ color: "var(--accent-red)" }}>
+            <span className="font-medium">Eroare: </span>{error}
+          </div>
+        )}
         {/* Stat cards */}
         {loading ? (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">

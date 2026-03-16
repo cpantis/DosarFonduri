@@ -32,7 +32,7 @@ export const authMiddleware = async (c: Context, next: Next) => {
     if (now - lastUpdate > ACTIVITY_THROTTLE_MS) {
       lastActiveCache.set(user.id, now);
       // Fire-and-forget — don't block the request on a non-critical update
-      db.update(users).set({ lastActiveAt: new Date() }).where(eq(users.id, user.id)).catch(() => {});
+      db.update(users).set({ lastActiveAt: new Date() }).where(eq(users.id, user.id)).catch((e: any) => console.warn("[auth] lastActiveAt update:", e.message));
     }
 
     c.set("auth", {

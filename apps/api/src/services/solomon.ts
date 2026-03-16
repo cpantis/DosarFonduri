@@ -1516,7 +1516,7 @@ export async function processSolomonMessage(params: {
                   value: pe.value,
                   validationStatus: validation.status,
                   message: `Element "${elementLabel}" → ${validation.status}`,
-                }).catch(() => {});
+                }).catch((e: any) => console.warn("[solomon] SSE element_validated:", e.message));
               }
             } catch (err) {
               console.error(`[solomon] Validation failed for element ${elementId}:`, err);
@@ -1536,7 +1536,7 @@ export async function processSolomonMessage(params: {
                 failed: eligibility.filter(e => e.status === "failed").length,
                 pending: eligibility.filter(e => e.status === "pending").length,
                 message: `Eligibilitate re-evaluată: ${eligibility.filter(e => e.status === "passed").length}/${eligibility.length} trecute`,
-              }).catch(() => {});
+              }).catch((e: any) => console.warn("[solomon] SSE eligibility_updated:", e.message));
             } catch (err) {
               console.error(`[solomon] Eligibility check failed for project ${projectId}:`, err);
             }
@@ -1550,7 +1550,7 @@ export async function processSolomonMessage(params: {
                   maxTotalPoints: scoreResult.maxTotalPoints,
                   percentage: scoreResult.percentage,
                   message: `Punctaj actualizat: ${scoreResult.totalPoints}/${scoreResult.maxTotalPoints} (${scoreResult.percentage}%)`,
-                }).catch(() => {});
+                }).catch((e: any) => console.warn("[solomon] SSE score_updated:", e.message));
               }
             } catch (err) {
               console.error(`[solomon] Score computation failed for project ${projectId}:`, err);

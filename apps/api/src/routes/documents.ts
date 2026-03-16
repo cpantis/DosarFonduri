@@ -129,7 +129,7 @@ documentRoutes.delete("/folders/:id", async (c) => {
       where: and(eq(documents.folderId, folderId), eq(documents.organizationId, auth.organizationId!)),
     });
     for (const doc of docs) {
-      await deleteFile(doc.fileId).catch(() => {});
+      await deleteFile(doc.fileId).catch((e: any) => console.warn("[documents] folder file cleanup:", e.message));
     }
 
     // Recurse into child folders
@@ -448,7 +448,7 @@ documentRoutes.post("/documents/:id/confirm-upload", async (c) => {
     status: "processing",
     processingType: doc.processingType || "reference",
     message: `Document uploadat "${doc.name}", procesare în curs...`,
-  }).catch(() => {});
+  }).catch((e: any) => console.warn("[documents] SSE confirm-upload event:", e.message));
 
   return c.json({ ok: true, document_id: doc.id, actual_size: size, warnings: warnings.length > 0 ? warnings : undefined });
 });
@@ -645,7 +645,7 @@ documentRoutes.post("/folders/:folderId/documents", async (c) => {
     status: doc.status,
     processingType,
     message: `Document uploadat "${safeName}", procesare în curs...`,
-  }).catch(() => {}); // fire and forget
+  }).catch((e: any) => console.warn("[documents] SSE upload event:", e.message)); // fire and forget
 
   return c.json({ ...doc, warnings: warnings.length > 0 ? warnings : undefined }, 201);
 });
@@ -688,7 +688,7 @@ documentRoutes.delete("/documents/:id", async (c) => {
       const jobs = await q.getJobs(["waiting", "delayed", "active"]);
       for (const job of jobs) {
         if (job.data?.documentId === id) {
-          await job.remove().catch(() => {});
+          await job.remove().catch((e: any) => console.warn("[documents] queue job removal:", e.message));
         }
       }
     }
@@ -929,7 +929,7 @@ documentRoutes.get("/uploads/events", async (c) => {
       // Cleanup on close
       c.req.raw.signal.addEventListener("abort", () => {
         clearInterval(heartbeat);
-        subscriber.unsubscribe(channel).catch(() => {});
+        subscriber.unsubscribe(channel).catch((e: any) => console.warn("[documents] redis unsubscribe:", e.message));
         subscriber.disconnect();
       });
     },

@@ -966,7 +966,7 @@ projectRoutes.delete("/:id", async (c) => {
   });
   for (const doc of generatedDocs) {
     if (doc.generatedFileId) {
-      await deleteFile(doc.generatedFileId).catch(() => {});
+      await deleteFile(doc.generatedFileId).catch((e: any) => console.warn("[projects] generated doc file cleanup:", e.message));
     }
   }
 

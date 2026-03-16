@@ -225,7 +225,7 @@ solomonRoutes.post("/conversations/:convId/upload", async (c) => {
       }, { priority: JOB_PRIORITY.CLIENT_DOC }).catch((err: any) => {
         console.error(`Queue dispatch failed for Solomon upload ${doc.id}:`, err.message);
         // Mark document back to uploaded so it can be retried
-        db.update(documents).set({ status: "uploaded" }).where(eq(documents.id, doc.id)).catch(() => {});
+        db.update(documents).set({ status: "uploaded" }).where(eq(documents.id, doc.id)).catch((e: any) => console.warn("[solomon] doc status rollback:", e.message));
       });
 
       // SSE notification so Documents page updates in real-time
@@ -235,7 +235,7 @@ solomonRoutes.post("/conversations/:convId/upload", async (c) => {
         status: "processing",
         processingType: "client_doc",
         message: `Document uploadat prin Solomon: "${file.name}", procesare în curs...`,
-      }).catch(() => {});
+      }).catch((e: any) => console.warn("[solomon] SSE upload event:", e.message));
     } catch (err) {
       console.error("Failed to create document record for Solomon upload:", err);
       // Non-blocking: Solomon chat continues even if document record fails

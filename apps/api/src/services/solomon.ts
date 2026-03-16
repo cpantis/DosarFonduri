@@ -1432,15 +1432,33 @@ export async function processSolomonMessage(params: {
               }
             } else {
               // Create new project_element with both IDs when available
-              await db.insert(projectElements).values({
-                projectId,
-                ...(elemDef ? { elementDefId: elemDef.id } : {}),
-                ...(tmplEl ? { templateElementId: tmplEl.id } : {}),
-                value: el.value,
-                source: "solomon_chat",
-                confirmed: false,
-                validationStatus: "pending",
-              });
+              try {
+                await db.insert(projectElements).values({
+                  projectId,
+                  ...(elemDef ? { elementDefId: elemDef.id } : {}),
+                  ...(tmplEl ? { templateElementId: tmplEl.id } : {}),
+                  value: el.value,
+                  source: "solomon_chat",
+                  confirmed: false,
+                  validationStatus: "pending",
+                });
+              } catch (insertErr: any) {
+                // Race condition: another concurrent request may have inserted this element
+                if (insertErr.code === "23505") {
+                  console.warn(`[solomon] Duplicate insert for element ${el.key} — updating instead`);
+                  const retryExisting = await db.query.projectElements.findFirst({
+                    where: and(
+                      eq(projectElements.projectId, projectId),
+                      elemDef ? eq(projectElements.elementDefId, elemDef.id) : eq(projectElements.templateElementId, tmplEl!.id),
+                    ),
+                  });
+                  if (retryExisting) {
+                    await db.update(projectElements).set({ value: el.value, source: "solomon_chat", confirmed: false, updatedAt: new Date() }).where(eq(projectElements.id, retryExisting.id));
+                  }
+                } else {
+                  throw insertErr;
+                }
+              }
             }
           }
 

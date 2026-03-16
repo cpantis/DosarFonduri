@@ -60,8 +60,13 @@ export const JOB_PRIORITY = {
 } as const;
 
 // Attach error handlers to prevent unhandled rejections
+// Only log the first error per queue to avoid spam when Redis is down
+const queueErrorLogged = new Set<string>();
 for (const q of [processGuideQueue, processTemplateQueue, processReferenceDataQueue, processClientDocQueue, processCompanyQueue, syncOnrcQueue]) {
   q.on("error", (err) => {
-    console.error(`Queue "${q.name}" error:`, err.message);
+    if (!queueErrorLogged.has(q.name)) {
+      queueErrorLogged.add(q.name);
+      console.warn(`Queue "${q.name}" error (further errors suppressed):`, err.message);
+    }
   });
 }

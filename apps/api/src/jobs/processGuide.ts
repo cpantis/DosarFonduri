@@ -38,13 +38,16 @@ interface CompletenessReport {
 }
 
 const REQUIRED_RULE_CATEGORIES = [
-  "beneficiary_eligible",
-  "beneficiary_excluded",
-  "expenses_eligible",
-  "expenses_excluded",
-  "intensity",
-  "scoring",
-  "documents",
+  // Fixed rule categories (from extraction prompt)
+  "eligibilitate",
+  "financiar",
+  "tehnic",
+  "administrativ",
+  "achizitii",
+  "documente",
+  // Interpreted rule categories
+  "selectie",
+  "intensitate",
 ];
 
 function verifyExtractionCompleteness(
@@ -258,6 +261,7 @@ async function unifiedExtraction(
 
     if (useET && attempt === 0) {
       // Only use ET on first pass — continuations don't need thinking
+      requestParams.temperature = 1; // Required by Anthropic API when ET is enabled
       requestParams.thinking = {
         type: "enabled",
         budget_tokens: 10000,

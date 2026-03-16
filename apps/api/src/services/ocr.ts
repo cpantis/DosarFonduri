@@ -1,4 +1,5 @@
 import { anthropic, withAILimit } from "../lib/anthropic";
+import { logAIUsage } from "./aiUsage";
 import crypto from "crypto";
 
 function safeTmpPath(prefix: string, ext: string): string {
@@ -318,7 +319,7 @@ const PRE_STRUCTURE_CONCURRENCY = 3;
  * Sends batches of pages for: cleaned text, table detection, section classification.
  * Cost: ~$0.15 per guide, ~15s.
  */
-export async function preStructurePages(rawText: string): Promise<PreStructuredGuide> {
+export async function preStructurePages(rawText: string, organizationId?: string): Promise<PreStructuredGuide> {
   const pageDelimiter = /--- Pagina (\d+)(?: \([^)]+\))? ---/g;
   const pageBreaks: Array<{ page: number; index: number }> = [];
   let match: RegExpExecArray | null;
@@ -391,6 +392,18 @@ IMPORTANT:
         content: pagesText,
       }],
     }));
+
+    // Log Sonnet cost for pre-structuring
+    if (organizationId) {
+      logAIUsage({
+        organizationId,
+        agent: "ghid_rules",
+        model: "claude-sonnet-4-20250514",
+        tokensInput: response.usage.input_tokens,
+        tokensOutput: response.usage.output_tokens,
+        action: `prestructure_batch_${batch[0]?.page || 0}-${batch[batch.length - 1]?.page || 0}`,
+      }).catch(() => {});
+    }
 
     const textBlock = response.content.find((b: any) => b.type === "text");
     const content = textBlock ? (textBlock as any).text : "[]";

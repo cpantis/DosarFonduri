@@ -141,15 +141,13 @@ ${pdfText.slice(0, 80000)}`;
 
 /**
  * Try to extract valid JSON from a raw AI response text.
+ * Uses shared safeJSONParse for truncation repair.
  */
 function tryParseJSON(raw: string): any | null {
-  let cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-  try { return JSON.parse(cleaned); } catch { /* continue */ }
-  const match = cleaned.match(/\{[\s\S]*\}/);
-  if (match) {
-    try { return JSON.parse(match[0]); } catch { /* continue */ }
-  }
-  return null;
+  // Import dynamically to avoid circular deps
+  const { safeJSONParse } = require("../lib/safeExtract");
+  const result = safeJSONParse(raw, "companyExtractor");
+  return result?.data ?? null;
 }
 
 /**

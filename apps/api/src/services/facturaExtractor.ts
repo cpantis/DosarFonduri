@@ -1,21 +1,6 @@
 import { anthropic, withAILimit } from "../lib/anthropic";
+import { safeJSONParse, checkExtractionQuality } from "../lib/safeExtract";
 import type { ExtractionResult } from "./extractionTypes";
-
-/**
- * Extracts structured data from Romanian invoices (facturi).
- * Handles facturi fiscale, facturi proforma, avize de însoțire,
- * and invoice-like documents from EU funding projects.
- */
-
-function tryParseJSON(raw: string): any | null {
-  let cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-  try { return JSON.parse(cleaned); } catch { /* continue */ }
-  const match = cleaned.match(/\{[\s\S]*\}/);
-  if (match) {
-    try { return JSON.parse(match[0]); } catch { /* continue */ }
-  }
-  return null;
-}
 
 export async function extractFactura(pdfText: string): Promise<ExtractionResult> {
   const start = Date.now();
@@ -88,7 +73,7 @@ ${pdfText.slice(0, 60000)}`;
     try {
       const response = await withAILimit(() => anthropic.messages.create({
         model: "claude-sonnet-4-20250514",
-        max_tokens: 6000,
+        max_tokens: 8000,
         system: isRetry
           ? systemPrompt + "\n\nATENȚIE: Răspunsul tău anterior NU a fost JSON valid. Returnează EXCLUSIV un obiect JSON valid."
           : systemPrompt,
@@ -98,14 +83,35 @@ ${pdfText.slice(0, 60000)}`;
         }],
       }));
 
-      const text = response.content[0].type === "text" ? response.content[0].text : "";
-      const data = tryParseJSON(text);
+      let fullText = response.content[0].type === "text" ? response.content[0].text : "";
 
-      if (data) {
-        return buildFacturaResult(data, pdfText, Date.now() - start);
+      // Handle truncation
+      if (response.stop_reason === "max_tokens") {
+        console.warn(`[facturaExtractor] Attempt ${attempt}: truncated at ${fullText.length} chars, requesting continuation...`);
+        const contResponse = await withAILimit(() => anthropic.messages.create({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 8000,
+          system: systemPrompt + "\n\nContinuă JSON-ul trunchiat. NU repeta ce a fost generat anterior.",
+          messages: [
+            { role: "user", content: userPrompt },
+            { role: "assistant", content: fullText },
+            { role: "user", content: "JSON-ul a fost trunchiat. Continuă EXACT de unde ai rămas:" },
+          ],
+        }));
+        const contText = contResponse.content[0].type === "text" ? contResponse.content[0].text : "";
+        fullText += contText;
+        console.log(`[facturaExtractor] Continuation: +${contText.length} chars (total: ${fullText.length})`);
       }
 
-      lastError = `JSON parse failed. Response: "${text.slice(0, 300)}"`;
+      const parsed = safeJSONParse(fullText, "facturaExtractor");
+
+      if (parsed) {
+        const result = buildFacturaResult(parsed.data, pdfText, Date.now() - start);
+        checkExtractionQuality("facturaExtractor", pdfText.length, result.extracted_fields.length);
+        return result;
+      }
+
+      lastError = `JSON parse failed. Response: "${fullText.slice(0, 300)}"`;
     } catch (err: any) {
       lastError = err.message;
     }

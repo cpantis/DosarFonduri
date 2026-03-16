@@ -9,6 +9,7 @@ import { publishEvent, publishJobProgress } from "../lib/sse";
 import { redis, isRedisReady } from "../lib/redis";
 import { upsertElementDefinition, autoMapTemplatePlaceholders } from "../services/elementDefinitionService";
 import { anthropic, withAILimit } from "../lib/anthropic";
+import { repairTruncatedJSON } from "../lib/safeExtract";
 
 /** Character limit for a single Opus + ET pass (200K context window) */
 const OPUS_CHAR_LIMIT = 150000;
@@ -134,6 +135,11 @@ TEXT GHID PRE-STRUCTURAT:
  * Extract all rules + element definitions from a chunk of pre-structured guide text
  * using Opus + Extended Thinking. Returns parsed results (not saved to DB).
  */
+/** Max continuation attempts when output is truncated */
+const MAX_CONTINUATION_ATTEMPTS = 2;
+
+// repairTruncatedJSON imported from ../lib/safeExtract
+
 async function unifiedExtraction(
   structuredText: string,
   organizationId: string,
@@ -144,51 +150,108 @@ async function unifiedExtraction(
   interpretedRules: any[];
   scoringCriteria: any[];
   elementDefinitions: any[];
+  _meta: { truncated: boolean; continuations: number; totalInputTokens: number; totalOutputTokens: number };
 }> {
-  const requestParams: any = {
-    model: "claude-opus-4-6",
-    max_tokens: 16000,
-    system: UNIFIED_EXTRACTION_SYSTEM,
-    messages: [{
-      role: "user",
-      content: `${UNIFIED_EXTRACTION_USER}${structuredText}`,
-    }],
+  let totalInputTokens = 0;
+  let totalOutputTokens = 0;
+  let accumulatedText = "";
+  let continuations = 0;
+  let wasTruncated = false;
+
+  // Build initial messages
+  const messages: Array<{ role: string; content: string }> = [{
+    role: "user",
+    content: `${UNIFIED_EXTRACTION_USER}${structuredText}`,
+  }];
+
+  for (let attempt = 0; attempt <= MAX_CONTINUATION_ATTEMPTS; attempt++) {
+    const requestParams: any = {
+      model: "claude-opus-4-6",
+      max_tokens: 16000,
+      system: UNIFIED_EXTRACTION_SYSTEM,
+      messages,
+    };
+
+    if (useET && attempt === 0) {
+      // Only use ET on first pass — continuations don't need thinking
+      requestParams.thinking = {
+        type: "enabled",
+        budget_tokens: 10000,
+      };
+    }
+
+    const response = await withAILimit(() => anthropic.messages.create(requestParams));
+
+    const textBlock = response.content.find((b: any) => b.type === "text");
+    const content = textBlock ? (textBlock as any).text : "";
+    accumulatedText += content;
+    totalInputTokens += response.usage.input_tokens;
+    totalOutputTokens += response.usage.output_tokens;
+
+    await logAIUsage({
+      organizationId,
+      agent: "ghid_rules",
+      model: "claude-opus-4-6",
+      tokensInput: response.usage.input_tokens,
+      tokensOutput: response.usage.output_tokens,
+      action: attempt === 0 ? `unified_extraction_${chunkLabel}` : `unified_extraction_${chunkLabel}_continuation_${attempt}`,
+    });
+
+    // Check if output was truncated
+    if (response.stop_reason === "end_turn") {
+      // Complete response
+      break;
+    }
+
+    if (response.stop_reason === "max_tokens") {
+      wasTruncated = true;
+      continuations++;
+      console.warn(`[processGuide] Output truncated for ${chunkLabel} (attempt ${attempt + 1}), requesting continuation...`);
+
+      // Add assistant response + user continuation request
+      messages.push({ role: "assistant", content: accumulatedText });
+      messages.push({ role: "user", content: "JSON-ul a fost trunchiat. Continuă EXACT de unde ai rămas — returnează restul JSON-ului fără a repeta ce ai trimis deja. Începe direct cu textul care urmează." });
+    } else {
+      // Other stop reasons (stop_sequence, etc.) — treat as complete
+      break;
+    }
+  }
+
+  // Parse the accumulated JSON
+  const cleaned = accumulatedText.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+  const meta = { truncated: wasTruncated, continuations, totalInputTokens, totalOutputTokens };
+
+  // Try direct parse first
+  let parsed: any = null;
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch {
+    // Try JSON repair for truncated output
+    parsed = repairTruncatedJSON(accumulatedText);
+    if (parsed) {
+      console.warn(`[processGuide] Repaired truncated JSON for ${chunkLabel} — some data may be incomplete`);
+    } else {
+      console.error(`[processGuide] CRITICAL: Failed to parse unified extraction JSON for ${chunkLabel}. Output length: ${accumulatedText.length} chars. First 200 chars: ${accumulatedText.slice(0, 200)}`);
+      return { fixedRules: [], interpretedRules: [], scoringCriteria: [], elementDefinitions: [], _meta: { ...meta, truncated: true } };
+    }
+  }
+
+  const result = {
+    fixedRules: Array.isArray(parsed.fixed_rules) ? parsed.fixed_rules : [],
+    interpretedRules: Array.isArray(parsed.interpreted_rules) ? parsed.interpreted_rules : [],
+    scoringCriteria: Array.isArray(parsed.scoring_criteria) ? parsed.scoring_criteria : [],
+    elementDefinitions: Array.isArray(parsed.element_definitions) ? parsed.element_definitions : [],
+    _meta: meta,
   };
 
-  if (useET) {
-    requestParams.thinking = {
-      type: "enabled",
-      budget_tokens: 10000,
-    };
+  // Quality warning if extraction seems too sparse for the input size
+  const inputChars = structuredText.length;
+  const totalRules = result.fixedRules.length + result.interpretedRules.length;
+  if (inputChars > 20000 && totalRules < 3) {
+    console.warn(`[processGuide] QUALITY WARNING: ${chunkLabel} — ${inputChars} chars input but only ${totalRules} rules extracted. Possible extraction failure.`);
   }
 
-  const response = await withAILimit(() => anthropic.messages.create(requestParams));
-
-  const textBlock = response.content.find((b: any) => b.type === "text");
-  const content = textBlock ? (textBlock as any).text : "{}";
-  const cleaned = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-
-  await logAIUsage({
-    organizationId,
-    agent: "ghid_rules",
-    model: "claude-opus-4-6",
-    tokensInput: response.usage.input_tokens,
-    tokensOutput: response.usage.output_tokens,
-    action: `unified_extraction_${chunkLabel}`,
-  });
-
-  try {
-    const parsed = JSON.parse(cleaned);
-    return {
-      fixedRules: Array.isArray(parsed.fixed_rules) ? parsed.fixed_rules : [],
-      interpretedRules: Array.isArray(parsed.interpreted_rules) ? parsed.interpreted_rules : [],
-      scoringCriteria: Array.isArray(parsed.scoring_criteria) ? parsed.scoring_criteria : [],
-      elementDefinitions: Array.isArray(parsed.element_definitions) ? parsed.element_definitions : [],
-    };
-  } catch {
-    console.error(`[processGuide] Failed to parse unified extraction JSON (${chunkLabel})`);
-    return { fixedRules: [], interpretedRules: [], scoringCriteria: [], elementDefinitions: [] };
-  }
+  return result;
 }
 
 // ─── DEDUPLICATION ───
@@ -196,15 +259,23 @@ async function unifiedExtraction(
 function deduplicateRules(allRules: any[]): any[] {
   const seen = new Map<string, any>();
   for (const rule of allRules) {
-    const key = (rule.description || "")
+    const descNorm = (rule.description || "")
       .toLowerCase()
       .replace(/\s+/g, " ")
       .replace(/[.,;:!?()"""'']/g, "")
       .trim();
-    if (key.length < 10) continue;
+    if (descNorm.length < 10) continue;
+
+    // Use description + condition value for dedup key so rules with same text
+    // but different thresholds are kept (e.g. "minim 1 an" vs "minim 3 ani")
+    const condValue = rule.condition?.value != null ? String(rule.condition.value) : "";
+    const condField = rule.condition?.field || "";
+    const key = `${descNorm}|${condField}|${condValue}`;
+
     if (!seen.has(key)) {
       seen.set(key, rule);
     } else {
+      // Keep the one with higher confidence
       const existing = seen.get(key);
       if ((rule.confidence || 0) > (existing.confidence || 0)) {
         seen.set(key, rule);
@@ -594,9 +665,13 @@ async function cacheGuideText(documentId: string, text: string): Promise<void> {
 
 // ─── CHUNKING FOR LARGE GUIDES ───
 
+/** Number of overlap pages between chunks to prevent losing rules at boundaries */
+const CHUNK_OVERLAP_PAGES = 3;
+
 /**
  * Split structured text into chunks that fit within Opus context.
- * Uses page delimiters for clean splits.
+ * Uses page delimiters for clean splits with overlap to prevent
+ * losing rules that span chunk boundaries.
  */
 function splitStructuredText(structuredText: string): string[] {
   if (structuredText.length <= OPUS_CHAR_LIMIT) {
@@ -604,30 +679,51 @@ function splitStructuredText(structuredText: string): string[] {
   }
 
   const pageDelimiter = /--- Pagina \d+/g;
-  const parts: number[] = [];
+  const pageStarts: number[] = [];
   let match: RegExpExecArray | null;
   while ((match = pageDelimiter.exec(structuredText)) !== null) {
-    parts.push(match.index);
+    pageStarts.push(match.index);
   }
 
-  if (parts.length <= 1) return [structuredText];
+  if (pageStarts.length <= 1) return [structuredText];
 
-  // Split at page boundaries to stay under char limit
+  // Build chunks respecting char limit, with page overlap
   const chunks: string[] = [];
-  let chunkStart = 0;
+  let chunkStartPage = 0;
 
-  for (let i = 1; i < parts.length; i++) {
-    const chunkSize = parts[i] - chunkStart;
-    if (chunkSize > OPUS_CHAR_LIMIT && i > 0) {
-      chunks.push(structuredText.slice(chunkStart, parts[i]));
-      chunkStart = parts[i];
+  while (chunkStartPage < pageStarts.length) {
+    // Find how many pages fit in this chunk
+    let chunkEndPage = chunkStartPage;
+    for (let i = chunkStartPage + 1; i < pageStarts.length; i++) {
+      const chunkSize = pageStarts[i] - pageStarts[chunkStartPage];
+      if (chunkSize > OPUS_CHAR_LIMIT) break;
+      chunkEndPage = i;
     }
-  }
-  // Last chunk
-  if (chunkStart < structuredText.length) {
-    chunks.push(structuredText.slice(chunkStart));
+
+    // If we couldn't fit even one page, take it anyway
+    if (chunkEndPage === chunkStartPage) chunkEndPage = chunkStartPage;
+
+    const startIdx = pageStarts[chunkStartPage];
+    const endIdx = chunkEndPage + 1 < pageStarts.length
+      ? pageStarts[chunkEndPage + 1]
+      : structuredText.length;
+
+    chunks.push(structuredText.slice(startIdx, endIdx));
+
+    // Move forward, leaving CHUNK_OVERLAP_PAGES overlap
+    const nextStart = chunkEndPage + 1 - CHUNK_OVERLAP_PAGES;
+    if (nextStart <= chunkStartPage) {
+      // Prevent infinite loop if overlap is larger than chunk
+      chunkStartPage = chunkEndPage + 1;
+    } else {
+      chunkStartPage = nextStart;
+    }
+
+    // If we've consumed all pages, stop
+    if (chunkEndPage >= pageStarts.length - 1) break;
   }
 
+  console.log(`[processGuide] Split ${pageStarts.length} pages into ${chunks.length} chunks with ${CHUNK_OVERLAP_PAGES}-page overlap`);
   return chunks;
 }
 
@@ -694,7 +790,7 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         }).catch(() => {});
 
         const preStructStart = Date.now();
-        const preStructured = await preStructurePages(rawText);
+        const preStructured = await preStructurePages(rawText, organizationId);
         preStructDuration = Date.now() - preStructStart;
         preStructPageCount = preStructured.pageCount;
         preStructTableCount = preStructured.tableCount;
@@ -734,6 +830,10 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
       let allInterpreted: any[] = [];
       let allScoring: any[] = [];
       let allElementDefs: any[] = [];
+      let extractionTruncated = false;
+      let totalContinuations = 0;
+      let totalAIInputTokens = 0;
+      let totalAIOutputTokens = 0;
 
       if (chunks.length === 1) {
         // Single pass — most common case
@@ -742,6 +842,10 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         allInterpreted = result.interpretedRules;
         allScoring = result.scoringCriteria;
         allElementDefs = result.elementDefinitions;
+        extractionTruncated = result._meta.truncated;
+        totalContinuations = result._meta.continuations;
+        totalAIInputTokens = result._meta.totalInputTokens;
+        totalAIOutputTokens = result._meta.totalOutputTokens;
       } else {
         // Multiple chunks — process with limited concurrency, then merge + dedup
         let nextChunk = 0;
@@ -776,13 +880,19 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
           allInterpreted.push(...result.interpretedRules);
           allScoring.push(...result.scoringCriteria);
           allElementDefs.push(...result.elementDefinitions);
+          if (result._meta.truncated) extractionTruncated = true;
+          totalContinuations += result._meta.continuations;
+          totalAIInputTokens += result._meta.totalInputTokens;
+          totalAIOutputTokens += result._meta.totalOutputTokens;
         }
 
-        // Deduplicate across chunks
+        // Deduplicate across chunks (overlap pages will produce duplicates)
+        const beforeDedup = { fixed: allFixed.length, interp: allInterpreted.length, scoring: allScoring.length, elemDefs: allElementDefs.length };
         allFixed = deduplicateRules(allFixed);
         allInterpreted = deduplicateRules(allInterpreted);
         allScoring = deduplicateScoring(allScoring);
         allElementDefs = deduplicateElementDefs(allElementDefs);
+        console.log(`[processGuide] Dedup: fixed ${beforeDedup.fixed}→${allFixed.length}, interp ${beforeDedup.interp}→${allInterpreted.length}, scoring ${beforeDedup.scoring}→${allScoring.length}, elemDefs ${beforeDedup.elemDefs}→${allElementDefs.length}`);
       }
 
       const opusDuration = Date.now() - opusStart;
@@ -845,18 +955,36 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
       const pageCount = preStructPageCount;
       const totalDuration = Date.now() - startTime;
 
+      // Compute actual cost from tokens
+      const opusPricing = { input: 15 / 1_000_000, output: 75 / 1_000_000 };
+      const actualOpusCost = (totalAIInputTokens * opusPricing.input) + (totalAIOutputTokens * opusPricing.output);
+
+      // Quality metrics stored on the document
+      const qualityMetrics = {
+        pipeline: needsPreStructure ? "pymupdf+sonnet_prestruct+opus_et" : "pymupdf+opus_et",
+        chunks: chunks.length,
+        truncated: extractionTruncated,
+        continuations: totalContinuations,
+        tokens: { input: totalAIInputTokens, output: totalAIOutputTokens },
+        cost: { opus: +actualOpusCost.toFixed(4), total: +actualOpusCost.toFixed(4) },
+        counts: { fixedRules: fixedCount, interpretedRules: interpCount, scoringCriteria: scoringCount, elementDefinitions: elemDefCount },
+        links: { elements: linkResult.elementLinks, references: linkResult.referenceLinks, templateMappings },
+        duration: { total: totalDuration, extract: extractDuration, preStruct: preStructDuration, opus: opusDuration },
+      };
+
       await db.update(documents).set({
         status: "processed",
         pageCount,
+        processingResult: qualityMetrics,
         processedAt: new Date(),
       }).where(eq(documents.id, documentId));
 
       await job.updateProgress(100);
 
       const pipelineDesc = needsPreStructure
-        ? `PyMuPDF + GPT-4o pre-struct (${(preStructDuration / 1000).toFixed(1)}s) + Opus+ET (${(opusDuration / 1000).toFixed(1)}s)`
+        ? `PyMuPDF + Sonnet pre-struct (${(preStructDuration / 1000).toFixed(1)}s) + Opus+ET (${(opusDuration / 1000).toFixed(1)}s)`
         : `PyMuPDF nativ + Opus+ET (${(opusDuration / 1000).toFixed(1)}s)`;
-      const costDesc = needsPreStructure ? "~$0.55" : "~$0.40";
+      const costDesc = `$${actualOpusCost.toFixed(2)}`;
 
       console.log(`[processGuide] Pipeline complete: ${totalDuration}ms total (extract: ${extractDuration}ms, pre-struct: ${preStructDuration}ms, Opus+ET: ${opusDuration}ms) for "${doc.name}" (${pageCount} pages, native=${!needsPreStructure})`);
 

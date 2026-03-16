@@ -1,21 +1,6 @@
 import { anthropic, withAILimit } from "../lib/anthropic";
+import { safeJSONParse } from "../lib/safeExtract";
 import type { ExtractionResult } from "./extractionTypes";
-
-/**
- * Extract data from certificat fiscal (tax certificate) documents.
- * Handles both "buget de stat" and "buget local" certificates.
- * These certify that a company has no outstanding tax obligations.
- */
-
-function tryParseJSON(raw: string): any | null {
-  let cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-  try { return JSON.parse(cleaned); } catch { /* continue */ }
-  const match = cleaned.match(/\{[\s\S]*\}/);
-  if (match) {
-    try { return JSON.parse(match[0]); } catch { /* continue */ }
-  }
-  return null;
-}
 
 export async function extractCertificatFiscal(text: string): Promise<ExtractionResult> {
   const start = Date.now();
@@ -67,10 +52,10 @@ Returnează un singur obiect JSON:
       }));
 
       const responseText = response.content[0].type === "text" ? response.content[0].text : "{}";
-      const parsed = tryParseJSON(responseText);
+      const parsed = safeJSONParse(responseText, "certificatFiscalExtractor");
 
       if (parsed) {
-        return buildCertificatResult(parsed, text, Date.now() - start);
+        return buildCertificatResult(parsed.data, text, Date.now() - start);
       }
 
       lastError = `JSON parse failed: "${responseText.slice(0, 200)}"`;

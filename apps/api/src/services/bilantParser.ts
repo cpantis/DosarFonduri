@@ -1,4 +1,5 @@
 import { anthropic, withAILimit } from "../lib/anthropic";
+import { safeJSONParse } from "../lib/safeExtract";
 
 export interface ParsedBilant {
   year: number;
@@ -150,8 +151,28 @@ export async function parseBilantPDF(pdfText: string, year: number): Promise<Par
       }],
     }));
 
-    const responseText = response.content[0].type === "text" ? response.content[0].text : "";
-    const data = tryParseJSON(responseText);
+    let responseText = response.content[0].type === "text" ? response.content[0].text : "";
+
+    // Handle truncation — bilant with many F10/F20/F30/F40 fields
+    if (response.stop_reason === "max_tokens") {
+      console.warn(`[bilantParser] Attempt ${attempt}: truncated at ${responseText.length} chars, requesting continuation...`);
+      const contResponse = await withAILimit(() => anthropic.messages.create({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 8000,
+        system: BILANT_SYSTEM_PROMPT + "\n\nContinuă JSON-ul trunchiat. NU repeta ce a fost generat anterior.",
+        messages: [
+          { role: "user", content: BILANT_USER_PROMPT(pdfText, year) },
+          { role: "assistant", content: responseText },
+          { role: "user", content: "JSON-ul a fost trunchiat. Continuă EXACT de unde ai rămas:" },
+        ],
+      }));
+      const contText = contResponse.content[0].type === "text" ? contResponse.content[0].text : "";
+      responseText += contText;
+      console.log(`[bilantParser] Continuation: +${contText.length} chars (total: ${responseText.length})`);
+    }
+
+    const parsedResult = safeJSONParse(responseText, `bilantParser_${year}`);
+    const data = parsedResult?.data ?? null;
 
     if (data) {
       // Accept partial data — f10 or f20 alone is still valuable

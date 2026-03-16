@@ -246,7 +246,7 @@ export const documents = pgTable("documents", {
     }>;
     raw_text: string;
     processing_time_ms: number;
-  }>(),
+  } | Record<string, unknown>>(),
   tags: text("tags").array(),
   uploadedBy: uuid("uploaded_by").references(() => users.id).notNull(),
   uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),

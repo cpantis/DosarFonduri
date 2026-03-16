@@ -1,4 +1,5 @@
 import { anthropic, withAILimit } from "../lib/anthropic";
+import { safeJSONParse } from "../lib/safeExtract";
 import type { ExtractionResult } from "./extractionTypes";
 
 /**
@@ -46,12 +47,12 @@ ${pdfText.slice(0, 40000)}`,
   }));
 
   const text = response.content[0].type === "text" ? response.content[0].text : "";
-  const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
 
   const fields: ExtractionResult["extracted_fields"] = [];
 
-  try {
-    const data = JSON.parse(cleaned);
+  const parsed = safeJSONParse(text, "declaratieExtractor");
+  if (parsed) {
+    const data = parsed.data;
 
     fields.push({ field_key: "ani_activitate_agroalimentara", field_value: data.ani_activitate_agroalimentara ?? null, confidence: data.ani_activitate_agroalimentara != null ? 0.9 : 0, source_page: 1, extraction_method: "ai_sonnet" });
     fields.push({ field_key: "coduri_caen_activitate", field_value: data.coduri_caen_activitate ?? null, confidence: data.coduri_caen_activitate ? 0.85 : 0, source_page: null, extraction_method: "ai_sonnet" });
@@ -65,8 +66,8 @@ ${pdfText.slice(0, 40000)}`,
     fields.push({ field_key: "firma_cui", field_value: data.firma_cui ?? null, confidence: data.firma_cui ? 0.85 : 0, source_page: null, extraction_method: "ai_sonnet" });
 
     if (data.ani_detaliati) fields.push({ field_key: "_raw_ani_detaliati", field_value: data.ani_detaliati, confidence: 0.85, source_page: null, extraction_method: "ai_sonnet" });
-  } catch {
-    console.error("Failed to parse declaratie expert contabil extraction JSON");
+  } else {
+    console.error("[declaratieExtractor] CRITICAL: Failed to parse extraction JSON");
   }
 
   return {

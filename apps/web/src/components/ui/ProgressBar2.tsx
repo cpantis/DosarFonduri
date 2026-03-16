@@ -18,7 +18,14 @@ export function ProgressBar2({
   };
   const fillColor = fills[variant] || fills.simple;
   return (
-    <div className={`rounded-full h-2 overflow-hidden ${className}`} style={{ background: "#f8fafc" }}>
+    <div
+      role="progressbar"
+      aria-valuenow={value}
+      aria-valuemin={0}
+      aria-valuemax={max}
+      className={`rounded-full h-2 overflow-hidden ${className}`}
+      style={{ background: "#f8fafc" }}
+    >
       <div
         className="h-full rounded-full transition-all duration-500"
         style={{ width: `${pct}%`, background: fillColor }}

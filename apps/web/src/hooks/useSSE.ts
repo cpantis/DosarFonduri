@@ -34,95 +34,39 @@ export function useSSE({ projectId, enabled = true, onEvent }: UseSSEOptions = {
   const [extractionProgress, setExtractionProgress] = useState<Map<string, ExtractionProgress>>(new Map());
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectAttemptsRef = useRef(0);
+  // Use refs to avoid stale closures in long-lived SSE connection
+  const onEventRef = useRef(onEvent);
+  const toastRef = useRef(toast);
+  const cleanupTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
 
-  const connect = useCallback(() => {
-    if (!enabled) return;
-
-    const token = typeof window !== "undefined" ? localStorage.getItem("df-token") : null;
-    if (!token) return;
-
-    const url = `/api/events${projectId ? `?projectId=${projectId}` : ""}`;
-
-    // EventSource doesn't support custom headers, so we use fetch-based SSE
-    const controller = new AbortController();
-
-    fetch(url, {
-      headers: {
-        "Authorization": `Bearer ${token}`,
-        "Accept": "text/event-stream",
-      },
-      signal: controller.signal,
-    }).then(async (response) => {
-      if (!response.ok || !response.body) {
-        throw new Error(`SSE connection failed: ${response.status}`);
-      }
-
-      setConnected(true);
-      reconnectAttemptsRef.current = 0;
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-
-        let currentEvent = "";
-        let currentData = "";
-
-        for (const line of lines) {
-          if (line.startsWith("event: ")) {
-            currentEvent = line.slice(7).trim();
-          } else if (line.startsWith("data: ")) {
-            currentData = line.slice(6).trim();
-          } else if (line === "" && currentEvent && currentData) {
-            try {
-              const data = JSON.parse(currentData);
-              handleEvent(currentEvent, data);
-              onEvent?.({ event: currentEvent, data });
-            } catch {}
-            currentEvent = "";
-            currentData = "";
-          }
-        }
-      }
-    }).catch((err) => {
-      if (err.name === "AbortError") return;
-      setConnected(false);
-      scheduleReconnect();
-    });
-
-    eventSourceRef.current = { close: () => controller.abort() } as any;
-  }, [enabled, projectId]);
+  // Keep refs up to date
+  useEffect(() => { onEventRef.current = onEvent; }, [onEvent]);
+  useEffect(() => { toastRef.current = toast; }, [toast]);
 
   const handleEvent = useCallback((event: string, data: any) => {
+    const showToast = toastRef.current;
     switch (event) {
       case "document_processed":
-        toast("success", data.message || `Document procesat: ${data.documentName}`);
+        showToast("success", data.message || `Document procesat: ${data.documentName}`);
         break;
       case "document_failed":
         if (data.willRetry) {
-          toast("warning", data.message || `Eroare la procesare (se reîncearcă)...`);
+          showToast("warning", data.message || `Eroare la procesare (se reîncearcă)...`);
         } else {
-          toast("error", data.message || `Eroare la procesarea documentului`);
+          showToast("error", data.message || `Eroare la procesarea documentului`);
         }
         break;
       case "document_uploaded":
-        toast("info", data.message || `Document încărcat: ${data.documentName}`);
+        showToast("info", data.message || `Document încărcat: ${data.documentName}`);
         break;
       case "eligibility_updated":
-        toast("info", data.message || `Eligibilitate actualizată: ${data.passed}/${data.total}`);
+        showToast("info", data.message || `Eligibilitate actualizată: ${data.passed}/${data.total}`);
         break;
       case "element_validated":
         // Don't toast for every element — too noisy
         break;
       case "score_updated":
-        toast("info", data.message || `Punctaj actualizat: ${data.percentage}%`);
+        showToast("info", data.message || `Punctaj actualizat: ${data.percentage}%`);
         break;
       case "extraction_started":
         setExtractionProgress(prev => {
@@ -164,27 +108,29 @@ export function useSSE({ projectId, enabled = true, onEvent }: UseSSEOptions = {
           const existing = next.get(data.documentId);
           if (existing) {
             next.set(data.documentId, { ...existing, completed: true });
-            // Clean up after 8s
-            setTimeout(() => {
+            // Clean up after 8s — track timer for cleanup on unmount
+            const timer = setTimeout(() => {
               setExtractionProgress(p => {
                 const n = new Map(p);
                 n.delete(data.documentId);
                 return n;
               });
+              cleanupTimersRef.current.delete(timer);
             }, 8000);
+            cleanupTimersRef.current.add(timer);
           }
           return next;
         });
-        toast("success", data.message || `Extracție completă: ${data.fields_count} câmpuri`);
+        showToast("success", data.message || `Extracție completă: ${data.fields_count} câmpuri`);
         break;
       case "company_processed":
-        toast("success", data.message || `Firmă procesată cu succes`);
+        showToast("success", data.message || `Firmă procesată cu succes`);
         break;
       case "company_processing_failed":
-        toast("error", data.message || `Eroare la procesarea firmei`);
+        showToast("error", data.message || `Eroare la procesarea firmei`);
         break;
       case "elements_updated":
-        toast("info", data.message || `${data.updatedCount} elemente actualizate`);
+        showToast("info", data.message || `${data.updatedCount} elemente actualizate`);
         break;
       case "job_progress":
         setJobProgress(prev => {
@@ -194,44 +140,110 @@ export function useSSE({ projectId, enabled = true, onEvent }: UseSSEOptions = {
             message: data.message,
             status: data.status,
           });
-          // Clean up completed/failed jobs after 5s
+          // Clean up completed/failed jobs after 5s — track timer
           if (data.status === "completed" || data.status === "failed") {
-            setTimeout(() => {
+            const timer = setTimeout(() => {
               setJobProgress(p => {
                 const n = new Map(p);
                 n.delete(data.jobId || data.documentId);
                 return n;
               });
+              cleanupTimersRef.current.delete(timer);
             }, 5000);
+            cleanupTimersRef.current.add(timer);
           }
           return next;
         });
         break;
     }
-  }, [toast]);
-
-  const scheduleReconnect = useCallback(() => {
-    const attempt = reconnectAttemptsRef.current;
-    if (attempt >= 5) return; // max 5 reconnect attempts
-
-    const delay = Math.min(1000 * Math.pow(2, attempt), 30000); // exponential backoff, max 30s
-    reconnectTimerRef.current = setTimeout(() => {
-      reconnectAttemptsRef.current++;
-      connect();
-    }, delay);
-  }, [connect]);
+  }, []);
 
   useEffect(() => {
-    connect();
+    if (!enabled) return;
+
+    const token = typeof window !== "undefined" ? localStorage.getItem("df-token") : null;
+    if (!token) return;
+
+    const url = `/api/events${projectId ? `?projectId=${projectId}` : ""}`;
+    const controller = new AbortController();
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+    function scheduleReconnect() {
+      const attempt = reconnectAttemptsRef.current;
+      if (attempt >= 5) return;
+      const delay = Math.min(1000 * Math.pow(2, attempt), 30000);
+      reconnectTimer = setTimeout(() => {
+        reconnectAttemptsRef.current++;
+        startConnection();
+      }, delay);
+    }
+
+    function startConnection() {
+      fetch(url, {
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Accept": "text/event-stream",
+        },
+        signal: controller.signal,
+      }).then(async (response) => {
+        if (!response.ok || !response.body) {
+          throw new Error(`SSE connection failed: ${response.status}`);
+        }
+
+        setConnected(true);
+        reconnectAttemptsRef.current = 0;
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+
+          let currentEvent = "";
+          let currentData = "";
+
+          for (const line of lines) {
+            if (line.startsWith("event: ")) {
+              currentEvent = line.slice(7).trim();
+            } else if (line.startsWith("data: ")) {
+              currentData = line.slice(6).trim();
+            } else if (line === "" && currentEvent && currentData) {
+              try {
+                const data = JSON.parse(currentData);
+                handleEvent(currentEvent, data);
+                onEventRef.current?.({ event: currentEvent, data });
+              } catch {}
+              currentEvent = "";
+              currentData = "";
+            }
+          }
+        }
+      }).catch((err) => {
+        if (err.name === "AbortError") return;
+        setConnected(false);
+        scheduleReconnect();
+      });
+    }
+
+    startConnection();
+
     return () => {
-      if (eventSourceRef.current) {
-        (eventSourceRef.current as any).close?.();
+      controller.abort();
+      setConnected(false);
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      // Clean up all tracked timers
+      for (const timer of cleanupTimersRef.current) {
+        clearTimeout(timer);
       }
-      if (reconnectTimerRef.current) {
-        clearTimeout(reconnectTimerRef.current);
-      }
+      cleanupTimersRef.current.clear();
     };
-  }, [connect]);
+  }, [enabled, projectId, handleEvent]);
 
   return {
     connected,

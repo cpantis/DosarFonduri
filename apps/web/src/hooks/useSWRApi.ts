@@ -13,37 +13,52 @@ export function useSWRApi<T = any>(path: string | null): UseSWRApiResult<T> {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(!!path);
-  const dedupRef = useRef<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (signal?: AbortSignal) => {
     if (!path) return;
-    // Dedup: don't refetch if same path already inflight
-    if (dedupRef.current === path) return;
-    dedupRef.current = path;
 
     setLoading(true);
     setError(null);
     try {
-      const result = await api<T>(path);
-      setData(result);
+      const result = await api<T>(path, { signal });
+      if (!signal?.aborted) {
+        setData(result);
+      }
     } catch (err: any) {
-      setError(err.message);
+      if (err.name === "AbortError") return;
+      if (!signal?.aborted) {
+        setError(err.message);
+      }
     } finally {
-      setLoading(false);
-      dedupRef.current = null;
+      if (!signal?.aborted) {
+        setLoading(false);
+      }
     }
   }, [path]);
 
   useEffect(() => {
-    fetchData();
+    // Abort previous request if path changed
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    fetchData(controller.signal);
+
+    return () => {
+      controller.abort();
+    };
   }, [fetchData]);
 
   const mutate = useCallback((newData?: T) => {
     if (newData !== undefined) {
       setData(newData);
     } else {
-      dedupRef.current = null;
-      fetchData();
+      // Abort previous and refetch
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+      fetchData(controller.signal);
     }
   }, [fetchData]);
 

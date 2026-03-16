@@ -185,43 +185,57 @@ projectRoutes.post("/", async (c) => {
   });
   if (!folder) return c.json({ error: "Sesiunea nu a fost găsită" }, 404);
 
-  const [project] = await db.insert(projects).values({
-    organizationId: auth.organizationId,
-    companyId: body.companyId,
-    folderId: body.folderId,
-    name: body.name,
-    status: "draft",
-    consultantId: auth.userId,
-  }).returning();
+  // Create project + copy template elements in a single transaction
+  const orgId = auth.organizationId!;
+  let project: any;
+  try {
+    project = await db.transaction(async (tx) => {
+      const [proj] = await tx.insert(projects).values({
+        organizationId: orgId,
+        companyId: body.companyId,
+        folderId: body.folderId,
+        name: body.name,
+        status: "draft",
+        consultantId: auth.userId,
+      }).returning();
 
-  // Copy template elements as project elements
-  const templateDocs = await getProjectTemplates(body.folderId, auth.organizationId);
-  for (const doc of templateDocs) {
-    const elements = await db.query.templateElements.findMany({
-      where: eq(templateElements.documentId, doc.id),
+      // Copy template elements as project elements
+      const templateDocs = await getProjectTemplates(body.folderId, orgId);
+      for (const doc of templateDocs) {
+        const elements = await db.query.templateElements.findMany({
+          where: eq(templateElements.documentId, doc.id),
+        });
+
+        if (elements.length > 0) {
+          await tx.insert(projectElements).values(
+            elements.map(el => ({
+              projectId: proj.id,
+              templateElementId: el.id,
+              value: null,
+              source: "manual" as const,
+              confirmed: false,
+            }))
+          );
+        }
+      }
+
+      return proj;
     });
-
-    if (elements.length > 0) {
-      await db.insert(projectElements).values(
-        elements.map(el => ({
-          projectId: project.id,
-          templateElementId: el.id,
-          value: null,
-          source: "manual" as const,
-          confirmed: false,
-        }))
-      );
-    }
+  } catch (err: any) {
+    console.error("[projects/create] Transaction failed:", err.message);
+    return c.json({ error: `Eroare la crearea proiectului: ${err.message}` }, 500);
   }
 
-  // Pre-fill from company data (ONRC)
-  await prefillFromCompany(project.id, company);
-
-  // Populate checklist from guide rules
-  await populateChecklistFromRules(project.id, project.folderId, auth.organizationId);
-
-  // Run pre-eligibility check
-  await checkEligibility(project.id, auth.organizationId);
+  // Post-creation steps (best-effort, project already committed)
+  try { await prefillFromCompany(project.id, company); } catch (e: any) {
+    console.warn("[projects/create] Prefill warning:", e.message);
+  }
+  try { await populateChecklistFromRules(project.id, project.folderId, orgId); } catch (e: any) {
+    console.warn("[projects/create] Checklist warning:", e.message);
+  }
+  try { await checkEligibility(project.id, orgId); } catch (e: any) {
+    console.warn("[projects/create] Eligibility warning:", e.message);
+  }
 
   return c.json(project, 201);
 });

@@ -7,6 +7,73 @@ import path from "path";
 import fs from "fs";
 import * as schema from "./schema";
 
+/**
+ * Split SQL content into executable statements, correctly handling:
+ * - DO $$ ... END $$; blocks (PL/pgSQL)
+ * - Regular semicolon-terminated statements
+ * - SQL comments (-- line comments)
+ */
+function splitSqlStatements(content: string): string[] {
+  const statements: string[] = [];
+  let current = "";
+  let inDollarBlock = false;
+  const lines = content.split("\n");
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    // Skip pure comment lines outside of blocks
+    if (!inDollarBlock && trimmed.startsWith("--")) {
+      continue;
+    }
+
+    // Detect DO $$ or BEGIN $$ blocks
+    if (!inDollarBlock && /\$\$/.test(trimmed)) {
+      inDollarBlock = true;
+      current += line + "\n";
+      // Check if block also ends on the same line (e.g., DO $$ ... END $$;)
+      const matches = trimmed.match(/\$\$/g);
+      if (matches && matches.length >= 2) {
+        inDollarBlock = false;
+        if (trimmed.endsWith(";")) {
+          statements.push(current.trim());
+          current = "";
+        }
+      }
+      continue;
+    }
+
+    if (inDollarBlock) {
+      current += line + "\n";
+      if (/\$\$\s*;?\s*$/.test(trimmed)) {
+        inDollarBlock = false;
+        statements.push(current.trim());
+        current = "";
+      }
+      continue;
+    }
+
+    // Regular SQL: accumulate until semicolon at end of line
+    current += line + "\n";
+    if (trimmed.endsWith(";")) {
+      const stmt = current.trim();
+      // Remove trailing statement-breakpoint comments
+      const cleaned = stmt.replace(/-->\s*statement-breakpoint\s*$/, "").trim();
+      if (cleaned.length > 0) {
+        statements.push(cleaned);
+      }
+      current = "";
+    }
+  }
+
+  // Handle any remaining content
+  const remaining = current.trim();
+  if (remaining.length > 0 && remaining !== ";") {
+    statements.push(remaining);
+  }
+
+  return statements;
+}
+
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) {
   console.error("DATABASE_URL is not set, skipping migrations");
@@ -53,8 +120,7 @@ async function runMigrations() {
       const sqlFile = path.join(migrationsPath, "0000_powerful_dark_beast.sql");
       if (fs.existsSync(sqlFile)) {
         const sqlContent = fs.readFileSync(sqlFile, "utf-8");
-        // Split by statement-breakpoint and execute each statement
-        const statements = sqlContent.split("--> statement-breakpoint").map(s => s.trim()).filter(Boolean);
+        const statements = splitSqlStatements(sqlContent);
         for (const stmt of statements) {
           try {
             await db.execute(sql.raw(stmt));
@@ -75,28 +141,56 @@ async function runMigrations() {
   }
 
   // Run extra SQL migrations not tracked by drizzle journal (0004+)
+  // Uses a tracking table to avoid re-running migrations on every startup
   try {
+    // Ensure tracking table exists
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS "_extra_migrations" (
+        "filename" varchar(255) PRIMARY KEY,
+        "applied_at" timestamp DEFAULT now() NOT NULL
+      )
+    `);
+
+    // Get already-applied migrations
+    const applied = await db.execute(sql`SELECT filename FROM "_extra_migrations"`);
+    const appliedSet = new Set((applied as unknown as Array<{ filename: string }>).map(r => r.filename));
+
     const extraFiles = fs.readdirSync(migrationsPath)
       .filter(f => f.endsWith(".sql") && !f.startsWith("0000") && !f.startsWith("0001") && !f.startsWith("0002") && !f.startsWith("0003"))
       .sort();
+
     for (const file of extraFiles) {
+      if (appliedSet.has(file)) {
+        continue; // Already applied
+      }
+
       const sqlContent = fs.readFileSync(path.join(migrationsPath, file), "utf-8");
-      // Split on semicolons that end a statement (followed by newline or EOF)
-      // Handle multi-line CREATE TABLE blocks by splitting on ";\n" or ";\r\n" or final ";"
-      const statements = sqlContent
-        .split(/;\s*$/m)  // split on ";" at end of a line
-        .map(s => s.replace(/^[\s]*--[^\n]*\n/gm, "").trim())
-        .filter(s => s.length > 0);
+      // Split SQL into executable statements, handling DO $$ blocks and semicolons
+      const statements = splitSqlStatements(sqlContent);
+      let hasError = false;
+
       for (const stmt of statements) {
         try {
           await db.execute(sql.raw(stmt));
         } catch (e: any) {
-          if (!e.message?.includes("already exists") && !e.message?.includes("duplicate")) {
-            console.warn(`[${file}] warning:`, e.message?.substring(0, 120));
+          const msg = e.message || "";
+          // Benign errors that indicate the change already exists
+          if (msg.includes("already exists") || msg.includes("duplicate")) {
+            continue;
           }
+          // Log non-benign errors but continue (idempotent migrations)
+          console.warn(`[${file}] warning:`, msg.substring(0, 150));
+          hasError = true;
         }
       }
-      console.log(`Extra migration applied: ${file}`);
+
+      // Track as applied even if some statements had warnings (they're idempotent)
+      try {
+        await db.execute(sql`INSERT INTO "_extra_migrations" (filename) VALUES (${file}) ON CONFLICT DO NOTHING`);
+      } catch {
+        // Tracking insert failed — not critical
+      }
+      console.log(`Extra migration applied: ${file}${hasError ? " (with warnings)" : ""}`);
     }
   } catch (error) {
     console.error("Extra migrations warning:", error);

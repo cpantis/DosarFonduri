@@ -73,7 +73,7 @@ export default function DashboardPage() {
             <StatCard icon={"\u{1F3E2}"} label="Firme" value={stats?.companies ?? 0} color="blue" />
             <StatCard icon={"\u{1F4C1}"} label="Proiecte active" value={stats?.projects ?? 0} color="amber" />
             <StatCard icon={"\u2705"} label="Documente" value={stats?.documents ?? 0} color="emerald" />
-            <StatCard icon={"\u{1F3AF}"} label="Rata succes" value={stats?.approvalRate != null ? `${stats.approvalRate}%` : "-"} color={stats?.approvalRate >= 70 ? "emerald" : stats?.approvalRate >= 50 ? "amber" : "red"} />
+            <StatCard icon={"\u{1F3AF}"} label="Rata succes" value={stats?.approvalRate != null ? `${stats.approvalRate}%` : "-"} color={(stats?.approvalRate ?? 0) >= 70 ? "emerald" : (stats?.approvalRate ?? 0) >= 50 ? "amber" : "red"} />
           </div>
         )}
 

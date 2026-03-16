@@ -2,6 +2,7 @@ import type { AppEnv } from "../types/hono";
 import { Hono } from "hono";
 import { z } from "zod";
 import { createHash } from "crypto";
+import { updateDocElementSchema, validatePageSchema, createDocElementSchema } from "@dosarfonduri/shared";
 import { db } from "../db";
 import { documentFolders, documents, files, templateElements, rules, scoringCriteria, elementDefinitions } from "../db/schema";
 import { eq, and, isNull, sql } from "drizzle-orm";
@@ -128,7 +129,7 @@ documentRoutes.delete("/folders/:id", async (c) => {
       where: and(eq(documents.folderId, folderId), eq(documents.organizationId, auth.organizationId!)),
     });
     for (const doc of docs) {
-      await deleteFile(doc.fileId).catch(() => {});
+      await deleteFile(doc.fileId).catch((e: any) => console.warn("[documents] folder file cleanup:", e.message));
     }
 
     // Recurse into child folders
@@ -447,7 +448,7 @@ documentRoutes.post("/documents/:id/confirm-upload", async (c) => {
     status: "processing",
     processingType: doc.processingType || "reference",
     message: `Document uploadat "${doc.name}", procesare în curs...`,
-  }).catch(() => {});
+  }).catch((e: any) => console.warn("[documents] SSE confirm-upload event:", e.message));
 
   return c.json({ ok: true, document_id: doc.id, actual_size: size, warnings: warnings.length > 0 ? warnings : undefined });
 });
@@ -644,7 +645,7 @@ documentRoutes.post("/folders/:folderId/documents", async (c) => {
     status: doc.status,
     processingType,
     message: `Document uploadat "${safeName}", procesare în curs...`,
-  }).catch(() => {}); // fire and forget
+  }).catch((e: any) => console.warn("[documents] SSE upload event:", e.message)); // fire and forget
 
   return c.json({ ...doc, warnings: warnings.length > 0 ? warnings : undefined }, 201);
 });
@@ -687,7 +688,7 @@ documentRoutes.delete("/documents/:id", async (c) => {
       const jobs = await q.getJobs(["waiting", "delayed", "active"]);
       for (const job of jobs) {
         if (job.data?.documentId === id) {
-          await job.remove().catch(() => {});
+          await job.remove().catch((e: any) => console.warn("[documents] queue job removal:", e.message));
         }
       }
     }
@@ -798,7 +799,7 @@ documentRoutes.get("/documents/:id/elements", async (c) => {
 documentRoutes.put("/documents/:docId/elements/:elId", async (c) => {
   const auth = c.get("auth") as AuthContext;
   const { docId, elId } = c.req.param() as { docId: string; elId: string };
-  const body = await c.req.json();
+  const body = updateDocElementSchema.parse(await c.req.json());
 
   const el = await db.query.templateElements.findFirst({
     where: and(eq(templateElements.id, elId), eq(templateElements.documentId, docId)),
@@ -826,7 +827,7 @@ documentRoutes.put("/documents/:docId/elements/:elId", async (c) => {
 documentRoutes.put("/documents/:docId/elements-validate-page", async (c) => {
   const auth = c.get("auth") as AuthContext;
   const docId = c.req.param("docId");
-  const { pageNum, validated } = await c.req.json();
+  const { pageNum, validated } = validatePageSchema.parse(await c.req.json());
 
   const elements = await db.query.templateElements.findMany({
     where: and(eq(templateElements.documentId, docId), eq(templateElements.pageNum, pageNum)),
@@ -845,7 +846,7 @@ documentRoutes.put("/documents/:docId/elements-validate-page", async (c) => {
 documentRoutes.post("/documents/:docId/elements", async (c) => {
   const auth = c.get("auth") as AuthContext;
   const docId = c.req.param("docId");
-  const body = await c.req.json();
+  const body = createDocElementSchema.parse(await c.req.json());
 
   const doc = await db.query.documents.findFirst({
     where: and(eq(documents.id, docId), eq(documents.organizationId, auth.organizationId!)),
@@ -857,7 +858,7 @@ documentRoutes.post("/documents/:docId/elements", async (c) => {
     organizationId: auth.organizationId!,
     key: body.key,
     label: body.label,
-    fieldType: body.fieldType || "text",
+    fieldType: body.fieldType,
     pageNum: body.pageNum || 1,
     lineNum: body.lineNum || 0,
     group: body.group || null,
@@ -928,7 +929,7 @@ documentRoutes.get("/uploads/events", async (c) => {
       // Cleanup on close
       c.req.raw.signal.addEventListener("abort", () => {
         clearInterval(heartbeat);
-        subscriber.unsubscribe(channel).catch(() => {});
+        subscriber.unsubscribe(channel).catch((e: any) => console.warn("[documents] redis unsubscribe:", e.message));
         subscriber.disconnect();
       });
     },

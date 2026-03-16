@@ -118,17 +118,17 @@ export default function AdminPage() {
     try {
       const data = await apiGet("/api/admin/users");
       setUsers(data);
-    } catch {
-      // Will show empty state
+    } catch (err: any) {
+      toast("error", err.message || "Nu s-au putut încărca utilizatorii");
     }
-  }, []);
+  }, [toast]);
 
   const loadCosts = useCallback(async () => {
     try {
       const data = await apiGet("/api/admin/ai-costs");
       setCosts(data);
-    } catch {
-      // silent
+    } catch (err: any) {
+      console.warn("[admin] costs load failed:", err.message);
     }
   }, []);
 
@@ -137,8 +137,8 @@ export default function AdminPage() {
       const data = await apiGet(`/api/admin/audit-log?type=${auditFilter}`);
       setAuditLogs(data.logs);
       setAuditTotal(data.total);
-    } catch {
-      // silent
+    } catch (err: any) {
+      console.warn("[admin] audit load failed:", err.message);
     }
   }, [auditFilter]);
 

@@ -199,7 +199,7 @@ export function createSSEStream(channels: string[]): ReadableStream {
     cancel() {
       if (keepaliveTimer) clearInterval(keepaliveTimer);
       if (subscriber) {
-        subscriber.unsubscribe().catch(() => {});
+        subscriber.unsubscribe().catch((e: any) => console.warn("[sse] redis unsubscribe:", e.message));
         subscriber.disconnect();
         subscriber = null;
       }

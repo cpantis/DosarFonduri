@@ -71,75 +71,43 @@ authRoutes.post("/signup", async (c) => {
       }
     }
 
-    // Create organization — prefer: code.companyName (provider-set) > body.companyName (listafirme) > fallback
+    // Create organization + user + mark code as used — all in a single transaction
     const orgName = code.companyName || body.companyName || (body.name + " Cabinet");
 
-    let org: any;
-    const orgValues = {
-      name: orgName,
-      code: code.code,
-      plan: code.plan,
-      maxUsers: code.maxUsers,
-      trialEndsAt: new Date(Date.now() + code.trialDays * 86400000),
-      status: (code.trialDays > 0 ? "trial" : "active") as "trial" | "active",
-    };
     try {
-      const [created] = await db.insert(organizations).values(orgValues).returning();
-      org = created;
-    } catch (orgErr: any) {
-      console.error("[signup] Org insert failed:", orgErr.message);
-      // Auto-add missing columns from schema that haven't been migrated yet
-      if (orgErr.message?.includes("does not exist") && orgErr.message?.includes("column")) {
-        console.log("[signup] Missing column detected, adding cabinet_document_style...");
-        try {
-          await db.execute(sql`ALTER TABLE "organizations" ADD COLUMN IF NOT EXISTS "cabinet_document_style" jsonb`);
-        } catch { /* ignore if already exists */ }
-        // Retry insert
-        try {
-          const [created] = await db.insert(organizations).values(orgValues).returning();
-          org = created;
-        } catch (retryErr: any) {
-          return c.json({ error: `Eroare la crearea cabinetului: ${retryErr.message}` }, 500);
-        }
-      } else if (orgErr.message?.includes("unique") || orgErr.message?.includes("duplicate")) {
-        const existingOrg = await db.query.organizations.findFirst({
-          where: eq(organizations.code, code.code),
-        });
-        if (existingOrg) {
-          org = existingOrg;
-        } else {
-          return c.json({ error: `Eroare la crearea cabinetului: ${orgErr.message}` }, 500);
-        }
-      } else {
-        return c.json({ error: `Eroare la crearea cabinetului: ${orgErr.message}` }, 500);
-      }
+      const result = await db.transaction(async (tx) => {
+        const [org] = await tx.insert(organizations).values({
+          name: orgName,
+          code: code.code,
+          plan: code.plan,
+          maxUsers: code.maxUsers,
+          trialEndsAt: new Date(Date.now() + code.trialDays * 86400000),
+          status: (code.trialDays > 0 ? "trial" : "active") as "trial" | "active",
+        }).returning();
+
+        const [user] = await tx.insert(users).values({
+          email: body.email,
+          name: body.name,
+          passwordHash,
+          organizationId: org.id,
+          role: "admin",
+          status: "active",
+        }).returning();
+
+        await tx.update(cabinetCodes).set({
+          organizationId: org.id,
+          activatedAt: new Date(),
+        }).where(eq(cabinetCodes.id, code.id));
+
+        return { org, user };
+      });
+
+      const token = await sign({ sub: result.user.id, exp: Math.floor(Date.now() / 1000) + 7 * 86400 }, process.env.JWT_SECRET!, "HS256");
+      return c.json({ token, user: sanitizeUser(result.user), organization: result.org, hasOrganization: true });
+    } catch (err: any) {
+      console.error("[signup] Transaction failed:", err.message);
+      return c.json({ error: `Eroare la înregistrare: ${err.message}` }, 500);
     }
-
-    // Create user as admin
-    let user: any;
-    try {
-      const [created] = await db.insert(users).values({
-        email: body.email,
-        name: body.name,
-        passwordHash,
-        organizationId: org.id,
-        role: "admin",
-        status: "active",
-      }).returning();
-      user = created;
-    } catch (userErr: any) {
-      console.error("[signup] User insert failed:", userErr.message);
-      return c.json({ error: `Eroare la crearea utilizatorului: ${userErr.message}` }, 500);
-    }
-
-    // Mark code as used
-    await db.update(cabinetCodes).set({
-      organizationId: org.id,
-      activatedAt: new Date(),
-    }).where(eq(cabinetCodes.id, code.id));
-
-    const token = await sign({ sub: user.id, exp: Math.floor(Date.now() / 1000) + 7 * 86400 }, process.env.JWT_SECRET!, "HS256");
-    return c.json({ token, user: sanitizeUser(user), organization: org, hasOrganization: true });
   }
 
   // Flow: signup without code -> pending
@@ -157,7 +125,7 @@ authRoutes.post("/signup", async (c) => {
 // --- LOGIN ---
 authRoutes.post("/login", async (c) => {
   try {
-    const { email, password } = await c.req.json();
+    const { email, password } = z.object({ email: z.string().email(), password: z.string().min(1) }).parse(await c.req.json());
 
     const user = await db.query.users.findFirst({ where: eq(users.email, email) });
     if (!user) return c.json({ error: "Email sau parola incorecta" }, 401);
@@ -210,8 +178,7 @@ authRoutes.get("/me", async (c) => {
 // Validates a CUI via listafirme.ro and returns basic company info.
 // Rate-limited by design: only used during signup wizard.
 authRoutes.post("/lookup-cui", async (c) => {
-  const { cui } = await c.req.json();
-  if (!cui) return c.json({ error: "CUI obligatoriu" }, 400);
+  const { cui } = z.object({ cui: z.string().min(1) }).parse(await c.req.json());
 
   const cleanCUI = String(cui).replace(/\D/g, "");
   if (cleanCUI.length < 6 || cleanCUI.length > 12) {

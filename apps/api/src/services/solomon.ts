@@ -1389,103 +1389,95 @@ export async function processSolomonMessage(params: {
           });
           const keyToTmplEl = new Map(orgTmplEls.map(t => [t.key, t]));
 
+          // Batch-load all existing project elements for this project
+          const allProjectElements = await db.query.projectElements.findMany({
+            where: eq(projectElements.projectId, projectId),
+          });
+          // Build lookup maps: elementDefId → PE, templateElementId → PE
+          const peByDefId = new Map(allProjectElements.filter(pe => pe.elementDefId).map(pe => [pe.elementDefId!, pe]));
+          const peByTmplId = new Map(allProjectElements.filter(pe => pe.templateElementId).map(pe => [pe.templateElementId!, pe]));
+
+          const toUpdate: Array<{ id: string; value: string; elementDefId?: string }> = [];
+          const toInsert: Array<{ projectId: string; elementDefId?: string; templateElementId?: string; value: string; source: "solomon_chat"; confirmed: boolean; validationStatus: "pending" }> = [];
+          const modifiedElementIds: string[] = [];
+
           for (const el of extractedElements) {
             const elemDef = keyToElemDef.get(el.key);
             const tmplEl = keyToTmplEl.get(el.key);
-
-            // Must exist in at least one source
             if (!elemDef && !tmplEl) continue;
 
-            // Find existing project_element by elementDefId or templateElementId
-            let existing = null;
-            if (elemDef) {
-              existing = await db.query.projectElements.findFirst({
-                where: and(
-                  eq(projectElements.projectId, projectId),
-                  eq(projectElements.elementDefId, elemDef.id),
-                ),
-              });
-            }
-            if (!existing && tmplEl) {
-              existing = await db.query.projectElements.findFirst({
-                where: and(
-                  eq(projectElements.projectId, projectId),
-                  eq(projectElements.templateElementId, tmplEl.id),
-                ),
-              });
-            }
+            // Find existing from in-memory maps
+            const existing = (elemDef ? peByDefId.get(elemDef.id) : null) || (tmplEl ? peByTmplId.get(tmplEl.id) : null);
 
             if (existing) {
-              // Don't overwrite consultant_manual or document_extracted confirmed values
               if (existing.confirmed && (existing.source === "consultant_manual" || existing.source === "document_extracted")) {
                 console.log(`[solomon] Skipping confirmed element ${el.key} (source: ${existing.source})`);
               } else {
-                // FIX F4.4: Reset confirmed when value changes from Solomon
-                await db.update(projectElements).set({
+                toUpdate.push({
+                  id: existing.id,
                   value: el.value,
-                  source: "solomon_chat",
-                  confirmed: false,
-                  // Backfill elementDefId if missing
                   ...(elemDef && !existing.elementDefId ? { elementDefId: elemDef.id } : {}),
-                  updatedAt: new Date(),
-                }).where(eq(projectElements.id, existing.id));
+                });
+                modifiedElementIds.push(existing.id);
               }
             } else {
-              // Create new project_element with both IDs when available
-              try {
-                await db.insert(projectElements).values({
-                  projectId,
-                  ...(elemDef ? { elementDefId: elemDef.id } : {}),
-                  ...(tmplEl ? { templateElementId: tmplEl.id } : {}),
-                  value: el.value,
-                  source: "solomon_chat",
-                  confirmed: false,
-                  validationStatus: "pending",
-                });
-              } catch (insertErr: any) {
-                // Race condition: another concurrent request may have inserted this element
-                if (insertErr.code === "23505") {
-                  console.warn(`[solomon] Duplicate insert for element ${el.key} — updating instead`);
-                  const retryExisting = await db.query.projectElements.findFirst({
-                    where: and(
-                      eq(projectElements.projectId, projectId),
-                      elemDef ? eq(projectElements.elementDefId, elemDef.id) : eq(projectElements.templateElementId, tmplEl!.id),
-                    ),
-                  });
-                  if (retryExisting) {
-                    await db.update(projectElements).set({ value: el.value, source: "solomon_chat", confirmed: false, updatedAt: new Date() }).where(eq(projectElements.id, retryExisting.id));
-                  }
-                } else {
-                  throw insertErr;
-                }
-              }
+              toInsert.push({
+                projectId,
+                ...(elemDef ? { elementDefId: elemDef.id } : {}),
+                ...(tmplEl ? { templateElementId: tmplEl.id } : {}),
+                value: el.value,
+                source: "solomon_chat",
+                confirmed: false,
+                validationStatus: "pending",
+              });
             }
           }
 
-          // === CASCADE: Validate → Eligibility → Score → SSE ===
-          // Mirror the cascade from projects.ts PUT /:id/elements/:eid
-          const modifiedElementIds: string[] = [];
-          for (const el of extractedElements) {
-            const elemDef = keyToElemDef.get(el.key);
-            const tmplEl = keyToTmplEl.get(el.key);
-            let pe = null;
-            if (elemDef) {
-              pe = await db.query.projectElements.findFirst({
-                where: and(
-                  eq(projectElements.projectId, projectId),
-                  eq(projectElements.elementDefId, elemDef.id),
-                ),
-              });
+          // Batch updates
+          for (const upd of toUpdate) {
+            await db.update(projectElements).set({
+              value: upd.value,
+              source: "solomon_chat",
+              confirmed: false,
+              ...(upd.elementDefId ? { elementDefId: upd.elementDefId } : {}),
+              updatedAt: new Date(),
+            }).where(eq(projectElements.id, upd.id));
+          }
+
+          // Batch inserts
+          if (toInsert.length > 0) {
+            try {
+              const inserted = await db.insert(projectElements).values(toInsert).returning({ id: projectElements.id });
+              modifiedElementIds.push(...inserted.map(r => r.id));
+            } catch (insertErr: any) {
+              // Fallback to per-element insert on conflict
+              if (insertErr.code === "23505") {
+                console.warn(`[solomon] Batch insert conflict — falling back to per-element upsert`);
+                for (const row of toInsert) {
+                  try {
+                    const [ins] = await db.insert(projectElements).values(row).returning({ id: projectElements.id });
+                    modifiedElementIds.push(ins.id);
+                  } catch (perErr: any) {
+                    if (perErr.code === "23505") {
+                      const retryExisting = await db.query.projectElements.findFirst({
+                        where: and(
+                          eq(projectElements.projectId, projectId),
+                          row.elementDefId ? eq(projectElements.elementDefId, row.elementDefId) : eq(projectElements.templateElementId, row.templateElementId!),
+                        ),
+                      });
+                      if (retryExisting) {
+                        await db.update(projectElements).set({ value: row.value, source: "solomon_chat", confirmed: false, updatedAt: new Date() }).where(eq(projectElements.id, retryExisting.id));
+                        modifiedElementIds.push(retryExisting.id);
+                      }
+                    } else {
+                      throw perErr;
+                    }
+                  }
+                }
+              } else {
+                throw insertErr;
+              }
             }
-            if (!pe && tmplEl) {
-              pe = await db.query.projectElements.findFirst({
-                where: and(
-                  eq(projectElements.projectId, projectId),
-                  eq(projectElements.templateElementId, tmplEl.id),
-                ),
-              });
-            }
-            if (pe) modifiedElementIds.push(pe.id);
           }
 
           // 1. Validate each modified element
@@ -1516,7 +1508,7 @@ export async function processSolomonMessage(params: {
                   value: pe.value,
                   validationStatus: validation.status,
                   message: `Element "${elementLabel}" → ${validation.status}`,
-                }).catch(() => {});
+                }).catch((e: any) => console.warn("[solomon] SSE element_validated:", e.message));
               }
             } catch (err) {
               console.error(`[solomon] Validation failed for element ${elementId}:`, err);
@@ -1536,7 +1528,7 @@ export async function processSolomonMessage(params: {
                 failed: eligibility.filter(e => e.status === "failed").length,
                 pending: eligibility.filter(e => e.status === "pending").length,
                 message: `Eligibilitate re-evaluată: ${eligibility.filter(e => e.status === "passed").length}/${eligibility.length} trecute`,
-              }).catch(() => {});
+              }).catch((e: any) => console.warn("[solomon] SSE eligibility_updated:", e.message));
             } catch (err) {
               console.error(`[solomon] Eligibility check failed for project ${projectId}:`, err);
             }
@@ -1550,7 +1542,7 @@ export async function processSolomonMessage(params: {
                   maxTotalPoints: scoreResult.maxTotalPoints,
                   percentage: scoreResult.percentage,
                   message: `Punctaj actualizat: ${scoreResult.totalPoints}/${scoreResult.maxTotalPoints} (${scoreResult.percentage}%)`,
-                }).catch(() => {});
+                }).catch((e: any) => console.warn("[solomon] SSE score_updated:", e.message));
               }
             } catch (err) {
               console.error(`[solomon] Score computation failed for project ${projectId}:`, err);

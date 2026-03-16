@@ -8,8 +8,16 @@ import {
   projectChecklist, templateElements, elementDefinitions, rules, companies, companyFinancials,
   documentFolders, documents, auditLog, orgConfig, users, elementAuditLog, scoringCriteria,
 } from "../db/schema";
-import { eq, and, count, asc, desc, sql } from "drizzle-orm";
+import { eq, and, count, asc, desc, sql, inArray, sum } from "drizzle-orm";
 import { AuthContext } from "../middleware/auth";
+import {
+  updateProjectSchema,
+  updateElementSchema,
+  bulkConfirmElementsSchema,
+  overrideEligibilitySchema,
+  createChecklistItemSchema,
+  updateChecklistItemSchema,
+} from "@dosarfonduri/shared";
 import { checkEligibility } from "../services/eligibility";
 import { deleteFile, getFileUrl } from "../services/storage";
 import { validateElement, logElementChange } from "../services/elementValidation";
@@ -93,72 +101,90 @@ projectRoutes.get("/", async (c) => {
     orderBy: (p, { desc }) => [desc(p.updatedAt)],
   });
 
-  // Enrich with progress stats
-  const enriched = await Promise.all(result.map(async (p) => {
-    const company = await db.query.companies.findFirst({
-      where: eq(companies.id, p.companyId),
-    });
+  if (result.length === 0) return c.json([]);
 
-    // Elements completed
-    const elements = await db.query.projectElements.findMany({
-      where: eq(projectElements.projectId, p.id),
-    });
-    const totalElements = elements.length;
-    const filledElements = elements.filter(e => e.value && e.value.trim() !== "").length;
-    const confirmedElements = elements.filter(e => e.confirmed).length;
+  const projectIds = result.map(p => p.id);
+  const companyIds = [...new Set(result.map(p => p.companyId))];
 
-    // Eligibility
-    const eligibility = await db.query.projectEligibility.findMany({
-      where: eq(projectEligibility.projectId, p.id),
-    });
-    const totalElig = eligibility.length;
-    const passedElig = eligibility.filter(e => e.status === "passed").length;
+  // Batch: fetch all companies for these projects
+  const companiesList = companyIds.length > 0
+    ? await db.query.companies.findMany({ where: inArray(companies.id, companyIds) })
+    : [];
+  const companyMap = Object.fromEntries(companiesList.map(c => [c.id, c]));
 
-    // Generated docs
-    const generatedDocs = await db.query.projectDocuments.findMany({
-      where: eq(projectDocuments.projectId, p.id),
-    });
-    const totalDocs = generatedDocs.length;
-    const doneDocs = generatedDocs.filter(d => d.status === "generated" || d.status === "validated").length;
+  // Batch: element stats per project (total, filled, confirmed)
+  const elementStats = await db
+    .select({
+      projectId: projectElements.projectId,
+      total: count(),
+      filled: sql<number>`count(case when ${projectElements.value} is not null and trim(${projectElements.value}) != '' then 1 end)`,
+      confirmed: sql<number>`count(case when ${projectElements.confirmed} = true then 1 end)`,
+    })
+    .from(projectElements)
+    .where(inArray(projectElements.projectId, projectIds))
+    .groupBy(projectElements.projectId);
+  const elemMap = Object.fromEntries(elementStats.map(e => [e.projectId, e]));
 
-    // Templates done
-    const templateDocs = await getProjectTemplates(p.folderId, auth.organizationId!);
-    const totalTemplates = templateDocs.length;
-    const doneTemplates = generatedDocs.filter(d => d.status === "validated").length;
+  // Batch: eligibility stats per project
+  const eligStats = await db
+    .select({
+      projectId: projectEligibility.projectId,
+      total: count(),
+      passed: sql<number>`count(case when ${projectEligibility.status} = 'passed' then 1 end)`,
+    })
+    .from(projectEligibility)
+    .where(inArray(projectEligibility.projectId, projectIds))
+    .groupBy(projectEligibility.projectId);
+  const eligMap = Object.fromEntries(eligStats.map(e => [e.projectId, e]));
 
-    const programPath = await buildProgramPath(p.folderId);
+  // Batch: document stats per project
+  const docStats = await db
+    .select({
+      projectId: projectDocuments.projectId,
+      total: count(),
+      done: sql<number>`count(case when ${projectDocuments.status} in ('generated', 'validated') then 1 end)`,
+      validated: sql<number>`count(case when ${projectDocuments.status} = 'validated' then 1 end)`,
+    })
+    .from(projectDocuments)
+    .where(inArray(projectDocuments.projectId, projectIds))
+    .groupBy(projectDocuments.projectId);
+  const docMap = Object.fromEntries(docStats.map(d => [d.projectId, d]));
 
-    // Scoring summary (lightweight — catch errors silently)
-    let scoreSummary: { totalPoints: number; maxTotalPoints: number; percentage: number } | null = null;
-    try {
-      const scoreResult = await computeProjectScores(p.id);
-      if (scoreResult && scoreResult.maxTotalPoints > 0) {
-        scoreSummary = { totalPoints: scoreResult.totalPoints, maxTotalPoints: scoreResult.maxTotalPoints, percentage: scoreResult.percentage };
-      }
-    } catch { /* non-critical */ }
+  // Batch: lock user names
+  const lockerIds = [...new Set(result.filter(p => p.lockedBy && !isLockExpired(p.lockedAt)).map(p => p.lockedBy!))];
+  const lockers = lockerIds.length > 0
+    ? await db.query.users.findMany({ where: inArray(users.id, lockerIds) })
+    : [];
+  const lockerMap = Object.fromEntries(lockers.map(u => [u.id, u.name]));
 
-    // Lock info
+  // Build program paths (still per-project but these are just folder lookups)
+  const folderIds = [...new Set(result.map(p => p.folderId))];
+  const pathCache: Record<string, { program: string; masura: string; sesiune: string }> = {};
+  for (const fid of folderIds) {
+    pathCache[fid] = await buildProgramPath(fid);
+  }
+
+  const enriched = result.map(p => {
+    const company = companyMap[p.companyId];
+    const elem = elemMap[p.id] || { total: 0, filled: 0, confirmed: 0 };
+    const elig = eligMap[p.id] || { total: 0, passed: 0 };
+    const doc = docMap[p.id] || { total: 0, done: 0, validated: 0 };
     const lockActive = p.lockedBy && !isLockExpired(p.lockedAt);
-    let lockedByName: string | null = null;
-    if (lockActive && p.lockedBy) {
-      const locker = await db.query.users.findFirst({ where: eq(users.id, p.lockedBy) });
-      lockedByName = locker?.name || null;
-    }
 
     return {
       ...p,
       company: company ? { denumire: company.denumire, cui: company.cui } : null,
-      programPath,
-      lock: lockActive ? { lockedBy: p.lockedBy, lockedByName, lockedAt: p.lockedAt } : null,
+      programPath: pathCache[p.folderId] || "",
+      lock: lockActive ? { lockedBy: p.lockedBy, lockedByName: lockerMap[p.lockedBy!] || null, lockedAt: p.lockedAt } : null,
       progress: {
-        eligibility: { passed: passedElig, total: totalElig },
-        elements: { filled: filledElements, total: totalElements, confirmed: confirmedElements },
-        docs: { done: doneDocs, total: totalDocs },
-        templates: { done: doneTemplates, total: totalTemplates },
+        eligibility: { passed: Number(elig.passed), total: Number(elig.total) },
+        elements: { filled: Number(elem.filled), total: Number(elem.total), confirmed: Number(elem.confirmed) },
+        docs: { done: Number(doc.done), total: Number(doc.total) },
+        templates: { done: Number(doc.validated), total: Number(doc.total) },
       },
-      scoreSummary,
+      scoreSummary: null, // Deferred to project detail view for performance
     };
-  }));
+  });
 
   return c.json(enriched);
 });
@@ -185,43 +211,57 @@ projectRoutes.post("/", async (c) => {
   });
   if (!folder) return c.json({ error: "Sesiunea nu a fost găsită" }, 404);
 
-  const [project] = await db.insert(projects).values({
-    organizationId: auth.organizationId,
-    companyId: body.companyId,
-    folderId: body.folderId,
-    name: body.name,
-    status: "draft",
-    consultantId: auth.userId,
-  }).returning();
+  // Create project + copy template elements in a single transaction
+  const orgId = auth.organizationId!;
+  let project: any;
+  try {
+    project = await db.transaction(async (tx) => {
+      const [proj] = await tx.insert(projects).values({
+        organizationId: orgId,
+        companyId: body.companyId,
+        folderId: body.folderId,
+        name: body.name,
+        status: "draft",
+        consultantId: auth.userId,
+      }).returning();
 
-  // Copy template elements as project elements
-  const templateDocs = await getProjectTemplates(body.folderId, auth.organizationId);
-  for (const doc of templateDocs) {
-    const elements = await db.query.templateElements.findMany({
-      where: eq(templateElements.documentId, doc.id),
+      // Copy template elements as project elements
+      const templateDocs = await getProjectTemplates(body.folderId, orgId);
+      for (const doc of templateDocs) {
+        const elements = await db.query.templateElements.findMany({
+          where: eq(templateElements.documentId, doc.id),
+        });
+
+        if (elements.length > 0) {
+          await tx.insert(projectElements).values(
+            elements.map(el => ({
+              projectId: proj.id,
+              templateElementId: el.id,
+              value: null,
+              source: "manual" as const,
+              confirmed: false,
+            }))
+          );
+        }
+      }
+
+      return proj;
     });
-
-    if (elements.length > 0) {
-      await db.insert(projectElements).values(
-        elements.map(el => ({
-          projectId: project.id,
-          templateElementId: el.id,
-          value: null,
-          source: "manual" as const,
-          confirmed: false,
-        }))
-      );
-    }
+  } catch (err: any) {
+    console.error("[projects/create] Transaction failed:", err.message);
+    return c.json({ error: `Eroare la crearea proiectului: ${err.message}` }, 500);
   }
 
-  // Pre-fill from company data (ONRC)
-  await prefillFromCompany(project.id, company);
-
-  // Populate checklist from guide rules
-  await populateChecklistFromRules(project.id, project.folderId, auth.organizationId);
-
-  // Run pre-eligibility check
-  await checkEligibility(project.id, auth.organizationId);
+  // Post-creation steps (best-effort, project already committed)
+  try { await prefillFromCompany(project.id, company); } catch (e: any) {
+    console.warn("[projects/create] Prefill warning:", e.message);
+  }
+  try { await populateChecklistFromRules(project.id, project.folderId, orgId); } catch (e: any) {
+    console.warn("[projects/create] Checklist warning:", e.message);
+  }
+  try { await checkEligibility(project.id, orgId); } catch (e: any) {
+    console.warn("[projects/create] Eligibility warning:", e.message);
+  }
 
   return c.json(project, 201);
 });
@@ -400,7 +440,7 @@ projectRoutes.put("/:id/elements/:eid", async (c) => {
   const lockErr = await requireLock(id, auth.userId);
   if (lockErr) return c.json({ error: lockErr }, 423);
 
-  const body = await c.req.json();
+  const body = updateElementSchema.parse(await c.req.json());
 
   // Snapshot old state for audit log
   const oldElement = await db.query.projectElements.findFirst({
@@ -495,10 +535,7 @@ projectRoutes.put("/:id/elements-bulk/confirm", async (c) => {
   const lockErr = await requireLock(id, auth.userId);
   if (lockErr) return c.json({ error: lockErr }, 423);
 
-  const { elementIds } = await c.req.json<{ elementIds: string[] }>();
-  if (!elementIds || !Array.isArray(elementIds) || elementIds.length === 0) {
-    return c.json({ error: "elementIds required" }, 400);
-  }
+  const { elementIds } = bulkConfirmElementsSchema.parse(await c.req.json());
 
   const results = await Promise.all(elementIds.map(eid =>
     db.update(projectElements).set({
@@ -614,12 +651,13 @@ projectRoutes.put("/:id/eligibility/:eid", async (c) => {
   const lockErr = await requireLock(id, auth.userId);
   if (lockErr) return c.json({ error: lockErr }, 423);
 
-  const body = await c.req.json();
+  const body = overrideEligibilitySchema.parse(await c.req.json());
 
+  const overrideBool = body.overrideResult === "passed" ? true : body.overrideResult === "failed" ? false : null;
   const [updated] = await db.update(projectEligibility).set({
-    overrideResult: body.overrideResult,
+    overrideResult: overrideBool,
     overrideBy: auth.userId,
-    status: body.overrideResult === true ? "passed" : body.overrideResult === false ? "failed" : "pending",
+    status: body.overrideResult === "not_applicable" ? "not_applicable" : body.overrideResult,
     notes: body.notes || null,
   }).where(eq(projectEligibility.id, eid)).returning();
 
@@ -731,12 +769,12 @@ projectRoutes.post("/:id/checklist", async (c) => {
   const lockErr = await requireLock(id, auth.userId);
   if (lockErr) return c.json({ error: lockErr }, 423);
 
-  const body = await c.req.json();
+  const body = createChecklistItemSchema.parse(await c.req.json());
 
   const [item] = await db.insert(projectChecklist).values({
     projectId: id,
     name: body.name,
-    category: body.category,
+    category: body.category || "General",
     source: "manual",
   }).returning();
 
@@ -751,7 +789,7 @@ projectRoutes.put("/:id/checklist/:itemId", async (c) => {
   const lockErr = await requireLock(id, auth.userId);
   if (lockErr) return c.json({ error: lockErr }, 423);
 
-  const body = await c.req.json();
+  const body = updateChecklistItemSchema.parse(await c.req.json());
 
   const updateData: any = {};
   if (body.done !== undefined) updateData.done = body.done;
@@ -946,7 +984,7 @@ projectRoutes.delete("/:id", async (c) => {
   });
   for (const doc of generatedDocs) {
     if (doc.generatedFileId) {
-      await deleteFile(doc.generatedFileId).catch(() => {});
+      await deleteFile(doc.generatedFileId).catch((e: any) => console.warn("[projects] generated doc file cleanup:", e.message));
     }
   }
 
@@ -963,7 +1001,7 @@ projectRoutes.put("/:id", async (c) => {
   const lockErr = await requireLock(id, auth.userId);
   if (lockErr) return c.json({ error: lockErr }, 423);
 
-  const body = await c.req.json();
+  const body = updateProjectSchema.parse(await c.req.json());
 
   const updateData: any = { updatedAt: new Date() };
   if (body.name !== undefined) updateData.name = body.name;

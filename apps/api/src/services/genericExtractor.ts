@@ -191,13 +191,13 @@ async function extractGenericChunked(
 
   console.log(`[genericExtractor] Large document (${text.length} chars): splitting into ${chunks.length} chunks with ${CHUNK_OVERLAP_PAGES}-page overlap for "${documentType}"`);
 
-  // Process chunks with concurrency limit
+  // Process chunks with concurrency limit — queue-based dispatch
   const allFields: ExtractionResult["extracted_fields"] = [];
-  let nextChunk = 0;
+  const chunkQueue = chunks.map((_, i) => i);
 
   async function worker() {
-    while (nextChunk < chunks.length) {
-      const idx = nextChunk++;
+    let idx: number | undefined;
+    while ((idx = chunkQueue.shift()) !== undefined) {
       const chunkResult = await extractGenericSingle(chunks[idx], documentType, vocabulary, Date.now());
       allFields.push(...chunkResult.extracted_fields);
     }

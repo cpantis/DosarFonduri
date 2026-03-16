@@ -99,7 +99,8 @@ print(json.dumps(placeholders))
   fs.writeFileSync(scriptPath, script);
 
   try {
-    const result = execSync(`python3 ${scriptPath} ${inputPath}`, {
+    const { execFileSync } = await import("child_process");
+    const result = execFileSync("python3", [scriptPath, inputPath], {
       encoding: "utf-8",
       timeout: 30000,
     });
@@ -255,7 +256,8 @@ print(json.dumps(unique))
   fs.writeFileSync(scriptPath, script);
 
   try {
-    const result = execSync(`python3 ${scriptPath} ${inputPath}`, {
+    const { execFileSync } = await import("child_process");
+    const result = execFileSync("python3", [scriptPath, inputPath], {
       encoding: "utf-8",
       timeout: 30000,
     });
@@ -285,7 +287,8 @@ async function convertDocxToPdf(buffer: Buffer): Promise<Buffer | null> {
   fs.mkdirSync(outDir, { recursive: true });
 
   try {
-    execSync(`libreoffice --headless --convert-to pdf --outdir "${outDir}" "${inputPath}"`, {
+    const { execFileSync: execFileSync2 } = await import("child_process");
+    execFileSync2("libreoffice", ["--headless", "--convert-to", "pdf", "--outdir", outDir, inputPath], {
       encoding: "utf-8",
       timeout: 30000,
     });
@@ -344,7 +347,7 @@ export const processTemplateWorker = new Worker<ProcessTemplatePayload>(
           jobId: job.id || "", jobType: "template", documentId,
           documentName: doc.name, progress: 10, status: "processing",
           message: `Extragere câmpuri XFA din "${doc.name}"...`,
-        }).catch(() => {});
+        }).catch((e: any) => console.warn("[processTemplate] sse xfa progress:", e.message));
 
         const { extractXFAFields } = await import("../services/xfaFiller");
         const xfaFields = await extractXFAFields(buffer);
@@ -354,7 +357,7 @@ export const processTemplateWorker = new Worker<ProcessTemplatePayload>(
           jobId: job.id || "", jobType: "template", documentId,
           documentName: doc.name, progress: 50, status: "processing",
           message: `XFA: ${xfaFields.length} câmpuri extrase programatic (zero AI cost).`,
-        }).catch(() => {});
+        }).catch((e: any) => console.warn("[processTemplate] sse xfa count:", e.message));
 
         if (xfaFields.length > 0) {
           console.log(`[processTemplate] PDF XFA: ${xfaFields.length} câmpuri extrase programatic, skip detectFieldsVisually()`);
@@ -388,7 +391,7 @@ export const processTemplateWorker = new Worker<ProcessTemplatePayload>(
             jobId: job.id || "", jobType: "template", documentId,
             documentName: doc.name, progress: 40, status: "processing",
             message: `PDF fără XFA — detecție vizuală cu Claude Vision...`,
-          }).catch(() => {});
+          }).catch((e: any) => console.warn("[processTemplate] sse visual detection progress:", e.message));
           try {
             const visualFields = await detectFieldsVisually(buffer);
             uniqueElements = visualFields.map((f, idx) => ({
@@ -411,7 +414,7 @@ export const processTemplateWorker = new Worker<ProcessTemplatePayload>(
               jobId: job.id || "", jobType: "template", documentId,
               documentName: doc.name, progress: 50, status: "processing",
               message: `Detecția vizuală nu a funcționat — se continuă doar cu extracția text`,
-            }).catch(() => {});
+            }).catch((e: any) => console.warn("[processTemplate] sse visual fallback:", e.message));
           }
         }
 
@@ -422,7 +425,7 @@ export const processTemplateWorker = new Worker<ProcessTemplatePayload>(
           jobId: job.id || "", jobType: "template", documentId,
           documentName: doc.name, progress: 10, status: "processing",
           message: `Extragere placeholder-e din "${doc.name}"...`,
-        }).catch(() => {});
+        }).catch((e: any) => console.warn("[processTemplate] sse placeholder progress:", e.message));
 
         const placeholders = await extractPlaceholders(buffer, name);
 
@@ -438,7 +441,7 @@ export const processTemplateWorker = new Worker<ProcessTemplatePayload>(
                 jobId: job.id || "", jobType: "template", documentId,
                 documentName: doc.name, progress: 40, status: "processing",
                 message: `Scanare vizuală Claude Vision pe "${doc.name}"...`,
-              }).catch(() => {});
+              }).catch((e: any) => console.warn("[processTemplate] sse visual scan progress:", e.message));
               visualFields = await detectFieldsVisually(pdfBuffer);
             }
           } catch (err) {
@@ -522,7 +525,7 @@ export const processTemplateWorker = new Worker<ProcessTemplatePayload>(
           jobId: job.id || "", jobType: "template", documentId,
           documentName: doc.name, progress: 75, status: "processing",
           message: `Modul Compose nu este suportat pentru PDF. Folosiți DOCX/XLSX pentru documente cu secțiuni generate AI.`,
-        }).catch(() => {});
+        }).catch((e: any) => console.warn("[processTemplate] sse compose warning:", e.message));
       }
       if (isCompose && (doc.fileType === "docx" || doc.fileType === "xlsx")) {
         try {
@@ -583,7 +586,7 @@ export const processTemplateWorker = new Worker<ProcessTemplatePayload>(
         mappedToDefinitions: mappedCount,
         visualCrossCheck: visualCrossCheckStats,
         message: `Template procesat "${doc.name}". ${uniqueElements.length} câmpuri detectate, ${mappedCount} mapate la definiții.${crossCheckMsg}`,
-      }).catch(() => {});
+      }).catch((e: any) => console.warn("[processTemplate] sse document processed:", e.message));
 
     } catch (error) {
       console.error(`Process template error (attempt ${job.attemptsMade + 1}/${job.opts.attempts || 3}):`, error);
@@ -603,7 +606,7 @@ export const processTemplateWorker = new Worker<ProcessTemplatePayload>(
         message: isLastAttempt
           ? `Eroare la procesarea template-ului (toate ${job.opts.attempts || 3} încercări eșuate): ${errorMsg}`
           : `Eroare la procesarea template-ului (încercare ${job.attemptsMade + 1}/${job.opts.attempts || 3}, se reîncearcă): ${errorMsg}`,
-      }).catch(() => {});
+      }).catch((e: any) => console.warn("[processTemplate] sse document failed:", e.message));
       throw error;
     }
   },

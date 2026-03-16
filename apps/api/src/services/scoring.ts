@@ -5,6 +5,78 @@ import {
 } from "../db/schema";
 import { eq, and } from "drizzle-orm";
 
+// Safe arithmetic evaluator — recursive descent parser for +, -, *, /, ()
+// No eval/Function — immune to code injection
+function safeEvalArithmetic(expr: string): number | null {
+  const tokens: string[] = [];
+  const cleaned = expr.replace(/\s+/g, "");
+
+  // Tokenize: numbers (including decimals) and operators
+  let i = 0;
+  while (i < cleaned.length) {
+    const ch = cleaned[i];
+    if ("0123456789.".includes(ch)) {
+      let num = "";
+      while (i < cleaned.length && "0123456789.".includes(cleaned[i])) {
+        num += cleaned[i++];
+      }
+      tokens.push(num);
+    } else if ("+-*/()".includes(ch)) {
+      tokens.push(ch);
+      i++;
+    } else {
+      return null; // Invalid character
+    }
+  }
+
+  let pos = 0;
+
+  function parseExpr(): number {
+    let result = parseTerm();
+    while (pos < tokens.length && (tokens[pos] === "+" || tokens[pos] === "-")) {
+      const op = tokens[pos++];
+      const right = parseTerm();
+      result = op === "+" ? result + right : result - right;
+    }
+    return result;
+  }
+
+  function parseTerm(): number {
+    let result = parseFactor();
+    while (pos < tokens.length && (tokens[pos] === "*" || tokens[pos] === "/")) {
+      const op = tokens[pos++];
+      const right = parseFactor();
+      result = op === "*" ? result * right : (right !== 0 ? result / right : NaN);
+    }
+    return result;
+  }
+
+  function parseFactor(): number {
+    // Handle unary minus
+    if (tokens[pos] === "-") {
+      pos++;
+      return -parseFactor();
+    }
+    if (tokens[pos] === "(") {
+      pos++; // skip (
+      const result = parseExpr();
+      if (tokens[pos] === ")") pos++; // skip )
+      return result;
+    }
+    const num = parseFloat(tokens[pos++]);
+    if (isNaN(num)) return NaN;
+    return num;
+  }
+
+  try {
+    const result = parseExpr();
+    if (pos !== tokens.length || isNaN(result) || !isFinite(result)) return null;
+    return result;
+  } catch {
+    return null;
+  }
+}
+
 interface ScoreResult {
   criteriaId: string;
   code: string;
@@ -140,7 +212,6 @@ async function evaluateCriterion(
 
     case "formula": {
       // Simple formula evaluation — supports basic arithmetic with element references
-      // For complex formulas, this would need a proper expression evaluator
       if (!logic.formula) {
         return { ...base, points: null, reasoning: "Formula nu este configurată", inputElements: inputs };
       }
@@ -163,10 +234,12 @@ async function evaluateCriterion(
       }
 
       try {
-        // Safe eval — only allow numbers and basic operators
-        const sanitized = formulaStr.replace(/[^0-9+\-*/.() ]/g, "");
-        const result = Function(`"use strict"; return (${sanitized})`)();
-        const points = Math.min(Math.max(0, parseFloat(result) || 0), maxPoints);
+        // Safe arithmetic evaluator — no Function()/eval(), only parses numbers and +-*/()
+        const result = safeEvalArithmetic(formulaStr);
+        if (result === null) {
+          return { ...base, points: null, reasoning: `Formula invalidă: ${logic.formula}`, inputElements: inputs };
+        }
+        const points = Math.min(Math.max(0, result), maxPoints);
         return {
           ...base,
           points,

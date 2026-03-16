@@ -52,16 +52,35 @@ templateRoutes.post("/documents/:docId/elements", async (c) => {
   return c.json(element, 201);
 });
 
-// Validate / edit element
+// Validate / edit element — whitelist allowed fields
+const updateElementSchema = z.object({
+  label: z.string().min(1).max(255).optional(),
+  fieldType: z.enum(["text", "number", "textarea", "date", "table", "signature", "select"]).optional(),
+  fieldValue: z.string().max(10000).optional().nullable(),
+  validated: z.boolean().optional(),
+  group: z.string().max(100).optional().nullable(),
+  isRepeating: z.boolean().optional(),
+  rowIndex: z.number().int().min(0).optional().nullable(),
+});
+
 templateRoutes.put("/elements/:id", async (c) => {
   const auth = c.get("auth") as any;
   const id = c.req.param("id");
-  const body = await c.req.json();
+  const body = updateElementSchema.parse(await c.req.json());
 
-  const [updated] = await db.update(templateElements).set({
-    ...body,
-    validatedBy: body.validated ? auth.userId : null,
-  }).where(
+  const updates: Record<string, any> = {};
+  if (body.label !== undefined) updates.label = body.label;
+  if (body.fieldType !== undefined) updates.fieldType = body.fieldType;
+  if (body.fieldValue !== undefined) updates.fieldValue = body.fieldValue;
+  if (body.validated !== undefined) {
+    updates.validated = body.validated;
+    updates.validatedBy = body.validated ? auth.userId : null;
+  }
+  if (body.group !== undefined) updates.group = body.group;
+  if (body.isRepeating !== undefined) updates.isRepeating = body.isRepeating;
+  if (body.rowIndex !== undefined) updates.rowIndex = body.rowIndex;
+
+  const [updated] = await db.update(templateElements).set(updates).where(
     and(eq(templateElements.id, id), eq(templateElements.organizationId, auth.organizationId))
   ).returning();
 

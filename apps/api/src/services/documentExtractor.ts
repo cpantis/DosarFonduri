@@ -88,7 +88,7 @@ async function getCachedExtraction(
       const redisKey = `extract:${contentHash}:${extractionType}`;
       const cached = await redis.get(redisKey);
       if (cached) {
-        bumpCacheHitCount(contentHash, extractionType, organizationId).catch(() => {});
+        bumpCacheHitCount(contentHash, extractionType, organizationId).catch((e: any) => console.warn("[extractor] cache hit count bump:", e.message));
         return JSON.parse(cached);
       }
     } catch { /* Redis miss */ }
@@ -106,9 +106,9 @@ async function getCachedExtraction(
   if (row) {
     if (isRedisReady()) {
       const redisKey = `extract:${contentHash}:${extractionType}`;
-      redis.set(redisKey, JSON.stringify(row.result), "EX", 7 * 86400).catch(() => {});
+      redis.set(redisKey, JSON.stringify(row.result), "EX", 7 * 86400).catch((e: any) => console.warn("[extractor] redis cache backfill:", e.message));
     }
-    bumpCacheHitCount(contentHash, extractionType, organizationId).catch(() => {});
+    bumpCacheHitCount(contentHash, extractionType, organizationId).catch((e: any) => console.warn("[extractor] cache hit count bump:", e.message));
     return row.result;
   }
 
@@ -144,7 +144,7 @@ async function setCachedExtraction(
 
   if (isRedisReady()) {
     const redisKey = `extract:${contentHash}:${extractionType}`;
-    redis.set(redisKey, JSON.stringify(result), "EX", 7 * 86400).catch(() => {});
+    redis.set(redisKey, JSON.stringify(result), "EX", 7 * 86400).catch((e: any) => console.warn("[extractor] redis cache store:", e.message));
   }
 }
 
@@ -284,7 +284,7 @@ ${chunkText.slice(0, 100000)}`,
   // Stream each field via SSE
   if (sseChannel && fields.length > 0) {
     for (const field of fields) {
-      publishEvent(sseChannel, "field_extracted", { chunkIndex, field }).catch(() => {});
+      publishEvent(sseChannel, "field_extracted", { chunkIndex, field }).catch((e: any) => console.warn("[extractor] SSE field_extracted:", e.message));
     }
   }
 
@@ -427,7 +427,7 @@ export async function extractDocument(opts: ExtractOptions): Promise<ExtractionR
     if (sseChannel) {
       publishEvent(sseChannel, "extraction_progress", {
         documentId: opts.documentId, progress: pct, message: msg,
-      }).catch(() => {});
+      }).catch((e: any) => console.warn("[extractor] SSE extraction_progress:", e.message));
     }
   };
 
@@ -439,7 +439,7 @@ export async function extractDocument(opts: ExtractOptions): Promise<ExtractionR
       if (sseChannel) {
         publishEvent(sseChannel, "extraction_complete", {
           documentId: opts.documentId, fromCache: true, fieldCount: cachedFull.fields?.length || 0,
-        }).catch(() => {});
+        }).catch((e: any) => console.warn("[extractor] SSE extraction_complete:", e.message));
       }
       return { ...cachedFull, documentId: opts.documentId, fromCache: true };
     }
@@ -559,7 +559,7 @@ export async function extractDocument(opts: ExtractOptions): Promise<ExtractionR
       documentId: opts.documentId, fromCache: false,
       fieldCount: fields.length, pageCount: pages.length,
       extractionTimeMs, documentType: classification.documentType,
-    }).catch(() => {});
+    }).catch((e: any) => console.warn("[extractor] SSE extraction_complete:", e.message));
   }
 
   return result;
@@ -584,8 +584,13 @@ export async function invalidateCache(contentHash: string, organizationId: strin
 
   if (isRedisReady()) {
     const pattern = `extract:${contentHash}:*`;
-    const keys = await redis.keys(pattern);
-    if (keys.length > 0) await redis.del(...keys);
+    // Use SCAN instead of KEYS to avoid blocking Redis on large keyspaces
+    const stream = redis.scanStream({ match: pattern, count: 100 });
+    const keysToDelete: string[] = [];
+    for await (const batch of stream) {
+      keysToDelete.push(...(batch as string[]));
+    }
+    if (keysToDelete.length > 0) await redis.del(...keysToDelete);
   }
 }
 

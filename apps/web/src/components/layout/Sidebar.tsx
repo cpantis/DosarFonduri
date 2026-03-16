@@ -177,10 +177,14 @@ export function Sidebar() {
           <NavItem key={item.key} item={item} active={isActive(item.key, item.href)} />
         ))}
 
-        <SectionLabel>Sistem</SectionLabel>
-        {systemItems.map((item) => (
-          <NavItem key={item.key} item={item} active={isActive(item.key, item.href)} />
-        ))}
+        {user?.role === "admin" && (
+          <>
+            <SectionLabel>Sistem</SectionLabel>
+            {systemItems.map((item) => (
+              <NavItem key={item.key} item={item} active={isActive(item.key, item.href)} />
+            ))}
+          </>
+        )}
       </nav>
 
       {/* User footer */}

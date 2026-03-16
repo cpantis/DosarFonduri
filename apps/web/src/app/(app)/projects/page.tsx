@@ -75,7 +75,7 @@ export default function ProjectsPage() {
     setLoading(true);
     apiGet("/api/projects")
       .then((data: any) => { setProjects(Array.isArray(data) ? data : data.projects || []); })
-      .catch(() => setProjects([]))
+      .catch((err) => { console.warn("[projects] load failed:", err.message); setProjects([]); })
       .finally(() => setLoading(false));
   }, []);
 
@@ -84,11 +84,11 @@ export default function ProjectsPage() {
     apiGet("/api/companies").then((data: any) => {
       const list = Array.isArray(data) ? data : data.companies || [];
       setCompanies(list.map((c: any) => ({ id: c.id, name: c.denumire || c.name })));
-    }).catch(() => setCompanies([]));
+    }).catch((err) => { console.warn("[projects] companies load:", err.message); setCompanies([]); });
     apiGet("/api/documents/folders").then((data: any) => {
       const folders = Array.isArray(data) ? data : data.folders || [];
       setFolderTree(buildProgramTree(folders));
-    }).catch(() => setFolderTree([]));
+    }).catch((err) => { console.warn("[projects] folders load:", err.message); setFolderTree([]); });
   }, [showCreate]);
 
   const [createError, setCreateError] = useState<string | null>(null);

@@ -54,15 +54,33 @@ export function SplitPane({
     };
   }, [dragging, handleMove]);
 
+  const onKeyDown = useCallback((e: React.KeyboardEvent) => {
+    const step = e.shiftKey ? 40 : 10;
+    if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+      e.preventDefault();
+      const delta = e.key === "ArrowLeft" ? -step : step;
+      // For right-side panel, left arrow grows it, right shrinks
+      const adjust = side === "right" ? -delta : delta;
+      setPanelW(prev => {
+        const next = prev + adjust;
+        return Math.max(minRight, Math.min(maxRight, next));
+      });
+    }
+  }, [side, minRight, maxRight]);
+
   const handle = (
     <div
       className="w-2 cursor-col-resize flex items-center justify-center relative z-10 flex-shrink-0 group transition-colors"
       role="separator"
       aria-orientation="vertical"
       aria-label="Resize panels"
+      aria-valuenow={panelW}
+      aria-valuemin={minRight}
+      aria-valuemax={maxRight}
       tabIndex={0}
       onMouseDown={onDown}
       onTouchStart={onDown}
+      onKeyDown={onKeyDown}
     >
       <div
         className="absolute top-0 bottom-0 w-px transition-all"

@@ -94,7 +94,7 @@ async function handleOnrcExtract(job: Job<CompanyExtractPayload>) {
       companyId,
       documentName: name,
       message: "Extragerea datelor din documentul ONRC a eșuat. Verificați calitatea documentului.",
-    }).catch(() => {});
+    }).catch((e: any) => console.warn("[processCompany] sse extraction warning:", e.message));
     throw new Error("Nu s-au putut extrage date din documentul ONRC");
   }
 
@@ -198,7 +198,7 @@ async function handleOnrcExtract(job: Job<CompanyExtractPayload>) {
     denumire: companyData.denumire || null,
     cui: companyData.cui || null,
     message: `Firmă procesată: ${companyData.denumire || "necunoscută"}`,
-  }).catch(() => {});
+  }).catch((e: any) => console.warn("[processCompany] sse company processed:", e.message));
 
   return { companyId, status: "done", denumire: companyData.denumire };
 }
@@ -234,7 +234,7 @@ async function handleOnrcUpdate(job: Job<CompanyOnrcUpdatePayload>) {
       companyId,
       documentName: name,
       message: "Actualizare ONRC eșuată — nu s-au putut extrage date din noul document.",
-    }).catch(() => {});
+    }).catch((e: any) => console.warn("[processCompany] sse onrc update warning:", e.message));
     throw new Error("Nu s-au putut extrage date din documentul ONRC");
   }
 
@@ -334,7 +334,7 @@ async function handleOnrcUpdate(job: Job<CompanyOnrcUpdatePayload>) {
     denumire: companyData.denumire || null,
     cui: companyData.cui || null,
     message: `Date ONRC actualizate: ${companyData.denumire || "firmă"}`,
-  }).catch(() => {});
+  }).catch((e: any) => console.warn("[processCompany] sse onrc updated:", e.message));
 
   return { companyId, status: "done", denumire: companyData.denumire };
 }
@@ -393,7 +393,7 @@ async function handleBilantParse(job: Job<CompanyBilantPayload>) {
     status: "done",
     year,
     message: `Bilanț ${year} procesat pentru ${company?.denumire || "firmă"}`,
-  }).catch(() => {});
+  }).catch((e: any) => console.warn("[processCompany] sse bilant processed:", e.message));
 
   return { companyId, status: "done", year };
 }
@@ -425,14 +425,14 @@ export const processCompanyWorker = new Worker<ProcessCompanyPayload>(
         await db.update(companies).set({
           processingStatus: "error",
           processingError: err.message?.substring(0, 500) || "Eroare la procesare",
-        }).where(eq(companies.id, job.data.companyId)).catch(() => {});
+        }).where(eq(companies.id, job.data.companyId)).catch((e: any) => console.warn("[processCompany] db error status update:", e.message));
 
         // SSE failure notification
         await publishEvent(`org:${job.data.organizationId}:uploads`, "company_processing_failed", {
           companyId: job.data.companyId,
           status: "error",
           message: `Eroare la procesare: ${err.message?.substring(0, 200) || "Eroare necunoscută"}`,
-        }).catch(() => {});
+        }).catch((e: any) => console.warn("[processCompany] sse processing failed:", e.message));
       }
 
       throw err; // Re-throw for BullMQ retry logic

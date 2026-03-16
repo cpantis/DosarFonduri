@@ -758,7 +758,7 @@ async function saveExtractedFieldsToProjectElements(
       updatedCount,
       elementIds: modifiedElementIds,
       message: `${updatedCount} elemente actualizate din document`,
-    }).catch(() => {});
+    }).catch((e: any) => console.warn("[processClientDoc] sse elements updated:", e.message));
   }
 
   // === CASCADE: Eligibility → Scoring → SSE ===
@@ -778,7 +778,7 @@ async function saveExtractedFieldsToProjectElements(
         failed: eligibility.filter(e => e.status === "failed").length,
         pending: eligibility.filter(e => e.status === "pending").length,
         message: `Eligibilitate re-evaluată: ${eligibility.filter(e => e.status === "passed").length}/${eligibility.length} trecute`,
-      }).catch(() => {});
+      }).catch((e: any) => console.warn("[processClientDoc] sse eligibility updated:", e.message));
     } catch (err) {
       console.error(`[saveExtracted] Eligibility check failed for project ${project.id}:`, err);
     }
@@ -792,7 +792,7 @@ async function saveExtractedFieldsToProjectElements(
           maxTotalPoints: scoreResult.maxTotalPoints,
           percentage: scoreResult.percentage,
           message: `Punctaj actualizat: ${scoreResult.totalPoints}/${scoreResult.maxTotalPoints} (${scoreResult.percentage}%)`,
-        }).catch(() => {});
+        }).catch((e: any) => console.warn("[processClientDoc] sse score updated:", e.message));
       }
     } catch (err) {
       console.error(`[saveExtracted] Score computation failed for project ${project.id}:`, err);
@@ -860,7 +860,7 @@ export const processClientDocWorker = new Worker<ProcessClientDocPayload>(
             documentName: doc.name,
             progress: 45,
             message: `Pre-structurare text cu Sonnet (${pageCount} pagini, ${(text.length / 1000).toFixed(0)}K chars)...`,
-          }).catch(() => {});
+          }).catch((e: any) => console.warn("[processClientDoc] sse pre-structure progress:", e.message));
 
           const preStructResult = await preStructureClientText(text);
           extractionText = preStructResult.cleanedText;
@@ -912,7 +912,7 @@ export const processClientDocWorker = new Worker<ProcessClientDocPayload>(
         documentName: doc.name,
         documentType: classification.documentType,
         message: `Extrag date din "${doc.name}" (${classification.documentType})...`,
-      }).catch(() => {});
+      }).catch((e: any) => console.warn("[processClientDoc] sse extraction started:", e.message));
 
       try {
         // Check cache first
@@ -1015,7 +1015,7 @@ export const processClientDocWorker = new Worker<ProcessClientDocPayload>(
               fieldIndex: i + 1,
               totalFields: totalVisible,
               documentType: classification.documentType,
-            }).catch(() => {});
+            }).catch((e: any) => console.warn("[processClientDoc] sse field extracted:", e.message));
           }
         }
       } catch (extractError) {
@@ -1069,7 +1069,7 @@ export const processClientDocWorker = new Worker<ProcessClientDocPayload>(
         message: preStructured
           ? `Document procesat "${doc.name}" — clasificat ca ${classification.documentType} (pre-structurat cu Sonnet)`
           : `Document procesat "${doc.name}" — clasificat ca ${classification.documentType}`,
-      }).catch(() => {});
+      }).catch((e: any) => console.warn("[processClientDoc] sse document processed:", e.message));
 
       if (extractionResult && extractionResult.extracted_fields.length > 0) {
         publishEvent(`org:${organizationId}:uploads`, "extraction_complete", {
@@ -1082,7 +1082,7 @@ export const processClientDocWorker = new Worker<ProcessClientDocPayload>(
           message: cacheHit
             ? `Extrase ${extractionResult.extracted_fields.length} câmpuri din "${doc.name}" (din cache)`
             : `Extrase ${extractionResult.extracted_fields.length} câmpuri din "${doc.name}"`,
-        }).catch(() => {});
+        }).catch((e: any) => console.warn("[processClientDoc] sse extraction complete:", e.message));
       }
 
       await job.updateProgress(100);
@@ -1105,7 +1105,7 @@ export const processClientDocWorker = new Worker<ProcessClientDocPayload>(
         message: isLastAttempt
           ? `Eroare la procesarea documentului (toate ${job.opts.attempts || 3} încercări eșuate): ${errorMsg}`
           : `Eroare la procesarea documentului (încercare ${job.attemptsMade + 1}/${job.opts.attempts || 3}, se reîncearcă): ${errorMsg}`,
-      }).catch(() => {});
+      }).catch((e: any) => console.warn("[processClientDoc] sse document failed:", e.message));
       throw error;
     }
   },

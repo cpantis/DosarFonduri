@@ -3,10 +3,15 @@ import { sign, verify } from "hono/jwt";
 import { z } from "zod";
 import { db } from "../db";
 import { providerUsers, cabinetCodes, organizations, users } from "../db/schema";
-import { eq, and, isNull, sql } from "drizzle-orm";
+import { eq, and, isNull, inArray, sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { lookupCUI_ListaFirme, searchCompany_ListaFirme } from "../services/listafirme";
 import type { AppEnv } from "../types/hono";
+
+// HTML escape to prevent XSS in email templates
+function escapeHtml(str: string): string {
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
 
 export const providerRoutes = new Hono<AppEnv>();
 
@@ -23,9 +28,39 @@ const providerAuth = async (c: any, next: any) => {
   }
 };
 
+// Helper: get organization IDs owned by this provider (via cabinet codes they created)
+async function getProviderOrgIds(providerId: string): Promise<string[]> {
+  const codes = await db.query.cabinetCodes.findMany({
+    where: eq(cabinetCodes.createdBy, providerId),
+  });
+  return codes.map(c => c.organizationId).filter((id): id is string => id != null);
+}
+
+// Helper: verify provider owns a specific cabinet (organization)
+async function verifyProviderOwnsCabinet(providerId: string, orgId: string): Promise<boolean> {
+  const code = await db.query.cabinetCodes.findFirst({
+    where: and(
+      eq(cabinetCodes.createdBy, providerId),
+      eq(cabinetCodes.organizationId, orgId),
+    ),
+  });
+  return !!code;
+}
+
+// Helper: verify provider owns a specific code
+async function verifyProviderOwnsCode(providerId: string, codeId: string): Promise<boolean> {
+  const code = await db.query.cabinetCodes.findFirst({
+    where: and(
+      eq(cabinetCodes.id, codeId),
+      eq(cabinetCodes.createdBy, providerId),
+    ),
+  });
+  return !!code;
+}
+
 // Login
 providerRoutes.post("/auth/login", async (c) => {
-  const { email, password } = await c.req.json();
+  const { email, password } = z.object({ email: z.string().email(), password: z.string().min(1) }).parse(await c.req.json());
   const user = await db.query.providerUsers.findFirst({ where: eq(providerUsers.email, email) });
   if (!user) return c.json({ error: "Invalid credentials" }, 401);
   const valid = await bcrypt.compare(password, user.passwordHash);
@@ -34,11 +69,16 @@ providerRoutes.post("/auth/login", async (c) => {
   return c.json({ token, user: { id: user.id, email: user.email, name: user.name } });
 });
 
-// List cabinets
+// List cabinets — only those created by this provider
 providerRoutes.get("/cabinets", providerAuth, async (c) => {
+  const providerId = c.get("providerId") as string;
+  const orgIds = await getProviderOrgIds(providerId);
+  if (orgIds.length === 0) return c.json([]);
+
   const cabinets = await db
     .select()
     .from(organizations)
+    .where(inArray(organizations.id, orgIds))
     .orderBy(organizations.createdAt);
   return c.json(cabinets);
 });
@@ -106,11 +146,15 @@ providerRoutes.post("/codes", providerAuth, async (c) => {
   }
 });
 
-// List unused codes
+// List unused codes — only those created by this provider
 providerRoutes.get("/codes/unused", providerAuth, async (c) => {
+  const providerId = c.get("providerId") as string;
   try {
     const codes = await db.query.cabinetCodes.findMany({
-      where: isNull(cabinetCodes.organizationId),
+      where: and(
+        isNull(cabinetCodes.organizationId),
+        eq(cabinetCodes.createdBy, providerId),
+      ),
     });
     return c.json(codes);
   } catch (err: any) {
@@ -118,7 +162,10 @@ providerRoutes.get("/codes/unused", providerAuth, async (c) => {
     if (err.message?.includes("is_active") || err.message?.includes("column")) {
       await db.execute(sql`ALTER TABLE "cabinet_codes" ADD COLUMN IF NOT EXISTS "is_active" boolean NOT NULL DEFAULT true`);
       const codes = await db.query.cabinetCodes.findMany({
-        where: isNull(cabinetCodes.organizationId),
+        where: and(
+          isNull(cabinetCodes.organizationId),
+          eq(cabinetCodes.createdBy, providerId),
+        ),
       });
       return c.json(codes);
     }
@@ -126,9 +173,13 @@ providerRoutes.get("/codes/unused", providerAuth, async (c) => {
   }
 });
 
-// Delete code
+// Delete code — only if created by this provider
 providerRoutes.delete("/codes/:id", providerAuth, async (c) => {
   const id = c.req.param("id");
+  const providerId = c.get("providerId") as string;
+  if (!(await verifyProviderOwnsCode(providerId, id))) {
+    return c.json({ error: "Cod negăsit sau nu vă aparține" }, 404);
+  }
   await db.delete(cabinetCodes).where(eq(cabinetCodes.id, id));
   return c.json({ ok: true });
 });
@@ -162,14 +213,19 @@ providerRoutes.get("/search-company", providerAuth, async (c) => {
   }
 });
 
-// ─── EDIT CABINET PLAN ─────────────────────────
+// ─── EDIT CABINET PLAN — only if owned by this provider ─────
 providerRoutes.put("/cabinets/:id", providerAuth, async (c) => {
   const id = c.req.param("id");
+  const providerId = c.get("providerId") as string;
   const body = z.object({
     plan: z.enum(["starter", "professional", "enterprise"]).optional(),
     maxUsers: z.number().min(1).max(100).optional(),
     status: z.enum(["active", "trial", "inactive", "expired"]).optional(),
   }).parse(await c.req.json());
+
+  if (!(await verifyProviderOwnsCabinet(providerId, id))) {
+    return c.json({ error: "Cabinet negăsit sau nu vă aparține" }, 404);
+  }
 
   const org = await db.query.organizations.findFirst({
     where: eq(organizations.id, id),
@@ -194,9 +250,14 @@ providerRoutes.put("/cabinets/:id", providerAuth, async (c) => {
   return c.json(updated);
 });
 
-// ─── DEACTIVATE CABINET ─────────────────────────
+// ─── DEACTIVATE CABINET — only if owned by this provider ─────
 providerRoutes.post("/cabinets/:id/deactivate", providerAuth, async (c) => {
   const id = c.req.param("id");
+  const providerId = c.get("providerId") as string;
+  if (!(await verifyProviderOwnsCabinet(providerId, id))) {
+    return c.json({ error: "Cabinet negăsit sau nu vă aparține" }, 404);
+  }
+
   const org = await db.query.organizations.findFirst({
     where: eq(organizations.id, id),
   });
@@ -211,9 +272,13 @@ providerRoutes.post("/cabinets/:id/deactivate", providerAuth, async (c) => {
   return c.json(updated);
 });
 
-// ─── SEND EMAIL TO CABINET ─────────────────────────
+// ─── SEND EMAIL TO CABINET — only if owned by this provider ─────
 providerRoutes.post("/cabinets/:id/email", providerAuth, async (c) => {
   const id = c.req.param("id");
+  const providerId = c.get("providerId") as string;
+  if (!(await verifyProviderOwnsCabinet(providerId, id))) {
+    return c.json({ error: "Cabinet negăsit sau nu vă aparține" }, 404);
+  }
   const { subject, message } = z.object({
     subject: z.string().min(1).max(200),
     message: z.string().min(1).max(5000),
@@ -253,7 +318,7 @@ providerRoutes.post("/cabinets/:id/email", providerAuth, async (c) => {
           from: `DosarFonduri Provider <${from}>`,
           to: user.email,
           subject,
-          html: `<h2>${subject}</h2><p>${message.replace(/\n/g, "<br/>")}</p><hr/><p style="color:#888;font-size:12px">Trimis de Provider DosarFonduri către ${org.name}</p>`,
+          html: `<h2>${escapeHtml(subject)}</h2><p>${escapeHtml(message).replace(/\n/g, "<br/>")}</p><hr/><p style="color:#888;font-size:12px">Trimis de Provider DosarFonduri către ${escapeHtml(org.name)}</p>`,
         }),
       });
       sent++;
@@ -265,9 +330,13 @@ providerRoutes.post("/cabinets/:id/email", providerAuth, async (c) => {
   return c.json({ sent, total: orgUsers.length });
 });
 
-// ─── TOGGLE CODE ACTIVE/INACTIVE ─────────────────────────
+// ─── TOGGLE CODE ACTIVE/INACTIVE — only if created by this provider ─────
 providerRoutes.post("/codes/:id/toggle", providerAuth, async (c) => {
   const id = c.req.param("id");
+  const providerId = c.get("providerId") as string;
+  if (!(await verifyProviderOwnsCode(providerId, id))) {
+    return c.json({ error: "Cod negăsit sau nu vă aparține" }, 404);
+  }
   const code = await db.query.cabinetCodes.findFirst({
     where: eq(cabinetCodes.id, id),
   });
@@ -283,17 +352,21 @@ providerRoutes.post("/codes/:id/toggle", providerAuth, async (c) => {
   return c.json(updated);
 });
 
-// ─── LIST ALL PLATFORM USERS ─────────────────────────
+// ─── LIST USERS IN PROVIDER'S CABINETS ONLY ─────────────────────────
 providerRoutes.get("/users", providerAuth, async (c) => {
+  const providerId = c.get("providerId") as string;
+  const orgIds = await getProviderOrgIds(providerId);
+  if (orgIds.length === 0) return c.json([]);
+
   const allUsers = await db.query.users.findMany({
+    where: inArray(users.organizationId, orgIds),
     orderBy: (u, { desc }) => [desc(u.createdAt)],
   });
 
-  // Batch-load organizations for all users
-  const orgIds = [...new Set(allUsers.filter(u => u.organizationId).map(u => u.organizationId!))];
-  const orgs = orgIds.length > 0
-    ? await db.query.organizations.findMany()
-    : [];
+  // Batch-load organizations for matched users
+  const orgs = await db.query.organizations.findMany({
+    where: inArray(organizations.id, orgIds),
+  });
   const orgMap = new Map(orgs.map(o => [o.id, o]));
 
   return c.json(allUsers.map(u => ({
@@ -311,20 +384,32 @@ providerRoutes.get("/users", providerAuth, async (c) => {
   })));
 });
 
-// ─── DELETE USER ─────────────────────────
+// ─── DELETE USER — only from provider's own cabinets ─────────────────────────
 providerRoutes.delete("/users/:id", providerAuth, async (c) => {
   const id = c.req.param("id");
+  const providerId = c.get("providerId") as string;
+
   const user = await db.query.users.findFirst({ where: eq(users.id, id) });
   if (!user) return c.json({ error: "Utilizator negăsit" }, 404);
+
+  // Verify user's organization belongs to this provider
+  if (!user.organizationId || !(await verifyProviderOwnsCabinet(providerId, user.organizationId))) {
+    return c.json({ error: "Utilizatorul nu aparține cabinetelor dumneavoastră" }, 403);
+  }
 
   await db.delete(users).where(eq(users.id, id));
   return c.json({ ok: true, deletedEmail: user.email });
 });
 
-// Revenue stats
+// Revenue stats — only for provider's own cabinets
 providerRoutes.get("/revenue", providerAuth, async (c) => {
+  const providerId = c.get("providerId") as string;
+  const orgIds = await getProviderOrgIds(providerId);
+
   const planPrices = { starter: 49, professional: 149, enterprise: 399 };
-  const orgs = await db.query.organizations.findMany();
+  const orgs = orgIds.length > 0
+    ? await db.query.organizations.findMany({ where: inArray(organizations.id, orgIds) })
+    : [];
 
   const mrr = orgs
     .filter(o => o.status === "active")
@@ -338,11 +423,15 @@ providerRoutes.get("/revenue", providerAuth, async (c) => {
   });
 });
 
-// ─── ACCESS CABINET — Provider enters a cabinet as admin ─────
+// ─── ACCESS CABINET — only if owned by this provider ─────
 // Generates a user-level JWT for the first admin of the cabinet,
 // allowing the provider to manage companies, documents, projects etc.
 providerRoutes.post("/cabinets/:id/access", providerAuth, async (c) => {
   const orgId = c.req.param("id");
+  const providerId = c.get("providerId") as string;
+  if (!(await verifyProviderOwnsCabinet(providerId, orgId))) {
+    return c.json({ error: "Cabinet negăsit sau nu vă aparține" }, 404);
+  }
 
   const org = await db.query.organizations.findFirst({
     where: eq(organizations.id, orgId),

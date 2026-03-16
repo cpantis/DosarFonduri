@@ -402,7 +402,7 @@ IMPORTANT:
         tokensInput: response.usage.input_tokens,
         tokensOutput: response.usage.output_tokens,
         action: `prestructure_batch_${batch[0]?.page || 0}-${batch[batch.length - 1]?.page || 0}`,
-      }).catch(() => {});
+      }).catch((e: any) => console.warn("[ocr] AI usage logging:", e.message));
     }
 
     const textBlock = response.content.find((b: any) => b.type === "text");
@@ -434,16 +434,13 @@ IMPORTANT:
     }
   };
 
-  // Run batches with concurrency limit
-  let nextBatch = 0;
+  // Run batches with concurrency limit — pre-assign indices to avoid shared mutable counter
+  const batchResults: Array<PreStructuredPage[]> = new Array(batches.length);
+  const batchQueue = batches.map((_, i) => i);
   async function worker() {
-    while (nextBatch < batches.length) {
-      const idx = nextBatch++;
-      const result = await processBatch(batches[idx]);
-      for (const page of result) {
-        allPages.push(page);
-        totalTables += page.tables.length;
-      }
+    let idx: number | undefined;
+    while ((idx = batchQueue.shift()) !== undefined) {
+      batchResults[idx] = await processBatch(batches[idx]);
     }
   }
 
@@ -452,6 +449,14 @@ IMPORTANT:
     () => worker(),
   );
   await Promise.all(workers);
+
+  for (const result of batchResults) {
+    if (!result) continue;
+    for (const page of result) {
+      allPages.push(page);
+      totalTables += page.tables.length;
+    }
+  }
 
   // Sort by page number
   allPages.sort((a, b) => a.page - b.page);

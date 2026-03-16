@@ -19,7 +19,7 @@ export const db = drizzle(client, { schema });
 
 // Graceful shutdown
 function shutdown() {
-  client.end({ timeout: 5 }).catch(() => {});
+  client.end({ timeout: 5 }).catch((e: any) => console.warn("[db] graceful shutdown:", e.message));
 }
 process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);

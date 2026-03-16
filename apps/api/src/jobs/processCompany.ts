@@ -75,7 +75,19 @@ async function handleOnrcExtract(job: Job<CompanyExtractPayload>) {
     processingError: null,
   };
   if (companyData.denumire) updateData.denumire = companyData.denumire;
-  if (companyData.cui) updateData.cui = companyData.cui;
+  if (companyData.cui) {
+    // FIX F1.1: Check for CUI collision before updating
+    const existing = await db.query.companies.findFirst({
+      where: and(
+        eq(companies.cui, companyData.cui),
+        eq(companies.organizationId, organizationId),
+      ),
+    });
+    if (existing && existing.id !== companyId) {
+      throw new Error(`O firmă cu CUI ${companyData.cui} există deja în organizație (ID: ${existing.id}). Verificați duplicatele.`);
+    }
+    updateData.cui = companyData.cui;
+  }
   if (companyData.regCom) updateData.regCom = companyData.regCom;
   if (companyData.euid) updateData.euid = companyData.euid;
   if (companyData.adresa) updateData.adresa = companyData.adresa;

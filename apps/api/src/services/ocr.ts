@@ -20,27 +20,43 @@ export interface PDFExtractionResult {
   hasScannedPages: boolean;
   totalPages: number;
   scannedPageCount: number;
+  nativePageCount: number;
+  totalChars: number;
+  pages: PageResult[];
 }
 
 export async function extractTextFromPDF(buffer: Buffer): Promise<PDFExtractionResult> {
   // Try XFA extraction first — XFA PDFs contain form data in XML, not in page text
   const xfaText = await tryExtractXFA(buffer);
   if (xfaText) {
+    const xfaPage: PageResult = { page: 1, text: xfaText, is_scanned: false, confidence: 1.0 };
     return {
       text: `--- Pagina 1 (XFA) ---\n${xfaText}`,
       hasScannedPages: false,
       totalPages: 1,
       scannedPageCount: 0,
+      nativePageCount: 1,
+      totalChars: xfaText.length,
+      pages: [xfaPage],
     };
   }
 
   const pages = await extractPDFPages(buffer);
   const scannedCount = pages.filter(p => p.is_scanned).length;
+  const nativeCount = pages.length - scannedCount;
+  const totalChars = pages.reduce((sum, p) => sum + p.text.length, 0);
+  const text = pages.map(p => `--- Pagina ${p.page} ---\n${p.text}`).join("\n\n");
+
+  console.log(`[extractTextFromPDF] ${nativeCount} pagini text nativ, ${scannedCount} pagini OCR, ${totalChars} chars total`);
+
   return {
-    text: pages.map(p => `--- Pagina ${p.page} ---\n${p.text}`).join("\n\n"),
+    text,
     hasScannedPages: scannedCount > 0,
     totalPages: pages.length,
     scannedPageCount: scannedCount,
+    nativePageCount: nativeCount,
+    totalChars,
+    pages,
   };
 }
 
@@ -254,7 +270,7 @@ print(json.dumps(pages))
 
 export async function ocrPageWithVision(pageImageBase64: string, mediaType: string = "image/png"): Promise<string> {
   const response = await openai.chat.completions.create({
-    model: "gpt-4o",
+    model: "gpt-4o-mini",
     max_tokens: 4000,
     messages: [{
       role: "user",

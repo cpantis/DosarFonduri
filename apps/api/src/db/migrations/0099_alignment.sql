@@ -309,4 +309,41 @@ ALTER TABLE "ai_usage_log" DROP CONSTRAINT IF EXISTS "ai_usage_log_organization_
 ALTER TABLE "ai_usage_log" ADD CONSTRAINT "ai_usage_log_organization_id_organizations_id_fk"
   FOREIGN KEY ("organization_id") REFERENCES "organizations"("id") ON DELETE CASCADE;
 
+-- ═══════════════════════════════════════════════════════
+-- TABELE LIPSĂ — SCORING
+-- ═══════════════════════════════════════════════════════
+
+-- scoring_criteria (selection criteria per guide)
+CREATE TABLE IF NOT EXISTS "scoring_criteria" (
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+  "document_id" uuid NOT NULL REFERENCES "documents"("id") ON DELETE CASCADE,
+  "organization_id" uuid NOT NULL REFERENCES "organizations"("id") ON DELETE CASCADE,
+  "code" varchar(50) NOT NULL,
+  "name" varchar(500) NOT NULL,
+  "description" text,
+  "max_points" decimal(5, 2) NOT NULL,
+  "evaluation_logic" jsonb,
+  "category" varchar(100),
+  "sort_order" integer DEFAULT 0,
+  "source_page" integer,
+  "created_at" timestamp DEFAULT now() NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS "scoring_doc_idx" ON "scoring_criteria" ("document_id");
+CREATE INDEX IF NOT EXISTS "scoring_org_idx" ON "scoring_criteria" ("organization_id");
+
+-- project_scores (computed per project per criteria)
+CREATE TABLE IF NOT EXISTS "project_scores" (
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+  "project_id" uuid NOT NULL REFERENCES "projects"("id") ON DELETE CASCADE,
+  "criteria_id" uuid NOT NULL REFERENCES "scoring_criteria"("id") ON DELETE CASCADE,
+  "points" decimal(5, 2),
+  "max_points" decimal(5, 2) NOT NULL,
+  "reasoning" text,
+  "input_elements" jsonb,
+  "evaluated_at" timestamp DEFAULT now() NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS "score_project_idx" ON "project_scores" ("project_id");
+
 COMMIT;

@@ -1236,7 +1236,7 @@ export default function DocumentsPage() {
                                   )}
                                   {cr.evaluationLogic && (
                                     <span style={{ fontSize: 10, color: "#94a3b8", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "inline-block" }}>
-                                      {cr.evaluationLogic}
+                                      {typeof cr.evaluationLogic === "string" ? cr.evaluationLogic : cr.evaluationLogic.type || ""}
                                     </span>
                                   )}
                                 </div>

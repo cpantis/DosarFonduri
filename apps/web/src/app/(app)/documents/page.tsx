@@ -53,6 +53,7 @@ interface ApiDocument {
   tags: string[];
   uploadedAt: string;
   uploadedBy: string;
+  _uploadedByName?: string | null;
   processingError: string | null;
   _summary?: {
     rulesCount?: number;
@@ -174,7 +175,7 @@ function mapApiDocToLocal(doc: ApiDocument): DocItem {
     type: doc.fileType.toUpperCase() as DocItem["type"],
     size: formatFileSize(doc.fileSize),
     uploaded: doc.uploadedAt ? doc.uploadedAt.slice(0, 10) : "",
-    uploadedBy: doc.uploadedBy || "",
+    uploadedBy: doc._uploadedByName || doc.uploadedBy || "",
     status: mapApiStatusToLocal(doc.status, doc.processingType),
     processingType: doc.processingType || null,
     reguliExtrase: summary?.rulesCount || 0,
@@ -320,6 +321,9 @@ export default function DocumentsPage() {
   const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
   const [docRules, setDocRules] = useState<Record<string, any[]>>({});
   const [docRulesLoading, setDocRulesLoading] = useState<Record<string, boolean>>({});
+  const [docCriteria, setDocCriteria] = useState<Record<string, any[]>>({});
+  const [docElements, setDocElements] = useState<Record<string, any[]>>({});
+  const [expandedTab, setExpandedTab] = useState<Record<string, string>>({});
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
   const [pdfPreviewName, setPdfPreviewName] = useState<string>("");
   const searchRef = useRef<HTMLInputElement>(null);
@@ -550,15 +554,23 @@ export default function DocumentsPage() {
   const toggleExpandCard = useCallback(async (docId: string) => {
     const wasExpanded = expandedCards[docId];
     setExpandedCards(prev => ({ ...prev, [docId]: !prev[docId] }));
-    // Fetch rules on first expand if not already loaded
+    // Fetch rules, criteria, elements on first expand
     if (!wasExpanded && !docRules[docId] && !docRulesLoading[docId]) {
       setDocRulesLoading(prev => ({ ...prev, [docId]: true }));
       try {
-        const rules = await apiGet<any[]>(`/api/rules/documents/${docId}/rules`);
+        const [rules, criteria, elements] = await Promise.all([
+          apiGet<any[]>(`/api/rules/documents/${docId}/rules`).catch(() => []),
+          apiGet<any[]>(`/api/documents/documents/${docId}/scoring-summary`).catch(() => []),
+          apiGet<any[]>(`/api/documents/documents/${docId}/elements-summary`).catch(() => []),
+        ]);
         setDocRules(prev => ({ ...prev, [docId]: rules }));
+        setDocCriteria(prev => ({ ...prev, [docId]: criteria }));
+        setDocElements(prev => ({ ...prev, [docId]: elements }));
       } catch (err) {
-        console.error("Failed to fetch rules for document:", err);
+        console.error("Failed to fetch document details:", err);
         setDocRules(prev => ({ ...prev, [docId]: [] }));
+        setDocCriteria(prev => ({ ...prev, [docId]: [] }));
+        setDocElements(prev => ({ ...prev, [docId]: [] }));
       } finally {
         setDocRulesLoading(prev => ({ ...prev, [docId]: false }));
       }
@@ -587,7 +599,7 @@ export default function DocumentsPage() {
     return d.name.toLowerCase().includes(q) || d.type.toLowerCase().includes(q) || d.tags.some(t => t.toLowerCase().includes(q));
   });
 
-  const selDoc = filteredDocs.find(d => d.id === selectedDoc) || null;
+  // Detail info is now inline in card — no separate panel needed
   const breadcrumb = selectedFolder ? getBreadcrumb(tree, selectedFolder) || [] : [];
   const selectedNode = selectedFolder ? findNodeById(tree, selectedFolder) : null;
   const isLeafSelected = selectedNode ? LEAF_TYPES.has(selectedNode.type) : false;
@@ -897,11 +909,12 @@ export default function DocumentsPage() {
             (d.summary.elementsCount || 0) > 0 ||
             (d.summary.fieldsCount || 0) > 0
           );
+          const isSelected = selectedDoc === d.id;
           return (
             <div key={d.id} style={{ display: "flex", flexDirection: "column" }}>
               <div
-                className={`doc-card ${selectedDoc === d.id ? "active" : ""}`}
-                onClick={() => setSelectedDoc(d.id)}
+                className={`doc-card ${isSelected ? "active" : ""}`}
+                onClick={() => setSelectedDoc(isSelected ? null : d.id)}
               >
                 <div className="doc-card-icon">{TYPE_ICONS[d.type] || "\u{1F4C4}"}</div>
                 <div className="doc-card-info">
@@ -910,6 +923,7 @@ export default function DocumentsPage() {
                     <span>{d.type} {"\u00B7"} {d.size}</span>
                     <span>{"\u{1F4C5}"} {d.uploaded}</span>
                     {d.pageCount ? <span>{d.pageCount} pag.</span> : null}
+                    {d.uploadedBy && <span>de {d.uploadedBy}</span>}
                   </div>
                   {/* Real-time progress bar during processing */}
                   {isProcessing && jp && (
@@ -948,7 +962,7 @@ export default function DocumentsPage() {
                     {st.icon} {st.label}
                   </span>
                   {d.reguliExtrase > 0 && <span className="doc-stat-num">{d.reguliExtrase} reguli</span>}
-                  {d.campuri != null && d.campuri > 0 && <span className="doc-stat-num">{d.campuri} c\u00E2mpuri</span>}
+                  {d.campuri != null && d.campuri > 0 && <span className="doc-stat-num">{d.campuri} câmpuri</span>}
                   {hasSummary && (
                     <button
                       onClick={(e) => { e.stopPropagation(); toggleExpandCard(d.id); }}
@@ -963,15 +977,129 @@ export default function DocumentsPage() {
                   )}
                 </div>
               </div>
+              {/* ─── Inline detail section (replaces right panel) ─── */}
+              {isSelected && (
+                <div className="doc-card-detail" style={{
+                  margin: "0 4px 6px 4px",
+                  borderRadius: "0 0 10px 10px",
+                  border: "1px solid rgba(37,99,235,.2)",
+                  borderTop: "none",
+                  background: "#ffffff",
+                  padding: "12px 16px",
+                  animation: "docFadeIn .2s ease",
+                }}>
+                  {/* Info grid */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 10 }}>
+                    {d.documentTypeClass && (
+                      <div className="doc-detail-cell">
+                        <div className="doc-detail-cell-label">Tip document</div>
+                        <div className="doc-detail-cell-value" style={{ fontSize: 12 }}>{DOCUMENT_TYPE_LABELS[d.documentTypeClass] || d.documentTypeClass}</div>
+                      </div>
+                    )}
+                    {d.classificationConfidence != null && (
+                      <div className="doc-detail-cell">
+                        <div className="doc-detail-cell-label">Încredere</div>
+                        <div className={`doc-detail-cell-value mono ${d.classificationConfidence >= 0.8 ? "text-emerald-500" : d.classificationConfidence >= 0.5 ? "text-amber-500" : "text-red-500"}`} style={{ fontSize: 12 }}>
+                          {Math.round(d.classificationConfidence * 100)}%
+                        </div>
+                      </div>
+                    )}
+                    {d.reguliExtrase > 0 && (
+                      <div className="doc-detail-cell">
+                        <div className="doc-detail-cell-label">Reguli extrase</div>
+                        <div className="doc-detail-cell-value mono text-emerald-500" style={{ fontSize: 12 }}>{d.reguliExtrase}</div>
+                      </div>
+                    )}
+                    {d.campuri != null && d.campuri > 0 && (
+                      <div className="doc-detail-cell">
+                        <div className="doc-detail-cell-label">Câmpuri template</div>
+                        <div className="doc-detail-cell-value mono text-blue-600" style={{ fontSize: 12 }}>{d.campuri}</div>
+                      </div>
+                    )}
+                  </div>
+                  {/* Status actions */}
+                  {d.status === "neprocesat" && (
+                    <div style={{ marginBottom: 10 }}>
+                      <button className="doc-detail-btn primary" style={{ width: "auto", display: "inline-flex" }} onClick={(e) => { e.stopPropagation(); handleDocProcess(d.id); }}>
+                        {"\u{1F916}"} Procesează cu AI
+                      </button>
+                    </div>
+                  )}
+                  {d.status === "eroare" && (
+                    <div style={{ marginBottom: 10 }}>
+                      {d.processingError && (
+                        <div style={{ padding: "8px 12px", marginBottom: 8, borderRadius: 8, background: "rgba(220,38,38,.05)", border: "1px solid rgba(220,38,38,.15)", color: "#dc2626", fontSize: 11, lineHeight: 1.5, fontFamily: "'JetBrains Mono', monospace", wordBreak: "break-word" }}>
+                          {d.processingError}
+                        </div>
+                      )}
+                      <button className="doc-detail-btn primary" style={{ width: "auto", display: "inline-flex" }} onClick={(e) => { e.stopPropagation(); handleDocProcess(d.id); }}>
+                        {"\u{1F504}"} Reîncearcă procesarea
+                      </button>
+                    </div>
+                  )}
+                  {/* Extracted fields preview */}
+                  {d.extractedFields.length > 0 && (
+                    <div style={{ marginBottom: 10 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".5px", color: "#94a3b8", marginBottom: 6 }}>Date extrase ({d.extractedFields.length})</div>
+                      <div className="flex flex-col gap-1 max-h-[120px] overflow-y-auto">
+                        {d.extractedFields.slice(0, 8).map((f, i) => (
+                          <div key={i} className="flex justify-between items-center px-2.5 py-1 rounded-md text-xs bg-slate-50 border border-slate-200">
+                            <span className="font-semibold max-w-[45%] overflow-hidden text-ellipsis whitespace-nowrap text-slate-400">{f.field_key.replace(/_/g, " ")}</span>
+                            <span className="font-mono text-[11px] max-w-[50%] overflow-hidden text-ellipsis whitespace-nowrap text-right text-slate-900">
+                              {typeof f.field_value === "object" ? JSON.stringify(f.field_value).slice(0, 40) : String(f.field_value).slice(0, 40)}
+                            </span>
+                          </div>
+                        ))}
+                        {d.extractedFields.length > 8 && (
+                          <div style={{ fontSize: 11, color: "#94a3b8", textAlign: "center", padding: 2 }}>+{d.extractedFields.length - 8} câmpuri</div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {/* Action buttons */}
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button className="doc-detail-btn primary" onClick={(e) => { e.stopPropagation(); handleDocDownload(d.id); }}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                      </svg>
+                      Descarcă
+                    </button>
+                    <button className="doc-detail-btn" onClick={(e) => { e.stopPropagation(); handleDocPreview(d.id); }}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                      </svg>
+                      Previzualizare
+                    </button>
+                    <button className="doc-detail-btn danger" onClick={(e) => { e.stopPropagation(); handleDocDelete(d.id); }}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+                      </svg>
+                      Șterge
+                    </button>
+                  </div>
+                </div>
+              )}
               {/* Expandable results section */}
               {hasSummary && isExpanded && (() => {
                 const rules = docRules[d.id] || [];
+                const criteria = docCriteria[d.id] || [];
+                const elements = docElements[d.id] || [];
                 const isLoading = docRulesLoading[d.id];
+                const activeTab = expandedTab[d.id] || "rules";
                 const CATEGORY_COLORS: Record<string, string> = {
                   eligibilitate: "#34d399", financiar: "#fbbf24", tehnic: "#4d8bff",
                   administrativ: "#a78bfa", achizitii: "#fb923c", documente: "#64748b",
                   selectie: "#f87171", intensitate: "#06b6d4", ajutor_stat: "#ec4899",
                 };
+                const ELEMENT_CATEGORY_COLORS: Record<string, string> = {
+                  financial: "#fbbf24", legal: "#a78bfa", technical: "#4d8bff",
+                  environmental: "#34d399", hr: "#fb923c", other: "#64748b",
+                };
+                const tabs = [
+                  { id: "rules", label: "Reguli", count: d.summary?.rulesCount || 0, color: "#34d399", icon: "\u{1F6E1}" },
+                  { id: "criteria", label: "Criterii", count: d.summary?.scoringCount || 0, color: "#a78bfa", icon: "\u{1F4CA}" },
+                  { id: "elements", label: "Elemente", count: d.summary?.elementsCount || 0, color: "#4d8bff", icon: "\u{1F4CB}" },
+                ].filter(t => t.count > 0);
                 return (
                   <div style={{
                     margin: "0 4px 8px 4px",
@@ -983,168 +1111,165 @@ export default function DocumentsPage() {
                     animation: "docFadeIn .2s ease-out",
                     overflow: "hidden",
                   }}>
-                    {/* Summary counts bar */}
-                    <div style={{ display: "flex", gap: 14, flexWrap: "wrap", padding: "8px 14px", background: "#f8fafc", borderBottom: "1px solid rgba(226,232,240,.6)" }}>
-                      {d.processingType === "ghid" && (
-                        <>
-                          {(d.summary?.rulesCount || 0) > 0 && (
-                            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                              <span style={{ fontSize: 13 }}>{"\u{1F6E1}"}</span>
-                              <span style={{ color: "#64748b" }}>Reguli:</span>
-                              <span style={{ fontWeight: 700, color: "#34d399", fontFamily: "'JetBrains Mono', monospace" }}>{d.summary?.rulesCount}</span>
-                            </div>
-                          )}
-                          {(d.summary?.scoringCount || 0) > 0 && (
-                            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                              <span style={{ fontSize: 13 }}>{"\u{1F4CA}"}</span>
-                              <span style={{ color: "#64748b" }}>Criterii:</span>
-                              <span style={{ fontWeight: 700, color: "#a78bfa", fontFamily: "'JetBrains Mono', monospace" }}>{d.summary?.scoringCount}</span>
-                            </div>
-                          )}
-                          {(d.summary?.elementsCount || 0) > 0 && (
-                            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                              <span style={{ fontSize: 13 }}>{"\u{1F4CB}"}</span>
-                              <span style={{ color: "#64748b" }}>Elemente:</span>
-                              <span style={{ fontWeight: 700, color: "#4d8bff", fontFamily: "'JetBrains Mono', monospace" }}>{d.summary?.elementsCount}</span>
-                            </div>
-                          )}
-                          {d.summary?.trustScore != null && (
-                            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                              <span style={{
-                                display: "inline-block",
-                                fontSize: 9,
-                                fontWeight: 700,
-                                padding: "2px 6px",
-                                borderRadius: 4,
-                                background: d.summary.trustScore >= 0.8 ? "rgba(52,211,153,.15)" : d.summary.trustScore >= 0.6 ? "rgba(251,191,36,.15)" : "rgba(248,113,113,.15)",
-                                color: d.summary.trustScore >= 0.8 ? "#059669" : d.summary.trustScore >= 0.6 ? "#d97706" : "#dc2626",
-                                letterSpacing: ".3px",
-                                fontFamily: "'JetBrains Mono', monospace",
-                              }}>
-                                Trust: {Math.round(d.summary.trustScore * 100)}%
-                              </span>
-                            </div>
-                          )}
-                          {/* F8.2: Completeness report */}
-                          {d.summary?.completenessReport && typeof d.summary.completenessReport === "object" && (
-                            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                              {d.summary.completenessReport.missingFields?.length > 0 && (
-                                <span style={{
-                                  display: "inline-block", fontSize: 9, fontWeight: 600,
-                                  padding: "2px 6px", borderRadius: 4,
-                                  background: "rgba(251,191,36,.12)", color: "#d97706",
-                                  fontFamily: "'JetBrains Mono', monospace",
-                                }}>
-                                  {d.summary.completenessReport.missingFields.length} câmpuri lipsă
-                                </span>
-                              )}
-                              {d.summary.completenessReport.completeness != null && (
-                                <span style={{
-                                  display: "inline-block", fontSize: 9, fontWeight: 600,
-                                  padding: "2px 6px", borderRadius: 4,
-                                  background: "rgba(77,139,255,.1)", color: "#4d8bff",
-                                  fontFamily: "'JetBrains Mono', monospace",
-                                }}>
-                                  {Math.round(d.summary.completenessReport.completeness * 100)}% complet
-                                </span>
-                              )}
-                            </div>
-                          )}
-                        </>
-                      )}
+                    {/* Tab bar with counts */}
+                    <div style={{ display: "flex", gap: 0, background: "#f8fafc", borderBottom: "1px solid rgba(226,232,240,.6)" }}>
+                      {d.processingType === "ghid" && tabs.map(tab => (
+                        <button key={tab.id}
+                          onClick={(e) => { e.stopPropagation(); setExpandedTab(prev => ({ ...prev, [d.id]: tab.id })); }}
+                          style={{
+                            flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
+                            padding: "8px 12px", border: "none", cursor: "pointer",
+                            background: activeTab === tab.id ? "#ffffff" : "transparent",
+                            borderBottom: activeTab === tab.id ? `2px solid ${tab.color}` : "2px solid transparent",
+                            color: activeTab === tab.id ? "#0f172a" : "#94a3b8",
+                            fontWeight: activeTab === tab.id ? 700 : 500,
+                            fontSize: 12, fontFamily: "'Inter', system-ui, sans-serif",
+                            transition: "all .15s",
+                          }}
+                        >
+                          <span style={{ fontSize: 13 }}>{tab.icon}</span>
+                          {tab.label}:
+                          <span style={{ fontWeight: 700, color: tab.color, fontFamily: "'JetBrains Mono', monospace" }}>{tab.count}</span>
+                        </button>
+                      ))}
                       {d.processingType === "template" && (d.summary?.fieldsCount || 0) > 0 && (
-                        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "8px 14px" }}>
                           <span style={{ fontSize: 13 }}>{"\u{1F4DD}"}</span>
-                          <span style={{ color: "#64748b" }}>C\u00E2mpuri:</span>
+                          <span style={{ color: "#64748b" }}>Câmpuri:</span>
                           <span style={{ fontWeight: 700, color: "#4d8bff", fontFamily: "'JetBrains Mono', monospace" }}>{d.summary?.fieldsCount}</span>
                         </div>
                       )}
+                      {/* Trust score + completeness */}
+                      {d.summary?.trustScore != null && (
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", marginLeft: "auto" }}>
+                          <span style={{
+                            fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 4,
+                            background: d.summary.trustScore >= 0.8 ? "rgba(52,211,153,.15)" : d.summary.trustScore >= 0.6 ? "rgba(251,191,36,.15)" : "rgba(248,113,113,.15)",
+                            color: d.summary.trustScore >= 0.8 ? "#059669" : d.summary.trustScore >= 0.6 ? "#d97706" : "#dc2626",
+                            fontFamily: "'JetBrains Mono', monospace",
+                          }}>
+                            Trust: {Math.round(d.summary.trustScore * 100)}%
+                          </span>
+                        </div>
+                      )}
                     </div>
-                    {/* Rules list for guides */}
+                    {/* Tab content */}
                     {d.processingType === "ghid" && (
                       <div style={{ maxHeight: 280, overflowY: "auto" }}>
                         {isLoading ? (
                           <div style={{ padding: "16px", textAlign: "center", color: "#94a3b8", fontSize: 12 }}>
-                            Se încarcă regulile...
+                            Se încarcă datele...
                           </div>
-                        ) : rules.length === 0 ? (
-                          <div style={{ padding: "16px", textAlign: "center", color: "#94a3b8", fontSize: 12 }}>
-                            Nicio regulă extrasă
-                          </div>
-                        ) : rules.map((rule: any) => (
-                          <div key={rule.id} style={{
-                            padding: "8px 14px",
-                            borderBottom: "1px solid rgba(226,232,240,.4)",
-                            display: "flex",
-                            gap: 8,
-                            alignItems: "flex-start",
-                            transition: "background .15s",
-                          }}
-                          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "#f8fafc"; }}
-                          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
-                          >
-                            <div style={{ flexShrink: 0, marginTop: 2 }}>
-                              <span style={{
-                                display: "inline-block",
-                                fontSize: 9,
-                                fontWeight: 700,
-                                padding: "1px 5px",
-                                borderRadius: 4,
-                                background: rule.type === "fixed" ? "rgba(52,211,153,.1)" : "rgba(251,191,36,.1)",
-                                color: rule.type === "fixed" ? "#059669" : "#d97706",
-                                letterSpacing: ".3px",
-                              }}>
-                                {rule.type === "fixed" ? "FIXĂ" : "INTER"}
-                              </span>
-                            </div>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{
-                                fontSize: 12,
-                                color: "#0f172a",
-                                lineHeight: 1.4,
-                                display: "-webkit-box",
-                                WebkitLineClamp: 2,
-                                WebkitBoxOrient: "vertical" as const,
-                                overflow: "hidden",
-                              }}>
-                                {rule.description}
-                              </div>
-                              <div style={{ display: "flex", gap: 8, marginTop: 3, alignItems: "center" }}>
-                                {rule.category && (
-                                  <span style={{
-                                    fontSize: 10,
-                                    padding: "0 6px",
-                                    borderRadius: 9999,
-                                    background: (CATEGORY_COLORS[rule.category] || "#64748b") + "15",
-                                    color: CATEGORY_COLORS[rule.category] || "#64748b",
-                                    fontWeight: 600,
-                                  }}>
-                                    {rule.category}
-                                  </span>
-                                )}
-                                {rule.sourcePage && (
-                                  <span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'JetBrains Mono', monospace" }}>
-                                    p.{rule.sourcePage}
-                                  </span>
-                                )}
+                        ) : activeTab === "rules" ? (
+                          rules.length === 0 ? (
+                            <div style={{ padding: "16px", textAlign: "center", color: "#94a3b8", fontSize: 12 }}>Nicio regulă extrasă</div>
+                          ) : rules.map((rule: any) => (
+                            <div key={rule.id} style={{
+                              padding: "8px 14px", borderBottom: "1px solid rgba(226,232,240,.4)",
+                              display: "flex", gap: 8, alignItems: "flex-start", transition: "background .15s",
+                            }}
+                            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "#f8fafc"; }}
+                            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                            >
+                              <div style={{ flexShrink: 0, marginTop: 2 }}>
                                 <span style={{
-                                  fontSize: 10,
-                                  color: parseFloat(rule.confidence) >= 0.85 ? "#059669" : "#d97706",
-                                  fontFamily: "'JetBrains Mono', monospace",
-                                  fontWeight: 600,
-                                }}>
-                                  {Math.round(parseFloat(rule.confidence || "0") * 100)}%
-                                </span>
-                                {rule.validated && (
-                                  <span style={{ fontSize: 11, color: "#059669" }}>{"\u2713"}</span>
-                                )}
-                                {rule.needsReview && (
-                                  <span style={{ fontSize: 10, color: "#f59e0b" }}>{"\u26A0"}</span>
-                                )}
+                                  display: "inline-block", fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 4,
+                                  background: rule.type === "fixed" ? "rgba(52,211,153,.1)" : "rgba(251,191,36,.1)",
+                                  color: rule.type === "fixed" ? "#059669" : "#d97706", letterSpacing: ".3px",
+                                }}>{rule.type === "fixed" ? "FIXĂ" : "INTER"}</span>
+                              </div>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: 12, color: "#0f172a", lineHeight: 1.4, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as const, overflow: "hidden" }}>
+                                  {rule.description}
+                                </div>
+                                <div style={{ display: "flex", gap: 8, marginTop: 3, alignItems: "center" }}>
+                                  {rule.category && (
+                                    <span style={{ fontSize: 10, padding: "0 6px", borderRadius: 9999, background: (CATEGORY_COLORS[rule.category] || "#64748b") + "15", color: CATEGORY_COLORS[rule.category] || "#64748b", fontWeight: 600 }}>
+                                      {rule.category}
+                                    </span>
+                                  )}
+                                  {rule.sourcePage && <span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'JetBrains Mono', monospace" }}>p.{rule.sourcePage}</span>}
+                                  <span style={{ fontSize: 10, color: parseFloat(rule.confidence) >= 0.85 ? "#059669" : "#d97706", fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>
+                                    {Math.round(parseFloat(rule.confidence || "0") * 100)}%
+                                  </span>
+                                  {rule.validated && <span style={{ fontSize: 11, color: "#059669" }}>{"\u2713"}</span>}
+                                  {rule.needsReview && <span style={{ fontSize: 10, color: "#f59e0b" }}>{"\u26A0"}</span>}
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        ))}
+                          ))
+                        ) : activeTab === "criteria" ? (
+                          criteria.length === 0 ? (
+                            <div style={{ padding: "16px", textAlign: "center", color: "#94a3b8", fontSize: 12 }}>Niciun criteriu extras</div>
+                          ) : criteria.map((cr: any, i: number) => (
+                            <div key={i} style={{
+                              padding: "8px 14px", borderBottom: "1px solid rgba(226,232,240,.4)",
+                              display: "flex", gap: 8, alignItems: "flex-start", transition: "background .15s",
+                            }}
+                            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "#f8fafc"; }}
+                            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                            >
+                              <div style={{ flexShrink: 0, marginTop: 2 }}>
+                                <span style={{
+                                  display: "inline-block", fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 4,
+                                  background: "rgba(167,139,250,.1)", color: "#7c3aed", letterSpacing: ".3px",
+                                  fontFamily: "'JetBrains Mono', monospace",
+                                }}>{cr.maxPoints}p</span>
+                              </div>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: 12, color: "#0f172a", lineHeight: 1.4, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as const, overflow: "hidden" }}>
+                                  {cr.name}
+                                </div>
+                                <div style={{ display: "flex", gap: 8, marginTop: 3, alignItems: "center" }}>
+                                  {cr.category && (
+                                    <span style={{ fontSize: 10, padding: "0 6px", borderRadius: 9999, background: (CATEGORY_COLORS[cr.category] || "#64748b") + "15", color: CATEGORY_COLORS[cr.category] || "#64748b", fontWeight: 600 }}>
+                                      {cr.category}
+                                    </span>
+                                  )}
+                                  {cr.evaluationLogic && (
+                                    <span style={{ fontSize: 10, color: "#94a3b8", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "inline-block" }}>
+                                      {cr.evaluationLogic}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          ))
+                        ) : activeTab === "elements" ? (
+                          elements.length === 0 ? (
+                            <div style={{ padding: "16px", textAlign: "center", color: "#94a3b8", fontSize: 12 }}>Niciun element extras</div>
+                          ) : elements.map((el: any, i: number) => (
+                            <div key={i} style={{
+                              padding: "8px 14px", borderBottom: "1px solid rgba(226,232,240,.4)",
+                              display: "flex", gap: 8, alignItems: "flex-start", transition: "background .15s",
+                            }}
+                            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "#f8fafc"; }}
+                            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                            >
+                              <div style={{ flexShrink: 0, marginTop: 2 }}>
+                                <span style={{
+                                  display: "inline-block", fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 4,
+                                  background: "rgba(77,139,255,.1)", color: "#2563eb", letterSpacing: ".3px",
+                                }}>{el.dataType?.toUpperCase() || "TEXT"}</span>
+                              </div>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: 12, color: "#0f172a", lineHeight: 1.4 }}>
+                                  {el.displayName}
+                                </div>
+                                <div style={{ display: "flex", gap: 8, marginTop: 3, alignItems: "center" }}>
+                                  {el.category && (
+                                    <span style={{ fontSize: 10, padding: "0 6px", borderRadius: 9999, background: (ELEMENT_CATEGORY_COLORS[el.category] || "#64748b") + "15", color: ELEMENT_CATEGORY_COLORS[el.category] || "#64748b", fontWeight: 600 }}>
+                                      {el.category}
+                                    </span>
+                                  )}
+                                  {el.unit && <span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'JetBrains Mono', monospace" }}>{el.unit}</span>}
+                                  {el.required && <span style={{ fontSize: 10, color: "#dc2626", fontWeight: 600 }}>obligatoriu</span>}
+                                  <span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'JetBrains Mono', monospace" }}>{el.elementKey}</span>
+                                </div>
+                              </div>
+                            </div>
+                          ))
+                        ) : null}
                       </div>
                     )}
                   </div>
@@ -1157,202 +1282,7 @@ export default function DocumentsPage() {
     </div>
   );
 
-  /* ─── Right panel: detail ─── */
-  const detailPanel = selDoc ? (
-    <div className="doc-detail" key={selDoc.id}>
-      <div className="doc-detail-header">
-        <button className="doc-detail-close" onClick={() => setSelectedDoc(null)} aria-label="Inchide">{"\u2715"}</button>
-        <div className="doc-detail-icon">{TYPE_ICONS[selDoc.type] || "\u{1F4C4}"}</div>
-        <div className="doc-detail-name">{selDoc.name}</div>
-        <div className="doc-detail-type">{selDoc.type} {"\u00B7"} {selDoc.size}</div>
-      </div>
-
-      <div className="doc-detail-section">
-        <div className="doc-detail-stitle">Status</div>
-        {(() => {
-          const st = STATUS_MAP[selDoc.status];
-          return (
-            <span
-              className="doc-status-badge"
-              style={{ background: st.bg, color: st.color, fontSize: 12, padding: "5px 14px" }}
-            >
-              {st.icon} {st.label}
-            </span>
-          );
-        })()}
-        {selDoc.status === "neprocesat" && (
-          <div style={{ marginTop: 10 }}>
-            <button
-              className="doc-detail-btn primary"
-              style={{ width: "auto", display: "inline-flex" }}
-              onClick={() => handleDocProcess(selDoc.id)}
-            >
-              {"\u{1F916}"} Proceseaza cu AI
-            </button>
-          </div>
-        )}
-        {selDoc.status === "procesare" && (() => {
-          const jp = jobProgressMap.get(selDoc.id);
-          return jp ? (
-            <div style={{ marginTop: 10 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#fbbf24", marginBottom: 4 }}>
-                <span>{jp.message}</span>
-                <span style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 700 }}>{jp.progress}%</span>
-              </div>
-              <div style={{ height: 6, borderRadius: 3, background: "rgba(251,191,36,.12)", overflow: "hidden" }}>
-                <div style={{
-                  height: "100%",
-                  width: `${jp.progress}%`,
-                  borderRadius: 3,
-                  background: "linear-gradient(90deg, #fbbf24, #f59e0b)",
-                  transition: "width 0.5s ease-out",
-                }} />
-              </div>
-            </div>
-          ) : (
-            <div style={{ marginTop: 10, color: "#fbbf24", fontSize: 13 }}>
-              {"\u2699"} Procesare în curs... Rezultatele vor apărea automat.
-            </div>
-          );
-        })()}
-        {selDoc.status === "eroare" && (
-          <div style={{ marginTop: 10 }}>
-            {selDoc.processingError && (
-              <div style={{
-                padding: "10px 14px",
-                marginBottom: 10,
-                borderRadius: 8,
-                background: "rgba(220,38,38,.05)",
-                border: "1px solid rgba(220,38,38,.15)",
-                color: "#dc2626",
-                fontSize: 12,
-                lineHeight: 1.5,
-                fontFamily: "'JetBrains Mono', monospace",
-                wordBreak: "break-word",
-              }}>
-                {selDoc.processingError}
-              </div>
-            )}
-            <button
-              className="doc-detail-btn primary"
-              style={{ width: "auto", display: "inline-flex" }}
-              onClick={() => handleDocProcess(selDoc.id)}
-            >
-              {"\u{1F504}"} Reîncearcă procesarea
-            </button>
-          </div>
-        )}
-      </div>
-
-      <div className="doc-detail-section">
-        <div className="doc-detail-stitle">Detalii</div>
-        <div className="doc-detail-grid">
-          <div className="doc-detail-cell">
-            <div className="doc-detail-cell-label">Uploadat</div>
-            <div className="doc-detail-cell-value mono">{selDoc.uploaded}</div>
-          </div>
-          <div className="doc-detail-cell">
-            <div className="doc-detail-cell-label">De catre</div>
-            <div className="doc-detail-cell-value">{selDoc.uploadedBy}</div>
-          </div>
-          {selDoc.reguliExtrase > 0 && (
-            <div className="doc-detail-cell">
-              <div className="doc-detail-cell-label">Reguli extrase</div>
-              <div className="doc-detail-cell-value mono text-emerald-500">
-                {selDoc.reguliExtrase} reguli
-              </div>
-            </div>
-          )}
-          {selDoc.campuri != null && selDoc.campuri > 0 && (
-            <div className="doc-detail-cell">
-              <div className="doc-detail-cell-label">Campuri template</div>
-              <div className="doc-detail-cell-value mono text-blue-600">
-                {selDoc.campuri} campuri
-              </div>
-            </div>
-          )}
-          {selDoc.documentTypeClass && (
-            <div className="doc-detail-cell">
-              <div className="doc-detail-cell-label">Tip document</div>
-              <div className="doc-detail-cell-value">{DOCUMENT_TYPE_LABELS[selDoc.documentTypeClass] || selDoc.documentTypeClass}</div>
-            </div>
-          )}
-          {selDoc.classificationConfidence != null && (
-            <div className="doc-detail-cell">
-              <div className="doc-detail-cell-label">Incredere clasificare</div>
-              <div className={`doc-detail-cell-value mono ${selDoc.classificationConfidence >= 0.8 ? "text-emerald-500" : selDoc.classificationConfidence >= 0.5 ? "text-amber-500" : "text-red-500"}`}>
-                {Math.round(selDoc.classificationConfidence * 100)}%
-              </div>
-            </div>
-          )}
-          {selDoc.pageCount != null && selDoc.pageCount > 0 && (
-            <div className="doc-detail-cell">
-              <div className="doc-detail-cell-label">Pagini</div>
-              <div className="doc-detail-cell-value mono">{selDoc.pageCount}</div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {selDoc.tags.length > 0 && (
-        <div className="doc-detail-section">
-          <div className="doc-detail-stitle">Tags</div>
-          <div className="doc-detail-tags">
-            {selDoc.tags.map((t, i) => <span key={i} className="doc-detail-tag">{t}</span>)}
-          </div>
-        </div>
-      )}
-
-      {selDoc.extractedFields.length > 0 && (
-        <div className="doc-detail-section">
-          <div className="doc-detail-stitle">Date extrase ({selDoc.extractedFields.length} campuri)</div>
-          <div className="flex flex-col gap-1 max-h-[200px] overflow-y-auto">
-            {selDoc.extractedFields.map((f, i) => (
-              <div key={i} className="flex justify-between items-center px-2.5 py-1.5 rounded-md text-xs bg-slate-50 border border-slate-200">
-                <span className="font-semibold max-w-[45%] overflow-hidden text-ellipsis whitespace-nowrap text-slate-400">{f.field_key.replace(/_/g, " ")}</span>
-                <span className="font-mono text-[11px] max-w-[50%] overflow-hidden text-ellipsis whitespace-nowrap text-right text-slate-900">
-                  {typeof f.field_value === "object" ? JSON.stringify(f.field_value).slice(0, 40) : String(f.field_value).slice(0, 40)}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="doc-detail-actions">
-        <button className="doc-detail-btn primary" onClick={() => handleDocDownload(selDoc.id)}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-          </svg>
-          Descarca
-        </button>
-        <button className="doc-detail-btn" onClick={() => handleDocPreview(selDoc.id)}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-          </svg>
-          Previzualizare
-        </button>
-        <button className="doc-detail-btn danger" onClick={() => handleDocDelete(selDoc.id)}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
-          </svg>
-          Sterge
-        </button>
-      </div>
-    </div>
-  ) : (
-    <div className="doc-detail doc-detail-empty">
-      <div className="doc-detail-empty-inner">
-        <svg width="44" height="44" viewBox="0 0 24 24" fill="none" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" style={{ stroke: "#64748b", opacity: 0.35 }}>
-          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/>
-        </svg>
-        <div className="doc-empty-title" style={{ fontSize: 14, marginTop: 12 }}>Niciun document selectat</div>
-        <div className="doc-empty-desc" style={{ fontSize: 12 }}>
-          Selecteaza un document din lista<br />pentru a vedea detaliile
-        </div>
-      </div>
-    </div>
-  );
+  /* Detail panel removed — info is now inline in card */
 
   return (
     <div className="animate-[fadeIn_.2s_ease-out]">
@@ -1590,21 +1520,10 @@ export default function DocumentsPage() {
         <SplitPane
           side="left"
           defaultWidth={300}
-          minLeft={300}
-          minRight={220}
-          maxRight={450}
+          minLeft={240}
+          minRight={400}
           left={treePanel}
-          right={
-            <SplitPane
-              side="right"
-              defaultWidth={380}
-              minLeft={320}
-              minRight={280}
-              maxRight={520}
-              left={listPanel}
-              right={detailPanel}
-            />
-          }
+          right={listPanel}
         />
       </div>
 

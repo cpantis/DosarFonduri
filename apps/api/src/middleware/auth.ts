@@ -15,7 +15,15 @@ export interface AuthContext {
 const ACTIVITY_THROTTLE_MS = 5 * 60 * 1000;
 const lastActiveCache = new Map<string, number>();
 
+// Paths that skip authentication (public routes mounted before this middleware)
+const PUBLIC_PREFIXES = ["/api/auth", "/api/provider", "/api/health"];
+
 export const authMiddleware = async (c: Context, next: Next) => {
+  const path = c.req.path;
+  if (PUBLIC_PREFIXES.some((prefix) => path.startsWith(prefix))) {
+    return next();
+  }
+
   const token = c.req.header("Authorization")?.replace("Bearer ", "");
   if (!token) return c.json({ error: "Unauthorized" }, 401);
 

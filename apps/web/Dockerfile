@@ -20,7 +20,10 @@ RUN npm ci
 COPY packages/shared ./packages/shared
 COPY apps/web ./apps/web
 
-# 4. Build Next.js (output: standalone)
+# 4. Build shared package first (generates dist/ with types)
+RUN cd packages/shared && npm run build
+
+# 5. Build Next.js (output: standalone)
 ENV NEXT_TELEMETRY_DISABLED=1
 ARG NEXT_PUBLIC_API_URL=https://api-production-8bd3.up.railway.app
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL

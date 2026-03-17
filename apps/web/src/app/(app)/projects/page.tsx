@@ -99,6 +99,12 @@ export default function ProjectsPage() {
     setCreateError(null);
     try {
       const result: any = await apiPost("/api/projects", { name: createData.name.trim(), companyId: createData.firmaId, folderId: createData.folderId });
+      console.log("[projects/create] Result:", JSON.stringify(result));
+      if (!result?.id) {
+        setCreateError("Proiectul a fost creat dar nu s-a primit ID-ul. Reîncarcă pagina.");
+        setCreating(false);
+        return;
+      }
       setShowCreate(false);
       router.push(`/projects/${result.id}`);
     } catch (err: any) {
@@ -111,6 +117,8 @@ export default function ProjectsPage() {
   const openCreate = () => {
     setShowCreate(true);
     setCreateStep(1);
+    setCreating(false);
+    setCreateError(null);
     setCreateData({ name: "", firmaId: null, folderId: null, program: null, masura: null, sesiune: null });
   };
 
@@ -294,7 +302,13 @@ export default function ProjectsPage() {
               {createStep === 1 && (<>
                 <label className="block text-[11px] font-semibold uppercase tracking-widest mb-3 text-slate-400">Selectează firma</label>
                 <div className="space-y-1.5 mb-6">
-                  {companies.map(f => (
+                  {companies.length === 0 ? (
+                    <div className="text-center py-8 text-[13px] text-slate-400">
+                      <div className="text-2xl mb-2">🏢</div>
+                      <div className="font-medium text-slate-500 mb-1">Nicio firmă adăugată</div>
+                      <div>Adaugă o firmă din pagina <a href="/companies" className="text-blue-500 hover:underline">Firme</a> pentru a crea un proiect.</div>
+                    </div>
+                  ) : companies.map(f => (
                     <div key={f.id}
                       className={`px-4 py-3 rounded-lg cursor-pointer transition-all text-[13px] font-medium flex items-center gap-3 ${createData.firmaId === f.id ? "bg-blue-50 text-blue-700 ring-2 ring-blue-500/20" : "bg-slate-50/80 text-slate-600 hover:bg-slate-100"}`}
                       onClick={() => setCreateData(p => ({ ...p, firmaId: f.id }))}>
@@ -313,6 +327,13 @@ export default function ProjectsPage() {
               {createStep === 2 && (<>
                 <label className="block text-[11px] font-semibold uppercase tracking-widest mb-3 text-slate-400">Selectează programul și sesiunea</label>
                 <div className="mb-6 space-y-1 rounded-xl bg-slate-50/80 p-3">
+                {folderTree.length === 0 ? (
+                    <div className="text-center py-8 text-[13px] text-slate-400">
+                      <div className="text-2xl mb-2">📁</div>
+                      <div className="font-medium text-slate-500 mb-1">Niciun program configurat</div>
+                      <div>Creează structura de programe din pagina <a href="/documents" className="text-blue-500 hover:underline">Documente</a>.</div>
+                    </div>
+                ) : null}
                   {folderTree.map(prog => (
                     <div key={prog.program}>
                       <div className="text-[13px] font-semibold py-1.5 px-2 flex items-center gap-2.5 text-slate-800">

@@ -4,7 +4,7 @@ import { z } from "zod";
 import { createHash } from "crypto";
 import { updateDocElementSchema, validatePageSchema, createDocElementSchema } from "@dosarfonduri/shared";
 import { db } from "../db";
-import { documentFolders, documents, files, templateElements, rules, scoringCriteria, elementDefinitions, users } from "../db/schema";
+import { documentFolders, documents, files, templateElements, rules, scoringCriteria, elementDefinitions, templatePlaceholderMapping, users } from "../db/schema";
 import { eq, and, isNull, sql } from "drizzle-orm";
 import { uploadFile, getFileUrl, deleteFile, createPresignedUploadUrl, verifyFileUploaded, isLocalStorage } from "../services/storage";
 import { AuthContext } from "../middleware/auth";
@@ -934,6 +934,77 @@ documentRoutes.get("/documents/:docId/elements-summary", async (c) => {
     unit: el.unit,
     required: el.required,
   })));
+});
+
+// --- TEMPLATE ELEMENTS with mapping/source info ---
+documentRoutes.get("/documents/:docId/template-elements", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const { docId } = c.req.param() as { docId: string };
+
+  // Get template elements for this document
+  const elements = await db.query.templateElements.findMany({
+    where: and(eq(templateElements.documentId, docId), eq(templateElements.organizationId, auth.organizationId!)),
+    orderBy: (e, { asc }) => [asc(e.group), asc(e.key)],
+  });
+
+  if (elements.length === 0) return c.json({ elements: [], total: 0, mapped: 0, unmapped: 0 });
+
+  // Get mappings for this template document
+  const mappings = await db.query.templatePlaceholderMapping.findMany({
+    where: eq(templatePlaceholderMapping.templateDocumentId, docId),
+  });
+  const mappingByKey = new Map(mappings.map(m => [m.placeholderKey, m]));
+
+  // Get element definitions for mapped elements
+  const mappedDefIds = mappings.map(m => m.elementDefId).filter(Boolean);
+  let defMap = new Map<string, { category: string; sourcePriority: string[] | null }>();
+  if (mappedDefIds.length > 0) {
+    const defs = await db.query.elementDefinitions.findMany({
+      where: sql`${elementDefinitions.id} IN (${sql.join(mappedDefIds.map(id => sql`${id}`), sql`, `)})`,
+      columns: { id: true, category: true, sourcePriority: true },
+    });
+    for (const d of defs) defMap.set(d.id, { category: d.category, sourcePriority: d.sourcePriority });
+  }
+
+  // Derive source badge from element category
+  function deriveSource(category: string | null): string {
+    if (!category) return "solomon";
+    switch (category) {
+      case "beneficiary": return "onrc";
+      case "financial": return "anaf";
+      case "legal": return "onrc";
+      case "location": return "onrc";
+      case "farm": return "onrc";
+      case "investment": return "solomon";
+      case "technical": return "solomon";
+      default: return "solomon";
+    }
+  }
+
+  const enriched = elements.map(el => {
+    const mapping = mappingByKey.get(el.key);
+    const def = mapping ? defMap.get(mapping.elementDefId) : null;
+    const source = def ? deriveSource(def.category) : "solomon";
+    return {
+      id: el.id,
+      key: el.key,
+      label: el.label,
+      fieldType: el.fieldType,
+      group: el.group,
+      mapped: !!mapping,
+      confidence: mapping?.confidence ? parseFloat(mapping.confidence) : null,
+      category: def?.category || null,
+      source,
+    };
+  });
+
+  const mapped = enriched.filter(e => e.mapped).length;
+  return c.json({
+    elements: enriched,
+    total: enriched.length,
+    mapped,
+    unmapped: enriched.length - mapped,
+  });
 });
 
 // --- SSE: subscribe to upload events for organization ---

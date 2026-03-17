@@ -323,6 +323,7 @@ export default function DocumentsPage() {
   const [docRulesLoading, setDocRulesLoading] = useState<Record<string, boolean>>({});
   const [docCriteria, setDocCriteria] = useState<Record<string, any[]>>({});
   const [docElements, setDocElements] = useState<Record<string, any[]>>({});
+  const [tplElements, setTplElements] = useState<Record<string, { elements: any[]; total: number; mapped: number; unmapped: number } | null>>({});
   const [expandedTab, setExpandedTab] = useState<Record<string, string>>({});
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
   const [pdfPreviewName, setPdfPreviewName] = useState<string>("");
@@ -557,6 +558,7 @@ export default function DocumentsPage() {
     // Fetch rules, criteria, elements on first expand
     if (!wasExpanded && !docRules[docId] && !docRulesLoading[docId]) {
       setDocRulesLoading(prev => ({ ...prev, [docId]: true }));
+      const doc = docs.find(d => d.id === docId);
       try {
         const [rules, criteria, elements] = await Promise.all([
           apiGet<any[]>(`/api/rules/documents/${docId}/rules`).catch(() => []),
@@ -566,6 +568,12 @@ export default function DocumentsPage() {
         setDocRules(prev => ({ ...prev, [docId]: rules }));
         setDocCriteria(prev => ({ ...prev, [docId]: criteria }));
         setDocElements(prev => ({ ...prev, [docId]: elements }));
+        // Fetch template elements for template docs
+        if (doc?.processingType === "template") {
+          apiGet<{ elements: any[]; total: number; mapped: number; unmapped: number }>(`/api/documents/documents/${docId}/template-elements`)
+            .then(data => setTplElements(prev => ({ ...prev, [docId]: data })))
+            .catch(() => setTplElements(prev => ({ ...prev, [docId]: { elements: [], total: 0, mapped: 0, unmapped: 0 } })));
+        }
       } catch (err) {
         console.error("Failed to fetch document details:", err);
         setDocRules(prev => ({ ...prev, [docId]: [] }));
@@ -575,7 +583,7 @@ export default function DocumentsPage() {
         setDocRulesLoading(prev => ({ ...prev, [docId]: false }));
       }
     }
-  }, [expandedCards, docRules, docRulesLoading]);
+  }, [expandedCards, docRules, docRulesLoading, docs]);
 
   const handleDocProcess = useCallback(async (docId: string) => {
     try {
@@ -962,7 +970,7 @@ export default function DocumentsPage() {
                     {st.icon} {st.label}
                   </span>
                   {d.reguliExtrase > 0 && <span className="doc-stat-num">{d.reguliExtrase} reguli</span>}
-                  {d.campuri != null && d.campuri > 0 && <span className="doc-stat-num">{d.campuri} câmpuri</span>}
+                  {d.campuri != null && d.campuri > 0 && <span className="doc-stat-num">{d.campuri} elemente</span>}
                   {hasSummary && (
                     <button
                       onClick={(e) => { e.stopPropagation(); toggleExpandCard(d.id); }}
@@ -1012,7 +1020,7 @@ export default function DocumentsPage() {
                     )}
                     {d.campuri != null && d.campuri > 0 && (
                       <div className="doc-detail-cell">
-                        <div className="doc-detail-cell-label">Câmpuri template</div>
+                        <div className="doc-detail-cell-label">Elemente extrase</div>
                         <div className="doc-detail-cell-value mono text-blue-600" style={{ fontSize: 12 }}>{d.campuri}</div>
                       </div>
                     )}
@@ -1135,8 +1143,8 @@ export default function DocumentsPage() {
                       {d.processingType === "template" && (d.summary?.fieldsCount || 0) > 0 && (
                         <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "8px 14px" }}>
                           <span style={{ fontSize: 13 }}>{"\u{1F4DD}"}</span>
-                          <span style={{ color: "#64748b" }}>Câmpuri:</span>
-                          <span style={{ fontWeight: 700, color: "#4d8bff", fontFamily: "'JetBrains Mono', monospace" }}>{d.summary?.fieldsCount}</span>
+                          <span style={{ color: "#64748b" }}>Elemente extrase:</span>
+                          <span style={{ fontWeight: 700, color: "#4d8bff", fontFamily: "'JetBrains Mono', monospace" }}>{tplElements[d.id]?.total ?? d.summary?.fieldsCount}</span>
                         </div>
                       )}
                       {/* Trust score + completeness */}
@@ -1272,6 +1280,93 @@ export default function DocumentsPage() {
                         ) : null}
                       </div>
                     )}
+                    {/* Template elements expandable section */}
+                    {d.processingType === "template" && (() => {
+                      const tpl = tplElements[d.id];
+                      if (!tpl) return (
+                        <div style={{ padding: "16px", textAlign: "center", color: "#94a3b8", fontSize: 12 }}>
+                          Se încarcă elementele...
+                        </div>
+                      );
+                      if (tpl.total === 0) return (
+                        <div style={{ padding: "16px", textAlign: "center", color: "#94a3b8", fontSize: 12 }}>
+                          Niciun element detectat în template
+                        </div>
+                      );
+                      const SOURCE_BADGES: Record<string, { label: string; color: string; bg: string }> = {
+                        onrc: { label: "ONRC", color: "#059669", bg: "rgba(52,211,153,.12)" },
+                        anaf: { label: "ANAF", color: "#d97706", bg: "rgba(251,191,36,.12)" },
+                        ci: { label: "CI", color: "#7c3aed", bg: "rgba(167,139,250,.12)" },
+                        solomon: { label: "Solomon", color: "#2563eb", bg: "rgba(37,99,235,.12)" },
+                      };
+                      return (
+                        <div>
+                          {/* Metric cards */}
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, padding: "12px 14px 8px" }}>
+                            <div style={{ background: "#f8fafc", borderRadius: 8, padding: "10px 12px", textAlign: "center", border: "1px solid rgba(226,232,240,.6)" }}>
+                              <div style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", fontFamily: "'JetBrains Mono', monospace" }}>{tpl.total}</div>
+                              <div style={{ fontSize: 10, color: "#64748b", marginTop: 2, fontWeight: 600 }}>Total elemente</div>
+                            </div>
+                            <div style={{ background: "rgba(52,211,153,.05)", borderRadius: 8, padding: "10px 12px", textAlign: "center", border: "1px solid rgba(52,211,153,.2)" }}>
+                              <div style={{ fontSize: 18, fontWeight: 700, color: "#059669", fontFamily: "'JetBrains Mono', monospace" }}>{tpl.mapped}</div>
+                              <div style={{ fontSize: 10, color: "#059669", marginTop: 2, fontWeight: 600 }}>Mapate automat</div>
+                            </div>
+                            <div style={{ background: "rgba(251,191,36,.05)", borderRadius: 8, padding: "10px 12px", textAlign: "center", border: "1px solid rgba(251,191,36,.2)" }}>
+                              <div style={{ fontSize: 18, fontWeight: 700, color: "#d97706", fontFamily: "'JetBrains Mono', monospace" }}>{tpl.unmapped}</div>
+                              <div style={{ fontSize: 10, color: "#d97706", marginTop: 2, fontWeight: 600 }}>Necesită Solomon</div>
+                            </div>
+                          </div>
+                          {/* Element list */}
+                          <div style={{ maxHeight: 240, overflowY: "auto" }}>
+                            {tpl.elements.map((el: any) => {
+                              const badge = SOURCE_BADGES[el.source] || SOURCE_BADGES.solomon;
+                              return (
+                                <div key={el.id} style={{
+                                  padding: "7px 14px", borderBottom: "1px solid rgba(226,232,240,.4)",
+                                  display: "flex", gap: 8, alignItems: "center", transition: "background .15s",
+                                }}
+                                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "#f8fafc"; }}
+                                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                                >
+                                  {/* Mapped status icon */}
+                                  <span style={{ fontSize: 13, flexShrink: 0 }}>
+                                    {el.mapped ? "\u2705" : "\u{1F7E0}"}
+                                  </span>
+                                  {/* Element info */}
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ fontSize: 12, color: "#0f172a", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                      {el.label}
+                                    </div>
+                                    <div style={{ display: "flex", gap: 6, marginTop: 2, alignItems: "center" }}>
+                                      <span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'JetBrains Mono', monospace" }}>{el.key}</span>
+                                      {el.category && (
+                                        <span style={{ fontSize: 9, padding: "0 5px", borderRadius: 9999, background: "rgba(100,116,139,.08)", color: "#64748b", fontWeight: 600 }}>
+                                          {el.category}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                  {/* Source badge */}
+                                  <span style={{
+                                    fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 4,
+                                    background: badge.bg, color: badge.color, letterSpacing: ".3px",
+                                    flexShrink: 0, fontFamily: "'JetBrains Mono', monospace",
+                                  }}>
+                                    {badge.label}
+                                  </span>
+                                  {/* Confidence */}
+                                  {el.confidence != null && (
+                                    <span style={{ fontSize: 10, color: el.confidence >= 0.85 ? "#059669" : "#d97706", fontFamily: "'JetBrains Mono', monospace", fontWeight: 600, flexShrink: 0 }}>
+                                      {Math.round(el.confidence * 100)}%
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 );
               })()}

@@ -9,6 +9,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { SectionTitle } from "@/components/ui/SectionTitle";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { SkeletonStatCard } from "@/components/ui/Skeleton";
+import { humanizeAction, isSignificantAction } from "@/lib/auditHelpers";
 
 interface DashboardData {
   stats: { projects: number; companies: number; documents: number; approvalRate?: number };
@@ -170,20 +171,25 @@ export default function DashboardPage() {
                     <div className="text-[13px] text-slate-400 text-center py-8">Nicio activitate</div>
                   ) : (
                     <div className="divide-y divide-slate-50">
-                      {data.activity.slice(0, 5).map((a) => (
-                        <div key={a.id} className="px-4 py-3 flex items-start gap-3">
-                          <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-400 shrink-0 mt-0.5">
-                            {(a.userName || "?").charAt(0).toUpperCase()}
-                          </div>
-                          <div className="min-w-0">
-                            <div className="text-[13px] text-slate-700">
-                              {a.userName && <span className="font-medium text-slate-900">{a.userName} </span>}
-                              {a.action}
+                      {data.activity
+                        .filter((a) => isSignificantAction(a.action))
+                        .slice(0, 5).map((a) => {
+                        const h = humanizeAction(a.action);
+                        return (
+                          <div key={a.id} className="px-4 py-3 flex items-start gap-3">
+                            <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-[12px] shrink-0 mt-0.5">
+                              {h.icon}
                             </div>
-                            <div className="text-[11px] text-slate-400 mt-0.5">{formatRelativeTime(a.createdAt)}</div>
+                            <div className="min-w-0">
+                              <div className="text-[13px] text-slate-700">
+                                {a.userName && <span className="font-medium text-slate-900">{a.userName} </span>}
+                                {h.text}
+                              </div>
+                              <div className="text-[11px] text-slate-400 mt-0.5">{formatRelativeTime(a.createdAt)}</div>
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>

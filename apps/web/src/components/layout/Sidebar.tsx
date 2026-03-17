@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
+import { useSidebar } from "@/hooks/useSidebar";
 import { useState, useEffect } from "react";
 
 const navItems = [
@@ -17,15 +18,56 @@ const systemItems = [
   { key: "admin",    label: "Admin",       icon: "🔧", href: "/admin" },
 ];
 
-function NavItem({ item, active }: { item: { href: string; icon: string; label: string }; active: boolean }) {
+const EXPANDED_WIDTH = 248;
+const COLLAPSED_WIDTH = 56;
+
+/* ─── Collapse / Expand toggle icon (inline SVG, no dependency) ─── */
+function CollapseIcon({ collapsed }: { collapsed: boolean }) {
+  return collapsed ? (
+    // PanelLeftOpen
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <path d="M9 3v18" />
+      <path d="m14 9 3 3-3 3" />
+    </svg>
+  ) : (
+    // PanelLeftClose
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <path d="M9 3v18" />
+      <path d="m16 15-3-3 3-3" />
+    </svg>
+  );
+}
+
+function NavItem({
+  item,
+  active,
+  collapsed,
+  onExpandRequest,
+}: {
+  item: { href: string; icon: string; label: string };
+  active: boolean;
+  collapsed: boolean;
+  onExpandRequest: () => void;
+}) {
   return (
     <Link
       href={item.href}
+      title={collapsed ? item.label : undefined}
+      onClick={(e) => {
+        if (collapsed) {
+          // In collapsed rail, click expands the sidebar instead of navigating
+          e.preventDefault();
+          onExpandRequest();
+        }
+      }}
       style={{
         display: "flex",
         alignItems: "center",
-        gap: 10,
-        padding: "10px 14px",
+        gap: collapsed ? 0 : 10,
+        padding: collapsed ? "10px 0" : "10px 14px",
+        justifyContent: collapsed ? "center" : "flex-start",
         borderRadius: 8,
         fontSize: 13,
         fontWeight: active ? 600 : 500,
@@ -34,6 +76,10 @@ function NavItem({ item, active }: { item: { href: string; icon: string; label: 
         textDecoration: "none",
         transition: "all .15s",
         marginBottom: 2,
+        width: collapsed ? 40 : undefined,
+        height: collapsed ? 40 : undefined,
+        marginLeft: collapsed ? "auto" : undefined,
+        marginRight: collapsed ? "auto" : undefined,
       }}
       onMouseEnter={e => {
         if (!active) {
@@ -49,12 +95,15 @@ function NavItem({ item, active }: { item: { href: string; icon: string; label: 
       }}
     >
       <span style={{ fontSize: 15, width: 20, textAlign: "center", flexShrink: 0 }}>{item.icon}</span>
-      <span>{item.label}</span>
+      {!collapsed && <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.label}</span>}
     </Link>
   );
 }
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
+function SectionLabel({ children, collapsed }: { children: React.ReactNode; collapsed: boolean }) {
+  if (collapsed) {
+    return <div style={{ height: 1, background: "rgba(226,232,240,.6)", margin: "8px 12px" }} />;
+  }
   return (
     <div style={{
       fontSize: 10,
@@ -65,6 +114,8 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
       padding: "0 14px",
       marginTop: 24,
       marginBottom: 6,
+      whiteSpace: "nowrap",
+      overflow: "hidden",
     }}>{children}</div>
   );
 }
@@ -72,6 +123,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 export function Sidebar() {
   const pathname = usePathname();
   const { organization, user } = useAuth();
+  const { isCollapsed, toggle, expand } = useSidebar();
   const [mobileOpen, setMobileOpen] = useState(false);
 
   // Close mobile sidebar on route change
@@ -87,7 +139,7 @@ export function Sidebar() {
 
   return (
     <>
-      {/* T4: Mobile hamburger toggle */}
+      {/* Mobile hamburger toggle */}
       <button
         onClick={() => setMobileOpen(v => !v)}
         className="sidebar-mobile-toggle"
@@ -103,7 +155,7 @@ export function Sidebar() {
       >
         {mobileOpen ? "\u2715" : "\u2630"}
       </button>
-      {/* T4: Mobile overlay */}
+      {/* Mobile overlay */}
       {mobileOpen && (
         <div
           onClick={() => setMobileOpen(false)}
@@ -119,90 +171,141 @@ export function Sidebar() {
         @media (max-width: 768px) {
           .sidebar-mobile-toggle { display: flex !important; }
           .sidebar-mobile-overlay { display: block !important; }
-          .sidebar-panel { position: fixed !important; z-index: 150 !important; transform: translateX(-100%); transition: transform .2s ease; }
+          .sidebar-panel { position: fixed !important; z-index: 150 !important; transform: translateX(-100%); }
           .sidebar-panel.open { transform: translateX(0); }
         }
       `}</style>
-    <div className={`sidebar-panel ${mobileOpen ? "open" : ""}`} style={{
-      width: 248,
-      minHeight: "100vh",
-      background: "#ffffff",
-      display: "flex",
-      flexDirection: "column",
-      flexShrink: 0,
-      borderRight: "1px solid rgba(226,232,240,.8)",
-    }}>
+    <div
+      className={`sidebar-panel ${mobileOpen ? "open" : ""}`}
+      style={{
+        width: mobileOpen ? EXPANDED_WIDTH : isCollapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH,
+        minHeight: "100vh",
+        background: "#ffffff",
+        display: "flex",
+        flexDirection: "column",
+        flexShrink: 0,
+        borderRight: "1px solid rgba(226,232,240,.8)",
+        transition: "width 200ms ease",
+        overflow: "hidden",
+      }}
+    >
       {/* Logo */}
-      <div style={{ padding: "20px 20px 12px" }}>
+      <div style={{ padding: isCollapsed ? "20px 0 12px" : "20px 20px 12px", display: "flex", justifyContent: isCollapsed ? "center" : "flex-start" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{
-            width: 32, height: 32, borderRadius: 8,
+            width: 32, height: 32, borderRadius: 8, flexShrink: 0,
             background: "#2563eb", display: "flex", alignItems: "center", justifyContent: "center",
             color: "#ffffff", fontSize: 11, fontWeight: 700,
             boxShadow: "0 4px 12px rgba(37,99,235,.2)",
           }}>DF</div>
-          <span style={{ color: "#0f172a", fontWeight: 600, fontSize: 15, letterSpacing: "-0.01em" }}>DosarFonduri</span>
+          {!isCollapsed && (
+            <span style={{ color: "#0f172a", fontWeight: 600, fontSize: 15, letterSpacing: "-0.01em", whiteSpace: "nowrap" }}>DosarFonduri</span>
+          )}
         </div>
       </div>
 
-      {/* Cabinet card */}
-      <div style={{ padding: "0 16px 12px" }}>
-        <div style={{
-          background: "#f8fafc", borderRadius: 8, padding: 12,
-          border: "1px solid rgba(226,232,240,.8)",
-        }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{
-              width: 32, height: 32, borderRadius: 8,
-              background: "rgba(37,99,235,.08)", display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 11, fontWeight: 700, color: "#2563eb",
-            }}>{initials}</div>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.14em", color: "#94a3b8", marginBottom: 2 }}>Cabinet activ</div>
-              <div style={{ color: "#0f172a", fontSize: 13, fontWeight: 500, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cabinetName}</div>
+      {/* Cabinet card — hidden when collapsed */}
+      {!isCollapsed && (
+        <div style={{ padding: "0 16px 12px" }}>
+          <div style={{
+            background: "#f8fafc", borderRadius: 8, padding: 12,
+            border: "1px solid rgba(226,232,240,.8)",
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{
+                width: 32, height: 32, borderRadius: 8, flexShrink: 0,
+                background: "rgba(37,99,235,.08)", display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 11, fontWeight: 700, color: "#2563eb",
+              }}>{initials}</div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.14em", color: "#94a3b8", marginBottom: 2 }}>Cabinet activ</div>
+                <div style={{ color: "#0f172a", fontSize: 13, fontWeight: 500, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cabinetName}</div>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
+      {/* Collapsed: just the cabinet initials */}
+      {isCollapsed && (
+        <div style={{ display: "flex", justifyContent: "center", padding: "0 0 8px" }} title={cabinetName}>
+          <div style={{
+            width: 32, height: 32, borderRadius: 8,
+            background: "rgba(37,99,235,.08)", display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 11, fontWeight: 700, color: "#2563eb",
+          }}>{initials}</div>
+        </div>
+      )}
 
       {/* Navigation */}
-      <nav style={{ flex: 1, overflowY: "auto", padding: "4px 8px" }}>
-        <SectionLabel>Principal</SectionLabel>
+      <nav style={{ flex: 1, overflowY: "auto", padding: isCollapsed ? "4px 0" : "4px 8px" }}>
+        <SectionLabel collapsed={isCollapsed}>Principal</SectionLabel>
         {navItems.map((item) => (
-          <NavItem key={item.key} item={item} active={isActive(item.key, item.href)} />
+          <NavItem key={item.key} item={item} active={isActive(item.key, item.href)} collapsed={isCollapsed} onExpandRequest={expand} />
         ))}
 
-        <SectionLabel>Configurare</SectionLabel>
+        <SectionLabel collapsed={isCollapsed}>Configurare</SectionLabel>
         {configItems.map((item) => (
-          <NavItem key={item.key} item={item} active={isActive(item.key, item.href)} />
+          <NavItem key={item.key} item={item} active={isActive(item.key, item.href)} collapsed={isCollapsed} onExpandRequest={expand} />
         ))}
 
         {user?.role === "admin" && (
           <>
-            <SectionLabel>Sistem</SectionLabel>
+            <SectionLabel collapsed={isCollapsed}>Sistem</SectionLabel>
             {systemItems.map((item) => (
-              <NavItem key={item.key} item={item} active={isActive(item.key, item.href)} />
+              <NavItem key={item.key} item={item} active={isActive(item.key, item.href)} collapsed={isCollapsed} onExpandRequest={expand} />
             ))}
           </>
         )}
       </nav>
 
+      {/* Toggle button */}
+      <div style={{
+        padding: isCollapsed ? "8px 0" : "8px 8px",
+        display: "flex",
+        justifyContent: isCollapsed ? "center" : "flex-end",
+      }}>
+        <button
+          onClick={toggle}
+          title={isCollapsed ? "Extinde sidebar (⌘B)" : "Restrânge sidebar (⌘B)"}
+          style={{
+            width: 32, height: 32, borderRadius: 8,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            background: "transparent", border: "none",
+            color: "#94a3b8", cursor: "pointer",
+            transition: "all .15s",
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = "#f1f5f9"; e.currentTarget.style.color = "#475569"; }}
+          onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#94a3b8"; }}
+        >
+          <CollapseIcon collapsed={isCollapsed} />
+        </button>
+      </div>
+
       {/* User footer */}
       {user && (
-        <div style={{ padding: "12px 16px", borderTop: "1px solid rgba(226,232,240,.8)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{
-              width: 28, height: 28, borderRadius: "50%",
-              background: "rgba(37,99,235,.08)", display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 10, fontWeight: 700, color: "#2563eb",
-            }}>
-              {(user.name || user.email || "U").charAt(0).toUpperCase()}
-            </div>
+        <div style={{
+          padding: isCollapsed ? "12px 0" : "12px 16px",
+          borderTop: "1px solid rgba(226,232,240,.8)",
+          display: "flex",
+          justifyContent: isCollapsed ? "center" : "flex-start",
+          alignItems: "center",
+          gap: isCollapsed ? 0 : 10,
+        }}>
+          <div style={{
+            width: 28, height: 28, borderRadius: "50%", flexShrink: 0,
+            background: "rgba(37,99,235,.08)", display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 10, fontWeight: 700, color: "#2563eb",
+          }}
+          title={isCollapsed ? (user.name || user.email || "Utilizator") : undefined}
+          >
+            {(user.name || user.email || "U").charAt(0).toUpperCase()}
+          </div>
+          {!isCollapsed && (
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontSize: 12, color: "#475569", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.name || user.email}</div>
               <div style={{ fontSize: 10, color: "#94a3b8", textTransform: "capitalize" }}>{user.role || "consultant"}</div>
             </div>
-          </div>
+          )}
         </div>
       )}
     </div>

@@ -10,6 +10,7 @@ import { redis, isRedisReady } from "../lib/redis";
 import { upsertElementDefinition, autoMapTemplatePlaceholders } from "../services/elementDefinitionService";
 import { anthropic, withAILimit } from "../lib/anthropic";
 import { repairTruncatedJSON } from "../lib/safeExtract";
+import { preflightCached } from "../services/dbPreflight";
 import { z } from "zod";
 
 // W2.3: Zod schema for evaluationLogic JSONB validation
@@ -849,6 +850,17 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
   async (job: Job<ProcessGuidePayload>) => {
     const { documentId, organizationId } = job.data;
     const startTime = Date.now();
+
+    // ─── DB PREFLIGHT CHECK (before any AI calls) ───
+    const check = await preflightCached(db, "processGuide");
+    if (!check.ready) {
+      console.error("[processGuide] Preflight FAILED", { operation: "processGuide", missing: check.missing });
+      publishEvent(`org:${organizationId}:uploads`, "processing_error", {
+        documentId,
+        message: check.message,
+      }).catch((e: any) => console.warn("[processGuide] sse preflight error:", e.message));
+      throw new Error(`DB preflight failed: ${check.message}`);
+    }
 
     try {
       await db.update(documents).set({ status: "processing", processingError: null }).where(eq(documents.id, documentId));

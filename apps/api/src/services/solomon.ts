@@ -15,6 +15,7 @@ import { validateElement, logElementChange } from "./elementValidation";
 import { checkEligibility } from "./eligibility";
 import { computeProjectScores } from "./scoring";
 import { publishElementValidated, publishEligibilityUpdated, publishScoreUpdated } from "../lib/sse";
+import { preflightCached } from "./dbPreflight";
 
 // Sanitize user-controlled data embedded in system prompts to prevent prompt injection.
 // Wraps content in delimiters and escapes sequences that could break out.
@@ -1230,6 +1231,19 @@ export async function processSolomonMessage(params: {
   useETOverride?: boolean;
 }): Promise<ReadableStream> {
   const { conversationId, projectId, organizationId, userId, content, attachments, useETOverride } = params;
+
+  // ─── DB PREFLIGHT CHECK (before any Anthropic API calls) ───
+  const check = await preflightCached(db, "solomonChat");
+  if (!check.ready) {
+    console.error("[solomon] Preflight FAILED", { operation: "solomonChat", missing: check.missing });
+    const encoder = new TextEncoder();
+    return new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "error", message: `⚠️ ${check.message}` })}\n\n`));
+        controller.close();
+      },
+    });
+  }
 
   // Get model config
   const config = await db.query.orgConfig.findFirst({

@@ -83,7 +83,7 @@ export function Sidebar() {
   };
 
   const cabinetName = organization?.name || "Cabinet";
-  const initials = cabinetName.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
+  const initials = cabinetName.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase();
 
   return (
     <>

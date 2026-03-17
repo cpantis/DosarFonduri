@@ -12,6 +12,7 @@ import { parseBilantPDF } from "../services/bilantParser";
 import { publishEvent } from "../lib/sse";
 import { redis } from "../lib/redis";
 import { FORMA_MAP } from "../services/onrc";
+import { preflightCached } from "../services/dbPreflight";
 
 /** Map full-text formaJuridica to enum code, fallback to "SRL" */
 function mapFormaToCode(raw: string): string {
@@ -404,6 +405,17 @@ export const processCompanyWorker = new Worker<ProcessCompanyPayload>(
   "process-company",
   async (job: Job<ProcessCompanyPayload>) => {
     console.log(`[process-company] Job ${job.id} started: ${job.data.type} for company ${job.data.companyId}`);
+
+    // ─── DB PREFLIGHT CHECK (before any AI calls) ───
+    const check = await preflightCached(db, "processCompany");
+    if (!check.ready) {
+      console.error("[processCompany] Preflight FAILED", { operation: "processCompany", missing: check.missing });
+      publishEvent(`org:${job.data.organizationId}:uploads`, "processing_error", {
+        companyId: job.data.companyId,
+        message: check.message,
+      }).catch((e: any) => console.warn("[processCompany] sse preflight error:", e.message));
+      throw new Error(`DB preflight failed: ${check.message}`);
+    }
 
     try {
       switch (job.data.type) {

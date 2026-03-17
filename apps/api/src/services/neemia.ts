@@ -7,6 +7,7 @@ import {
 import { eq, and, inArray } from "drizzle-orm";
 import { getFileBuffer, uploadFile } from "./storage";
 import crypto from "crypto";
+import { preflightCached } from "./dbPreflight";
 
 /**
  * Build key→value map for template filling.
@@ -313,6 +314,18 @@ interface GenerateDocParams {
 export async function generateDocument(params: GenerateDocParams): Promise<ReadableStream> {
   const { projectId, templateDocumentId, organizationId, userId } = params;
   const encoder = new TextEncoder();
+
+  // ─── DB PREFLIGHT CHECK (before any AI calls) ───
+  const check = await preflightCached(db, "neemiaGenerate");
+  if (!check.ready) {
+    console.error("[neemia] Preflight FAILED", { operation: "neemiaGenerate", missing: check.missing });
+    return new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "error", message: `⚠️ ${check.message}` })}\n\n`));
+        controller.close();
+      },
+    });
+  }
 
   // Check if template is COMPOSE mode — if so, delegate to composeDocument
   const templateCheck = await db.query.documents.findFirst({

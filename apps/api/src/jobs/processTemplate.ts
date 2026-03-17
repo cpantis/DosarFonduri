@@ -9,6 +9,7 @@ import { redis } from "../lib/redis";
 import { autoMapTemplatePlaceholders } from "../services/elementDefinitionService";
 import { anthropic, withAILimit } from "../lib/anthropic";
 import { detectFieldsVisually, crossCheckFields } from "../services/ocr";
+import { preflightCached } from "../services/dbPreflight";
 
 interface ProcessTemplatePayload {
   documentId: string;
@@ -309,6 +310,17 @@ export const processTemplateWorker = new Worker<ProcessTemplatePayload>(
   "process-template",
   async (job: Job<ProcessTemplatePayload>) => {
     const { documentId, organizationId } = job.data;
+
+    // ─── DB PREFLIGHT CHECK (before any AI calls) ───
+    const check = await preflightCached(db, "processTemplate");
+    if (!check.ready) {
+      console.error("[processTemplate] Preflight FAILED", { operation: "processTemplate", missing: check.missing });
+      publishEvent(`org:${organizationId}:uploads`, "processing_error", {
+        documentId,
+        message: check.message,
+      }).catch((e: any) => console.warn("[processTemplate] sse preflight error:", e.message));
+      throw new Error(`DB preflight failed: ${check.message}`);
+    }
 
     // Track actual token usage for AI cost logging
     const classifyTokenUsage = { input: 0, output: 0 };

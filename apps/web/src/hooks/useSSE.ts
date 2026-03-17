@@ -123,6 +123,9 @@ export function useSSE({ projectId, enabled = true, onEvent }: UseSSEOptions = {
         });
         showToast("success", data.message || `Extracție completă: ${data.fields_count} câmpuri`);
         break;
+      case "processing_error":
+        showToast("error", data.message || `Eroare la procesare`);
+        break;
       case "company_processed":
         showToast("success", data.message || `Firmă procesată cu succes`);
         break;

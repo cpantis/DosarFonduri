@@ -18,6 +18,7 @@ import { adminRoutes } from "./routes/admin";
 import { configRoutes } from "./routes/config";
 import { exportRoutes } from "./routes/export";
 import { referenceTableRoutes } from "./routes/reference-tables";
+import { healthRoutes } from "./routes/health";
 import { authMiddleware } from "./middleware/auth";
 import { auditMiddleware } from "./middleware/audit";
 import { errorHandler } from "./middleware/errorHandler";
@@ -80,6 +81,7 @@ app.use("/api/provider/*", rateLimit({ windowMs: 60_000, max: 15, keyPrefix: "rl
 // Public routes
 app.route("/api/auth", authRoutes);
 app.route("/api/provider", providerRoutes);
+app.route("/api/health", healthRoutes);
 
 // Protected routes
 app.use("/api/*", authMiddleware);
@@ -230,6 +232,10 @@ app.get("/setup-db", async (c) => {
         passwordHash: providerHash,
       });
     }
+
+    // Invalidate preflight cache after migrations
+    const { invalidatePreflightCache } = await import("./services/dbPreflight");
+    invalidatePreflightCache();
 
     return c.json({
       status: "success",

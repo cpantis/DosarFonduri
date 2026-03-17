@@ -126,7 +126,7 @@ export default function ProjectsPage() {
           <div className="flex items-center gap-3 mb-4 flex-wrap">
             <input
               className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg bg-white outline-none focus:border-blue-300 transition-colors"
-              placeholder="Caut\u0103 proiect..."
+              placeholder="Caută proiect..."
               value={searchFilter}
               onChange={e => setSearchFilter(e.target.value)}
               style={{ width: 200 }}
@@ -135,7 +135,7 @@ export default function ProjectsPage() {
               {[
                 { id: "all", label: "Toate" },
                 { id: "draft", label: "Draft" },
-                { id: "in_progress", label: "\u00cen progres" },
+                { id: "in_progress", label: "În progres" },
                 { id: "review", label: "Review" },
                 { id: "submitted", label: "Depus" },
                 { id: "approved", label: "Aprobat" },
@@ -148,7 +148,7 @@ export default function ProjectsPage() {
               ))}
             </div>
             <select className="px-2 py-1.5 text-[12px] border border-slate-200 rounded-lg bg-white" value={sortBy} onChange={e => setSortBy(e.target.value as any)}>
-              <option value="date">Sort: Dat\u0103</option>
+              <option value="date">Sort: Dată</option>
               <option value="name">Sort: Nume</option>
               <option value="value">Sort: Valoare</option>
             </select>
@@ -160,7 +160,7 @@ export default function ProjectsPage() {
             <SkeletonCard /><SkeletonCard /><SkeletonCard />
           </div>
         ) : projects.length === 0 ? (
-          <EmptyState icon={"\u{1F4C1}"} title="Niciun proiect \u00eenc\u0103" description="Creaz\u0103 un proiect nou pentru a \u00eencepe preg\u0103tirea dosarului." actionLabel="Creaz\u0103 primul proiect" onAction={openCreate} />
+          <EmptyState icon={"\u{1F4C1}"} title="Niciun proiect încă" description="Crează un proiect nou pentru a începe pregătirea dosarului." actionLabel="Crează primul proiect" onAction={openCreate} />
         ) : (
           <div className="space-y-2">
             {projects

@@ -4,7 +4,7 @@ import { z } from "zod";
 import { createHash } from "crypto";
 import { updateDocElementSchema, validatePageSchema, createDocElementSchema } from "@dosarfonduri/shared";
 import { db } from "../db";
-import { documentFolders, documents, files, templateElements, rules, scoringCriteria, elementDefinitions } from "../db/schema";
+import { documentFolders, documents, files, templateElements, rules, scoringCriteria, elementDefinitions, users } from "../db/schema";
 import { eq, and, isNull, sql } from "drizzle-orm";
 import { uploadFile, getFileUrl, deleteFile, createPresignedUploadUrl, verifyFileUploaded, isLocalStorage } from "../services/storage";
 import { AuthContext } from "../middleware/auth";
@@ -164,9 +164,21 @@ documentRoutes.get("/folders/:folderId/documents", async (c) => {
     orderBy: (d, { desc }) => [desc(d.uploadedAt)],
   });
 
+  // Resolve uploadedBy UUIDs to user names
+  const uploaderIds = [...new Set(docs.map(d => d.uploadedBy).filter(Boolean))];
+  const uploaderMap = new Map<string, string>();
+  if (uploaderIds.length > 0) {
+    const uploaders = await db.query.users.findMany({
+      where: sql`${users.id} IN ${uploaderIds}`,
+      columns: { id: true, name: true },
+    });
+    for (const u of uploaders) uploaderMap.set(u.id, u.name);
+  }
+
   // Enrich with processing summary counts for processed documents
   const enriched = await Promise.all(docs.map(async (doc) => {
-    if (doc.status !== "processed") return doc;
+    const base = { ...doc, _uploadedByName: uploaderMap.get(doc.uploadedBy) || null };
+    if (doc.status !== "processed") return base;
 
     try {
       if (doc.processingType === "ghid") {
@@ -174,7 +186,7 @@ documentRoutes.get("/folders/:folderId/documents", async (c) => {
         const [scoringResult] = await db.select({ count: sql<number>`count(*)` }).from(scoringCriteria).where(eq(scoringCriteria.documentId, doc.id));
         const [elemDefResult] = await db.select({ count: sql<number>`count(*)` }).from(elementDefinitions).where(eq(elementDefinitions.guideDocumentId, doc.id));
         return {
-          ...doc,
+          ...base,
           _summary: {
             rulesCount: Number(rulesResult?.count || 0),
             scoringCount: Number(scoringResult?.count || 0),
@@ -187,12 +199,12 @@ documentRoutes.get("/folders/:folderId/documents", async (c) => {
       if (doc.processingType === "template") {
         const [elResult] = await db.select({ count: sql<number>`count(*)` }).from(templateElements).where(eq(templateElements.documentId, doc.id));
         return {
-          ...doc,
+          ...base,
           _summary: { fieldsCount: Number(elResult?.count || 0) },
         };
       }
     } catch { /* non-critical enrichment */ }
-    return doc;
+    return base;
   }));
 
   return c.json(enriched);
@@ -901,6 +913,26 @@ documentRoutes.get("/documents/:docId/scoring-summary", async (c) => {
     maxPoints: cr.maxPoints,
     evaluationLogic: cr.evaluationLogic,
     category: cr.category,
+  })));
+});
+
+// --- ELEMENT DEFINITIONS for a guide document ---
+documentRoutes.get("/documents/:docId/elements-summary", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const { docId } = c.req.param() as { docId: string };
+
+  const elements = await db.query.elementDefinitions.findMany({
+    where: and(eq(elementDefinitions.guideDocumentId, docId), eq(elementDefinitions.organizationId, auth.organizationId!)),
+    orderBy: (e, { asc }) => [asc(e.collectionOrder)],
+  });
+
+  return c.json(elements.map(el => ({
+    elementKey: el.elementKey,
+    displayName: el.displayName,
+    category: el.category,
+    dataType: el.dataType,
+    unit: el.unit,
+    required: el.required,
   })));
 });
 

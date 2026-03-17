@@ -8,6 +8,7 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { BtnPrimary, BtnSecondary, BtnDanger, IconUserPlus, IconEdit, IconSend, IconBan } from "@/components/ui/Buttons";
 import { Tabs } from "@/components/ui/Tabs";
 import { useToast } from "@/components/shared/Toast";
+import { humanizeAction, isSignificantAction } from "@/lib/auditHelpers";
 
 // ─── Types ───
 interface OrgUser {
@@ -554,31 +555,37 @@ export default function AdminPage() {
             </div>
 
             <div className="flex flex-col gap-0.5">
-              {auditLogs.filter((a) => {
-                if (!auditSearch) return true;
-                const q = auditSearch.toLowerCase();
-                return a.action.toLowerCase().includes(q) || (a.userName || "").toLowerCase().includes(q) || (a.entityType || "").toLowerCase().includes(q);
-              }).map((a) => (
-                <div
-                  key={a.id}
-                  className="flex items-start gap-3 px-4 py-3 rounded-md transition-colors border-b border-slate-200 hover:bg-slate-100"
-                >
-                  <div className="w-8 h-8 flex items-center justify-center text-sm flex-shrink-0 rounded-md bg-slate-50 border border-slate-200/80 text-slate-500">
-                    {AUDIT_ICONS[a.action] || "📋"}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium mb-px text-slate-900">{a.action}</div>
-                    <div className="text-xs text-slate-500">
-                      {a.entityType && `${a.entityType}`}
-                      {a.details && typeof a.details === "object" && a.details.description && ` — ${a.details.description}`}
+              {auditLogs
+                .filter((a) => isSignificantAction(a.action))
+                .filter((a) => {
+                  if (!auditSearch) return true;
+                  const q = auditSearch.toLowerCase();
+                  const h = humanizeAction(a.action);
+                  return h.text.toLowerCase().includes(q) || (a.userName || "").toLowerCase().includes(q) || (a.entityType || "").toLowerCase().includes(q);
+                }).map((a) => {
+                const h = humanizeAction(a.action);
+                return (
+                  <div
+                    key={a.id}
+                    className="flex items-start gap-3 px-4 py-3 rounded-md transition-colors border-b border-slate-200 hover:bg-slate-100"
+                  >
+                    <div className="w-8 h-8 flex items-center justify-center text-sm flex-shrink-0 rounded-md bg-slate-50 border border-slate-200/80">
+                      {h.icon}
                     </div>
-                    <div className="flex gap-2 mt-0.5">
-                      <span className="text-[11px] text-slate-400">👤 {a.userName || "System"}</span>
-                      <span className="font-mono text-[12px] text-slate-500">{timeAgo(a.createdAt)}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm mb-px text-slate-900">
+                        <span className="font-semibold">{a.userName || "System"}</span>{" "}
+                        <span className="text-slate-600">{h.text}</span>
+                      </div>
+                      <div className="text-xs text-slate-500">
+                        {a.entityType && `${a.entityType}`}
+                        {a.details && typeof a.details === "object" && a.details.description && ` — ${a.details.description}`}
+                      </div>
+                      <div className="font-mono text-[11px] text-slate-400 mt-0.5">{timeAgo(a.createdAt)}</div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             {auditLogs.length === 0 && (

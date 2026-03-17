@@ -46,7 +46,7 @@ const SECTIONS = [
   { id: "solomon", icon: "\u{1F916}", label: "Solomon (Expert Fonduri)" },
   { id: "neemia", icon: "\u{1F4DD}", label: "Neemia (Generare Dosar)" },
   { id: "ghid", icon: "\u{1F4D6}", label: "Ghid Finantare (Reguli)" },
-  { id: "knowledge", icon: "\u{1F4DA}", label: "Baz\u0103 de cuno\u0219tin\u021be" },
+  { id: "knowledge", icon: "\u{1F4DA}", label: "Bază de cunoștințe" },
   { id: "api", icon: "\u{1F50C}", label: "Integrare API" },
   { id: "branding", icon: "\u{1F3A8}", label: "Branding Documente" },
   { id: "notificari", icon: "\u{1F514}", label: "Notificari" },
@@ -54,10 +54,10 @@ const SECTIONS = [
 ];
 
 const KNOWLEDGE_CATEGORIES = [
-  { value: "legislatie", label: "Legisla\u021bie" },
+  { value: "legislatie", label: "Legislație" },
   { value: "bune_practici", label: "Bune practici" },
-  { value: "corectii", label: "Corec\u021bii" },
-  { value: "praguri", label: "Praguri \u0219i plafoane" },
+  { value: "corectii", label: "Corecții" },
+  { value: "praguri", label: "Praguri și plafoane" },
   { value: "proceduri", label: "Proceduri" },
   { value: "ghid_specific", label: "Ghid specific" },
 ];
@@ -589,7 +589,7 @@ export default function SettingsPage() {
                         } catch (err: any) { toast("error", err.message || "Eroare la salvarea cunoștințelor."); }
                       }}
                     >
-                      {editingKnowledge ? "Salveaz\u0103" : "Adaug\u0103"}
+                      {editingKnowledge ? "Salvează" : "Adaugă"}
                     </button>
                     <button className="px-4 py-2 text-sm font-semibold rounded-lg text-slate-600 bg-white border" onClick={() => setShowAddKnowledge(false)}>Anuleaz&#259;</button>
                   </div>

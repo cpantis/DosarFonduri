@@ -1,9 +1,14 @@
 /**
  * ONRC Company Data Extractor
  *
- * STRATEGY: Local first, AI fallback.
- * 1. Native PDF → PyMuPDF text → regex parser (free, <100ms)
- * 2. Scanned PDF → Claude Sonnet parse (AI fallback)
+ * STRATEGY: AI-first with regex validation.
+ * 1. Extract text from PDF (PyMuPDF / OCR)
+ * 2. Send text to Claude Sonnet for structured extraction (always)
+ * 3. Use regex parser as validation / fallback if AI fails
+ *
+ * AI extraction is more accurate than regex for Romanian ONRC documents
+ * because it handles format variations, diacritics, and unusual layouts.
+ * Cost: ~$0.04 per extraction — negligible.
  */
 import { anthropic, withAILimit } from "../lib/anthropic";
 import { parseOnrcText } from "./onrcParser";
@@ -76,7 +81,7 @@ export interface ExtractedCompanyData {
   sediuSocial?: { actSediu?: string; durataSediu?: string };
 }
 
-// ─── Claude prompt (used ONLY for scanned PDFs as fallback) ───
+// ─── Claude prompt (primary extraction method) ───
 
 const COMPANY_SYSTEM_PROMPT = `Ești expert în documente juridice românești. Primești textul unui PDF care poate conține MULTIPLE documente:
 - Certificat de înregistrare
@@ -91,6 +96,17 @@ SARCINA TA:
 2. Extrage TOATE datele structurate din certificatul constatator
 3. Dacă nu găsești certificat constatator, extrage ce poți din celelalte documente
 
+REGULI IMPORTANTE:
+- Extrage EXACT datele din document, nu inventa nimic
+- Valorile financiare sunt în LEI (numere întregi, fără zecimale)
+- Pierderile sunt NEGATIVE
+- Numerele românești: "1.234.567,89" = 1234567.89 (puncte = mii, virgulă = zecimale)
+- Datele nașterii: format "YYYY-MM-DD"
+- Procentele: valoare numerică (ex: 33.333333, nu "33.333333%")
+- Extrage TOȚI asociații și administratorii, nu doar primul
+- Extrage date financiare pentru FIECARE an disponibil
+- Extrage TOATE activitățile CAEN secundare
+
 RETURNEAZĂ DOAR JSON valid, fără backticks, fără explicații.
 
 MAPARE FORME JURIDICE (text → cod):
@@ -99,43 +115,95 @@ MAPARE FORME JURIDICE (text → cod):
 - "Persoana Fizica Autorizata" / "P.F.A." → "PFA"
 - "Intreprindere Individuala" / "I.I." → "II"
 - "Intreprindere Familiala" / "I.F." → "IF"
+- "Societate in Nume Colectiv" / "S.N.C." → "SNC"
+- "Societate in Comandita Simpla" / "S.C.S." → "SCS"
+- "Societate in Comandita pe Actiuni" / "S.C.A." → "SCA"
+- "Asociatie" / "Fundatie" / "ONG" → "ONG"
+- "Regie Autonoma" / "R.A." → "RA"
+- "S.R.L.-D." / "SRL-D" → "SRL-D"
 
 STARE FIRMĂ:
-- "funcțiune" → "functiune"
-- "radiată" / "dizolvată" → "radiata"`;
+- "funcțiune" → "Funcțiune"
+- "radiată" / "dizolvată" → "Radiată"
+- "lichidare" → "Lichidare"`;
 
 const COMPANY_USER_PROMPT = (pdfText: string) => `Extrage datele firmei din acest document PDF.
 
-Returnează JSON cu structura:
+Returnează JSON cu structura EXACTĂ (toate câmpurile sunt opționale, include doar ce găsești):
 {
-  "denumire": "NUMELE FIRMEI",
+  "denumire": "NUMELE FIRMEI S.R.L.",
   "cui": "1234567",
   "regCom": "J20/333/1992",
+  "euid": "ROONRC.J20/333/1992",
   "formaJuridica": "SRL",
-  "adresa": "Str. X, Nr. Y",
-  "localitate": "Orașul",
-  "judet": "Județul",
-  "stare": "functiune",
-  "durata": "nelimitată",
+  "adresa": "Jud. Arad, Mun. Arad, Str. Exemplu, Nr. 10",
+  "localitate": "Arad",
+  "judet": "Arad",
+  "telefon": "0722123456",
+  "email": "contact@firma.ro",
+  "stare": "Funcțiune",
+  "durata": "Nelimitată",
   "anInfiintare": 1992,
   "capitalSocial": 1500,
   "moneda": "LEI",
   "partiSociale": 150,
+  "naturaCapital": { "privatAutohton": 100, "privatStrain": 0, "stat": 0 },
   "asociati": [
-    { "type": "pf", "name": "NUME PRENUME", "role": "asociat unic", "citizenship": "română", "contribution": 1500, "shares": 150, "pctBenefits": 100, "pctLosses": 100 }
+    {
+      "type": "pf",
+      "name": "POPESCU ION",
+      "role": "asociat unic",
+      "citizenship": "română",
+      "contribution": 1500,
+      "shares": 150,
+      "pctBenefits": 100,
+      "pctLosses": 100,
+      "dataNasterii": "1985-03-15",
+      "locNastere": "Arad, România",
+      "sex": "masculin",
+      "stareCivila": "căsătorit"
+    }
   ],
   "administratori": [
-    { "name": "NUME PRENUME", "role": "administrator", "powers": "DEPLINE", "mandateDuration": "Nelimitat" }
+    {
+      "name": "POPESCU ION",
+      "role": "administrator",
+      "powers": "DEPLINE",
+      "mandateDuration": "Nelimitat",
+      "appointmentDate": "2020-01-15",
+      "citizenship": "română",
+      "dataNasterii": "1985-03-15",
+      "sex": "masculin"
+    }
   ],
   "financials": [
-    { "year": 2023, "cifraAfaceri": 33883844, "profitBrut": 6567414, "profitNet": 5294485, "angajati": 124, "capitaluriProprii": 27376475 }
+    {
+      "year": 2023,
+      "cifraAfaceri": 33883844,
+      "profitBrut": 6567414,
+      "profitNet": 5294485,
+      "angajati": 124,
+      "capitaluriProprii": 27376475,
+      "activeImobilizate": 4218,
+      "activeCirculante": 1500000
+    }
   ],
   "caenPrincipal": "0220",
   "caenDesc": "Exploatare forestieră",
   "activitatiSecundare": [
     { "cod": "0111", "den": "Cultivarea cerealelor" }
-  ]
+  ],
+  "sediiSecundare": [
+    { "denumire": "Punct de lucru", "adresa": "Str. Y, Nr. 5, Arad" }
+  ],
+  "sediuSocial": { "actSediu": "Contract de vânzare-cumpărare", "durataSediu": "Nelimitată" }
 }
+
+IMPORTANT:
+- Pentru asociați PJ (persoane juridice), folosește "type": "pj" și adaugă "cuiPJ" și "regComPJ" dacă sunt disponibile
+- Extrage financials pentru FIECARE an disponibil (poate fi 2020, 2021, 2022, 2023 etc.)
+- Procentele ca numere: 33.333333 nu "33.333333%"
+- Nu include câmpuri cu valori null/undefined/goale — omite-le complet
 
 TEXT DOCUMENT:
 ${pdfText.slice(0, 80000)}`;
@@ -154,61 +222,64 @@ function tryParseJSON(raw: string): any | null {
 /**
  * Extract company data from ONRC PDF text.
  *
- * Strategy:
- * 1. Try regex parser first (free, instant) — works for native PDFs
- * 2. If regex fails or returns insufficient data, AND the text came from OCR
- *    (scanned PDF), fall back to Claude Sonnet for structured extraction
+ * Strategy: AI-first with regex validation.
+ * 1. Always send text to Claude Sonnet for structured extraction
+ * 2. Run regex parser in parallel as validation / cross-check
+ * 3. If AI fails, fall back to regex result
  *
  * @param pdfText - Extracted text from PDF (native or OCR)
- * @param hasScannedPages - Whether any pages required OCR (indicates scanned PDF)
  */
 export async function extractCompanyFromDocument(
   pdfText: string,
-  hasScannedPages: boolean = false,
 ): Promise<ExtractedCompanyData | null> {
-  // ─── Step 1: Try regex parser (always, free) ───
-  const regexResult = parseOnrcText(pdfText);
+  // ─── Step 1: Run AI extraction + regex in parallel ───
+  console.log(`[companyExtractor] AI-first extraction. Text length: ${pdfText.length}, sample: "${pdfText.slice(0, 150)}"`);
 
+  const [aiResult, regexResult] = await Promise.all([
+    extractWithClaude(pdfText).catch((err) => {
+      console.error(`[companyExtractor] AI extraction failed:`, err.message);
+      return null;
+    }),
+    Promise.resolve(parseOnrcText(pdfText)),
+  ]);
+
+  // ─── Step 2: Use AI result if available ───
+  if (aiResult) {
+    // Validate AI result has minimum required data
+    if (aiResult.cui || aiResult.denumire) {
+      // Cross-check with regex for CUI validation (if regex also found a CUI)
+      if (regexResult?.cui && aiResult.cui && regexResult.cui !== aiResult.cui) {
+        console.warn(
+          `[companyExtractor] CUI mismatch: AI="${aiResult.cui}" vs regex="${regexResult.cui}". Using AI result.`
+        );
+      }
+      const aiFieldCount = Object.entries(aiResult)
+        .filter(([_, v]) => v !== undefined && v !== "" && v !== 0 && (!Array.isArray(v) || v.length > 0))
+        .length;
+      console.log(
+        `[companyExtractor] AI extraction succeeded: CUI=${aiResult.cui}, denumire="${aiResult.denumire}", ${aiFieldCount} fields`
+      );
+      return aiResult;
+    }
+    console.warn(`[companyExtractor] AI returned data but no CUI/denumire. Falling back to regex.`);
+  }
+
+  // ─── Step 3: Fallback to regex if AI failed ───
   if (regexResult) {
-    // Check if we got enough data
     const hasCui = !!regexResult.cui;
     const hasDenumire = !!regexResult.denumire;
-    const hasRegCom = !!regexResult.regCom;
-    const fieldCount = Object.entries(regexResult)
-      .filter(([_, v]) => v !== undefined && v !== "" && v !== 0 && (!Array.isArray(v) || v.length > 0))
-      .length;
-
-    if ((hasCui || hasDenumire) && fieldCount >= 5) {
-      console.log(`[companyExtractor] Regex parser succeeded: CUI=${regexResult.cui}, denumire="${regexResult.denumire}", ${fieldCount} fields`);
+    if (hasCui || hasDenumire) {
+      console.log(`[companyExtractor] Regex fallback: CUI=${regexResult.cui}, denumire="${regexResult.denumire}"`);
       return regexResult;
     }
-
-    // Partial regex result — if native PDF, return what we have
-    if (!hasScannedPages && (hasCui || hasDenumire || hasRegCom)) {
-      console.log(`[companyExtractor] Regex parser partial (native PDF): ${fieldCount} fields, returning as-is`);
-      return regexResult;
-    }
-
-    console.warn(`[companyExtractor] Regex parser insufficient: ${fieldCount} fields. hasScannedPages=${hasScannedPages}`);
   }
 
-  // ─── Step 2: AI fallback ───
-  // For scanned PDFs: always try AI (OCR text is unreliable for regex)
-  // For native PDFs: try AI only if regex failed completely (text exists but format unrecognized)
-  if (!hasScannedPages && regexResult) {
-    // Native PDF with partial regex — return what we have (no AI cost)
-    console.warn(`[companyExtractor] Native PDF, regex partial — returning partial data`);
-    return regexResult;
-  }
-
-  // AI fallback: scanned PDF OR native PDF where regex failed completely
-  const reason = hasScannedPages ? "scanned PDF" : "native PDF, regex failed completely";
-  console.log(`[companyExtractor] ${reason} — falling back to Claude Sonnet. Text sample: "${pdfText.slice(0, 200)}"`);
-  return await extractWithClaude(pdfText);
+  console.error(`[companyExtractor] Both AI and regex extraction failed.`);
+  return null;
 }
 
 /**
- * Claude Sonnet extraction — used ONLY for scanned PDFs.
+ * Claude Sonnet extraction — primary extraction method.
  */
 async function extractWithClaude(pdfText: string): Promise<ExtractedCompanyData | null> {
   const MAX_ATTEMPTS = 2;

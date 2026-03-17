@@ -291,7 +291,7 @@ export default function CompaniesPage() {
                     <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
                       <span style={{ fontSize: 15, fontWeight: 600, color: "#0f172a" }}>{c.denumire}</span>
                       <TypeBadge type={forma} />
-                      <StatusBadge status={c.stare || "func\u021biune"} />
+                      <StatusBadge status={c.stare || "funcțiune"} />
                       {immLabel && (
                         <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 10, background: `color-mix(in srgb, ${immColor} 12%, transparent)`, color: immColor, letterSpacing: ".3px" }}>
                           {immLabel}

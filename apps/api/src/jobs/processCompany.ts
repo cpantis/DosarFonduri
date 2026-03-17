@@ -14,6 +14,15 @@ import { redis } from "../lib/redis";
 import { FORMA_MAP } from "../services/onrc";
 import { preflightCached } from "../services/dbPreflight";
 
+/** Normalize stare text (with diacritics/caps) to DB enum value */
+function normalizeStare(raw: string): "functiune" | "radiata" | "dizolvata" | "lichidare" {
+  const s = raw.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  if (/radia/.test(s)) return "radiata";
+  if (/dizolv/.test(s)) return "dizolvata";
+  if (/lichid/.test(s)) return "lichidare";
+  return "functiune";
+}
+
 /** Map full-text formaJuridica to enum code, fallback to "SRL" */
 function mapFormaToCode(raw: string): string {
   if (!raw) return "SRL";
@@ -64,25 +73,18 @@ async function handleOnrcExtract(job: Job<CompanyExtractPayload>) {
 
   const isImage = mimeType.startsWith("image/");
   let extractedText: string;
-  let useAiFallback = false;
 
   if (isImage) {
     console.log(`[onrc-extract] Image file detected (${mimeType}) — using OCR`);
     extractedText = await extractTextFromImage(buffer, name);
-    useAiFallback = true; // image OCR text always needs AI parsing
   } else {
     const pdfResult = await extractTextFromPDF(buffer);
     extractedText = pdfResult.text;
-    useAiFallback = pdfResult.hasScannedPages;
-    if (pdfResult.hasScannedPages) {
-      console.log(`[onrc-extract] Scanned PDF detected (${pdfResult.scannedPageCount}/${pdfResult.totalPages} pages) — using OpenAI fallback`);
-    } else {
-      console.log(`[onrc-extract] Native PDF (${pdfResult.totalPages} pages) — using regex parser (no AI)`);
-    }
+    console.log(`[onrc-extract] PDF (${pdfResult.totalPages} pages, ${pdfResult.scannedPageCount} scanned) — AI extraction`);
   }
   await job.updateProgress(40);
 
-  const companyData = await extractCompanyFromDocument(extractedText, useAiFallback);
+  const companyData = await extractCompanyFromDocument(extractedText);
   await job.updateProgress(80);
 
   if (!companyData) {
@@ -126,7 +128,7 @@ async function handleOnrcExtract(job: Job<CompanyExtractPayload>) {
   if (companyData.telefon) updateData.telefon = companyData.telefon;
   if (companyData.email) updateData.email = companyData.email;
   if (companyData.formaJuridica) updateData.formaJuridica = mapFormaToCode(companyData.formaJuridica) as any;
-  if (companyData.stare) updateData.stare = companyData.stare;
+  if (companyData.stare) updateData.stare = normalizeStare(companyData.stare);
   if (companyData.durata) updateData.durata = companyData.durata;
   if (companyData.anInfiintare) updateData.anInfiintare = companyData.anInfiintare;
   if (companyData.capitalSocial) updateData.capitalSocial = companyData.capitalSocial.toString();
@@ -211,18 +213,15 @@ async function handleOnrcUpdate(job: Job<CompanyOnrcUpdatePayload>) {
   await job.updateProgress(10);
 
   let extractedText: string;
-  let useAiFallback = false;
   if (mimeType.startsWith("image/")) {
     extractedText = await extractTextFromImage(buffer, name);
-    useAiFallback = true;
   } else {
     const pdfResult = await extractTextFromPDF(buffer);
     extractedText = pdfResult.text;
-    useAiFallback = pdfResult.hasScannedPages;
   }
   await job.updateProgress(40);
 
-  const companyData = await extractCompanyFromDocument(extractedText, useAiFallback);
+  const companyData = await extractCompanyFromDocument(extractedText);
   await job.updateProgress(80);
 
   if (!companyData) {
@@ -253,7 +252,7 @@ async function handleOnrcUpdate(job: Job<CompanyOnrcUpdatePayload>) {
   if (companyData.telefon) updateData.telefon = companyData.telefon;
   if (companyData.email) updateData.email = companyData.email;
   if (companyData.formaJuridica) updateData.formaJuridica = mapFormaToCode(companyData.formaJuridica) as any;
-  if (companyData.stare) updateData.stare = companyData.stare;
+  if (companyData.stare) updateData.stare = normalizeStare(companyData.stare);
   if (companyData.durata) updateData.durata = companyData.durata;
   if (companyData.anInfiintare) updateData.anInfiintare = companyData.anInfiintare;
   if (companyData.capitalSocial) updateData.capitalSocial = companyData.capitalSocial.toString();

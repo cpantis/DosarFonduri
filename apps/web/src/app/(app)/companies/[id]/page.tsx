@@ -310,7 +310,7 @@ export default function CompanyDetailPage() {
               <span style={{ fontSize: 20 }}>{"\u26A0"}</span>
               <div>
                 <strong>Aten&#539;ie:</strong> Aceast&#259; firm&#259; are statut{" "}
-                <strong>{sel.stare === "dizolvata" ? "dizolvat\u0103" : sel.stare === "lichidare" ? "\u00een lichidare" : "radiat\u0103"}</strong>.
+                <strong>{sel.stare === "dizolvata" ? "dizolvată" : sel.stare === "lichidare" ? "în lichidare" : "radiată"}</strong>.
                 {" "}Nu este eligibil&#259; pentru finan&#539;are.
               </div>
             </div>

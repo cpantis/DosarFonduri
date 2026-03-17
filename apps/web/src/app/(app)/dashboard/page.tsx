@@ -65,7 +65,7 @@ export default function DashboardPage() {
   return (
     <div className="animate-[fadeIn_.2s_ease-out]">
       <PageHeader title={`Bun venit, ${userName}`} subtitle={`${cabinetName} · Panou de control`} />
-      <div className="max-w-6xl mx-auto px-8 py-6">
+      <div className="max-w-6xl mx-auto px-8 py-8">
         {error && (
           <div className="mb-4 p-4 rounded-xl border border-red-300/60 bg-red-50/30" style={{ color: "var(--accent-red)" }}>
             <span className="font-medium">Eroare: </span>{error}
@@ -77,7 +77,7 @@ export default function DashboardPage() {
             <SkeletonStatCard /><SkeletonStatCard /><SkeletonStatCard /><SkeletonStatCard />
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-5">
             <StatCard icon={"\u{1F3E2}"} label="Firme" value={stats?.companies ?? 0} color="blue" />
             <StatCard icon={"\u{1F4C1}"} label="Proiecte active" value={stats?.projects ?? 0} color="amber" />
             <StatCard icon={"\u2705"} label="Documente" value={stats?.documents ?? 0} color="emerald" />
@@ -115,11 +115,11 @@ export default function DashboardPage() {
                   onAction={() => router.push("/projects")}
                 />
               ) : (
-                <div className="space-y-2">
+                <div className="space-y-3">
                   {data.recentProjects.map(p => (
                     <div
                       key={p.id}
-                      className="bg-white rounded-xl border border-slate-200/80 p-4 hover:shadow-sm hover:border-slate-300/80 transition-all cursor-pointer group flex items-center justify-between"
+                      className="bg-white rounded-xl border border-slate-200/80 p-4 shadow-[0_1px_2px_rgba(0,0,0,.03)] hover:shadow-[0_3px_8px_rgba(0,0,0,.06)] hover:border-slate-300/80 transition-all cursor-pointer group flex items-center justify-between"
                       onClick={() => router.push(`/projects/${p.id}`)}
                     >
                       <div className="min-w-0">
@@ -144,7 +144,7 @@ export default function DashboardPage() {
               {/* Deadlines */}
               <div>
                 <SectionTitle>Termene apropiate</SectionTitle>
-                <div className="bg-white rounded-xl border border-slate-200/80 overflow-hidden">
+                <div className="bg-white rounded-xl border border-slate-200/80 shadow-[0_1px_3px_rgba(0,0,0,.04)] overflow-hidden">
                   {(!data?.deadlines || data.deadlines.length === 0) ? (
                     <div className="text-[13px] text-slate-400 text-center py-8">Niciun termen apropiat</div>
                   ) : (
@@ -166,7 +166,7 @@ export default function DashboardPage() {
               {/* Activity */}
               <div>
                 <SectionTitle>Activitate recentă</SectionTitle>
-                <div className="bg-white rounded-xl border border-slate-200/80 overflow-hidden">
+                <div className="bg-white rounded-xl border border-slate-200/80 shadow-[0_1px_3px_rgba(0,0,0,.04)] overflow-hidden">
                   {(!data?.activity || data.activity.length === 0) ? (
                     <div className="text-[13px] text-slate-400 text-center py-8">Nicio activitate</div>
                   ) : (

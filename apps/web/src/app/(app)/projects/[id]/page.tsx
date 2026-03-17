@@ -2820,13 +2820,13 @@ export default function ProjectViewPage() {
                     /* ─── GHID COMPLET: PDF Viewer + Rules sidebar ─── */
                     ghidViewerLoading ? (
                       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontSize: 13, gap: 8 }}>
-                        <span style={{ fontSize: 20 }}>{"\u2699"}</span> Se \u00EEncarc\u0103 ghidul...
+                        <span style={{ fontSize: 20 }}>{"\u2699"}</span> Se încarcă ghidul...
                       </div>
                     ) : !ghidViewerData || ghidViewerData.guides.length === 0 ? (
                       <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, color: "#94a3b8" }}>
                         <span style={{ fontSize: 40, opacity: 0.3 }}>{"\u{1F4D6}"}</span>
                         <span style={{ fontWeight: 600, fontSize: 14 }}>Niciun ghid uploadat</span>
-                        <span style={{ fontSize: 12 }}>Upload\u0103 un ghid \u00EEn folderul Ghiduri al sesiunii</span>
+                        <span style={{ fontSize: 12 }}>Uploadă un ghid în folderul Ghiduri al sesiunii</span>
                       </div>
                     ) : (() => {
                       const guide = ghidViewerData.guides[0];
@@ -2868,7 +2868,7 @@ export default function ProjectViewPage() {
                                   color: ghidViewerPage >= totalPages ? "#cbd5e1" : "#0f172a", fontSize: 12, fontWeight: 600,
                                 }}
                               >
-                                Urm\u0103tor {"\u25B6"}
+                                Următor {"\u25B6"}
                               </button>
                               <div style={{ flex: 1 }} />
                               <span style={{ fontSize: 11, color: "#64748b" }}>
@@ -2884,7 +2884,7 @@ export default function ProjectViewPage() {
                                     padding: "3px 8px", borderRadius: 6, border: "1px solid rgba(37,99,235,.2)",
                                   }}
                                 >
-                                  {"\u{1F4E5}"} Descarc\u0103
+                                  {"\u{1F4E5}"} Descarcă
                                 </a>
                               )}
                             </div>
@@ -2919,7 +2919,7 @@ export default function ProjectViewPage() {
                             <div style={{ flex: 1, overflowY: "auto", padding: "4px 0" }}>
                               {pageRules.length === 0 ? (
                                 <div style={{ padding: "24px 14px", textAlign: "center", color: "#cbd5e1", fontSize: 12 }}>
-                                  Nicio regul\u0103 pe aceast\u0103 pagin\u0103
+                                  Nicio regulă pe această pagină
                                 </div>
                               ) : pageRules.map((rule: any) => (
                                 <div
@@ -2939,7 +2939,7 @@ export default function ProjectViewPage() {
                                       background: rule.type === "fixed" ? "rgba(52,211,153,.1)" : "rgba(251,191,36,.1)",
                                       color: rule.type === "fixed" ? "#059669" : "#d97706",
                                     }}>
-                                      {rule.type === "fixed" ? "FIX\u0102" : "INTER"}
+                                      {rule.type === "fixed" ? "FIXĂ" : "INTER"}
                                     </span>
                                     {rule.category && (
                                       <span style={{

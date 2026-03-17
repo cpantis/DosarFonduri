@@ -931,7 +931,7 @@ export default function DocumentsPage() {
                   )}
                   {isProcessing && !jp && (
                     <div style={{ marginTop: 6, fontSize: 11, color: "#fbbf24" }}>
-                      {"\u2699"} Procesare \u00EEn curs...
+                      {"\u2699"} Procesare în curs...
                     </div>
                   )}
                   {d.tags.length > 0 && (
@@ -1065,11 +1065,11 @@ export default function DocumentsPage() {
                       <div style={{ maxHeight: 280, overflowY: "auto" }}>
                         {isLoading ? (
                           <div style={{ padding: "16px", textAlign: "center", color: "#94a3b8", fontSize: 12 }}>
-                            Se \u00EEncarc\u0103 regulile...
+                            Se încarcă regulile...
                           </div>
                         ) : rules.length === 0 ? (
                           <div style={{ padding: "16px", textAlign: "center", color: "#94a3b8", fontSize: 12 }}>
-                            Nicio regul\u0103 extras\u0103
+                            Nicio regulă extrasă
                           </div>
                         ) : rules.map((rule: any) => (
                           <div key={rule.id} style={{
@@ -1094,7 +1094,7 @@ export default function DocumentsPage() {
                                 color: rule.type === "fixed" ? "#059669" : "#d97706",
                                 letterSpacing: ".3px",
                               }}>
-                                {rule.type === "fixed" ? "FIX\u0102" : "INTER"}
+                                {rule.type === "fixed" ? "FIXĂ" : "INTER"}
                               </span>
                             </div>
                             <div style={{ flex: 1, minWidth: 0 }}>
@@ -1211,7 +1211,7 @@ export default function DocumentsPage() {
             </div>
           ) : (
             <div style={{ marginTop: 10, color: "#fbbf24", fontSize: 13 }}>
-              {"\u2699"} Procesare \u00EEn curs... Rezultatele vor ap\u0103rea automat.
+              {"\u2699"} Procesare în curs... Rezultatele vor apărea automat.
             </div>
           );
         })()}

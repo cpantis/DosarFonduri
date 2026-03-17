@@ -28,7 +28,7 @@ interface UploadOption {
 const UPLOAD_OPTIONS: Record<string, UploadOption[]> = {
   ghiduri: [
     { key: "ghid", label: "Upload ghid solicitant", icon: "\u{1F4D6}", accept: ".pdf" },
-    { key: "reference_data", label: "Upload anex\u0103 cu date", icon: "\u{1F4CA}", accept: ".pdf,.docx,.xlsx" },
+    { key: "reference_data", label: "Upload anexă cu date", icon: "\u{1F4CA}", accept: ".pdf,.docx,.xlsx" },
   ],
   templateuri: [
     { key: "template_fill", label: "Upload formular (completare c\u00E2mpuri)", icon: "\u{1F4CB}", accept: ".pdf,.docx,.xlsx" },
@@ -108,7 +108,7 @@ export function FolderUploadButton({ folderId, folderType, onSuccess, onWarnings
       });
 
       if (!uploadRes.ok) {
-        throw new Error(`Upload direct la storage a e\u0219uat (HTTP ${uploadRes.status})`);
+        throw new Error(`Upload direct la storage a eșuat (HTTP ${uploadRes.status})`);
       }
 
       // Confirm upload to trigger processing
@@ -120,7 +120,7 @@ export function FolderUploadButton({ folderId, folderType, onSuccess, onWarnings
 
       if (!confirmRes.ok) {
         const body = await confirmRes.json().catch(() => ({ error: "Confirm failed" }));
-        throw new Error(body.error || "Confirmare e\u0219uat\u0103");
+        throw new Error(body.error || "Confirmare eșuată");
       }
 
       const confirmData = await confirmRes.json().catch(() => ({}));
@@ -197,7 +197,7 @@ export function FolderUploadButton({ folderId, folderType, onSuccess, onWarnings
             ? "bg-blue-100 text-blue-600 cursor-wait"
             : "bg-blue-600 hover:bg-blue-700 text-white"
         }`}
-        title={uploading ? "Upload \u00EEn curs..." : "Upload document"}
+        title={uploading ? "Upload în curs..." : "Upload document"}
       >
         {uploading ? (
           <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">

@@ -99,6 +99,12 @@ export default function ProjectsPage() {
     setCreateError(null);
     try {
       const result: any = await apiPost("/api/projects", { name: createData.name.trim(), companyId: createData.firmaId, folderId: createData.folderId });
+      console.log("[projects/create] Result:", JSON.stringify(result));
+      if (!result?.id) {
+        setCreateError("Proiectul a fost creat dar nu s-a primit ID-ul. Reîncarcă pagina.");
+        setCreating(false);
+        return;
+      }
       setShowCreate(false);
       router.push(`/projects/${result.id}`);
     } catch (err: any) {

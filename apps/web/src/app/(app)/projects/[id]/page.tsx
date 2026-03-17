@@ -485,11 +485,13 @@ export default function ProjectViewPage() {
 
         // Fetch project with retry (project may still be processing post-creation steps)
         let proj: any = null;
+        console.log("[project-view] Loading project:", projectId);
         for (let attempt = 0; attempt < 3; attempt++) {
           try {
             proj = await apiGet<any>(`/api/projects/${projectId}`);
             break;
-          } catch (err) {
+          } catch (err: any) {
+            console.warn(`[project-view] Attempt ${attempt + 1} failed:`, err?.message);
             if (attempt < 2) {
               await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
             } else {

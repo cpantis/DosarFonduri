@@ -362,10 +362,14 @@ projectRoutes.get("/:id", async (c) => {
   const auth = c.get("auth") as AuthContext;
   const id = c.req.param("id");
 
+  if (!auth.organizationId) return c.json({ error: "No organization" }, 403);
+
   const project = await db.query.projects.findFirst({
-    where: and(eq(projects.id, id), eq(projects.organizationId, auth.organizationId!)),
+    where: and(eq(projects.id, id), eq(projects.organizationId, auth.organizationId)),
   });
-  if (!project) return c.json({ error: "Not found" }, 404);
+  if (!project) {
+    return c.json({ error: "Not found" }, 404);
+  }
 
   const company = await db.query.companies.findFirst({
     where: eq(companies.id, project.companyId),

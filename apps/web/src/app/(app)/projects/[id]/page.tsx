@@ -481,8 +481,23 @@ export default function ProjectViewPage() {
     async function fetchData() {
       try {
         setLoading(true);
-        const [proj, eligData, checkData, neemiaDocs] = await Promise.all([
-          apiGet<any>(`/api/projects/${projectId}`),
+
+        // Fetch project with retry (project may still be processing post-creation steps)
+        let proj: any = null;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            proj = await apiGet<any>(`/api/projects/${projectId}`);
+            break;
+          } catch (err) {
+            if (attempt < 2) {
+              await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+            } else {
+              throw err;
+            }
+          }
+        }
+
+        const [eligData, checkData, neemiaDocs] = await Promise.all([
           apiGet<any>(`/api/projects/${projectId}/eligibility`).catch(() => ({ flat: [], grouped: [], summary: {} })),
           apiGet<any>(`/api/projects/${projectId}/checklist`).catch(() => ({ items: [], grouped: {}, summary: {} })),
           apiGet<any[]>(`/api/neemia/projects/${projectId}/documents`).catch(() => []),

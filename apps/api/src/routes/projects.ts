@@ -252,16 +252,19 @@ projectRoutes.post("/", async (c) => {
     return c.json({ error: `Eroare la crearea proiectului: ${err.message}` }, 500);
   }
 
-  // Post-creation steps (best-effort, project already committed)
-  try { await prefillFromCompany(project.id, company); } catch (e: any) {
-    console.warn("[projects/create] Prefill warning:", e.message);
-  }
-  try { await populateChecklistFromRules(project.id, project.folderId, orgId); } catch (e: any) {
-    console.warn("[projects/create] Checklist warning:", e.message);
-  }
-  try { await checkEligibility(project.id, orgId); } catch (e: any) {
-    console.warn("[projects/create] Eligibility warning:", e.message);
-  }
+  // Post-creation steps (best-effort, fire-and-forget — don't block response)
+  // The project is already committed; these enrich it in the background.
+  Promise.resolve().then(async () => {
+    try { await prefillFromCompany(project.id, company); } catch (e: any) {
+      console.warn("[projects/create] Prefill warning:", e.message);
+    }
+    try { await populateChecklistFromRules(project.id, project.folderId, orgId); } catch (e: any) {
+      console.warn("[projects/create] Checklist warning:", e.message);
+    }
+    try { await checkEligibility(project.id, orgId); } catch (e: any) {
+      console.warn("[projects/create] Eligibility warning:", e.message);
+    }
+  });
 
   return c.json(project, 201);
 });

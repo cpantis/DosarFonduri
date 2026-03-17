@@ -303,3 +303,16 @@ apiDelete<T>(path)                 // DELETE
 6. **Audit log filtering** — Admin page afișează log-ul dar fără filtrare UI
 7. **Version rollback** — Neemia version history se încarcă dar nu are buton de restore
 8. **Anexe tab** — Ghid Finanțare sub-tab "Anexe" este stub
+
+### 12. BUILD VERIFICATION RULE
+
+**ÎNAINTE de orice commit, rulează AMBELE build-uri:**
+
+```bash
+cd apps/api && npx tsc --noEmit
+cd apps/web && npx next build
+```
+
+- Dacă **ORICARE** eșuează → **NU face commit**. Fixează mai întâi.
+- TypeScript build LOCAL nu e suficient. Docker build-ul poate eșua din motive diferite (dependințe lipsă, shared packages, env vars).
+- Shared package trebuie compilat înainte de web: `cd packages/shared && npx tsc`

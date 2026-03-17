@@ -274,6 +274,7 @@ export default function ProjectViewPage() {
   const projectId = params.id as string;
 
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [project, setProject] = useState<ProjectData | null>(null);
   const [eligibilityRules, setEligibilityRules] = useState<EligibilityRule[]>([]);
   const [guideRules, setGuideRules] = useState<GuideRule[]>([]);
@@ -549,8 +550,9 @@ export default function ProjectViewPage() {
         apiGet<any>(`/api/projects/${projectId}/scores`).then(setProjectScores).catch(() => {});
         apiGet<any>(`/api/projects/${projectId}/budget-validation`).then(setBudgetValidation).catch(() => {});
         apiGet<any>(`/api/projects/${projectId}/learnings`).then(setLearnings).catch(() => {});
-      } catch (err) {
+      } catch (err: any) {
         console.error("Failed to load project:", err);
+        setLoadError(err?.message || "Eroare la încărcarea proiectului");
       } finally {
         setLoading(false);
       }
@@ -1482,8 +1484,19 @@ export default function ProjectViewPage() {
 
   if (!project) {
     return (
-      <div className="flex items-center justify-center h-full text-base font-sans bg-slate-50 text-red-400">
-        Proiectul nu a fost gasit.
+      <div className="flex flex-col items-center justify-center h-full text-base font-sans bg-slate-50 gap-3">
+        <div className="text-red-400">Proiectul nu a fost găsit.</div>
+        {loadError && (
+          <div className="text-[13px] text-slate-400 max-w-md text-center">
+            Eroare: {loadError}
+          </div>
+        )}
+        <button
+          onClick={() => window.location.reload()}
+          className="mt-2 text-[13px] text-blue-500 hover:text-blue-700 hover:underline"
+        >
+          Reîncearcă
+        </button>
       </div>
     );
   }

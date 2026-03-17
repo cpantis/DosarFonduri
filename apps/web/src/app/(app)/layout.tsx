@@ -1,9 +1,11 @@
 "use client";
 import { Sidebar } from "@/components/layout/Sidebar";
+import { Breadcrumbs } from "@/components/layout/Breadcrumbs";
 import { ThemeProvider } from "@/components/layout/ThemeProvider";
 import { AuthProvider } from "@/components/layout/AuthProvider";
 import { useAuthState } from "@/hooks/useAuth";
 import { AuthContext } from "@/hooks/useAuth";
+import { useSidebarState, SidebarContext } from "@/hooks/useSidebar";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -29,12 +31,28 @@ function fieldLabel(key: string): string {
 function AppShell({ children }: { children: React.ReactNode }) {
   const auth = useAuthState();
   const router = useRouter();
+  const sidebarState = useSidebarState();
 
   useEffect(() => {
     if (!auth.loading && !auth.user) {
       router.replace("/login");
     }
   }, [auth.loading, auth.user, router]);
+
+  // Keyboard shortcut: Ctrl+B / Cmd+B to toggle sidebar
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === "b") {
+        // Don't trigger if user is typing in an input/textarea
+        const tag = (e.target as HTMLElement)?.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement)?.isContentEditable) return;
+        e.preventDefault();
+        sidebarState.toggle();
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [sidebarState]);
 
   if (auth.loading) {
     return (
@@ -67,13 +85,18 @@ function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider value={auth}>
-      <SSEProvider />
-      <div className="flex min-h-screen bg-slate-50" style={{ fontFamily: "'Inter', system-ui, -apple-system, sans-serif" }}>
-        <Sidebar />
-        <main className="flex-1 min-w-0 overflow-y-auto">
-          {children}
-        </main>
-      </div>
+      <SidebarContext.Provider value={sidebarState}>
+        <SSEProvider />
+        <div className="flex min-h-screen bg-slate-50" style={{ fontFamily: "'Inter', system-ui, -apple-system, sans-serif" }}>
+          <Sidebar />
+          <div className="flex-1 min-w-0 flex flex-col" style={{ transition: "margin-left 200ms ease" }}>
+            <Breadcrumbs />
+            <main className="flex-1 min-w-0 overflow-y-auto">
+              {children}
+            </main>
+          </div>
+        </div>
+      </SidebarContext.Provider>
     </AuthContext.Provider>
   );
 }

@@ -57,7 +57,6 @@ function NavItem({
       title={collapsed ? item.label : undefined}
       onClick={(e) => {
         if (collapsed) {
-          // In collapsed rail, click expands the sidebar instead of navigating
           e.preventDefault();
           onExpandRequest();
         }
@@ -71,8 +70,8 @@ function NavItem({
         borderRadius: 8,
         fontSize: 13,
         fontWeight: active ? 600 : 500,
-        color: active ? "#2563eb" : "#64748b",
-        background: active ? "rgba(37,99,235,.08)" : "transparent",
+        color: active ? "#e8ecf4" : "#94a3b8",
+        background: active ? "rgba(77,139,255,.12)" : "transparent",
         textDecoration: "none",
         transition: "all .15s",
         marginBottom: 2,
@@ -83,14 +82,14 @@ function NavItem({
       }}
       onMouseEnter={e => {
         if (!active) {
-          e.currentTarget.style.background = "#f1f5f9";
-          e.currentTarget.style.color = "#0f172a";
+          e.currentTarget.style.background = "rgba(255,255,255,.06)";
+          e.currentTarget.style.color = "#e8ecf4";
         }
       }}
       onMouseLeave={e => {
         if (!active) {
           e.currentTarget.style.background = "transparent";
-          e.currentTarget.style.color = "#64748b";
+          e.currentTarget.style.color = "#94a3b8";
         }
       }}
     >
@@ -102,14 +101,14 @@ function NavItem({
 
 function SectionLabel({ children, collapsed }: { children: React.ReactNode; collapsed: boolean }) {
   if (collapsed) {
-    return <div style={{ height: 1, background: "rgba(226,232,240,.6)", margin: "8px 12px" }} />;
+    return <div style={{ height: 1, background: "rgba(255,255,255,.08)", margin: "8px 12px" }} />;
   }
   return (
     <div style={{
       fontSize: 10,
       textTransform: "uppercase",
       letterSpacing: "0.14em",
-      color: "#94a3b8",
+      color: "#5a6478",
       fontWeight: 600,
       padding: "0 14px",
       marginTop: 24,
@@ -147,7 +146,7 @@ export function Sidebar() {
           display: "none",
           position: "fixed", top: 12, left: 12, zIndex: 200,
           width: 40, height: 40, borderRadius: 10,
-          background: "#fff", border: "1px solid #e2e8f0",
+          background: "#0f1219", border: "1px solid rgba(255,255,255,.1)",
           boxShadow: "0 2px 8px rgba(0,0,0,.08)",
           alignItems: "center", justifyContent: "center",
           fontSize: 18, cursor: "pointer",
@@ -180,11 +179,11 @@ export function Sidebar() {
       style={{
         width: mobileOpen ? EXPANDED_WIDTH : isCollapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH,
         minHeight: "100vh",
-        background: "#ffffff",
+        background: "#0f1219",
         display: "flex",
         flexDirection: "column",
         flexShrink: 0,
-        borderRight: "1px solid rgba(226,232,240,.8)",
+        borderRight: "1px solid rgba(255,255,255,.06)",
         transition: "width 200ms ease",
         overflow: "hidden",
       }}
@@ -199,7 +198,7 @@ export function Sidebar() {
             boxShadow: "0 4px 12px rgba(37,99,235,.2)",
           }}>DF</div>
           {!isCollapsed && (
-            <span style={{ color: "#0f172a", fontWeight: 600, fontSize: 15, letterSpacing: "-0.01em", whiteSpace: "nowrap" }}>DosarFonduri</span>
+            <span style={{ color: "#e8ecf4", fontWeight: 600, fontSize: 15, letterSpacing: "-0.01em", whiteSpace: "nowrap" }}>DosarFonduri</span>
           )}
         </div>
       </div>
@@ -208,18 +207,18 @@ export function Sidebar() {
       {!isCollapsed && (
         <div style={{ padding: "0 16px 12px" }}>
           <div style={{
-            background: "#f8fafc", borderRadius: 8, padding: 12,
-            border: "1px solid rgba(226,232,240,.8)",
+            background: "rgba(255,255,255,.04)", borderRadius: 8, padding: 12,
+            border: "1px solid rgba(255,255,255,.06)",
           }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <div style={{
                 width: 32, height: 32, borderRadius: 8, flexShrink: 0,
-                background: "rgba(37,99,235,.08)", display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 11, fontWeight: 700, color: "#2563eb",
+                background: "rgba(77,139,255,.15)", display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 11, fontWeight: 700, color: "#4d8bff",
               }}>{initials}</div>
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.14em", color: "#94a3b8", marginBottom: 2 }}>Cabinet activ</div>
-                <div style={{ color: "#0f172a", fontSize: 13, fontWeight: 500, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cabinetName}</div>
+                <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.14em", color: "#5a6478", marginBottom: 2 }}>Cabinet activ</div>
+                <div style={{ color: "#e8ecf4", fontSize: 13, fontWeight: 500, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cabinetName}</div>
               </div>
             </div>
           </div>
@@ -230,8 +229,8 @@ export function Sidebar() {
         <div style={{ display: "flex", justifyContent: "center", padding: "0 0 8px" }} title={cabinetName}>
           <div style={{
             width: 32, height: 32, borderRadius: 8,
-            background: "rgba(37,99,235,.08)", display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 11, fontWeight: 700, color: "#2563eb",
+            background: "rgba(77,139,255,.15)", display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 11, fontWeight: 700, color: "#4d8bff",
           }}>{initials}</div>
         </div>
       )}
@@ -271,11 +270,11 @@ export function Sidebar() {
             width: 32, height: 32, borderRadius: 8,
             display: "flex", alignItems: "center", justifyContent: "center",
             background: "transparent", border: "none",
-            color: "#94a3b8", cursor: "pointer",
+            color: "#5a6478", cursor: "pointer",
             transition: "all .15s",
           }}
-          onMouseEnter={e => { e.currentTarget.style.background = "#f1f5f9"; e.currentTarget.style.color = "#475569"; }}
-          onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#94a3b8"; }}
+          onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,.06)"; e.currentTarget.style.color = "#94a3b8"; }}
+          onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#5a6478"; }}
         >
           <CollapseIcon collapsed={isCollapsed} />
         </button>
@@ -285,7 +284,7 @@ export function Sidebar() {
       {user && (
         <div style={{
           padding: isCollapsed ? "12px 0" : "12px 16px",
-          borderTop: "1px solid rgba(226,232,240,.8)",
+          borderTop: "1px solid rgba(255,255,255,.06)",
           display: "flex",
           justifyContent: isCollapsed ? "center" : "flex-start",
           alignItems: "center",
@@ -293,8 +292,8 @@ export function Sidebar() {
         }}>
           <div style={{
             width: 28, height: 28, borderRadius: "50%", flexShrink: 0,
-            background: "rgba(37,99,235,.08)", display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 10, fontWeight: 700, color: "#2563eb",
+            background: "rgba(77,139,255,.15)", display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 10, fontWeight: 700, color: "#4d8bff",
           }}
           title={isCollapsed ? (user.name || user.email || "Utilizator") : undefined}
           >
@@ -302,8 +301,8 @@ export function Sidebar() {
           </div>
           {!isCollapsed && (
             <div style={{ minWidth: 0, flex: 1 }}>
-              <div style={{ fontSize: 12, color: "#475569", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.name || user.email}</div>
-              <div style={{ fontSize: 10, color: "#94a3b8", textTransform: "capitalize" }}>{user.role || "consultant"}</div>
+              <div style={{ fontSize: 12, color: "#e8ecf4", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.name || user.email}</div>
+              <div style={{ fontSize: 10, color: "#5a6478", textTransform: "capitalize" }}>{user.role || "consultant"}</div>
             </div>
           )}
         </div>

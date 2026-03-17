@@ -73,25 +73,18 @@ async function handleOnrcExtract(job: Job<CompanyExtractPayload>) {
 
   const isImage = mimeType.startsWith("image/");
   let extractedText: string;
-  let useAiFallback = false;
 
   if (isImage) {
     console.log(`[onrc-extract] Image file detected (${mimeType}) — using OCR`);
     extractedText = await extractTextFromImage(buffer, name);
-    useAiFallback = true; // image OCR text always needs AI parsing
   } else {
     const pdfResult = await extractTextFromPDF(buffer);
     extractedText = pdfResult.text;
-    useAiFallback = pdfResult.hasScannedPages;
-    if (pdfResult.hasScannedPages) {
-      console.log(`[onrc-extract] Scanned PDF detected (${pdfResult.scannedPageCount}/${pdfResult.totalPages} pages) — using OpenAI fallback`);
-    } else {
-      console.log(`[onrc-extract] Native PDF (${pdfResult.totalPages} pages) — using regex parser (no AI)`);
-    }
+    console.log(`[onrc-extract] PDF (${pdfResult.totalPages} pages, ${pdfResult.scannedPageCount} scanned) — AI extraction`);
   }
   await job.updateProgress(40);
 
-  const companyData = await extractCompanyFromDocument(extractedText, useAiFallback);
+  const companyData = await extractCompanyFromDocument(extractedText);
   await job.updateProgress(80);
 
   if (!companyData) {
@@ -220,18 +213,15 @@ async function handleOnrcUpdate(job: Job<CompanyOnrcUpdatePayload>) {
   await job.updateProgress(10);
 
   let extractedText: string;
-  let useAiFallback = false;
   if (mimeType.startsWith("image/")) {
     extractedText = await extractTextFromImage(buffer, name);
-    useAiFallback = true;
   } else {
     const pdfResult = await extractTextFromPDF(buffer);
     extractedText = pdfResult.text;
-    useAiFallback = pdfResult.hasScannedPages;
   }
   await job.updateProgress(40);
 
-  const companyData = await extractCompanyFromDocument(extractedText, useAiFallback);
+  const companyData = await extractCompanyFromDocument(extractedText);
   await job.updateProgress(80);
 
   if (!companyData) {

@@ -14,6 +14,15 @@ import { redis } from "../lib/redis";
 import { FORMA_MAP } from "../services/onrc";
 import { preflightCached } from "../services/dbPreflight";
 
+/** Normalize stare text (with diacritics/caps) to DB enum value */
+function normalizeStare(raw: string): "functiune" | "radiata" | "dizolvata" | "lichidare" {
+  const s = raw.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  if (/radia/.test(s)) return "radiata";
+  if (/dizolv/.test(s)) return "dizolvata";
+  if (/lichid/.test(s)) return "lichidare";
+  return "functiune";
+}
+
 /** Map full-text formaJuridica to enum code, fallback to "SRL" */
 function mapFormaToCode(raw: string): string {
   if (!raw) return "SRL";
@@ -126,7 +135,7 @@ async function handleOnrcExtract(job: Job<CompanyExtractPayload>) {
   if (companyData.telefon) updateData.telefon = companyData.telefon;
   if (companyData.email) updateData.email = companyData.email;
   if (companyData.formaJuridica) updateData.formaJuridica = mapFormaToCode(companyData.formaJuridica) as any;
-  if (companyData.stare) updateData.stare = companyData.stare;
+  if (companyData.stare) updateData.stare = normalizeStare(companyData.stare);
   if (companyData.durata) updateData.durata = companyData.durata;
   if (companyData.anInfiintare) updateData.anInfiintare = companyData.anInfiintare;
   if (companyData.capitalSocial) updateData.capitalSocial = companyData.capitalSocial.toString();
@@ -253,7 +262,7 @@ async function handleOnrcUpdate(job: Job<CompanyOnrcUpdatePayload>) {
   if (companyData.telefon) updateData.telefon = companyData.telefon;
   if (companyData.email) updateData.email = companyData.email;
   if (companyData.formaJuridica) updateData.formaJuridica = mapFormaToCode(companyData.formaJuridica) as any;
-  if (companyData.stare) updateData.stare = companyData.stare;
+  if (companyData.stare) updateData.stare = normalizeStare(companyData.stare);
   if (companyData.durata) updateData.durata = companyData.durata;
   if (companyData.anInfiintare) updateData.anInfiintare = companyData.anInfiintare;
   if (companyData.capitalSocial) updateData.capitalSocial = companyData.capitalSocial.toString();

@@ -20,11 +20,28 @@ import {
   templateElements, documents, orgConfig, companies,
   guideReferenceTables, rules, ruleReferenceLinks, elementRuleLinks,
   organizations, solomonKnowledge, composeSectionVersions,
+  projectChecklist,
 } from "../db/schema";
 import { eq, and, inArray, isNull, or, like } from "drizzle-orm";
 import { getFileBuffer, uploadFile } from "./storage";
 import { logAIUsage } from "./aiUsage";
 import crypto from "crypto";
+
+
+// ═══ CHECKLIST CRITICALITY MAP ═══
+// Maps checklist item keywords to criticality levels for pre-generation warnings
+const CHECKLIST_CRITICALITY = {
+  critical: [
+    'certificat constatator', 'bilant', 'situatii financiare',
+    'oferta', 'oferte pret', 'memoriu', 'cerere finantare',
+    'plan afaceri', 'deviz', 'buget'
+  ],
+  warning: [
+    'diploma', 'certificat fiscal', 'extras cont',
+    'declaratie', 'contract arenda', 'act constitutiv'
+  ],
+  // Everything else is 'info' level
+} as const;
 
 
 function safeTmpPath(prefix: string, ext: string): string {
@@ -84,6 +101,7 @@ export interface ComposeContext {
   companyCui: string;
   programFinantare: string;
   codMasura: string;
+  numberFormat: "ro" | "en";
   elements: Record<string, { value: string; label: string; source: string }>;
   referenceTables: Array<{
     id: string;
@@ -214,12 +232,19 @@ export async function buildComposeContext(
     }
   }
 
+  // Load org branding for number format
+  const org = await db.query.organizations.findFirst({
+    where: eq(organizations.id, organizationId),
+  });
+  const cabinetStyle = org?.cabinetDocumentStyle as Record<string, any> || {};
+
   return {
     projectName: project.name,
     companyName: company?.denumire || "N/A",
     companyCui: company?.cui || "N/A",
     programFinantare: project.programFinantare || "N/A",
     codMasura: project.codMasura || "N/A",
+    numberFormat: (cabinetStyle.numberFormat as "ro" | "en") || "ro",
     elements,
     referenceTables: relevantRefTables.map(t => ({
       id: t.id,
@@ -255,6 +280,7 @@ async function generateComposeContent(
   aiModel: string,
   organizationId: string,
   userId: string,
+  blueprint?: DocumentBlueprint | null,
 ): Promise<{ sections: ComposeSection[]; tokensInput: number; tokensOutput: number; placeholders: Array<{ section: string; placeholder: string }> }> {
 
   // Build element context string
@@ -294,13 +320,45 @@ async function generateComposeContent(
           .join(", ")
       : "toate tabelele de referință";
 
+    // If blueprint section has missing keys, instruct AI to mark placeholders
+    let blueprintHint = "";
+    const blueprintSection = blueprint?.sections?.find(
+      (bs) => bs.sectionId === s.marker || bs.sectionId === s.marker.replace("COMPOSE:", "")
+    );
+    if (blueprintSection) {
+      const missingRequired = (blueprintSection.requiredElementKeys || []).filter(
+        (k: string) => !context.elements[k]?.value
+      );
+      if (missingRequired.length > 0) {
+        blueprintHint = `\n- ATENȚIE: Lipsesc date obligatorii: ${missingRequired.join(", ")}. Pentru aceste câmpuri, inserează marcajul [DE COMPLETAT - descriere] cu explicație ce date sunt necesare.`;
+      }
+      if (blueprintSection.tone) {
+        blueprintHint += `\n- Ton recomandat: ${blueprintSection.tone}`;
+      }
+      if (blueprintSection.targetLength) {
+        blueprintHint += `\n- Lungime țintă: ${blueprintSection.targetLength.min}-${blueprintSection.targetLength.max} cuvinte`;
+      }
+      if (blueprintSection.keywords?.length) {
+        blueprintHint += `\n- Cuvinte cheie evaluator: ${blueprintSection.keywords.join(", ")}`;
+      }
+      if (blueprintSection.evaluatorChecklist?.length) {
+        blueprintHint += `\n- Evaluatorul verifică: ${blueprintSection.evaluatorChecklist.join("; ")}`;
+      }
+      if (blueprintSection.structureHint) {
+        blueprintHint += `\n- Structura recomandată: ${blueprintSection.structureHint}`;
+      }
+      if (blueprintSection.forbiddenPhrases?.length) {
+        blueprintHint += `\n- Expresii de evitat: ${blueprintSection.forbiddenPhrases.join(", ")}`;
+      }
+    }
+
     return `
 ## Secțiune: ${s.label}
 - Marker: ${s.marker}
 - Tip: ${s.type}
 - Elemente relevante: ${relevantElements}
 - Tabele referință: ${relevantTables}
-${s.instructions ? `- Instrucțiuni specifice: ${s.instructions}` : ""}`;
+${s.instructions ? `- Instrucțiuni specifice: ${s.instructions}` : ""}${blueprintHint}`;
   }).join("\n");
 
   // Load writing kit from solomonKnowledge (global + org-specific)
@@ -365,7 +423,7 @@ REGULI STRICTE:
 7. Argumentează legătura între datele proiectului și regulile din ghidul de finanțare.
 8. Evidențiază (prin highlight) rândurile din tabele care sunt relevante pentru proiect.
 9. Dacă o dată lipsește, marchează cu {{PLACEHOLDER_DESCRIERE}} — nu inventa.
-10. Numere formatate RO: 1.234.567,89 RON (punct separare mii, virgulă zecimale).
+10. Numere formatate ${context.numberFormat === "en" ? "EN: 1,234,567.89 RON (virgulă separare mii, punct zecimale)" : "RO: 1.234.567,89 RON (punct separare mii, virgulă zecimale)"}.
 ${writingKitContext ? `
 WRITING KIT — Terminologie și keywords profesionale:
 ${writingKitContext}
@@ -529,12 +587,14 @@ export async function composeDocument(params: ComposeDocParams): Promise<Readabl
         } else {
           emit({ type: "status", message: `Se generează conținutul cu ${aiModel}...` });
 
+          const templateBlueprint = (templateDoc as any)?.blueprint as DocumentBlueprint | null;
           const aiResult = await generateComposeContent(
             context,
             composeConfig.sections,
             aiModel,
             organizationId,
             userId,
+            templateBlueprint,
           );
 
           composeSections = aiResult.sections;
@@ -599,12 +659,18 @@ export async function composeDocument(params: ComposeDocParams): Promise<Readabl
         }
         if (cabinetStyle.footerText) simpleElements["footer_cabinet"] = cabinetStyle.footerText;
 
+        // Pass work/submission context for watermark decision
+        const styleWithContext = {
+          ...cabinetStyle,
+          _isWorkDocument: true, // compose generates work documents by default
+        };
+
         const filledBuffer = await composeDocxTemplate(
           templateBuffer,
           templateName,
           simpleElements,
           composeSections,
-          cabinetStyle,
+          styleWithContext,
         );
 
         // Step 3: Upload and save
@@ -1120,6 +1186,9 @@ for table in doc.tables:
 # Apply cabinet document style
 cab_font = cabinet_style.get('fontFamily')
 cab_footer = cabinet_style.get('footerText')
+cab_draft_watermark = cabinet_style.get('draftWatermark', False)
+cab_watermark_text = cabinet_style.get('draftWatermarkText', 'DRAFT')
+cab_is_work_doc = cabinet_style.get('_isWorkDocument', True)
 
 if cab_font:
     for para in doc.paragraphs:
@@ -1135,14 +1204,36 @@ if cab_font:
                             run.font.name = cab_font
 
 if cab_footer:
-    last_section = doc.sections[-1] if doc.sections else None
-    if last_section and last_section.footer:
-        p = last_section.footer.add_paragraph()
-        run = p.add_run(cab_footer)
-        run.font.size = Pt(8)
-        run.font.color.rgb = RGBColor(0x88, 0x88, 0x88)
-        if cab_font:
-            run.font.name = cab_font
+    for section in doc.sections:
+        if section.footer:
+            p = section.footer.add_paragraph()
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            run = p.add_run(cab_footer)
+            run.font.size = Pt(8)
+            run.font.color.rgb = RGBColor(0x88, 0x88, 0x88)
+            if cab_font:
+                run.font.name = cab_font
+
+# Add DRAFT watermark on work documents
+if cab_draft_watermark and cab_is_work_doc and cab_watermark_text:
+    for section in doc.sections:
+        header = section.header
+        p = header.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        watermark_xml = f'''<w:r {nsdecls('w')}>
+          <w:rPr>
+            <w:color w:val="D0D0D0"/>
+            <w:sz w:val="96"/>
+            <w:szCs w:val="96"/>
+          </w:rPr>
+          <w:t>{cab_watermark_text}</w:t>
+        </w:r>'''
+        try:
+            p._element.append(parse_xml(watermark_xml))
+        except Exception:
+            run = p.add_run(cab_watermark_text)
+            run.font.size = Pt(48)
+            run.font.color.rgb = RGBColor(0xD0, 0xD0, 0xD0)
 
 doc.save(output_path)
 
@@ -1171,7 +1262,24 @@ export async function validateComposeReadiness(
     filledElements: number;
     referenceTables: number;
     composeSections: number;
+    checklistTotal: number;
+    checklistDone: number;
+    checklistCompleteness: number;
+    missingCritical: string[];
+    missingWarning: string[];
+    missingInfo: string[];
   };
+  sectionReadiness: Array<{
+    sectionId: string;
+    sectionTitle: string;
+    requiredComplete: number;
+    requiredTotal: number;
+    requiredMissing: string[];
+    optionalComplete: number;
+    optionalTotal: number;
+    readiness: number;
+    qualityLevel: "full" | "partial" | "minimal";
+  }>;
 }> {
   const warnings: string[] = [];
   const errors: string[] = [];
@@ -1183,13 +1291,13 @@ export async function validateComposeReadiness(
 
   if (!templateDoc) {
     errors.push("Template-ul nu a fost găsit");
-    return { canCompose: false, warnings, errors, stats: { totalElements: 0, filledElements: 0, referenceTables: 0, composeSections: 0 } };
+    return { canCompose: false, warnings, errors, stats: { totalElements: 0, filledElements: 0, referenceTables: 0, composeSections: 0, checklistTotal: 0, checklistDone: 0, checklistCompleteness: 100, missingCritical: [], missingWarning: [], missingInfo: [] }, sectionReadiness: [] };
   }
 
   const composeConfig = (templateDoc as any)?.composeConfig as any;
   if (!composeConfig?.sections || composeConfig.sections.length === 0) {
     errors.push("Template-ul nu are secțiuni COMPOSE configurate");
-    return { canCompose: false, warnings, errors, stats: { totalElements: 0, filledElements: 0, referenceTables: 0, composeSections: 0 } };
+    return { canCompose: false, warnings, errors, stats: { totalElements: 0, filledElements: 0, referenceTables: 0, composeSections: 0, checklistTotal: 0, checklistDone: 0, checklistCompleteness: 100, missingCritical: [], missingWarning: [], missingInfo: [] }, sectionReadiness: [] };
   }
 
   // Check project elements
@@ -1219,6 +1327,101 @@ export async function validateComposeReadiness(
     warnings.push(`${unconfirmed.length} elemente sunt neconfirmate — AI va folosi valorile propuse`);
   }
 
+  // Check project checklist completeness
+  const checklistItems = await db.select().from(projectChecklist)
+    .where(eq(projectChecklist.projectId, projectId));
+
+  const totalChecklist = checklistItems.length;
+  const doneChecklist = checklistItems.filter(i => i.done).length;
+  const undoneItems = checklistItems.filter(i => !i.done);
+
+  const missingCritical: string[] = [];
+  const missingWarning: string[] = [];
+  const missingInfo: string[] = [];
+
+  for (const item of undoneItems) {
+    const nameLower = item.name.toLowerCase();
+    if (CHECKLIST_CRITICALITY.critical.some(kw => nameLower.includes(kw))) {
+      missingCritical.push(item.name);
+    } else if (CHECKLIST_CRITICALITY.warning.some(kw => nameLower.includes(kw))) {
+      missingWarning.push(item.name);
+    } else {
+      missingInfo.push(item.name);
+    }
+  }
+
+  // Add warnings (NEVER block generation — informational only)
+  if (missingCritical.length > 0) {
+    warnings.push(`Lipsesc ${missingCritical.length} documente critice: ${missingCritical.join(', ')}. Documentul generat va fi incomplet.`);
+  }
+  if (missingWarning.length > 0) {
+    warnings.push(`Documente opționale lipsă: ${missingWarning.join(', ')}. Ar îmbunătăți calitatea.`);
+  }
+
+  // Blueprint section-level readiness analysis (Gap 3)
+  const sectionReadiness: Array<{
+    sectionId: string;
+    sectionTitle: string;
+    requiredComplete: number;
+    requiredTotal: number;
+    requiredMissing: string[];
+    optionalComplete: number;
+    optionalTotal: number;
+    readiness: number;
+    qualityLevel: "full" | "partial" | "minimal";
+  }> = [];
+
+  const blueprint = (templateDoc as any)?.blueprint as DocumentBlueprint | null;
+  if (blueprint?.sections) {
+    // Build a set of element keys that have non-empty values
+    // projectElements don't have a direct key — resolve via templateElements
+    const tmplElIds = [...new Set(projEls.map(pe => pe.templateElementId).filter((id): id is string => id != null))];
+    const allTmplEls = tmplElIds.length > 0
+      ? await db.query.templateElements.findMany({ where: inArray(templateElements.id, tmplElIds) })
+      : [];
+    const tmplElMap = new Map(allTmplEls.map(t => [t.id, t.key]));
+
+    const filledKeys = new Set<string>();
+    for (const el of projEls) {
+      if (el.value && String(el.value).trim() !== "" && el.templateElementId) {
+        const key = tmplElMap.get(el.templateElementId);
+        if (key) filledKeys.add(key);
+      }
+    }
+
+    for (const section of blueprint.sections) {
+      const reqKeys = section.requiredElementKeys || [];
+      const optKeys = section.optionalElementKeys || [];
+
+      const reqFilled = reqKeys.filter(k => filledKeys.has(k));
+      const optFilled = optKeys.filter(k => filledKeys.has(k));
+      const reqMissing = reqKeys.filter(k => !filledKeys.has(k));
+
+      const readiness = reqKeys.length > 0 ? reqFilled.length / reqKeys.length : 1;
+      const qualityLevel: "full" | "partial" | "minimal" = readiness >= 1 ? "full"
+        : readiness >= 0.5 ? "partial"
+        : "minimal";
+
+      sectionReadiness.push({
+        sectionId: section.sectionId,
+        sectionTitle: section.title,
+        requiredComplete: reqFilled.length,
+        requiredTotal: reqKeys.length,
+        requiredMissing: reqMissing,
+        optionalComplete: optFilled.length,
+        optionalTotal: optKeys.length,
+        readiness: Math.round(readiness * 100) / 100,
+        qualityLevel,
+      });
+
+      if (qualityLevel === "minimal") {
+        warnings.push(`Secțiunea "${section.title}": doar ${reqFilled.length}/${reqKeys.length} date obligatorii completate.`);
+      } else if (qualityLevel === "partial") {
+        warnings.push(`Secțiunea "${section.title}": ${reqMissing.length} date obligatorii lipsă (${reqMissing.join(", ")}).`);
+      }
+    }
+  }
+
   return {
     canCompose: errors.length === 0,
     warnings,
@@ -1228,6 +1431,13 @@ export async function validateComposeReadiness(
       filledElements: filled.length,
       referenceTables: refTables.length,
       composeSections: composeConfig.sections.length,
+      checklistTotal: totalChecklist,
+      checklistDone: doneChecklist,
+      checklistCompleteness: totalChecklist > 0 ? Math.round((doneChecklist / totalChecklist) * 100) : 100,
+      missingCritical,
+      missingWarning,
+      missingInfo,
     },
+    sectionReadiness,
   };
 }

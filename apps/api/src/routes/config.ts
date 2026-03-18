@@ -445,6 +445,9 @@ const brandingSchema = z.object({
   warningColor: z.string().optional(),
   logoOnWorkDocs: z.boolean().optional(),
   logoOnFinalDocs: z.boolean().optional(),
+  numberFormat: z.enum(["ro", "en"]).optional(),
+  draftWatermark: z.boolean().optional(),
+  draftWatermarkText: z.string().max(50).optional(),
 });
 
 configRoutes.put("/branding", async (c) => {

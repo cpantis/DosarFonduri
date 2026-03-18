@@ -64,6 +64,9 @@ export const organizations = pgTable("organizations", {
     warningColor?: string;      // badge-uri atenție
     logoOnWorkDocs?: boolean;   // logo pe documente de lucru (default: true)
     logoOnFinalDocs?: boolean;  // logo pe documente finale (default: false)
+    numberFormat?: "ro" | "en"; // format numere: ro = 2.500.000, en = 2,500,000 (default: ro)
+    draftWatermark?: boolean;   // watermark "DRAFT" pe documente de lucru (default: true)
+    draftWatermarkText?: string; // text watermark custom (default: "DRAFT")
   }>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull().$onUpdate(() => new Date()),

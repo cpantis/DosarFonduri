@@ -61,6 +61,9 @@ type EligibilityRule = {
   confidence?: number;
   page?: number;
   section?: string;
+  category?: string;
+  needsReview?: boolean;
+  sourceDocument?: { id: string; name: string; fileType: string } | null;
   hasReferenceData?: boolean;
   referenceTableNames?: string[];
 };
@@ -156,17 +159,23 @@ function parseAdresa(adresa: string | undefined): { localitate: string; judet: s
 }
 
 function mapEligibilityRules(flat: any[]): EligibilityRule[] {
-  return flat.map(item => ({
-    id: item.id,
-    ruleId: item.ruleId || item.rule?.id,
-    name: item.rule?.description || "Regulă necunoscută",
-    status: item.status === "passed" ? "pass" : item.status === "failed" ? "fail" : "pending",
-    detail: item.detail || "",
-    type: item.rule?.type || "fixed",
-    confidence: item.rule?.confidence ?? item.confidence,
-    page: item.rule?.page,
-    section: item.rule?.section,
-  }));
+  return flat.map(item => {
+    const conf = parseFloat(item.rule?.confidence) || item.confidence;
+    return {
+      id: item.id,
+      ruleId: item.ruleId || item.rule?.id,
+      name: item.rule?.description || "Regulă necunoscută",
+      status: item.status === "passed" ? "pass" : item.status === "failed" ? "fail" : "pending",
+      detail: item.detail || "",
+      type: item.rule?.type || "fixed",
+      confidence: conf,
+      page: item.rule?.sourcePage ?? item.rule?.page,
+      section: item.rule?.section,
+      category: item.rule?.category || "",
+      needsReview: item.rule?.needsReview ?? (conf != null && conf < 0.85),
+      sourceDocument: item.rule?.sourceDocument || null,
+    };
+  });
 }
 
 function mapGuideRules(grouped: any[]): GuideRule[] {
@@ -1610,7 +1619,7 @@ export default function ProjectViewPage() {
         .rule-card:hover{border-color:#cbd5e1;box-shadow:0 1px 3px rgba(0,0,0,.05)}
         .rule-card.active{border-color:#2563eb;background:rgba(37,99,235,.03);box-shadow:0 0 0 1px rgba(37,99,235,.15)}
         .rule-card-top{display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap}
-        .rule-type-badge{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:3px 10px;border-radius:4px;display:inline-block}
+        .rule-type-badge{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:3px 10px;border-radius:4px;display:inline-flex;flex-shrink:0;white-space:nowrap}
         .rule-type-badge.fixed{color:#059669;background:rgba(52,211,153,.1);border:1px solid #a7f3d0}
         .rule-type-badge.interpreted{color:#d97706;background:rgba(251,191,36,.1);border:1px solid #fed7aa}
         .rule-cat-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
@@ -2444,7 +2453,22 @@ export default function ProjectViewPage() {
             )}
 
             {/* ELIGIBILITATE */}
-            {activeLeaf === "eligibilitate" && (
+            {activeLeaf === "eligibilitate" && (() => {
+              const eligCategoryLabels: Record<string, string> = {
+                eligibilitate: "Eligibilitate", financiar: "Financiar", tehnic: "Tehnic", administrativ: "Administrativ",
+                achizitii: "Achiziții", documente: "Documente", selectie: "Selecție", intensitate: "Intensitate",
+                eligibilitate_complexa: "Elig. complexă", documentare: "Documentare", ajutor_stat: "Ajutor stat",
+              };
+              const eligCategoryColors: Record<string, string> = {
+                eligibilitate: "#2563eb", financiar: "#059669", tehnic: "#7c3aed", administrativ: "#64748b",
+                achizitii: "#ea580c", documente: "#d97706", selectie: "#dc2626", intensitate: "#0891b2",
+                eligibilitate_complexa: "#2563eb", documentare: "#d97706", ajutor_stat: "#7c3aed",
+              };
+              const eligStatusColors: Record<string, string> = { pass: "#059669", fail: "#dc2626", pending: "#d97706" };
+              const eligStatusIcons: Record<string, string> = { pass: "✓", fail: "✕", pending: "?" };
+              const eligStatusLabels: Record<string, string> = { pass: "ELIGIBIL", fail: "NEELIGIBIL", pending: "PENDING" };
+
+              return (
               <div className="elig-panel">
                 <div className="elig-summary">
                   <div className="elig-stat">
@@ -2465,22 +2489,29 @@ export default function ProjectViewPage() {
                   </div>
                 </div>
 
-                {eligibilityRules.map(rule => (
-                  <div className="elig-rule" key={rule.id}>
-                    <div className={`elig-icon ${rule.status}`} style={{ marginTop: 2 }}>
-                      {rule.status === "pass" ? "✓" : rule.status === "fail" ? "✕" : "?"}
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                        <span className="elig-name" style={{ flex: "none" }}>{rule.name}</span>
-                        <span className={`elig-type-badge ${rule.type}`}>
-                          {rule.type === "fixed" ? "FIXĂ" : "INTER"}
+                <div className="rules-scroll" style={{ maxHeight: "calc(100vh - 320px)" }}>
+                  {eligibilityRules.map(rule => (
+                    <div className="rule-card" key={rule.id}>
+                      <div className="rule-card-top">
+                        <div className={`elig-icon ${rule.status}`} style={{ width: 20, height: 20, fontSize: 10 }}>
+                          {eligStatusIcons[rule.status]}
+                        </div>
+                        <span className="elig-status-label" style={{ fontSize: 10, fontWeight: 700, color: eligStatusColors[rule.status], letterSpacing: ".5px" }}>
+                          {eligStatusLabels[rule.status]}
                         </span>
-                        {rule.type === "interpreted" && rule.confidence != null && rule.confidence < 0.85 && (
-                          <span style={{ fontSize: 10, color: "#d97706", fontWeight: 600 }}>⚠ Review</span>
+                        <span style={{ color: "#e2e8f0", fontSize: 10 }}>|</span>
+                        <div className={`rule-type-badge ${rule.type}`}>
+                          {rule.type === "fixed" ? "FIXĂ" : "INTERPRETATĂ"}
+                        </div>
+                        {rule.category && (
+                          <>
+                            <span className="rule-cat-dot" style={{ background: eligCategoryColors[rule.category] || "#94a3b8" }} />
+                            <span className="rule-cat-label">{eligCategoryLabels[rule.category] || rule.category}</span>
+                          </>
                         )}
+                        {rule.needsReview && <span className="rule-review-flag">⚠ Review</span>}
                       </div>
-                      {/* F4.1: Show hint for PENDING rules about missing data */}
+                      <div className="rule-text">{rule.name}</div>
                       {rule.status === "pending" && (
                         <div style={{ fontSize: 11, color: "#d97706", marginTop: 4, display: "flex", alignItems: "center", gap: 4 }}>
                           <span style={{ fontSize: 12 }}>⏳</span>
@@ -2490,17 +2521,31 @@ export default function ProjectViewPage() {
                           }
                         </div>
                       )}
-                    </div>
-                    <div className="elig-detail" style={{ flexShrink: 0 }}>{rule.status !== "pending" ? rule.detail : ""}</div>
-                    {rule.hasReferenceData && rule.referenceTableNames && rule.referenceTableNames.length > 0 && (
-                      <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }}>
-                        {rule.referenceTableNames.map((name: string, ri: number) => (
-                          <span key={ri} className="ed-constraint-ref" style={{ fontSize: 9 }}>&#128202; {name}</span>
-                        ))}
+                      {rule.status !== "pending" && rule.detail && (
+                        <div style={{ fontSize: 11, color: rule.status === "pass" ? "#059669" : "#dc2626", marginTop: 4 }}>
+                          {rule.detail}
+                        </div>
+                      )}
+                      <div className="rule-meta">
+                        {rule.page != null && <span>Pag. {rule.page}</span>}
+                        {rule.confidence != null && (
+                          <span>
+                            {Math.round(rule.confidence * 100)}%
+                            <span className="confidence-bar"><span className="confidence-fill" style={{ width: `${rule.confidence * 100}%`, background: rule.confidence > 0.9 ? "#34d399" : rule.confidence > 0.8 ? "#2563eb" : "#fbbf24" }} /></span>
+                          </span>
+                        )}
+                        {rule.sourceDocument && <span className="rule-doc-ref">{rule.sourceDocument.name}</span>}
                       </div>
-                    )}
-                  </div>
-                ))}
+                      {rule.hasReferenceData && rule.referenceTableNames && rule.referenceTableNames.length > 0 && (
+                        <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }}>
+                          {rule.referenceTableNames.map((name: string, ri: number) => (
+                            <span key={ri} className="ed-constraint-ref" style={{ fontSize: 9 }}>&#128202; {name}</span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
 
                 <div style={{ marginTop: 16 }}>
                   <button className="sa-btn primary" style={{ display: "inline-flex" }} onClick={handleRecheckEligibility} disabled={recheckLoading}>
@@ -2508,7 +2553,8 @@ export default function ProjectViewPage() {
                   </button>
                 </div>
               </div>
-            )}
+              );
+            })()}
 
             {/* GHID FINANȚARE */}
             {activeLeaf === "ghid" && (() => {

@@ -400,7 +400,7 @@ export default function ProjectViewPage() {
   }, []);
 
   const [neemiaGenStatus, setNeemiaGenStatus] = useState<string | null>(null);
-  const [neemiaValidation, setNeemiaValidation] = useState<{ warnings: string[]; stats?: any } | null>(null);
+  const [neemiaValidation, setNeemiaValidation] = useState<{ warnings: string[]; stats?: any; sectionReadiness?: Array<{ sectionId: string; sectionTitle: string; requiredComplete: number; requiredTotal: number; requiredMissing: string[]; optionalComplete: number; optionalTotal: number; readiness: number; qualityLevel: "full" | "partial" | "minimal" }> } | null>(null);
   // GAP 3: Consistency check
   const [consistencyResult, setConsistencyResult] = useState<{ consistent: boolean; conflicts: any[] } | null>(null);
   const [consistencyLoading, setConsistencyLoading] = useState(false);
@@ -1033,7 +1033,7 @@ export default function ProjectViewPage() {
     try {
       // Step 1: Validate
       const validation = await apiPost<any>(`/api/neemia/projects/${projectId}/validate`, { templateDocumentId });
-      setNeemiaValidation({ warnings: validation.warnings || [], stats: validation.stats });
+      setNeemiaValidation({ warnings: validation.warnings || [], stats: validation.stats, sectionReadiness: validation.sectionReadiness || [] });
 
       if (!validation.canGenerate) {
         setNeemiaGenStatus("Generarea nu este posibilă — vezi erorile.");
@@ -1147,8 +1147,18 @@ export default function ProjectViewPage() {
     if (readOnly || composePreviewing) return;
     setComposePreviewing(true);
     setComposePreviewSections([]);
-    setNeemiaGenStatus("Se generează previzualizare COMPOSE...");
+    setNeemiaGenStatus("Se validează...");
+    setNeemiaValidation(null);
     try {
+      // Validate compose readiness (including checklist completeness)
+      const validation = await apiPost<any>(`/api/neemia/projects/${projectId}/compose/validate`, { templateDocumentId });
+      setNeemiaValidation({ warnings: validation.warnings || [], stats: validation.stats, sectionReadiness: validation.sectionReadiness || [] });
+      if (!validation.canCompose) {
+        setNeemiaGenStatus("Compunerea nu este posibilă — vezi erorile.");
+        setComposePreviewing(false);
+        return;
+      }
+      setNeemiaGenStatus("Se generează previzualizare COMPOSE...");
       const token = typeof window !== "undefined" ? localStorage.getItem("df-token") : null;
       const res = await fetch(`${API_URL}/api/neemia/projects/${projectId}/compose/preview`, {
         method: "POST",
@@ -2062,6 +2072,18 @@ export default function ProjectViewPage() {
         .neemia-bulk-btn:disabled{opacity:.5;cursor:not-allowed}
         .neemia-gen-status{font-size:12px;color:#2563eb;background:rgba(37,99,235,.06);border:1px solid rgba(37,99,235,.15);border-radius:8px;padding:8px 12px;margin-bottom:10px;line-height:1.5}
         .neemia-warnings{font-size:11px;color:#d97706;background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.15);border-radius:8px;padding:8px 12px;margin-bottom:10px}
+        .neemia-checklist-banner{border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;line-height:1.5}
+        .neemia-checklist-ok{background:rgba(52,211,153,.06);border:1px solid rgba(52,211,153,.2);color:#059669;font-weight:600}
+        .neemia-checklist-critical{background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.25);color:#92400e}
+        .neemia-checklist-critical .ncb-header{display:flex;align-items:center;justify-content:space-between;font-weight:700;font-size:12px;margin-bottom:4px}
+        .neemia-checklist-critical .ncb-pct{font-size:11px;font-weight:600;color:#d97706;font-family:'JetBrains Mono',monospace}
+        .neemia-checklist-critical .ncb-list{font-size:11px;color:#b45309;margin-bottom:4px}
+        .neemia-checklist-critical .ncb-optional{font-size:10px;color:#92400e;opacity:.7;margin-bottom:6px}
+        .neemia-checklist-critical .ncb-actions{display:flex;gap:6px}
+        .ncb-btn{padding:4px 12px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid transparent;font-family:'Inter',system-ui,sans-serif;transition:all .15s}
+        .ncb-btn-secondary{background:rgba(0,0,0,.04);border-color:rgba(0,0,0,.1);color:#475569}
+        .ncb-btn-secondary:hover{background:rgba(0,0,0,.08)}
+        .neemia-checklist-warn{background:rgba(0,0,0,.02);border:1px solid rgba(0,0,0,.06);padding:6px 12px}
         .nw-item{margin-bottom:4px;line-height:1.4}
         .nw-item:last-child{margin-bottom:0}
         .tc-action-btn{padding:3px 10px;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;font-family:'Inter',system-ui,sans-serif;transition:all .15s cubic-bezier(.4,0,.2,1);border:1px solid rgba(226,232,240,.8);background:transparent}
@@ -3608,6 +3630,7 @@ export default function ProjectViewPage() {
                       </button>
                       <textarea
                         className="chat-input"
+                        data-solomon-input
                         placeholder="Scrie detalii despre proiect, lipește date, sau întreabă..."
                         value={solomonInput}
                         rows={1}
@@ -3757,7 +3780,90 @@ export default function ProjectViewPage() {
                     </div>
                   )}
 
-                  {/* GAP 3: Consistency check */}
+                  {/* GAP 2: Checklist completeness warning banner */}
+                  {neemiaValidation?.stats && (() => {
+                    const st = neemiaValidation.stats;
+                    const hasCritical = st.missingCritical && st.missingCritical.length > 0;
+                    const hasWarning = st.missingWarning && st.missingWarning.length > 0;
+                    const allComplete = st.checklistTotal > 0 && st.checklistDone === st.checklistTotal;
+                    if (allComplete) {
+                      return (
+                        <div className="neemia-checklist-banner neemia-checklist-ok">
+                          <span>{"\u2705"} Toate documentele sursă disponibile ({st.checklistDone}/{st.checklistTotal})</span>
+                        </div>
+                      );
+                    }
+                    if (hasCritical) {
+                      return (
+                        <div className="neemia-checklist-banner neemia-checklist-critical">
+                          <div className="ncb-header">
+                            <span>{"\u26A0"} Lipsesc {st.missingCritical.length} documente critice</span>
+                            <span className="ncb-pct">{st.checklistCompleteness}% complet</span>
+                          </div>
+                          <div className="ncb-list">{st.missingCritical.join(", ")}</div>
+                          {hasWarning && <div className="ncb-optional">+ {st.missingWarning.length} documente opționale lipsă</div>}
+                          <div className="ncb-actions">
+                            <button className="ncb-btn ncb-btn-secondary" onClick={() => setActiveLeaf("checklist")}>Completează întâi</button>
+                          </div>
+                        </div>
+                      );
+                    }
+                    if (hasWarning) {
+                      return (
+                        <div className="neemia-checklist-banner neemia-checklist-warn">
+                          <span style={{ fontSize: 11, color: "#64748b" }}>Documente opționale lipsă: {st.missingWarning.join(", ")}</span>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
+
+                  {/* GAP 3: Blueprint section readiness */}
+                  {neemiaValidation?.sectionReadiness && neemiaValidation.sectionReadiness.length > 0 && (
+                    <div style={{ marginBottom: 10 }}>
+                      <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".6px", color: "#8892a8", marginBottom: 6 }}>Completare date per secțiune</div>
+                      {neemiaValidation.sectionReadiness.map(sr => (
+                        <div key={sr.sectionId} style={{
+                          padding: "8px 10px", border: "1px solid rgba(0,0,0,.06)", borderRadius: 8, marginBottom: 6,
+                          background: sr.qualityLevel === "full" ? "rgba(52,211,153,0.04)" : sr.qualityLevel === "partial" ? "rgba(251,191,36,0.04)" : "rgba(248,113,113,0.04)"
+                        }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 3 }}>
+                            <span style={{ fontSize: 12, fontWeight: 600 }}>{sr.sectionTitle}</span>
+                            <span style={{ fontSize: 10, fontWeight: 600, color: sr.qualityLevel === "full" ? "#34d399" : sr.qualityLevel === "partial" ? "#d97706" : "#f87171" }}>
+                              {sr.qualityLevel === "full" ? "Complet" : sr.qualityLevel === "partial" ? "Parțial" : "Incomplet"}
+                            </span>
+                          </div>
+                          <div style={{ height: 3, background: "rgba(0,0,0,.06)", borderRadius: 2, marginBottom: 3 }}>
+                            <div style={{ height: 3, borderRadius: 2, width: `${sr.readiness * 100}%`, background: sr.qualityLevel === "full" ? "#34d399" : sr.qualityLevel === "partial" ? "#fbbf24" : "#f87171", transition: "width .3s" }} />
+                          </div>
+                          <div style={{ fontSize: 10, color: "#8892a8" }}>
+                            {sr.requiredComplete}/{sr.requiredTotal} obligatorii{sr.optionalTotal > 0 ? ` · ${sr.optionalComplete}/${sr.optionalTotal} opționale` : ""}
+                          </div>
+                          {sr.requiredMissing.length > 0 && (
+                            <div style={{ fontSize: 10, color: "#64748b", marginTop: 2 }}>Lipsă: {sr.requiredMissing.join(", ")}</div>
+                          )}
+                          {sr.requiredMissing.length > 0 && (
+                            <button
+                              onClick={() => {
+                                const msg = `Solomon, am nevoie de următoarele date pentru secțiunea "${sr.sectionTitle}": ${sr.requiredMissing.join(", ")}. Te rog ajută-mă să le completez.`;
+                                setSolomonInput(msg);
+                                setActiveLeaf("solomon");
+                                setTimeout(() => {
+                                  const inp = document.querySelector("[data-solomon-input]") as HTMLTextAreaElement;
+                                  if (inp) inp.focus();
+                                }, 300);
+                              }}
+                              style={{ fontSize: 10, color: "#4d8bff", background: "none", border: "none", cursor: "pointer", padding: "3px 0", marginTop: 2 }}
+                            >
+                              Completează cu Solomon →
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Consistency check */}
                   {neemiaTemplates.filter(t => t.status === "generated" || t.status === "validated").length >= 2 && (
                     <button
                       style={{ width: "100%", padding: "6px 10px", fontSize: 12, fontWeight: 600, border: "1px solid rgba(0,0,0,.08)", borderRadius: 8, background: consistencyResult?.consistent === false ? "rgba(248,113,113,.08)" : "rgba(0,0,0,.02)", cursor: "pointer", marginBottom: 8 }}

@@ -137,8 +137,8 @@ type ProjectData = {
 const STATUS_MAP: Record<string, { label: string; color: string; bg: string }> = {
   draft: { label: "Ciornă", color: "#64748b", bg: "#f0f2f5" },
   in_progress: { label: "În lucru", color: "#2563eb", bg: "#eff6ff" },
-  review: { label: "Verificare", color: "#fbbf24", bg: "#fffbeb" },
-  submitted: { label: "Depus", color: "#34d399", bg: "#ecfdf5" },
+  review: { label: "Verificare", color: "#d97706", bg: "#fffbeb" },
+  submitted: { label: "Depus", color: "#059669", bg: "#ecfdf5" },
 };
 
 const pct = (a: number, b: number) => b > 0 ? Math.round((a / b) * 100) : 0;
@@ -1405,7 +1405,7 @@ export default function ProjectViewPage() {
   };
 
   const neemiaProgressPct = (tmpl: NeemiaTemplate) => tmpl.totalFields > 0 ? Math.round(tmpl.filledFields / tmpl.totalFields * 100) : 0;
-  const neemiaProgressColor = (p: number) => p === 100 ? "#34d399" : p > 0 ? "#fbbf24" : "#f87171";
+  const neemiaProgressColor = (p: number) => p === 100 ? "#059669" : p > 0 ? "#d97706" : "#dc2626";
 
   const toggleBranch = (key: string) => setBranches(b => ({ ...b, [key]: !b[key] }));
 
@@ -1509,9 +1509,9 @@ export default function ProjectViewPage() {
         @keyframes fadeIn{from{opacity:0}to{opacity:1}}
         @keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
         .skeleton-shimmer{background:linear-gradient(90deg,#f1f5f9 25%,rgba(226,232,240,.8) 50%,#f1f5f9 75%);background-size:200% 100%;animation:shimmer 1.5s ease-in-out infinite}
-        .lock-banner{display:flex;align-items:center;gap:10px;padding:10px 24px;background:#fffbeb;border-bottom:1px solid #fde68a;font-size:13px;color:#fbbf24;font-family:'Inter',system-ui,sans-serif}
+        .lock-banner{display:flex;align-items:center;gap:10px;padding:10px 24px;background:#fffbeb;border-bottom:1px solid #fde68a;font-size:13px;color:#d97706;font-family:'Inter',system-ui,sans-serif}
         .lock-banner .lb-icon{font-size:18px}
-        .lock-banner .lb-name{font-weight:700;color:#fbbf24}
+        .lock-banner .lb-name{font-weight:700;color:#d97706}
         .lock-banner .lb-time{font-size:11px;color:#94a3b8;margin-left:auto;font-family:'JetBrains Mono',monospace}
         .pv-container{display:flex;height:100%;overflow:hidden;background:#f0f2f5}
 
@@ -1535,8 +1535,8 @@ export default function ProjectViewPage() {
         .tree-leaf.active{color:#0f172a;border-left-color:#2563eb;background:#f8fafc}
         .tree-leaf.active::before{display:none}
         .leaf-badge{margin-left:auto;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;font-family:'JetBrains Mono',monospace}
-        .leaf-badge.red{background:rgba(248,113,113,.15);color:#f87171}
-        .leaf-badge.green{background:rgba(52,211,153,.15);color:#34d399}
+        .leaf-badge.red{background:rgba(248,113,113,.15);color:#dc2626}
+        .leaf-badge.green{background:rgba(52,211,153,.15);color:#059669}
         .leaf-badge.blue{background:rgba(37,99,235,.15);color:#2563eb}
         .leaf-badge.muted{background:#f8fafc;color:#94a3b8}
 
@@ -1580,17 +1580,17 @@ export default function ProjectViewPage() {
         .elig-stat{padding:16px 20px;border-radius:12px;border:1px solid rgba(226,232,240,.8);background:#ffffff;flex:1;text-align:center}
         .elig-stat .number{font-size:28px;font-weight:800;font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums}
         .elig-stat .label{font-size:12px;color:#64748b;margin-top:4px;font-weight:500}
-        .elig-rule{display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:8px;border:1px solid rgba(226,232,240,.8);margin-bottom:6px;background:#ffffff;transition:all .15s cubic-bezier(.4,0,.2,1);cursor:pointer}
+        .elig-rule{display:flex;align-items:flex-start;gap:12px;padding:12px 16px;border-radius:8px;border:1px solid rgba(226,232,240,.8);margin-bottom:6px;background:#ffffff;transition:all .15s cubic-bezier(.4,0,.2,1);cursor:pointer}
         .elig-rule:hover{border-color:#cbd5e1;box-shadow:0 1px 3px rgba(0,0,0,.05)}
         .elig-icon{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:12px;font-weight:700}
-        .elig-icon.pass{background:#ecfdf5;color:#34d399;ring:2px solid #a7f3d0}
-        .elig-icon.fail{background:#fef2f2;color:#f87171}
-        .elig-icon.pending{background:#fffbeb;color:#fbbf24}
+        .elig-icon.pass{background:#ecfdf5;color:#059669;border:1.5px solid #a7f3d0}
+        .elig-icon.fail{background:#fef2f2;color:#dc2626;border:1.5px solid #fecaca}
+        .elig-icon.pending{background:#fffbeb;color:#d97706;border:1.5px solid #fde68a}
         .elig-name{font-size:14px;font-weight:500;flex:1;color:#0f172a}
         .elig-detail{font-size:12px;color:#64748b;font-family:'JetBrains Mono',monospace;max-width:300px;text-align:right}
-        .elig-type-badge{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:2px 8px;border-radius:4px;margin-left:8px;border:1px solid transparent}
-        .elig-type-badge.fixed{background:#ecfdf5;color:#34d399;border-color:#a7f3d0}
-        .elig-type-badge.interpreted{background:#fff7ed;color:#fb923c;border-color:#fed7aa}
+        .elig-type-badge{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:2px 8px;border-radius:4px;border:1px solid transparent;flex-shrink:0}
+        .elig-type-badge.fixed{background:rgba(52,211,153,.1);color:#059669;border-color:#a7f3d0}
+        .elig-type-badge.interpreted{background:rgba(251,191,36,.1);color:#d97706;border-color:#fed7aa}
 
         /* Ghid */
         .ghid-layout{display:flex;flex-direction:column;height:100%}
@@ -1611,12 +1611,12 @@ export default function ProjectViewPage() {
         .rule-card.active{border-color:#2563eb;background:rgba(37,99,235,.03);box-shadow:0 0 0 1px rgba(37,99,235,.15)}
         .rule-card-top{display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap}
         .rule-type-badge{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:3px 10px;border-radius:4px;display:inline-block}
-        .rule-type-badge.fixed{color:#34d399;background:#ecfdf5;border:1px solid #a7f3d0}
-        .rule-type-badge.interpreted{color:#fb923c;background:#fff7ed;border:1px solid #fed7aa}
+        .rule-type-badge.fixed{color:#059669;background:rgba(52,211,153,.1);border:1px solid #a7f3d0}
+        .rule-type-badge.interpreted{color:#d97706;background:rgba(251,191,36,.1);border:1px solid #fed7aa}
         .rule-cat-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
         .rule-cat-label{font-size:10px;color:#94a3b8;font-weight:600}
-        .rule-review-flag{font-size:10px;color:#fbbf24;font-weight:600;margin-left:auto}
-        .rule-validated-flag{font-size:12px;color:#34d399;margin-left:auto}
+        .rule-review-flag{font-size:10px;color:#d97706;font-weight:600;margin-left:auto}
+        .rule-validated-flag{font-size:12px;color:#059669;margin-left:auto}
         .rule-text{font-size:13px;line-height:1.5;color:#0f172a}
         .rule-meta{font-size:11px;color:#94a3b8;margin-top:6px;font-family:'JetBrains Mono',monospace;display:flex;gap:12px;align-items:center}
         .rule-doc-ref{font-size:10px;color:#94a3b8;margin-left:auto;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -1629,8 +1629,8 @@ export default function ProjectViewPage() {
         .rd-header{margin-bottom:24px}
         .rd-badges{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px}
         .rd-cat-pill{font-size:11px;font-weight:700;padding:3px 12px;border-radius:20px;text-transform:uppercase;letter-spacing:.5px}
-        .rd-validated{font-size:11px;color:#34d399;font-weight:700;display:flex;align-items:center;gap:3px}
-        .rd-needs-review{font-size:11px;color:#fbbf24;font-weight:700;display:flex;align-items:center;gap:3px}
+        .rd-validated{font-size:11px;color:#059669;font-weight:700;display:flex;align-items:center;gap:3px}
+        .rd-needs-review{font-size:11px;color:#d97706;font-weight:700;display:flex;align-items:center;gap:3px}
         .rd-confidence-row{display:flex;align-items:center;gap:10px}
         .rd-conf-label{font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px}
         .rd-conf-value{font-size:20px;font-weight:800;font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums}
@@ -1645,10 +1645,10 @@ export default function ProjectViewPage() {
         .rd-condition{background:#ffffff;border:1px solid rgba(226,232,240,.8);border-radius:12px;padding:14px 18px}
         .rd-cond-row{display:flex;align-items:center;gap:8px;font-family:'JetBrains Mono',monospace;font-size:13px}
         .rd-cond-field{color:#2563eb;font-weight:700}
-        .rd-cond-op{color:#fb923c;font-weight:600;padding:2px 8px;background:rgba(251,146,60,.1);border-radius:4px;font-size:11px}
-        .rd-cond-val{color:#34d399;font-weight:600}
+        .rd-cond-op{color:#ea580c;font-weight:600;padding:2px 8px;background:rgba(251,146,60,.1);border-radius:4px;font-size:11px}
+        .rd-cond-val{color:#059669;font-weight:600}
         .rd-logic-type{margin-bottom:10px}
-        .rd-logic-badge{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:4px 12px;border-radius:4px;background:rgba(167,139,250,.12);color:#a78bfa;border:1px solid rgba(167,139,250,.25)}
+        .rd-logic-badge{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:4px 12px;border-radius:4px;background:rgba(167,139,250,.12);color:#7c3aed;border:1px solid rgba(167,139,250,.25)}
         .rd-logic-desc{font-size:13px;line-height:1.7;color:#0f172a;margin-bottom:12px}
         .rd-factors{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:10px}
         .rd-factors-label{font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px}
@@ -1658,7 +1658,7 @@ export default function ProjectViewPage() {
         .rd-outcome-if{font-size:10px;font-weight:700;color:#2563eb;padding:1px 6px;border-radius:3px;background:rgba(37,99,235,.1);flex-shrink:0;margin-top:1px}
         .rd-outcome-cond{color:#0f172a;flex:1}
         .rd-outcome-then{color:#94a3b8;flex-shrink:0}
-        .rd-outcome-result{color:#34d399;font-weight:600;flex:1}
+        .rd-outcome-result{color:#059669;font-weight:600;flex:1}
         .rd-doc-ref{display:flex;align-items:center;gap:8px;padding:10px 14px;background:#ffffff;border:1px solid rgba(226,232,240,.8);border-radius:12px}
         .rd-doc-icon{font-size:18px}
         .rd-doc-name{font-size:13px;font-weight:600;color:#0f172a;flex:1}
@@ -1678,10 +1678,10 @@ export default function ProjectViewPage() {
         .anexe-card-top{display:flex;align-items:center;gap:8px;margin-bottom:6px}
         .anexe-type-badge{font-size:9px;font-weight:700;padding:2px 8px;border-radius:8px;text-transform:uppercase;letter-spacing:.5px}
         .anexe-type-badge.lookup{color:#2563eb;background:rgba(37,99,235,.12)}
-        .anexe-type-badge.classification{color:#a78bfa;background:rgba(167,139,250,.12)}
-        .anexe-type-badge.list{color:#34d399;background:rgba(52,211,153,.12)}
-        .anexe-type-badge.matrix{color:#fb923c;background:rgba(251,146,60,.12)}
-        .anexe-validated{color:#34d399;font-size:14px;font-weight:700}
+        .anexe-type-badge.classification{color:#7c3aed;background:rgba(167,139,250,.12)}
+        .anexe-type-badge.list{color:#059669;background:rgba(52,211,153,.12)}
+        .anexe-type-badge.matrix{color:#ea580c;background:rgba(251,146,60,.12)}
+        .anexe-validated{color:#059669;font-size:14px;font-weight:700}
         .anexe-card-name{font-size:13px;font-weight:600;color:#0f172a;margin-bottom:4px}
         .anexe-card-desc{font-size:11px;color:#94a3b8;line-height:1.4;margin-bottom:6px}
         .anexe-card-meta{display:flex;gap:12px;font-size:10px;color:#94a3b8}
@@ -1709,11 +1709,11 @@ export default function ProjectViewPage() {
         .ed-constraint-top{display:flex;align-items:center;gap:6px;margin-bottom:4px}
         .ed-constraint-role{font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;text-transform:uppercase;border:1px solid transparent}
         .ed-constraint-role.input{color:#2563eb;background:#eff6ff;border-color:#bfdbfe}
-        .ed-constraint-role.output{color:#34d399;background:#ecfdf5;border-color:#a7f3d0}
-        .ed-constraint-role.constraint{color:#f87171;background:#fef2f2;border-color:#fecaca}
+        .ed-constraint-role.output{color:#059669;background:#ecfdf5;border-color:#a7f3d0}
+        .ed-constraint-role.constraint{color:#dc2626;background:#fef2f2;border-color:#fecaca}
         .ed-constraint-rule{font-size:12px;color:#0f172a;line-height:1.4}
         .ed-constraint-refs{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
-        .ed-constraint-ref{font-size:10px;color:#a78bfa;background:#f5f3ff;padding:2px 8px;border-radius:6px;border:1px solid #ddd6fe}
+        .ed-constraint-ref{font-size:10px;color:#7c3aed;background:#f5f3ff;padding:2px 8px;border-radius:6px;border:1px solid #ddd6fe}
 
         /* Solomon validation card */
         .solomon-validation-card{margin-top:8px;padding:10px 12px;border-radius:12px;border:1px solid rgba(226,232,240,.8);background:#f8fafc}
@@ -1726,7 +1726,7 @@ export default function ProjectViewPage() {
         .svc-status.warning{background:#fbbf24}
         .svc-status.info{background:#2563eb}
         .svc-text{color:#0f172a;line-height:1.4}
-        .svc-ref{font-size:10px;color:#a78bfa;margin-top:2px}
+        .svc-ref{font-size:10px;color:#7c3aed;margin-top:2px}
 
         .pdf-viewer{flex:1;background:#f0f2f5;display:flex;align-items:center;justify-content:center;position:relative}
         .pdf-page-mock{width:480px;background:#ffffff;border-radius:4px;box-shadow:0 1px 3px rgba(0,0,0,.1);padding:48px 40px;min-height:620px;color:#0f172a;position:relative}
@@ -1761,12 +1761,12 @@ export default function ProjectViewPage() {
         .fp-sub-group{display:flex;align-items:center;gap:4px;margin-left:4px;padding-left:8px;border-left:1px solid rgba(226,232,240,.8)}
         .fp-sub-label{font-size:11px;color:#94a3b8;font-weight:600;white-space:nowrap}
         .fp-sub{padding:3px 10px;border-radius:8px;font-size:11px;font-weight:600;border:1px solid rgba(226,232,240,.8);cursor:pointer;background:transparent;color:#64748b;font-family:'Inter',system-ui,sans-serif;transition:all .15s cubic-bezier(.4,0,.2,1);white-space:nowrap}
-        .fp-sub:hover{border-color:#fb923c;color:#fb923c}
-        .fp-sub.active{background:rgba(251,146,60,.12);border-color:#fb923c;color:#fb923c}
+        .fp-sub:hover{border-color:#ea580c;color:#ea580c}
+        .fp-sub.active{background:rgba(251,146,60,.12);border-color:#ea580c;color:#ea580c}
         .elemente-filter-bar{flex-wrap:wrap}
         .bulk-confirm-bar{display:flex;align-items:center;justify-content:space-between;padding:8px 24px;background:rgba(251,146,60,.06);border-bottom:1px solid rgba(251,146,60,.2)}
-        .bc-text{font-size:12px;color:#fb923c;font-weight:600}
-        .bc-btn{padding:5px 16px;border-radius:8px;border:1px solid #34d399;background:rgba(52,211,153,.08);color:#34d399;font-size:12px;font-weight:700;cursor:pointer;font-family:'Inter',system-ui,sans-serif;transition:all .15s}
+        .bc-text{font-size:12px;color:#ea580c;font-weight:600}
+        .bc-btn{padding:5px 16px;border-radius:8px;border:1px solid #34d399;background:rgba(52,211,153,.08);color:#059669;font-size:12px;font-weight:700;cursor:pointer;font-family:'Inter',system-ui,sans-serif;transition:all .15s}
         .bc-btn:hover:not(:disabled){background:rgba(52,211,153,.18)}
         .bc-btn:disabled{opacity:.5;cursor:not-allowed}
         .elemente-scroll{flex:1;overflow-y:auto;padding:16px 24px;display:flex;flex-direction:column;gap:10px}
@@ -1778,9 +1778,9 @@ export default function ProjectViewPage() {
         .ec-top{display:flex;align-items:center;gap:8px;margin-bottom:6px}
         .ec-key{font-size:11px;font-family:'JetBrains Mono',monospace;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em;font-weight:500}
         .ec-status{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px}
-        .ec-status.confirmat{background:rgba(16,185,129,.12);color:#34d399}
-        .ec-status.propus_ai{background:rgba(245,158,11,.12);color:#fbbf24}
-        .ec-status.gol{background:rgba(239,68,68,.08);color:#f87171}
+        .ec-status.confirmat{background:rgba(16,185,129,.12);color:#059669}
+        .ec-status.propus_ai{background:rgba(245,158,11,.12);color:#d97706}
+        .ec-status.gol{background:rgba(239,68,68,.08);color:#dc2626}
         .ec-label{font-size:15px;font-weight:600;color:#0f172a;margin-bottom:4px}
         .ec-value{font-size:13px;font-family:'JetBrains Mono',monospace;color:#2563eb}
         .ec-value.missing{color:#94a3b8;font-style:italic;font-family:'Inter',system-ui,sans-serif;font-size:13px}
@@ -1799,7 +1799,7 @@ export default function ProjectViewPage() {
         .ed-field{margin-bottom:16px}
         .ed-label{font-size:12px;color:#94a3b8;margin-bottom:4px}
         .ed-val{font-size:15px;font-weight:600;color:#0f172a;padding:10px 14px;border-radius:8px;border:1px solid rgba(226,232,240,.8);background:#f8fafc}
-        .ed-btn{padding:8px 16px;border-radius:8px;border:1px solid #34d399;background:transparent;color:#34d399;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',system-ui,sans-serif;transition:all .15s cubic-bezier(.4,0,.2,1);display:flex;align-items:center;gap:4px}
+        .ed-btn{padding:8px 16px;border-radius:8px;border:1px solid #34d399;background:transparent;color:#059669;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',system-ui,sans-serif;transition:all .15s cubic-bezier(.4,0,.2,1);display:flex;align-items:center;gap:4px}
         .ed-btn:hover{background:rgba(52,211,153,.1)}
 
         /* Checklist */
@@ -1819,19 +1819,19 @@ export default function ProjectViewPage() {
         .check-item:hover{background:#f1f5f9}
         .check-box{width:18px;height:18px;border-radius:5px;border:2px solid #cbd5e1;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s cubic-bezier(.4,0,.2,1);flex-shrink:0;font-size:11px}
         .check-box:hover{border-color:#94a3b8}
-        .check-box.done{border-color:#34d399;background:#34d399;color:#ffffff}
+        .check-box.done{border-color:#059669;background:#34d399;color:#ffffff}
         .check-name{font-size:13px;font-weight:500;flex:1}
         .check-name.done-text{text-decoration:line-through;color:#94a3b8}
         .check-source-badge{font-size:9px;font-weight:700;text-transform:uppercase;padding:2px 6px;border-radius:3px;letter-spacing:.5px}
         .check-source-badge.ghid{background:rgba(37,99,235,.12);color:#2563eb}
-        .check-source-badge.manual{background:rgba(167,139,250,.12);color:#a78bfa}
+        .check-source-badge.manual{background:rgba(167,139,250,.12);color:#7c3aed}
         .check-template{font-size:11px;color:#2563eb;cursor:pointer;white-space:nowrap}
         .check-template:hover{text-decoration:underline}
 
         /* Checklist Add Form */
         .check-add-bar{display:flex;gap:8px;margin-bottom:16px}
         .check-add-btn{padding:8px 16px;border-radius:8px;border:1px dashed rgba(226,232,240,.8);background:transparent;color:#94a3b8;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',system-ui,sans-serif;transition:all .15s cubic-bezier(.4,0,.2,1);display:flex;align-items:center;gap:6px}
-        .check-add-btn:hover{border-color:#a78bfa;color:#a78bfa}
+        .check-add-btn:hover{border-color:#7c3aed;color:#7c3aed}
         .check-add-form{padding:14px;background:#f8fafc;border-radius:12px;border:1px solid rgba(226,232,240,.8);margin-bottom:16px;display:flex;flex-direction:column;gap:8px}
         .check-add-form-row{display:flex;gap:8px}
         .check-add-input{flex:1;padding:7px 12px;border-radius:8px;border:1px solid rgba(226,232,240,.8);background:#f0f2f5;color:#0f172a;font-size:13px;font-family:'Inter',system-ui,sans-serif;outline:none;transition:all .15s cubic-bezier(.4,0,.2,1)}
@@ -1849,7 +1849,7 @@ export default function ProjectViewPage() {
         @keyframes menuSlide{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
         .check-menu-item{display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:8px;font-size:12px;font-weight:500;cursor:pointer;transition:all .15s cubic-bezier(.4,0,.2,1);color:#64748b;border:none;background:none;width:100%;text-align:left;font-family:'Inter',system-ui,sans-serif}
         .check-menu-item:hover{background:#f1f5f9;color:#0f172a}
-        .check-menu-item.danger{color:#f87171}
+        .check-menu-item.danger{color:#dc2626}
         .check-menu-item.danger:hover{background:rgba(248,113,113,.08)}
         .check-menu-divider{height:1px;background:rgba(226,232,240,.8);margin:4px 0}
         .check-menu-sub{padding:4px 8px}
@@ -1862,11 +1862,11 @@ export default function ProjectViewPage() {
         .check-template-list{padding:4px 8px}
         .check-template-option{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;font-size:12px;cursor:pointer;color:#64748b;transition:all .15s cubic-bezier(.4,0,.2,1);border:none;background:none;width:100%;text-align:left;font-family:'Inter',system-ui,sans-serif}
         .check-template-option:hover{background:#f1f5f9;color:#0f172a}
-        .check-template-option.mapped{color:#34d399;font-weight:600}
+        .check-template-option.mapped{color:#059669;font-weight:600}
         .check-template-badge{font-size:9px;font-weight:700;text-transform:uppercase;padding:2px 5px;border-radius:3px;background:rgba(37,99,235,.1);color:#2563eb}
 
         /* Unmapped Templates Warning */
-        .check-unmapped{display:flex;align-items:center;gap:10px;padding:12px 16px;border-radius:10px;border:1px solid rgba(251,191,36,.2);background:rgba(251,191,36,.04);margin-bottom:16px;font-size:12px;color:#fbbf24}
+        .check-unmapped{display:flex;align-items:center;gap:10px;padding:12px 16px;border-radius:10px;border:1px solid rgba(251,191,36,.2);background:rgba(251,191,36,.04);margin-bottom:16px;font-size:12px;color:#d97706}
         .check-unmapped-icon{font-size:16px;flex-shrink:0}
         .check-unmapped-text{flex:1;line-height:1.5}
         .check-unmapped strong{font-weight:700}
@@ -1882,7 +1882,7 @@ export default function ProjectViewPage() {
         .solomon-avatar{width:32px;height:32px;border-radius:50%;background:#2563eb;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;color:#ffffff;flex-shrink:0}
         .solomon-name-block{display:flex;flex-direction:column;gap:1px}
         .solomon-name-block .sn-name{font-size:14px;font-weight:700;color:#0f172a}
-        .solomon-name-block .sn-status{font-size:11px;color:#34d399;display:flex;align-items:center;gap:4px}
+        .solomon-name-block .sn-status{font-size:11px;color:#059669;display:flex;align-items:center;gap:4px}
         .sn-status-dot{width:6px;height:6px;border-radius:50%;background:#34d399;animation:statusPulse 2s ease infinite}
         @keyframes statusPulse{0%,100%{opacity:1}50%{opacity:.4}}
         .model-selector{display:flex;gap:3px;background:#f0f2f5;padding:3px;border-radius:6px;margin-left:auto}
@@ -1890,7 +1890,7 @@ export default function ProjectViewPage() {
         .model-btn.active{background:#2563eb;color:#ffffff}
         .model-btn:hover:not(.active){color:#0f172a;background:#f1f5f9}
         .et-toggle{display:flex;align-items:center;gap:5px;font-size:11px;color:#64748b;cursor:pointer;padding:4px 9px;border-radius:8px;border:1px solid rgba(226,232,240,.8);background:transparent;font-family:'Inter',system-ui,sans-serif;transition:all .15s cubic-bezier(.4,0,.2,1)}
-        .et-toggle.on{border-color:#a78bfa;color:#a78bfa;background:rgba(167,139,250,.08)}
+        .et-toggle.on{border-color:#7c3aed;color:#7c3aed;background:rgba(167,139,250,.08)}
         .chat-messages{flex:1;overflow-y:auto;overflow-x:hidden;padding:20px;display:flex;flex-direction:column;gap:16px;min-height:0}
         .chat-msg{max-width:85%;padding:14px 18px;border-radius:16px;font-size:14px;line-height:1.6;white-space:pre-wrap;position:relative}
         .chat-msg.assistant{background:#f8fafc;border:1px solid rgba(226,232,240,.8);align-self:flex-start;border-bottom-left-radius:4px}
@@ -1898,21 +1898,21 @@ export default function ProjectViewPage() {
         .chat-msg .msg-bold{font-weight:600;color:#0f172a}
         .extraction-cards{margin-top:10px;display:flex;flex-direction:column;gap:8px}
         .extraction-card{background:#f8fafc;border:1px solid rgba(226,232,240,.8);border-radius:12px;padding:10px 14px;transition:all .15s cubic-bezier(.4,0,.2,1)}
-        .extraction-card.confirmed{border-color:#34d399;background:#ecfdf5}
-        .extraction-card.rejected{border-color:#f87171;opacity:.5;text-decoration:line-through}
+        .extraction-card.confirmed{border-color:#059669;background:#ecfdf5}
+        .extraction-card.rejected{border-color:#dc2626;opacity:.5;text-decoration:line-through}
         .exc-top{display:flex;align-items:center;gap:6px;margin-bottom:4px}
         .exc-label{font-size:12px;color:#94a3b8;flex:1}
         .exc-confidence{font-size:11px;font-family:'JetBrains Mono',monospace;font-weight:600;color:#64748b}
         .exc-value{font-size:14px;font-weight:600;color:#2563eb;font-family:'JetBrains Mono',monospace;margin-bottom:8px}
         .exc-actions{display:flex;gap:6px}
         .exc-btn{padding:4px 12px;border-radius:8px;border:1px solid rgba(226,232,240,.8);font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',system-ui,sans-serif;display:flex;align-items:center;gap:4px;transition:all .15s cubic-bezier(.4,0,.2,1);background:transparent}
-        .exc-btn.confirm-btn{border-color:#34d399;color:#34d399}
+        .exc-btn.confirm-btn{border-color:#059669;color:#059669}
         .exc-btn.confirm-btn:hover{background:rgba(52,211,153,.1)}
         .exc-btn.edit-btn{color:#64748b}
-        .exc-btn.edit-btn:hover{color:#fbbf24;border-color:#fbbf24}
+        .exc-btn.edit-btn:hover{color:#d97706;border-color:#d97706}
         .exc-btn.reject-btn{color:#94a3b8}
-        .exc-btn.reject-btn:hover{color:#f87171;border-color:#f87171}
-        .exc-confirmed-label{font-size:11px;font-weight:700;color:#34d399;display:flex;align-items:center;gap:4px}
+        .exc-btn.reject-btn:hover{color:#dc2626;border-color:#dc2626}
+        .exc-confirmed-label{font-size:11px;font-weight:700;color:#059669;display:flex;align-items:center;gap:4px}
         .chat-timestamp{font-size:10px;color:#94a3b8;margin-top:4px}
         .chat-input-area{padding:14px 20px;border-top:1px solid rgba(226,232,240,.8);background:#ffffff}
         .chat-input-row{display:flex;gap:8px;align-items:flex-end}
@@ -1933,15 +1933,15 @@ export default function ProjectViewPage() {
         .sep-card.is-confirmed{border-left:3px solid #34d399}
         .sep-card.is-proposed{border-left:3px solid #fbbf24}
         .sep-card-label{font-size:13px;font-weight:700;color:#0f172a;margin-bottom:3px}
-        .sep-card-value{font-size:14px;font-weight:600;color:#fbbf24;font-family:'JetBrains Mono',monospace;margin-bottom:6px;word-break:break-word}
-        .sep-card.is-confirmed .sep-card-value{color:#34d399}
+        .sep-card-value{font-size:14px;font-weight:600;color:#d97706;font-family:'JetBrains Mono',monospace;margin-bottom:6px;word-break:break-word}
+        .sep-card.is-confirmed .sep-card-value{color:#059669}
         .sep-card-source{font-size:11px;color:#94a3b8;display:flex;align-items:center;gap:4px}
         .sep-confirm-row{margin-top:8px;display:flex;gap:6px}
-        .sep-confirm-btn{padding:3px 10px;border-radius:8px;border:1px solid #34d399;background:transparent;color:#34d399;font-size:11px;font-weight:600;cursor:pointer;font-family:'Inter',system-ui,sans-serif;display:flex;align-items:center;gap:3px;transition:all .15s cubic-bezier(.4,0,.2,1)}
+        .sep-confirm-btn{padding:3px 10px;border-radius:8px;border:1px solid #34d399;background:transparent;color:#059669;font-size:11px;font-weight:600;cursor:pointer;font-family:'Inter',system-ui,sans-serif;display:flex;align-items:center;gap:3px;transition:all .15s cubic-bezier(.4,0,.2,1)}
         .sep-confirm-btn:hover{background:rgba(52,211,153,.1)}
         .sep-reject-btn{padding:3px 10px;border-radius:8px;border:1px solid rgba(226,232,240,.8);background:transparent;color:#94a3b8;font-size:11px;font-weight:600;cursor:pointer;font-family:'Inter',system-ui,sans-serif;transition:all .15s cubic-bezier(.4,0,.2,1)}
-        .sep-reject-btn:hover{color:#f87171;border-color:#f87171}
-        .sep-confirmed-badge{font-size:10px;color:#34d399;font-weight:700;margin-top:6px;display:flex;align-items:center;gap:4px}
+        .sep-reject-btn:hover{color:#dc2626;border-color:#dc2626}
+        .sep-confirmed-badge{font-size:10px;color:#059669;font-weight:700;margin-top:6px;display:flex;align-items:center;gap:4px}
         .inline-refine-popup{position:fixed;z-index:1000;background:#ffffff;border:1px solid #2563eb;border-radius:12px;padding:12px;box-shadow:0 8px 32px rgba(0,0,0,.12),0 2px 8px rgba(0,0,0,.06);width:340px;animation:popIn .15s ease}
         @keyframes popIn{from{opacity:0;transform:translateY(4px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
         .refine-selected-text{font-size:12px;color:#64748b;background:#f0f2f5;padding:8px 10px;border-radius:8px;margin-bottom:8px;max-height:60px;overflow:hidden;border-left:3px solid #2563eb}
@@ -1972,9 +1972,9 @@ export default function ProjectViewPage() {
         .pt-dot.complete{background:#34d399}
         .pt-dot.partial{background:#fbbf24}
         .pt-dot.empty{background:#f87171}
-        .page-thumb.complete{background:rgba(52,211,153,.12);color:#34d399}
-        .page-thumb.partial{background:rgba(251,191,36,.12);color:#fbbf24}
-        .page-thumb.empty{background:rgba(248,113,113,.1);color:#f87171}
+        .page-thumb.complete{background:rgba(52,211,153,.12);color:#059669}
+        .page-thumb.partial{background:rgba(251,191,36,.12);color:#d97706}
+        .page-thumb.empty{background:rgba(248,113,113,.1);color:#dc2626}
         .page-thumb.active{border-color:#2563eb;box-shadow:0 0 0 2px rgba(37,99,235,.25)}
         .nav-stats{display:flex;align-items:center;gap:6px;margin-left:auto;white-space:nowrap}
         .nav-stat-filled{font-size:12px;font-weight:600;color:#64748b;font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums}
@@ -1997,13 +1997,13 @@ export default function ProjectViewPage() {
         .ndp-field-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.6px;color:#94a3b8;margin-bottom:3px}
         .ndp-field-line{display:flex;align-items:center;gap:6px;min-height:28px;padding:4px 0;border-bottom:1.5px solid rgba(226,232,240,.8)}
         .ndp-field.filled .ndp-field-line{border-bottom-color:#2563eb}
-        .ndp-field.confirmed .ndp-field-line{border-bottom-color:#34d399}
+        .ndp-field.confirmed .ndp-field-line{border-bottom-color:#059669}
         .ndp-field-value{font-size:14px;font-weight:600;color:#0f172a;flex:1;word-break:break-word}
-        .ndp-field.confirmed .ndp-field-value{color:#34d399}
+        .ndp-field.confirmed .ndp-field-value{color:#059669}
         .ndp-field-placeholder{font-size:13px;font-family:'JetBrains Mono',monospace;color:#cbd5e1;font-style:italic;flex:1}
         .ndp-field-indicator{width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0}
-        .ndp-field-indicator.confirmed{background:rgba(52,211,153,.15);color:#34d399;border:1.5px solid #34d399}
-        .ndp-field-indicator.proposed{background:rgba(251,191,36,.15);color:#fbbf24;border:1.5px solid #fbbf24}
+        .ndp-field-indicator.confirmed{background:rgba(52,211,153,.15);color:#059669;border:1.5px solid #34d399}
+        .ndp-field-indicator.proposed{background:rgba(251,191,36,.15);color:#d97706;border:1.5px solid #fbbf24}
         .ndp-footer{position:absolute;bottom:16px;left:40px;right:40px;display:flex;justify-content:space-between;font-size:11px;color:#94a3b8;font-family:'JetBrains Mono',monospace}
         .ndp-footer-stats{color:#94a3b8}
 
@@ -2020,11 +2020,11 @@ export default function ProjectViewPage() {
         .nfp-stat{font-size:10px;font-weight:600;display:flex;align-items:center;gap:3px}
         .nfp-stat::before{content:'';width:6px;height:6px;border-radius:50%}
         .nfp-stat.confirmed::before{background:#34d399}
-        .nfp-stat.confirmed{color:#34d399}
+        .nfp-stat.confirmed{color:#059669}
         .nfp-stat.filled::before{background:#fbbf24}
-        .nfp-stat.filled{color:#fbbf24}
+        .nfp-stat.filled{color:#d97706}
         .nfp-stat.empty::before{background:#f87171}
-        .nfp-stat.empty{color:#f87171}
+        .nfp-stat.empty{color:#dc2626}
         .nfp-scroll{flex:1;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:6px}
         .nfp-card{padding:10px 12px;border-radius:8px;border:1px solid rgba(226,232,240,.8);background:#f8fafc;transition:all .15s cubic-bezier(.4,0,.2,1)}
         .nfp-card:hover{border-color:#cbd5e1}
@@ -2034,9 +2034,9 @@ export default function ProjectViewPage() {
         .nfp-card-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}
         .nfp-card-label{font-size:12px;font-weight:600;color:#0f172a;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
         .nfp-card-status{font-size:10px;font-weight:700;flex-shrink:0}
-        .nfp-card-status.confirmed{color:#34d399}
-        .nfp-card-status.proposed{color:#fbbf24}
-        .nfp-card-status.empty{color:#f87171}
+        .nfp-card-status.confirmed{color:#059669}
+        .nfp-card-status.proposed{color:#d97706}
+        .nfp-card-status.empty{color:#dc2626}
         .nfp-card-value{font-size:13px;font-weight:500;color:#2563eb;font-family:'JetBrains Mono',monospace;word-break:break-word}
         .nfp-card-value.missing{color:#94a3b8;font-style:italic;font-size:11px}
         .nfp-card-source{font-size:10px;color:#94a3b8;margin-top:4px;display:flex;align-items:center;gap:4px}
@@ -2048,24 +2048,24 @@ export default function ProjectViewPage() {
         .source-dot.calculat{background:#fb923c}
         .source-dot.ghid{background:#fbbf24}
 
-        .neemia-bulk-btn{width:100%;padding:8px 16px;border-radius:8px;border:1px solid #34d399;background:rgba(52,211,153,.08);color:#34d399;font-size:13px;font-weight:700;cursor:pointer;font-family:'Inter',system-ui,sans-serif;transition:all .15s cubic-bezier(.4,0,.2,1);margin-bottom:10px}
+        .neemia-bulk-btn{width:100%;padding:8px 16px;border-radius:8px;border:1px solid #34d399;background:rgba(52,211,153,.08);color:#059669;font-size:13px;font-weight:700;cursor:pointer;font-family:'Inter',system-ui,sans-serif;transition:all .15s cubic-bezier(.4,0,.2,1);margin-bottom:10px}
         .neemia-bulk-btn:hover:not(:disabled){background:rgba(52,211,153,.18)}
         .neemia-bulk-btn:disabled{opacity:.5;cursor:not-allowed}
         .neemia-gen-status{font-size:12px;color:#2563eb;background:rgba(37,99,235,.06);border:1px solid rgba(37,99,235,.15);border-radius:8px;padding:8px 12px;margin-bottom:10px;line-height:1.5}
-        .neemia-warnings{font-size:11px;color:#fbbf24;background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.15);border-radius:8px;padding:8px 12px;margin-bottom:10px}
+        .neemia-warnings{font-size:11px;color:#d97706;background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.15);border-radius:8px;padding:8px 12px;margin-bottom:10px}
         .nw-item{margin-bottom:4px;line-height:1.4}
         .nw-item:last-child{margin-bottom:0}
         .tc-action-btn{padding:3px 10px;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;font-family:'Inter',system-ui,sans-serif;transition:all .15s cubic-bezier(.4,0,.2,1);border:1px solid rgba(226,232,240,.8);background:transparent}
         .tc-action-btn:hover:not(:disabled){border-color:#2563eb}
         .tc-action-btn:disabled{opacity:.4;cursor:not-allowed}
         .tc-download{color:#2563eb;border-color:#2563eb}
-        .tc-generate{color:#34d399;border-color:#34d399}
-        .tc-generate:hover:not(:disabled){background:rgba(52,211,153,.08);border-color:#34d399}
+        .tc-generate{color:#059669;border-color:#059669}
+        .tc-generate:hover:not(:disabled){background:rgba(52,211,153,.08);border-color:#059669}
         .tc-mode-badge{font-size:9px;font-weight:700;padding:1px 6px;border-radius:3px;text-transform:uppercase;letter-spacing:.5px;margin-left:4px}
         .tc-mode-badge.fill{background:rgba(37,99,235,.12);color:#2563eb}
-        .tc-mode-badge.compose{background:rgba(167,139,250,.15);color:#a78bfa}
-        .tc-preview{color:#a78bfa;border-color:#a78bfa}
-        .tc-preview:hover:not(:disabled){background:rgba(167,139,250,.08);border-color:#a78bfa}
+        .tc-mode-badge.compose{background:rgba(167,139,250,.15);color:#7c3aed}
+        .tc-preview{color:#7c3aed;border-color:#7c3aed}
+        .tc-preview:hover:not(:disabled){background:rgba(167,139,250,.08);border-color:#7c3aed}
         .tc-versions{color:#64748b;border-color:rgba(226,232,240,.8)}
         .tc-versions:hover{background:#f1f5f9;color:#0f172a}
         .tc-versions-panel{margin-top:6px;padding:6px 0;border-top:1px solid rgba(226,232,240,.8)}
@@ -2073,17 +2073,17 @@ export default function ProjectViewPage() {
         .tv-badge{background:#f1f5f9;color:#2563eb;font-weight:700;padding:1px 6px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:10px}
         .tv-date{color:#64748b;font-size:11px}
         .tv-stats{color:#94a3b8;font-size:10px;margin-left:auto}
-        .tv-mode{font-size:9px;font-weight:700;color:#a78bfa;text-transform:uppercase;letter-spacing:.5px}
+        .tv-mode{font-size:9px;font-weight:700;color:#7c3aed;text-transform:uppercase;letter-spacing:.5px}
         .tv-download{background:none;border:none;cursor:pointer;color:#2563eb;font-size:14px;padding:0 4px}
-        .tv-download:hover{color:#34d399}
+        .tv-download:hover{color:#059669}
 
         /* COMPOSE Preview Panel */
         .compose-preview-panel{display:flex;flex-direction:column;height:100%;overflow:hidden}
         .compose-preview-header{display:flex;align-items:center;gap:10px;padding:12px 20px;border-bottom:1px solid rgba(226,232,240,.8);background:#ffffff}
         .compose-preview-header h3{margin:0;font-size:13px;font-weight:700;color:#0f172a}
-        .compose-model-badge{font-size:10px;font-family:'JetBrains Mono',monospace;padding:2px 8px;border-radius:4px;background:rgba(167,139,250,.1);color:#a78bfa;font-weight:600}
+        .compose-model-badge{font-size:10px;font-family:'JetBrains Mono',monospace;padding:2px 8px;border-radius:4px;background:rgba(167,139,250,.1);color:#7c3aed;font-weight:600}
         .compose-stats{font-size:12px;color:#64748b;font-weight:600}
-        .compose-generate-btn{padding:6px 16px;border-radius:8px;border:1px solid #34d399;background:rgba(52,211,153,.08);color:#34d399;font-size:12px;font-weight:700;cursor:pointer;font-family:'Inter',system-ui,sans-serif;transition:all .15s cubic-bezier(.4,0,.2,1)}
+        .compose-generate-btn{padding:6px 16px;border-radius:8px;border:1px solid #34d399;background:rgba(52,211,153,.08);color:#059669;font-size:12px;font-weight:700;cursor:pointer;font-family:'Inter',system-ui,sans-serif;transition:all .15s cubic-bezier(.4,0,.2,1)}
         .compose-generate-btn:hover:not(:disabled){background:rgba(52,211,153,.18)}
         .compose-generate-btn:disabled{opacity:.5;cursor:not-allowed}
         .compose-sections-list{flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:16px}
@@ -2092,11 +2092,11 @@ export default function ProjectViewPage() {
         .cs-header{display:flex;align-items:center;gap:8px;padding:10px 14px;background:#f8fafc;border-bottom:1px solid rgba(226,232,240,.8)}
         .cs-type-badge{font-size:10px;font-weight:700;padding:2px 8px;border-radius:3px;text-transform:uppercase;letter-spacing:.5px}
         .cs-type-badge.narrative{background:rgba(37,99,235,.1);color:#2563eb}
-        .cs-type-badge.table{background:rgba(167,139,250,.1);color:#a78bfa}
-        .cs-type-badge.calculation{background:rgba(251,191,36,.1);color:#fbbf24}
+        .cs-type-badge.table{background:rgba(167,139,250,.1);color:#7c3aed}
+        .cs-type-badge.calculation{background:rgba(251,191,36,.1);color:#d97706}
         .cs-label{font-size:13px;font-weight:600;color:#0f172a}
         .cs-approve-btn{padding:3px 10px;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid rgba(226,232,240,.8);background:transparent;color:#64748b;font-family:'Inter',system-ui,sans-serif;transition:all .15s cubic-bezier(.4,0,.2,1)}
-        .cs-approve-btn.active{border-color:#34d399;color:#34d399;background:rgba(52,211,153,.06)}
+        .cs-approve-btn.active{border-color:#059669;color:#059669;background:rgba(52,211,153,.06)}
         .cs-edit-btn{padding:3px 10px;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid rgba(226,232,240,.8);background:transparent;color:#2563eb;font-family:'Inter',system-ui,sans-serif;transition:all .15s cubic-bezier(.4,0,.2,1)}
         .cs-edit-btn:hover{border-color:#2563eb;background:rgba(37,99,235,.06)}
         .cs-narrative{padding:14px;font-size:13px;line-height:1.7;color:#0f172a}
@@ -2106,7 +2106,7 @@ export default function ProjectViewPage() {
         .cs-textarea{width:100%;border:1px solid rgba(226,232,240,.8);border-radius:8px;background:#f0f2f5;color:#0f172a;font-family:'Inter',system-ui,sans-serif;font-size:13px;line-height:1.6;padding:10px;resize:vertical;min-height:120px;transition:all .15s cubic-bezier(.4,0,.2,1)}
         .cs-textarea:focus{outline:none;border-color:#2563eb}
         .cs-edit-actions{display:flex;gap:8px;margin-top:8px;justify-content:flex-end}
-        .cs-save-btn{padding:4px 14px;border-radius:8px;border:1px solid #34d399;background:rgba(52,211,153,.08);color:#34d399;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',system-ui,sans-serif}
+        .cs-save-btn{padding:4px 14px;border-radius:8px;border:1px solid #34d399;background:rgba(52,211,153,.08);color:#059669;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',system-ui,sans-serif}
         .cs-cancel-btn{padding:4px 14px;border-radius:8px;border:1px solid rgba(226,232,240,.8);background:transparent;color:#64748b;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',system-ui,sans-serif}
         .cs-table-wrapper{padding:14px;overflow-x:auto}
         .cs-table-caption{font-size:12px;font-weight:700;color:#2563eb;margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px}
@@ -2114,7 +2114,7 @@ export default function ProjectViewPage() {
         .cs-table th{padding:8px 10px;text-align:left;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.3px;border-bottom:2px solid rgba(226,232,240,.8)}
         .cs-table td{padding:6px 10px;border-bottom:1px solid rgba(226,232,240,.8);color:#0f172a}
         .cs-table .highlight-row{background:rgba(251,191,36,.1)}
-        .cs-table .highlight-row td{font-weight:600;color:#fbbf24}
+        .cs-table .highlight-row td{font-weight:600;color:#d97706}
         .cs-table .alt-row{background:#f8fafc}
         .cs-table .footer-row{background:#f8fafc}
         .cs-table .footer-row td{color:#ffffff;font-weight:700;border-bottom:none}
@@ -2285,9 +2285,9 @@ export default function ProjectViewPage() {
 
                 <div className="sumar-progress">
                   {[
-                    { label: "Eligibilitate", val: `${eligPassed}/${eligTotal}`, p: pct(eligPassed, eligTotal), color: eligPassed === eligTotal && eligTotal > 0 ? "#34d399" : "#fbbf24", leaf: "eligibilitate" as LeafType },
-                    { label: "Elemente", val: `${elemFilled}/${elemTotal}`, p: pct(elemFilled, elemTotal), color: elemFilled === elemTotal && elemTotal > 0 ? "#34d399" : "#2563eb", leaf: "elemente" as LeafType },
-                    { label: "Checklist doc", val: `${checkDone}/${checkTotal}`, p: pct(checkDone, checkTotal), color: checkDone === checkTotal && checkTotal > 0 ? "#34d399" : "#fb923c", leaf: "checklist" as LeafType },
+                    { label: "Eligibilitate", val: `${eligPassed}/${eligTotal}`, p: pct(eligPassed, eligTotal), color: eligPassed === eligTotal && eligTotal > 0 ? "#059669" : "#d97706", leaf: "eligibilitate" as LeafType },
+                    { label: "Elemente", val: `${elemFilled}/${elemTotal}`, p: pct(elemFilled, elemTotal), color: elemFilled === elemTotal && elemTotal > 0 ? "#059669" : "#2563eb", leaf: "elemente" as LeafType },
+                    { label: "Checklist doc", val: `${checkDone}/${checkTotal}`, p: pct(checkDone, checkTotal), color: checkDone === checkTotal && checkTotal > 0 ? "#059669" : "#ea580c", leaf: "checklist" as LeafType },
                     { label: "Neemia", val: `${neemiaTemplates.filter(t => t.status === "generated" || t.status === "validated").length}/${neemiaTemplates.length}`, p: neemiaTemplates.length > 0 ? pct(neemiaTemplates.filter(t => t.status === "generated" || t.status === "validated").length, neemiaTemplates.length) : 0, color: "#a78bfa", leaf: "neemia" as LeafType },
                   ].map(item => (
                     <div className="sp-card" key={item.label} onClick={() => setActiveLeaf(item.leaf)}>
@@ -2467,17 +2467,19 @@ export default function ProjectViewPage() {
 
                 {eligibilityRules.map(rule => (
                   <div className="elig-rule" key={rule.id}>
-                    <div className={`elig-icon ${rule.status}`}>
+                    <div className={`elig-icon ${rule.status}`} style={{ marginTop: 2 }}>
                       {rule.status === "pass" ? "✓" : rule.status === "fail" ? "✕" : "?"}
                     </div>
-                    <div className="elig-name" style={{ flex: 1 }}>
-                      {rule.name}
-                      <span className={`elig-type-badge ${rule.type}`}>
-                        {rule.type === "fixed" ? "⚡ FIXĂ" : "🧠 INTERPRETATĂ"}
-                      </span>
-                      {rule.type === "interpreted" && rule.confidence != null && rule.confidence < 0.85 && (
-                        <span className="text-[10px] text-amber-500 ml-1.5">⚠️ Review</span>
-                      )}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        <span className="elig-name" style={{ flex: "none" }}>{rule.name}</span>
+                        <span className={`elig-type-badge ${rule.type}`}>
+                          {rule.type === "fixed" ? "FIXĂ" : "INTER"}
+                        </span>
+                        {rule.type === "interpreted" && rule.confidence != null && rule.confidence < 0.85 && (
+                          <span style={{ fontSize: 10, color: "#d97706", fontWeight: 600 }}>⚠ Review</span>
+                        )}
+                      </div>
                       {/* F4.1: Show hint for PENDING rules about missing data */}
                       {rule.status === "pending" && (
                         <div style={{ fontSize: 11, color: "#d97706", marginTop: 4, display: "flex", alignItems: "center", gap: 4 }}>
@@ -2489,7 +2491,7 @@ export default function ProjectViewPage() {
                         </div>
                       )}
                     </div>
-                    <div className="elig-detail">{rule.status !== "pending" ? rule.detail : ""}</div>
+                    <div className="elig-detail" style={{ flexShrink: 0 }}>{rule.status !== "pending" ? rule.detail : ""}</div>
                     {rule.hasReferenceData && rule.referenceTableNames && rule.referenceTableNames.length > 0 && (
                       <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }}>
                         {rule.referenceTableNames.map((name: string, ri: number) => (
@@ -2516,9 +2518,9 @@ export default function ProjectViewPage() {
                 eligibilitate_complexa: "Elig. complexă", documentare: "Documentare", ajutor_stat: "Ajutor stat",
               };
               const categoryColors: Record<string, string> = {
-                eligibilitate: "#2563eb", financiar: "#34d399", tehnic: "#a78bfa", administrativ: "#64748b",
-                achizitii: "#fb923c", documente: "#fbbf24", selectie: "#f87171", intensitate: "#34d399",
-                eligibilitate_complexa: "#2563eb", documentare: "#fbbf24", ajutor_stat: "#a78bfa",
+                eligibilitate: "#2563eb", financiar: "#059669", tehnic: "#7c3aed", administrativ: "#64748b",
+                achizitii: "#ea580c", documente: "#d97706", selectie: "#dc2626", intensitate: "#0891b2",
+                eligibilitate_complexa: "#2563eb", documentare: "#d97706", ajutor_stat: "#7c3aed",
               };
               const categories = [...new Set(guideRules.map(r => r.category))].filter(Boolean);
               const filteredRules = ghidCategoryFilter === "all" ? guideRules : guideRules.filter(r => r.category === ghidCategoryFilter);
@@ -2744,7 +2746,7 @@ export default function ProjectViewPage() {
                               </div>
                               <div className="rd-confidence-row">
                                 <span className="rd-conf-label">Încredere</span>
-                                <span className="rd-conf-value" style={{ color: sel.confidence > 0.9 ? "#34d399" : sel.confidence > 0.8 ? "#2563eb" : "#fbbf24" }}>
+                                <span className="rd-conf-value" style={{ color: sel.confidence > 0.9 ? "#059669" : sel.confidence > 0.8 ? "#2563eb" : "#d97706" }}>
                                   {Math.round(sel.confidence * 100)}%
                                 </span>
                                 <div className="rd-conf-bar">
@@ -2863,8 +2865,8 @@ export default function ProjectViewPage() {
                       const pageRules = guide.rulesByPage[String(ghidViewerPage)] || [];
                       const totalPages = guide.pageCount || 1;
                       const CATEGORY_COLORS: Record<string, string> = {
-                        eligibilitate: "#2563eb", financiar: "#34d399", tehnic: "#a78bfa", administrativ: "#64748b",
-                        achizitii: "#fb923c", documente: "#fbbf24", selectie: "#f87171", intensitate: "#34d399",
+                        eligibilitate: "#2563eb", financiar: "#059669", tehnic: "#7c3aed", administrativ: "#64748b",
+                        achizitii: "#ea580c", documente: "#d97706", selectie: "#dc2626", intensitate: "#0891b2",
                       };
                       return (
                         <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
@@ -3044,7 +3046,7 @@ export default function ProjectViewPage() {
                   <div className="completitudine-bar">
                     <div className="completitudine-top">
                       <span className="cl-label">Completitudine elemente</span>
-                      <span className="cl-pct" style={{ color: pct(elemFilled, elemTotal) === 100 ? "#34d399" : "#2563eb" }}>
+                      <span className="cl-pct" style={{ color: pct(elemFilled, elemTotal) === 100 ? "#059669" : "#2563eb" }}>
                         {pct(elemFilled, elemTotal)}%
                       </span>
                     </div>

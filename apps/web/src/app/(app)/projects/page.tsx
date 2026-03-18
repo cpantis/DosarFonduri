@@ -34,7 +34,7 @@ function formatValoare(val: string | null | undefined): string {
 }
 
 interface FolderNode { id: string; name: string; type?: string; children?: FolderNode[]; }
-interface ProgramTree { program: string; masuri: { name: string; masuraFolderId: string; sesiuni: { name: string; folderId: string }[] }[]; }
+interface ProgramTree { program: string; masuri: { name: string; sesiuni: { name: string; folderId: string }[] }[]; }
 
 function buildProgramTree(folders: FolderNode[]): ProgramTree[] {
   const tree: ProgramTree[] = [];
@@ -48,7 +48,7 @@ function buildProgramTree(folders: FolderNode[]): ProgramTree[] {
             sesiuni.push({ name: sesiune.name, folderId: sesiune.id });
           }
         }
-        entry.masuri.push({ name: masura.name, masuraFolderId: masura.id, sesiuni });
+        entry.masuri.push({ name: masura.name, sesiuni });
       }
     }
     tree.push(entry);
@@ -60,7 +60,7 @@ export default function ProjectsPage() {
   const router = useRouter();
   const [showCreate, setShowCreate] = useState(false);
   const [createStep, setCreateStep] = useState(1);
-  const [createData, setCreateData] = useState<{ name: string; firmaId: string | null; folderId: string | null; masuraFolderId: string | null; program: string | null; masura: string | null; sesiune: string | null }>({ name: "", firmaId: null, folderId: null, masuraFolderId: null, program: null, masura: null, sesiune: null });
+  const [createData, setCreateData] = useState<{ name: string; firmaId: string | null; folderId: string | null; program: string | null; masura: string | null; sesiune: string | null }>({ name: "", firmaId: null, folderId: null, program: null, masura: null, sesiune: null });
   const [creating, setCreating] = useState(false);
   const [projects, setProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -92,15 +92,14 @@ export default function ProjectsPage() {
     }).catch((err) => { console.warn("[projects] folders load:", err.message); setFolderTree([]); });
   }, [showCreate]);
 
-  // Check if selected session or its parent masura has a processed guide
+  // Check if selected session has a processed guide
   useEffect(() => {
     if (!createData.folderId) { setGuideWarning(null); return; }
     setGuideWarning(null);
-    const folderIds = [createData.folderId, createData.masuraFolderId].filter(Boolean) as string[];
-    Promise.all(folderIds.map(id => apiGet(`/api/documents/folders/${id}/documents`).catch(() => [])))
-      .then((results) => {
-        const allDocs = results.flatMap((data: any) => Array.isArray(data) ? data : data.documents || []);
-        const hasProcessedGuide = allDocs.some((d: any) =>
+    apiGet(`/api/documents/folders/${createData.folderId}/documents`)
+      .then((data: any) => {
+        const docs = Array.isArray(data) ? data : data.documents || [];
+        const hasProcessedGuide = docs.some((d: any) =>
           d.processingType === "guide" && d.status === "processed"
         );
         if (!hasProcessedGuide) {
@@ -108,7 +107,7 @@ export default function ProjectsPage() {
         }
       })
       .catch(() => { /* ignore — non-critical check */ });
-  }, [createData.folderId, createData.masuraFolderId]);
+  }, [createData.folderId]);
 
   const [createError, setCreateError] = useState<string | null>(null);
 
@@ -138,7 +137,7 @@ export default function ProjectsPage() {
     setCreateStep(1);
     setCreating(false);
     setCreateError(null);
-    setCreateData({ name: "", firmaId: null, folderId: null, masuraFolderId: null, program: null, masura: null, sesiune: null });
+    setCreateData({ name: "", firmaId: null, folderId: null, program: null, masura: null, sesiune: null });
   };
 
   return (
@@ -366,7 +365,7 @@ export default function ProjectsPage() {
                           {m.sesiuni.map(s => (
                             <div key={s.folderId}
                               className={`py-2 px-3 ml-10 text-[12px] flex items-center gap-2 cursor-pointer rounded-lg transition-all ${createData.folderId === s.folderId ? "bg-white text-blue-600 font-semibold shadow-sm" : "text-slate-400 hover:text-slate-600 hover:bg-white/60"}`}
-                              onClick={() => setCreateData(p => ({ ...p, folderId: s.folderId, masuraFolderId: m.masuraFolderId, program: prog.program, masura: m.name, sesiune: s.name }))}>
+                              onClick={() => setCreateData(p => ({ ...p, folderId: s.folderId, program: prog.program, masura: m.name, sesiune: s.name }))}>
                               {createData.folderId === s.folderId
                                 ? <svg className="w-3.5 h-3.5 text-blue-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><polyline points="20 6 9 17 4 12" /></svg>
                                 : <div className="w-1 h-1 rounded-full bg-slate-300 shrink-0" />

@@ -368,6 +368,7 @@ export default function ProjectViewPage() {
   const [solomonAutoScroll, setSolomonAutoScroll] = useState(true);
   const popupRef = useRef<HTMLDivElement>(null);
   const solomonFileRef = useRef<HTMLInputElement>(null);
+  const solomonAbortRef = useRef<AbortController | null>(null);
   const [solomonDragOver, setSolomonDragOver] = useState(false);
   const [solomonTimedOut, setSolomonTimedOut] = useState(false);
   const solomonTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -686,6 +687,8 @@ export default function ProjectViewPage() {
     solomonTimeoutRef.current = setTimeout(() => setSolomonTimedOut(true), 60000);
 
     try {
+      const abortCtrl = new AbortController();
+      solomonAbortRef.current = abortCtrl;
       const token = typeof window !== "undefined" ? localStorage.getItem("df-token") : null;
       const res = await fetch(`${API_URL}/api/solomon/conversations/${solomonConvId}/messages`, {
         method: "POST",
@@ -694,6 +697,7 @@ export default function ProjectViewPage() {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({ content: userText, useET: solomonET }),
+        signal: abortCtrl.signal,
       });
 
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -769,18 +773,29 @@ export default function ProjectViewPage() {
         }
       }
     } catch (err: any) {
-      console.error("Solomon SSE error:", err);
-      toast("error", err.message || "Eroare la comunicarea cu Solomon.");
-      setSolomonMessages(prev => {
-        if (prev.length > 0 && prev[prev.length - 1].role === "assistant" && prev[prev.length - 1].text === "") {
-          return prev.slice(0, -1);
-        }
-        return prev;
-      });
+      if (err.name === "AbortError") {
+        // User stopped streaming — keep partial text visible
+      } else {
+        console.error("Solomon SSE error:", err);
+        toast("error", err.message || "Eroare la comunicarea cu Solomon.");
+        setSolomonMessages(prev => {
+          if (prev.length > 0 && prev[prev.length - 1].role === "assistant" && prev[prev.length - 1].text === "") {
+            return prev.slice(0, -1);
+          }
+          return prev;
+        });
+      }
     } finally {
+      solomonAbortRef.current = null;
       setSolomonStreaming(false);
       setSolomonTimedOut(false);
       if (solomonTimeoutRef.current) clearTimeout(solomonTimeoutRef.current);
+    }
+  };
+
+  const handleSolomonStop = () => {
+    if (solomonAbortRef.current) {
+      solomonAbortRef.current.abort();
     }
   };
 
@@ -3804,9 +3819,15 @@ export default function ProjectViewPage() {
                           }
                         }}
                       />
-                      <button className="chat-btn send" onClick={handleSolomonSend} disabled={solomonStreaming}>
-                        &#10148;
-                      </button>
+                      {solomonStreaming ? (
+                        <button className="chat-btn send" onClick={handleSolomonStop} title="Oprește generarea" style={{ background: "#dc2626" }}>
+                          &#9632;
+                        </button>
+                      ) : (
+                        <button className="chat-btn send" onClick={handleSolomonSend}>
+                          &#10148;
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>

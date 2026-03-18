@@ -261,6 +261,9 @@ projectRoutes.post("/", async (c) => {
     try { await populateChecklistFromRules(project.id, project.folderId, orgId); } catch (e: any) {
       console.warn("[projects/create] Checklist warning:", e.message);
     }
+    try { await seedEligibilityRows(project.id, project.folderId, orgId); } catch (e: any) {
+      console.warn("[projects/create] Seed eligibility warning:", e.message);
+    }
     try { await checkEligibility(project.id, orgId); } catch (e: any) {
       console.warn("[projects/create] Eligibility warning:", e.message);
     }
@@ -329,7 +332,12 @@ async function populateChecklistFromRules(projectId: string, folderId: string, o
   }
 
   const checklistItems = allRules
-    .filter(r => r.category === "documente_necesare" || r.description?.toLowerCase().includes("document"))
+    .filter(r =>
+      r.category === "documente" || r.category === "documentare" || r.category === "documente_necesare"
+      || r.description?.toLowerCase().includes("document")
+      || r.description?.toLowerCase().includes("acte necesare")
+      || r.description?.toLowerCase().includes("anexe")
+    )
     .map((r, idx) => ({
       projectId,
       name: r.description,
@@ -355,6 +363,42 @@ function categorizeDocument(rule: any): string {
     return "Declarații & Angajamente";
   }
   return "Documente juridice";
+}
+
+// Seed all rules as 'pending' so the Eligibility tab always shows all rules,
+// even if checkEligibility() fails or hasn't finished yet.
+async function seedEligibilityRows(projectId: string, folderId: string, orgId: string) {
+  const guideFolders = await db.query.documentFolders.findMany({
+    where: and(
+      eq(documentFolders.parentId, folderId),
+      eq(documentFolders.type, "ghiduri"),
+    ),
+  });
+
+  const allRuleIds: string[] = [];
+  for (const folder of guideFolders) {
+    const docs = await db.query.documents.findMany({
+      where: eq(documents.folderId, folder.id),
+    });
+    for (const doc of docs) {
+      const docRules = await db.query.rules.findMany({
+        where: eq(rules.documentId, doc.id),
+      });
+      allRuleIds.push(...docRules.map(r => r.id));
+    }
+  }
+
+  if (allRuleIds.length > 0) {
+    await db.insert(projectEligibility).values(
+      allRuleIds.map(ruleId => ({
+        projectId,
+        ruleId,
+        status: "pending" as const,
+        autoResult: null,
+        notes: null,
+      }))
+    ).onConflictDoNothing();
+  }
 }
 
 // ─── PROJECT DETAILS ───

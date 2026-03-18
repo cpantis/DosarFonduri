@@ -16,6 +16,55 @@ interface ProcessTemplatePayload {
   organizationId: string;
 }
 
+/**
+ * Re-classify template documentTypeClass based on extracted field keys.
+ * Confirms or corrects the filename-based heuristic from upload.
+ */
+function classifyTemplateFromContent(
+  fieldKeys: string[],
+  fileName: string,
+  fileType: string,
+): string | null {
+  const allKeys = fieldKeys.map(k => k.toLowerCase()).join(" ");
+  const name = fileName.toLowerCase();
+
+  // Cerere Finanțare signals: CUI, IBAN, plan financiar, buget, valoare proiect
+  const cerereSignals = ["cui", "iban", "plan_financiar", "valoare_proiect", "buget_total", "solicitant", "cod_caen"];
+  const cerereHits = cerereSignals.filter(s => allKeys.includes(s)).length;
+
+  // Anexa B signals: financial viability, RAFN, VAN, rata indatorarii, cash flow
+  const anexaBSignals = ["rafn", "van", "rata_indatorarii", "cash_flow", "venituri", "cheltuieli", "amortizare", "previzion"];
+  const anexaBHits = anexaBSignals.filter(s => allKeys.includes(s)).length;
+
+  // Anexa C signals: plan afaceri, piata, concurenta, marketing, strategie
+  const anexaCSignals = ["plan_afaceri", "piata", "concurenta", "marketing", "strategie", "swot"];
+  const anexaCHits = anexaCSignals.filter(s => allKeys.includes(s)).length;
+
+  // Memoriu signals: descriere, obiective, activitati, rezultate, durabilitate
+  const memoriuSignals = ["descriere", "obiective", "activitat", "rezultat", "durabilitat", "context", "justificar"];
+  const memoriuHits = memoriuSignals.filter(s => allKeys.includes(s)).length;
+
+  // Pick highest signal count (min 2 hits to override)
+  const scores = [
+    { type: "cerere_finantare_template", hits: cerereHits },
+    { type: "anexa_b_template", hits: anexaBHits },
+    { type: "anexa_c_template", hits: anexaCHits },
+    { type: "memoriu_template", hits: memoriuHits },
+  ];
+  const best = scores.reduce((a, b) => b.hits > a.hits ? b : a);
+
+  if (best.hits >= 2) return best.type;
+
+  // Fallback: filename heuristic (same logic as upload)
+  if (/anexa.*[_\s-]?c/i.test(name)) return "anexa_c_template";
+  if (/anexa.*[_\s-]?b/i.test(name)) return "anexa_b_template";
+  if (/cerere.*finan[tț]|cererea/i.test(name)) return "cerere_finantare_template";
+  if (/memoriu/i.test(name)) return "memoriu_template";
+  if (fileType === "docx") return "memoriu_template";
+  if (fileType === "pdf") return "cerere_finantare_template";
+  return null;
+}
+
 async function extractPlaceholders(buffer: Buffer, fileName: string): Promise<Array<{
   key: string;
   pageNum: number;
@@ -568,10 +617,18 @@ export const processTemplateWorker = new Worker<ProcessTemplatePayload>(
         ? Math.max(...uniqueElements.map(e => e.pageNum), 1)
         : 1;
 
+      // Re-classify documentTypeClass based on extracted field content
+      const refinedTypeClass = classifyTemplateFromContent(
+        uniqueElements.map(e => e.key),
+        doc.name,
+        doc.fileType || "",
+      );
+
       await db.update(documents).set({
         status: "processed",
         pageCount: maxPage,
         processedAt: new Date(),
+        ...(refinedTypeClass ? { documentTypeClass: refinedTypeClass as any } : {}),
       }).where(eq(documents.id, documentId));
 
       await job.updateProgress(100);

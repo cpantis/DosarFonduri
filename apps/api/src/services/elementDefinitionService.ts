@@ -374,6 +374,8 @@ export async function extractElementDefinitionsFromGuide(
   }
 
   let created = 0;
+  let failedCount = 0;
+  const failedKeys: string[] = [];
   for (let i = 0; i < parsed.length; i++) {
     const el = parsed[i];
     if (!el.element_key || !el.display_name) continue;
@@ -397,11 +399,17 @@ export async function extractElementDefinitionsFromGuide(
       });
       created++;
     } catch (err) {
-      console.warn(`[elementDefinitionService] Failed to upsert element "${el.element_key}":`, err);
+      failedCount++;
+      const errMsg = err instanceof Error ? err.message : String(err);
+      failedKeys.push(el.element_key);
+      console.error(`[elementDefinitionService] Failed to upsert element "${el.element_key}":`, errMsg);
     }
   }
 
-  console.log(`[elementDefinitionService] Extracted ${created} element definitions from guide ${guideDocumentId}`);
+  if (failedCount > 0) {
+    console.error(`[elementDefinitionService] ${failedCount}/${parsed.length} element definitions failed to upsert: ${failedKeys.join(", ")}`);
+  }
+  console.log(`[elementDefinitionService] Extracted ${created} element definitions from guide ${guideDocumentId} (${failedCount} failed)`);
   return created;
 }
 

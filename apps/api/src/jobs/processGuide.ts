@@ -473,6 +473,7 @@ async function saveElementDefinitions(defs: any[], documentId: string, organizat
 
   let created = 0;
   let failedCount = 0;
+  const failedKeys: string[] = [];
   for (let i = 0; i < defs.length; i++) {
     const el = defs[i];
     if (!el.element_key || !el.display_name) continue;
@@ -497,12 +498,13 @@ async function saveElementDefinitions(defs: any[], documentId: string, organizat
       created++;
     } catch (err) {
       failedCount++;
-      console.warn(`[processGuide] Failed to upsert element "${el.element_key}":`, err);
+      failedKeys.push(el.element_key);
+      const errMsg = err instanceof Error ? err.message : String(err);
+      console.error(`[processGuide] Failed to upsert element "${el.element_key}":`, errMsg);
     }
   }
-  // W2.4: Aggregate and warn on upsert failures
   if (failedCount > 0) {
-    console.warn(`[processGuide] ${failedCount}/${defs.length} element definitions failed to upsert`);
+    console.error(`[processGuide] ${failedCount}/${defs.length} element definitions failed to upsert: ${failedKeys.join(", ")}`);
     publishJobProgress(organizationId, {
       jobId: "", jobType: "ghid", documentId, documentName: "",
       progress: -1, status: "processing",

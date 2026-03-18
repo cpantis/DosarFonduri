@@ -5,17 +5,31 @@ import { useAuth } from "@/hooks/useAuth";
 import { useSidebar } from "@/hooks/useSidebar";
 import { useState, useEffect } from "react";
 
+/* ─── Monochrome SVG icons (Linear-style) ─── */
+function NavIcon({ name, className }: { name: string; className?: string }) {
+  const props = { width: 18, height: 18, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.7, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, className };
+  switch (name) {
+    case "dashboard": return <svg {...props}><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>;
+    case "companies": return <svg {...props}><path d="M3 21h18" /><path d="M5 21V7l8-4v18" /><path d="M19 21V11l-6-4" /><path d="M9 9v.01" /><path d="M9 12v.01" /><path d="M9 15v.01" /><path d="M9 18v.01" /></svg>;
+    case "projects":  return <svg {...props}><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" /></svg>;
+    case "documents": return <svg {...props}><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /></svg>;
+    case "settings":  return <svg {...props}><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" /></svg>;
+    case "admin":     return <svg {...props}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>;
+    default:          return <svg {...props}><circle cx="12" cy="12" r="10" /></svg>;
+  }
+}
+
 const navItems = [
-  { key: "dashboard", label: "Panou",      icon: "📊", href: "/dashboard" },
-  { key: "companies", label: "Firme",      icon: "🏢", href: "/companies" },
-  { key: "projects",  label: "Proiecte",   icon: "📁", href: "/projects" },
-  { key: "documents", label: "Documente",  icon: "📄", href: "/documents" },
+  { key: "dashboard", label: "Panou",      href: "/dashboard" },
+  { key: "companies", label: "Firme",      href: "/companies" },
+  { key: "projects",  label: "Proiecte",   href: "/projects" },
+  { key: "documents", label: "Documente",  href: "/documents" },
 ];
 const configItems = [
-  { key: "settings", label: "Configurări", icon: "⚙️", href: "/settings" },
+  { key: "settings", label: "Configurări", href: "/settings" },
 ];
 const systemItems = [
-  { key: "admin",    label: "Admin",       icon: "🔧", href: "/admin" },
+  { key: "admin",    label: "Admin",       href: "/admin" },
 ];
 
 const EXPANDED_WIDTH = 248;
@@ -46,7 +60,7 @@ function NavItem({
   collapsed,
   onExpandRequest,
 }: {
-  item: { href: string; icon: string; label: string };
+  item: { href: string; key: string; label: string };
   active: boolean;
   collapsed: boolean;
   onExpandRequest: () => void;
@@ -93,7 +107,7 @@ function NavItem({
         }
       }}
     >
-      <span style={{ fontSize: 15, width: 20, textAlign: "center", flexShrink: 0 }}>{item.icon}</span>
+      <span style={{ width: 20, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><NavIcon name={item.key} /></span>
       {!collapsed && <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.label}</span>}
     </Link>
   );
@@ -146,7 +160,7 @@ export function Sidebar() {
           display: "none",
           position: "fixed", top: 12, left: 12, zIndex: 200,
           width: 40, height: 40, borderRadius: 10,
-          background: "#0f1219", border: "1px solid rgba(255,255,255,.1)",
+          background: "#0f172a", border: "1px solid rgba(255,255,255,.1)",
           boxShadow: "0 2px 8px rgba(0,0,0,.08)",
           alignItems: "center", justifyContent: "center",
           fontSize: 18, cursor: "pointer",
@@ -179,11 +193,11 @@ export function Sidebar() {
       style={{
         width: mobileOpen ? EXPANDED_WIDTH : isCollapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH,
         minHeight: "100vh",
-        background: "#0f1219",
+        background: "#0f172a",
         display: "flex",
         flexDirection: "column",
         flexShrink: 0,
-        borderRight: "1px solid rgba(255,255,255,.06)",
+        borderRight: "1px solid #1e293b",
         transition: "width 200ms ease",
         overflow: "hidden",
       }}

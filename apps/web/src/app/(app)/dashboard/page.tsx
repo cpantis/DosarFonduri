@@ -148,7 +148,7 @@ export default function DashboardPage() {
                   {(!data?.deadlines || data.deadlines.length === 0) ? (
                     <div className="text-[13px] text-slate-400 text-center py-8">Niciun termen apropiat</div>
                   ) : (
-                    <div className="divide-y divide-slate-50">
+                    <div className="divide-y divide-slate-100/80">
                       {data.deadlines.map((d, i) => (
                         <div key={i} className="px-4 py-3 flex items-start gap-3">
                           <span className={`text-[13px] font-bold font-mono tabular-nums mt-0.5 ${d.urgent ? "text-red-600" : "text-slate-500"}`}>{d.daysLeft}z</span>
@@ -170,7 +170,7 @@ export default function DashboardPage() {
                   {(!data?.activity || data.activity.length === 0) ? (
                     <div className="text-[13px] text-slate-400 text-center py-8">Nicio activitate</div>
                   ) : (
-                    <div className="divide-y divide-slate-50">
+                    <div className="divide-y divide-slate-100/80">
                       {data.activity
                         .filter((a) => isSignificantAction(a.action))
                         .slice(0, 5).map((a) => {

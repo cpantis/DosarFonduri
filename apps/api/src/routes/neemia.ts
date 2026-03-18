@@ -346,14 +346,17 @@ neemiaRoutes.post("/projects/:projectId/compose/preview", async (c) => {
   const project = await verifyProjectOrg(projectId, auth.organizationId!);
   if (!project) return c.json({ error: "Project not found" }, 404);
 
-  const body = templateDocIdSchema.parse(await c.req.json());
+  const body = await c.req.json();
+  const templateDocumentId = body.templateDocumentId;
+  if (!templateDocumentId) return c.json({ error: "templateDocumentId required" }, 400);
 
   const stream = await composeDocument({
     projectId,
-    templateDocumentId: body.templateDocumentId,
+    templateDocumentId,
     organizationId: auth.organizationId!,
     userId: auth.userId,
     previewOnly: true,
+    regenerateSectionMarker: body.regenerateSectionMarker || undefined,
   });
 
   return new Response(stream, {

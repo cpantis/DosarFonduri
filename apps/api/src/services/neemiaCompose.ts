@@ -126,6 +126,7 @@ interface ComposeDocParams {
   userId: string;
   previewOnly?: boolean;        // If true, return AI content without DOCX generation
   editedSections?: ComposeSection[];  // Consultant-edited sections to use instead of AI
+  regenerateSectionMarker?: string;  // FIX 7: Regenerate only this section
 }
 
 // ═══ BUILD COMPOSE CONTEXT ═══
@@ -535,7 +536,7 @@ Răspunde DOAR cu JSON-ul, fără markdown code blocks, fără text suplimentar.
 // ═══ COMPOSE DOCUMENT (main flow, SSE streaming) ═══
 
 export async function composeDocument(params: ComposeDocParams): Promise<ReadableStream> {
-  const { projectId, templateDocumentId, organizationId, userId, previewOnly, editedSections } = params;
+  const { projectId, templateDocumentId, organizationId, userId, previewOnly, editedSections, regenerateSectionMarker } = params;
   const encoder = new TextEncoder();
 
   return new ReadableStream({
@@ -581,16 +582,24 @@ export async function composeDocument(params: ComposeDocParams): Promise<Readabl
         let composeSections: ComposeSection[];
         let tokensUsed = 0;
 
-        if (editedSections && editedSections.length > 0) {
+        // FIX 7: Filter sections to regenerate only the requested one
+        const sectionsToGenerate = regenerateSectionMarker
+          ? composeConfig.sections.filter((s: any) => s.marker === regenerateSectionMarker)
+          : composeConfig.sections;
+
+        if (editedSections && editedSections.length > 0 && !regenerateSectionMarker) {
           emit({ type: "status", message: "Se folosesc secțiunile editate de consultant..." });
           composeSections = editedSections;
         } else {
-          emit({ type: "status", message: `Se generează conținutul cu ${aiModel}...` });
+          emit({ type: "status", message: regenerateSectionMarker
+            ? `Se regenerează secțiunea "${regenerateSectionMarker}" cu ${aiModel}...`
+            : `Se generează conținutul cu ${aiModel}...`
+          });
 
           const templateBlueprint = (templateDoc as any)?.blueprint as DocumentBlueprint | null;
           const aiResult = await generateComposeContent(
             context,
-            composeConfig.sections,
+            sectionsToGenerate,
             aiModel,
             organizationId,
             userId,
@@ -739,6 +748,9 @@ export async function composeDocument(params: ComposeDocParams): Promise<Readabl
           );
         }
 
+        // FIX 2: Auto-update checklist items matching this template
+        await autoUpdateChecklistCompose(projectId, templateDoc.name);
+
         emit({
           type: "complete",
           documentId: projectDoc.id,
@@ -757,6 +769,41 @@ export async function composeDocument(params: ComposeDocParams): Promise<Readabl
       }
     },
   });
+}
+
+// ═══ AUTO-UPDATE CHECKLIST POST-COMPOSE ═══
+async function autoUpdateChecklistCompose(projectId: string, templateName: string): Promise<void> {
+  const items = await db.select().from(projectChecklist)
+    .where(and(
+      eq(projectChecklist.projectId, projectId),
+      eq(projectChecklist.done, false),
+    ));
+
+  const nameLower = templateName.toLowerCase();
+  const matchKeywords = [
+    { templateFragment: "memoriu", checklistKeywords: ["memoriu justificativ", "memoriu"] },
+    { templateFragment: "plan_afaceri", checklistKeywords: ["plan afaceri", "plan de afaceri"] },
+    { templateFragment: "cerere", checklistKeywords: ["cerere finantare", "cerere de finantare"] },
+    { templateFragment: "studiu", checklistKeywords: ["studiu fezabilitate", "studiu"] },
+  ];
+
+  const itemsToUpdate: string[] = [];
+  for (const item of items) {
+    const itemNameLower = item.name.toLowerCase();
+    for (const mapping of matchKeywords) {
+      if (nameLower.includes(mapping.templateFragment) &&
+          mapping.checklistKeywords.some(kw => itemNameLower.includes(kw))) {
+        itemsToUpdate.push(item.id);
+        break;
+      }
+    }
+  }
+
+  if (itemsToUpdate.length > 0) {
+    await db.update(projectChecklist)
+      .set({ done: true, notes: `Auto-marcat la generarea COMPOSE "${templateName}"` })
+      .where(inArray(projectChecklist.id, itemsToUpdate));
+  }
 }
 
 // ═══ COMPOSE DOCX TEMPLATE ═══

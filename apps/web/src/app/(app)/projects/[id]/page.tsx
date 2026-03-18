@@ -308,6 +308,11 @@ export default function ProjectViewPage() {
           setEligibilityRules(mapEligibilityRules(eligData.flat || []));
         }).catch(() => {});
       }
+      if (evt.event === "score_updated") {
+        apiGet<any>(`/api/projects/${projectId}/scores`)
+          .then(setProjectScores)
+          .catch(console.error);
+      }
       if (evt.event === "checklist_updated") {
         // Re-fetch checklist when backend auto-matches an item
         apiGet<any>(`/api/projects/${projectId}`).then(proj => {
@@ -373,6 +378,7 @@ export default function ProjectViewPage() {
   const [budgetValidation, setBudgetValidation] = useState<{ results: any[]; summary: any } | null>(null);
   // GAP 8: Learnings
   const [learnings, setLearnings] = useState<any | null>(null);
+  const [cabinetBranding, setCabinetBranding] = useState<{ fontFamily?: string; primaryColor?: string; footerText?: string } | null>(null);
 
   const [neemiaActiveTemplate, setNeemiaActiveTemplate] = useState(0);
   const [neemiaActivePage, setNeemiaActivePage] = useState(0);
@@ -408,6 +414,7 @@ export default function ProjectViewPage() {
   }, []);
 
   const [neemiaGenStatus, setNeemiaGenStatus] = useState<string | null>(null);
+  const [neemiaGenProgress, setNeemiaGenProgress] = useState<number>(0); // 0-100 for progress bar
   const [neemiaValidation, setNeemiaValidation] = useState<{ warnings: string[]; stats?: any; sectionReadiness?: Array<{ sectionId: string; sectionTitle: string; requiredComplete: number; requiredTotal: number; requiredMissing: string[]; optionalComplete: number; optionalTotal: number; readiness: number; qualityLevel: "full" | "partial" | "minimal" }> } | null>(null);
   // GAP 3: Consistency check
   const [consistencyResult, setConsistencyResult] = useState<{ consistent: boolean; conflicts: any[] } | null>(null);
@@ -565,10 +572,12 @@ export default function ProjectViewPage() {
         }));
         setNeemiaTemplates(neemiaMapped);
 
-        // GAP 1+2+8: Load scores, budget validation, learnings in parallel (non-blocking)
+        // GAP 1+2+8: Load scores, budget validation, learnings, branding in parallel (non-blocking)
         apiGet<any>(`/api/projects/${projectId}/scores`).then(setProjectScores).catch(() => {});
         apiGet<any>(`/api/projects/${projectId}/budget-validation`).then(setBudgetValidation).catch(() => {});
         apiGet<any>(`/api/projects/${projectId}/learnings`).then(setLearnings).catch(() => {});
+        // FIX 8: Load cabinet branding for document preview
+        apiGet<any>(`/api/config/branding`).then(setCabinetBranding).catch(() => {});
       } catch (err: any) {
         console.error("Failed to load project:", err);
         setLoadError(err?.message || "Eroare la încărcarea proiectului");
@@ -1037,20 +1046,24 @@ export default function ProjectViewPage() {
     if (readOnly || neemiaGenerating) return;
     setNeemiaGenerating(true);
     setNeemiaGenStatus("Se validează...");
+    setNeemiaGenProgress(5);
     setNeemiaValidation(null);
     try {
       // Step 1: Validate
       const validation = await apiPost<any>(`/api/neemia/projects/${projectId}/validate`, { templateDocumentId });
       setNeemiaValidation({ warnings: validation.warnings || [], stats: validation.stats, sectionReadiness: validation.sectionReadiness || [] });
+      setNeemiaGenProgress(15);
 
       if (!validation.canGenerate) {
         setNeemiaGenStatus("Generarea nu este posibilă — vezi erorile.");
         setNeemiaGenerating(false);
+        setNeemiaGenProgress(0);
         return;
       }
 
       // Step 2: Generate via SSE
       setNeemiaGenStatus("Se generează documentul...");
+      setNeemiaGenProgress(25);
       const neeToken = typeof window !== "undefined" ? localStorage.getItem("df-token") : null;
       const res = await fetch(`${API_URL}/api/neemia/projects/${projectId}/generate`, {
         method: "POST",
@@ -1073,10 +1086,19 @@ export default function ProjectViewPage() {
           if (!line.startsWith("data: ")) continue;
           try {
             const evt = JSON.parse(line.slice(6));
-            if (evt.type === "status") setNeemiaGenStatus(evt.message);
-            else if (evt.type === "progress") setNeemiaGenStatus(`Elemente: ${evt.filled} completate, ${evt.missing} lipsă`);
+            if (evt.type === "status") {
+              setNeemiaGenStatus(evt.message);
+              setNeemiaGenProgress(prev => Math.min(prev + 15, 85));
+            }
+            else if (evt.type === "progress") {
+              const total = (evt.filled || 0) + (evt.missing || 0);
+              const pct = total > 0 ? Math.round((evt.filled / total) * 100) : 50;
+              setNeemiaGenProgress(25 + Math.round(pct * 0.5));
+              setNeemiaGenStatus(`Elemente: ${evt.filled} completate, ${evt.missing} lipsă`);
+            }
             else if (evt.type === "warning") setNeemiaGenStatus(`⚠ ${evt.message}`);
             else if (evt.type === "complete") {
+              setNeemiaGenProgress(100);
               setNeemiaGenStatus(`✓ Document generat (v${evt.version || "?"}) — ${evt.filledCount} câmpuri completate`);
               // Refresh Neemia documents list
               const docs = await apiGet<any[]>(`/api/neemia/projects/${projectId}/documents`).catch(() => []);
@@ -1087,12 +1109,13 @@ export default function ProjectViewPage() {
                 templateDocumentId: doc.templateDocumentId, status: doc.status, downloadUrl: doc.downloadUrl || null,
               })));
             }
-            else if (evt.type === "error") setNeemiaGenStatus(`Eroare: ${evt.message}`);
+            else if (evt.type === "error") { setNeemiaGenStatus(`Eroare: ${evt.message}`); setNeemiaGenProgress(0); }
           } catch {}
         }
       }
     } catch (err) {
       setNeemiaGenStatus(`Eroare: ${(err as Error).message}`);
+      setNeemiaGenProgress(0);
     } finally {
       setNeemiaGenerating(false);
     }
@@ -1262,6 +1285,36 @@ export default function ProjectViewPage() {
     ));
     setComposeEditing(null);
     setComposeEditText("");
+  };
+
+  // ─── COMPOSE: Regenerate single section ───
+  const [composeRegeneratingIdx, setComposeRegeneratingIdx] = useState<number | null>(null);
+  const handleComposeRegenerateSection = async (sectionIdx: number) => {
+    const section = composePreviewSections[sectionIdx];
+    if (!section || composeRegeneratingIdx !== null) return;
+    setComposeRegeneratingIdx(sectionIdx);
+    try {
+      // Find the active COMPOSE template
+      const composeTmpl = neemiaTemplates.find(t => t.generationMode === "compose");
+      if (!composeTmpl?.templateDocumentId) throw new Error("Template COMPOSE negăsit");
+      const result = await apiPost<any>(`/api/neemia/projects/${projectId}/compose/preview`, {
+        templateDocumentId: composeTmpl.templateDocumentId,
+        regenerateSectionMarker: section.marker,
+      });
+      // Update only the regenerated section
+      if (result?.sections) {
+        const regenerated = result.sections.find((s: any) => s.marker === section.marker);
+        if (regenerated) {
+          setComposePreviewSections(prev => prev.map((s, i) =>
+            i === sectionIdx ? { ...regenerated, approved: false } : s
+          ));
+        }
+      }
+    } catch (err) {
+      toast("error", `Eroare regenerare secțiune: ${(err as Error).message}`);
+    } finally {
+      setComposeRegeneratingIdx(null);
+    }
   };
 
   // ─── NEEMIA: Load version history for a template ───
@@ -2381,6 +2434,16 @@ export default function ProjectViewPage() {
                         background: projectScores.percentage >= 80 ? "#34d399" : projectScores.percentage >= 60 ? "#fbbf24" : "#f87171",
                       }} />
                     </div>
+                    {projectScores.totalPoints < 56 && (
+                      <div style={{
+                        background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 8,
+                        padding: "10px 14px", marginBottom: 10, fontSize: 13, color: "#92400e",
+                        display: "flex", alignItems: "center", gap: 8,
+                      }}>
+                        <span style={{ fontSize: 16 }}>⚠</span>
+                        Punctajul estimat ({projectScores.totalPoints}p) este sub pragul de calitate de 56 puncte. Proiectul nu poate fi depus în luna curentă.
+                      </div>
+                    )}
                     {projectScores.scores.length > 0 && (
                       <div style={{ fontSize: 12 }}>
                         {projectScores.scores.map((s: any, i: number) => (
@@ -3817,6 +3880,15 @@ export default function ProjectViewPage() {
                   {neemiaGenStatus && (
                     <div className="neemia-gen-status">
                       {neemiaGenStatus}
+                      {neemiaGenerating && neemiaGenProgress > 0 && (
+                        <div style={{ height: 4, borderRadius: 2, background: "rgba(255,255,255,.2)", marginTop: 8, overflow: "hidden" }}>
+                          <div style={{
+                            height: "100%", borderRadius: 2, transition: "width .4s ease",
+                            width: `${neemiaGenProgress}%`,
+                            background: neemiaGenProgress >= 100 ? "#34d399" : "#fff",
+                          }} />
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -4136,15 +4208,25 @@ export default function ProjectViewPage() {
                                 {section.approved ? "✓ Aprobat" : "Aprobă"}
                               </button>
                               {section.type === "narrative" && (
-                                <button
-                                  className="cs-edit-btn"
-                                  onClick={() => {
-                                    setComposeEditing(si);
-                                    setComposeEditText(section.content || "");
-                                  }}
-                                >
-                                  Editează
-                                </button>
+                                <>
+                                  <button
+                                    className="cs-edit-btn"
+                                    onClick={() => {
+                                      setComposeEditing(si);
+                                      setComposeEditText(section.content || "");
+                                    }}
+                                  >
+                                    Editează
+                                  </button>
+                                  <button
+                                    className="cs-edit-btn"
+                                    style={{ color: "#4d8bff" }}
+                                    onClick={() => handleComposeRegenerateSection(si)}
+                                    disabled={composeRegeneratingIdx !== null}
+                                  >
+                                    {composeRegeneratingIdx === si ? "Se regenerează..." : "Regenerează"}
+                                  </button>
+                                </>
                               )}
                             </div>
 
@@ -4305,9 +4387,9 @@ export default function ProjectViewPage() {
                         {/* Right: Document page preview — pixel-perfect document look */}
                         <div className="neemia-doc-preview">
                           {neemiaPage && (
-                            <div className="ndp-page" key={neemiaAnimKey}>
+                            <div className="ndp-page" key={neemiaAnimKey} style={cabinetBranding?.fontFamily ? { fontFamily: cabinetBranding.fontFamily } : undefined}>
                               <div className="ndp-header">
-                                <div className="ndp-header-bar" />
+                                <div className="ndp-header-bar" style={cabinetBranding?.primaryColor ? { background: cabinetBranding.primaryColor } : undefined} />
                                 <div className="ndp-doc-type">{neemiaTemplate.type}</div>
                                 <div className="ndp-doc-title">{neemiaTemplate.name}</div>
                               </div>
@@ -4355,6 +4437,9 @@ export default function ProjectViewPage() {
 
                               <div className="ndp-footer">
                                 <span>Pag. {neemiaPage.num} / {neemiaTemplate.pages.length}</span>
+                                {cabinetBranding?.footerText && (
+                                  <span className="ndp-footer-cabinet">{cabinetBranding.footerText}</span>
+                                )}
                                 <span className="ndp-footer-stats">
                                   {neemiaPage.fields.filter(f => f.value).length}/{neemiaPage.fields.length} completate
                                 </span>

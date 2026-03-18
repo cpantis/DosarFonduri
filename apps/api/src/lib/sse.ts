@@ -129,6 +129,24 @@ export function publishExtractionStarted(
   );
 }
 
+/** Checklist auto-matched event — pushes to project channel */
+export function publishChecklistUpdated(
+  projectId: string,
+  data: {
+    itemId: string;
+    itemName: string;
+    documentType: string;
+    documentId: string;
+    message: string;
+  },
+): Promise<void> {
+  return publishEvent(
+    `project:${projectId}:updates`,
+    "checklist_updated",
+    data,
+  );
+}
+
 /** Job progress event */
 export function publishJobProgress(
   organizationId: string,

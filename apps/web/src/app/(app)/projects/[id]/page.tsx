@@ -1619,9 +1619,9 @@ export default function ProjectViewPage() {
         .rule-card:hover{border-color:#cbd5e1;box-shadow:0 1px 3px rgba(0,0,0,.05)}
         .rule-card.active{border-color:#2563eb;background:rgba(37,99,235,.03);box-shadow:0 0 0 1px rgba(37,99,235,.15)}
         .rule-card-top{display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap}
-        .rule-type-badge{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:3px 10px;border-radius:4px;display:inline-flex;flex-shrink:0;white-space:nowrap}
-        .rule-type-badge.fixed{color:#059669;background:rgba(52,211,153,.1);border:1px solid #a7f3d0}
-        .rule-type-badge.interpreted{color:#d97706;background:rgba(251,191,36,.1);border:1px solid #fed7aa}
+        .rule-type-badge{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:4px 12px;border-radius:6px;display:inline-flex;flex-shrink:0;white-space:nowrap}
+        .rule-type-badge.fixed{color:#059669;background:rgba(52,211,153,.15);border:1px solid #a7f3d0}
+        .rule-type-badge.interpreted{color:#d97706;background:rgba(251,191,36,.15);border:1px solid #fed7aa}
         .rule-cat-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
         .rule-cat-label{font-size:10px;color:#94a3b8;font-weight:600}
         .rule-review-flag{font-size:10px;color:#d97706;font-weight:600;margin-left:auto}
@@ -2492,14 +2492,7 @@ export default function ProjectViewPage() {
                 <div className="rules-scroll" style={{ maxHeight: "calc(100vh - 320px)" }}>
                   {eligibilityRules.map(rule => (
                     <div className="rule-card" key={rule.id}>
-                      <div className="rule-card-top">
-                        <div className={`elig-icon ${rule.status}`} style={{ width: 20, height: 20, fontSize: 10 }}>
-                          {eligStatusIcons[rule.status]}
-                        </div>
-                        <span className="elig-status-label" style={{ fontSize: 10, fontWeight: 700, color: eligStatusColors[rule.status], letterSpacing: ".5px" }}>
-                          {eligStatusLabels[rule.status]}
-                        </span>
-                        <span style={{ color: "#e2e8f0", fontSize: 10 }}>|</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
                         <div className={`rule-type-badge ${rule.type}`}>
                           {rule.type === "fixed" ? "FIXĂ" : "INTERPRETATĂ"}
                         </div>
@@ -2510,6 +2503,14 @@ export default function ProjectViewPage() {
                           </>
                         )}
                         {rule.needsReview && <span className="rule-review-flag">⚠ Review</span>}
+                      </div>
+                      <div className="rule-card-top">
+                        <div className={`elig-icon ${rule.status}`} style={{ width: 20, height: 20, fontSize: 10 }}>
+                          {eligStatusIcons[rule.status]}
+                        </div>
+                        <span className="elig-status-label" style={{ fontSize: 10, fontWeight: 700, color: eligStatusColors[rule.status], letterSpacing: ".5px" }}>
+                          {eligStatusLabels[rule.status]}
+                        </span>
                       </div>
                       <div className="rule-text">{rule.name}</div>
                       {rule.status === "pending" && (

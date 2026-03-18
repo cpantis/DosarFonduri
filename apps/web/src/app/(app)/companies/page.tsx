@@ -132,9 +132,9 @@ export default function CompaniesPage() {
   return (
     <div className="animate-[fadeIn_.2s_ease-out]">
       <style>{`
-        .co-card{padding:20px;border-radius:12px;border:1px solid rgba(226,232,240,.8);background:#ffffff;transition:all .15s;cursor:pointer;display:flex;align-items:center;justify-content:space-between;text-decoration:none;margin-bottom:8px}
+        .co-card{padding:20px;border-radius:12px;border:1px solid rgba(226,232,240,.8);background:#ffffff;transition:all .15s;cursor:pointer;display:flex;align-items:center;justify-content:space-between;text-decoration:none;margin-bottom:8px;overflow:hidden}
         .co-card:hover{border-color:#cbd5e1;box-shadow:0 1px 3px rgba(0,0,0,.04)}
-        .co-stat{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#64748b}
+        .co-stat{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:13px;color:#64748b}
         .co-stat .sep{color:#e2e8f0}
         .co-search{border:1px solid rgba(226,232,240,.8);border-radius:8px;padding:8px 12px 8px 36px;font-size:13px;background:#ffffff;color:#0f172a;outline:none;width:100%;transition:all .15s;font-family:'Inter',system-ui,sans-serif}
         .co-search:focus{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.08)}
@@ -288,8 +288,8 @@ export default function CompaniesPage() {
                         ⚠️ Eroare procesare: {c.processingError.slice(0, 80)}{c.processingError.length > 80 ? "…" : ""}
                       </div>
                     )}
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-                      <span style={{ fontSize: 15, fontWeight: 600, color: "#0f172a" }}>{c.denumire}</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6, flexWrap: "wrap" }}>
+                      <span style={{ fontSize: 15, fontWeight: 600, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>{c.denumire}</span>
                       <TypeBadge type={forma} />
                       <StatusBadge status={c.stare || "funcțiune"} />
                       {immLabel && (

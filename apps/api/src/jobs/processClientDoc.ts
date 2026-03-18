@@ -913,6 +913,72 @@ function matchDynamicFieldDef(fieldKey: string): {
 }
 
 /**
+ * Convert a snake_case field key into a human-readable display name.
+ * "nr_certificat_fiscal" → "Nr. certificat fiscal"
+ * "cifra_afaceri_2023"   → "Cifra afaceri 2023"
+ */
+function humanizeKey(key: string): string {
+  return key
+    .replace(/_/g, " ")
+    .replace(/\b\w/, (c) => c.toUpperCase())
+    // Common abbreviations
+    .replace(/\bnr\b/gi, "Nr.")
+    .replace(/\bcui\b/gi, "CUI")
+    .replace(/\bcnp\b/gi, "CNP")
+    .replace(/\biban\b/gi, "IBAN")
+    .replace(/\btva\b/gi, "TVA")
+    .replace(/\beur\b/gi, "EUR");
+}
+
+/**
+ * Infer the elementDefinition data type from a runtime value.
+ */
+function inferDataType(value: any): "text" | "number" | "date" {
+  if (typeof value === "number") return "number";
+  if (typeof value === "string") {
+    // ISO date or DD.MM.YYYY
+    if (/^\d{4}-\d{2}-\d{2}/.test(value) || /^\d{2}\.\d{2}\.\d{4}$/.test(value)) return "date";
+    // Purely numeric string
+    if (/^-?\d+([.,]\d+)?$/.test(value.replace(/\s/g, ""))) return "number";
+  }
+  return "text";
+}
+
+/**
+ * Infer a broad category from the document type and field key.
+ * Uses the document type to guide the default category, since we can't add
+ * custom values to the DB enum (beneficiary|farm|investment|location|financial|legal|technical|other).
+ */
+function inferCategory(fieldKey: string, documentType: string): "beneficiary" | "farm" | "investment" | "location" | "financial" | "legal" | "technical" | "other" {
+  // Field-key heuristics (most specific)
+  if (/^(cui|denumire|nume|prenume|cnp|telefon|email|firma)/.test(fieldKey)) return "beneficiary";
+  if (/^(adresa|localitate|judet|sediu|locatie|uat)/.test(fieldKey)) return "location";
+  if (/^(cifra|profit|venit|cheltuiel|datori|activ|capital|sold|suma|amortiz|rezerv|impozit|stoc|creant)/.test(fieldKey)) return "financial";
+  if (/^(suprafat|parcela|cultura|ferma|echipament|tractor|putere)/.test(fieldKey)) return "farm";
+  if (/^(utilaj|investit|pret|articol|furnizor|oferta)/.test(fieldKey)) return "investment";
+  if (/^(nr_|data_|certificat|contract|act_|aviz|autorizat|notar)/.test(fieldKey)) return "legal";
+
+  // Document-type heuristics (broad fallback)
+  const docCategoryMap: Record<string, "beneficiary" | "farm" | "investment" | "location" | "financial" | "legal" | "technical" | "other"> = {
+    certificat_constatator: "beneficiary",
+    bilant_anaf: "financial",
+    certificat_fiscal: "financial",
+    extras_cont: "financial",
+    carte_identitate: "beneficiary",
+    diploma_studii: "beneficiary",
+    contract_arenda: "legal",
+    oferta_pret: "investment",
+    registru_imobilizari: "farm",
+    declaratie_expert_contabil: "financial",
+    factura: "financial",
+    act_constitutiv: "legal",
+    document_mediu: "legal",
+  };
+
+  return docCategoryMap[documentType] ?? "other";
+}
+
+/**
  * Find the guide document associated with a project's folder tree.
  * Navigates: project → folderId → children (type=ghiduri) → documents (processingType=ghid, status=processed)
  */
@@ -984,6 +1050,7 @@ async function saveExtractedFieldsToProjectElements(
   const modifiedElementIds: string[] = [];
   let updatedCount = 0;
   let unmatchedCount = 0;
+  let autoCreatedCount = 0;
 
   for (const field of extractionResult.extracted_fields) {
     // Skip internal/raw fields (prefixed with _)
@@ -1040,14 +1107,47 @@ async function saveExtractedFieldsToProjectElements(
         }
       }
 
-      // Still no anchor after auto-creation attempt
+      // Level 4: Auto-create elementDefinition for unknown fields (auto-learn).
+      // Instead of dropping, create a new elementDefinition with helpText marker
+      // so consultants can review it in UI. The field is saved with confirmed=false.
       if (!elementDefId && !templateElementId) {
-        unmatchedCount++;
-        console.log(
-          `[saveExtracted] No element_definition or template_element for key "${field.field_key}" — field dropped. ` +
-          `Value: "${String(field.field_value).slice(0, 100)}"`,
-        );
-        continue;
+        const guideDocId = await findGuideDocumentForProject(project.folderId, organizationId);
+        if (guideDocId) {
+          try {
+            const autoDisplayName = humanizeKey(field.field_key);
+            const autoDataType = inferDataType(field.field_value);
+            const autoCategory = inferCategory(field.field_key, extractionResult.document_type);
+
+            const created = await upsertElementDefinition({
+              guideDocumentId: guideDocId,
+              organizationId,
+              elementKey: field.field_key,
+              displayName: autoDisplayName,
+              category: autoCategory,
+              dataType: autoDataType,
+              required: false,
+              sourcePriority: ["document_extracted", "solomon_chat", "consultant_manual"],
+              helpText: `[auto-extract] Câmp detectat automat din document tip "${extractionResult.document_type}". Necesită verificare consultant.`,
+            });
+            elementDefId = created.id;
+            autoCreatedCount++;
+            console.log(
+              `[saveExtracted] AUTO-CREATE L4: "${field.field_key}" din "${extractionResult.document_type}" → ${created.id} (${autoDisplayName}, ${autoCategory}/${autoDataType})`,
+            );
+          } catch (err) {
+            console.warn(`[saveExtracted] Failed to auto-create L4 elementDef for "${field.field_key}":`, err);
+          }
+        }
+
+        // If still no anchor (no guide doc at all), drop as last resort
+        if (!elementDefId && !templateElementId) {
+          unmatchedCount++;
+          console.log(
+            `[saveExtracted] No guide document for project ${project.id} — field "${field.field_key}" dropped (no anchor possible). ` +
+            `Value: "${String(field.field_value).slice(0, 100)}"`,
+          );
+          continue;
+        }
       }
     }
 
@@ -1137,8 +1237,10 @@ async function saveExtractedFieldsToProjectElements(
     }
   }
 
-  if (unmatchedCount > 0) {
-    console.log(`[saveExtracted] ${unmatchedCount} extracted fields had no matching element_definition or template_element`);
+  if (unmatchedCount > 0 || autoCreatedCount > 0) {
+    console.log(
+      `[saveExtracted] ${autoCreatedCount} fields auto-created (L4), ${unmatchedCount} fields dropped (no guide doc to anchor).`,
+    );
   }
 
   // Validate modified elements
@@ -1160,8 +1262,11 @@ async function saveExtractedFieldsToProjectElements(
       projectId: project.id,
       documentId,
       updatedCount,
+      autoCreatedCount,
       elementIds: modifiedElementIds,
-      message: `${updatedCount} elemente actualizate din document`,
+      message: autoCreatedCount > 0
+        ? `${updatedCount} elemente actualizate (${autoCreatedCount} câmpuri noi detectate — necesită verificare)`
+        : `${updatedCount} elemente actualizate din document`,
     }).catch((e: any) => console.warn("[processClientDoc] sse elements updated:", e.message));
   }
 

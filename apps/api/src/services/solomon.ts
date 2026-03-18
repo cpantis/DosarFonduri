@@ -16,6 +16,7 @@ import { checkEligibility } from "./eligibility";
 import { computeProjectScores } from "./scoring";
 import { publishElementValidated, publishEligibilityUpdated, publishScoreUpdated } from "../lib/sse";
 import { preflightCached } from "./dbPreflight";
+import { upsertElementDefinition } from "./elementDefinitionService";
 
 // Sanitize user-controlled data embedded in system prompts to prevent prompt injection.
 // Wraps content in delimiters and escapes sequences that could break out.
@@ -1415,9 +1416,85 @@ export async function processSolomonMessage(params: {
           const toInsert: Array<{ projectId: string; elementDefId?: string; templateElementId?: string; value: string; source: "solomon_chat"; confirmed: boolean; validationStatus: "pending" }> = [];
           const modifiedElementIds: string[] = [];
 
+          // Known client document field definitions for auto-creation
+          const CLIENT_DOC_FIELD_DEFS: Record<string, { displayName: string; category: "beneficiary" | "legal" | "location" | "other"; dataType: "text" | "number" | "date"; required?: boolean }> = {
+            cnp: { displayName: "CNP reprezentant legal", category: "beneficiary", dataType: "text", required: true },
+            serie_ci: { displayName: "Serie CI", category: "legal", dataType: "text", required: true },
+            numar_ci: { displayName: "Număr CI", category: "legal", dataType: "text", required: true },
+            nume: { displayName: "Nume reprezentant legal", category: "beneficiary", dataType: "text", required: true },
+            prenume: { displayName: "Prenume reprezentant legal", category: "beneficiary", dataType: "text", required: true },
+            cetatenie: { displayName: "Cetățenie", category: "beneficiary", dataType: "text" },
+            loc_nastere: { displayName: "Localitate naștere", category: "beneficiary", dataType: "text" },
+            judet_nastere: { displayName: "Județ naștere", category: "beneficiary", dataType: "text" },
+            domiciliu: { displayName: "Adresă domiciliu", category: "location", dataType: "text", required: true },
+            localitate_domiciliu: { displayName: "Localitate domiciliu", category: "location", dataType: "text", required: true },
+            judet_domiciliu: { displayName: "Județ domiciliu", category: "location", dataType: "text", required: true },
+            data_nastere: { displayName: "Data naștere", category: "beneficiary", dataType: "date", required: true },
+            sex: { displayName: "Sex", category: "beneficiary", dataType: "text" },
+            data_emitere_ci: { displayName: "Data emitere CI", category: "legal", dataType: "date", required: true },
+            data_expirare_ci: { displayName: "Data expirare CI", category: "legal", dataType: "date", required: true },
+            emitent_ci: { displayName: "Emitent CI (SPCLEP)", category: "legal", dataType: "text" },
+            tip_diploma: { displayName: "Tip diplomă", category: "beneficiary", dataType: "text" },
+            institutie_invatamant: { displayName: "Instituție învățământ", category: "beneficiary", dataType: "text" },
+            specializare: { displayName: "Specializare", category: "beneficiary", dataType: "text" },
+            data_absolvire: { displayName: "Data absolvire", category: "beneficiary", dataType: "date" },
+            numar_diploma: { displayName: "Număr diplomă", category: "beneficiary", dataType: "text" },
+          };
+
+          // Find guide document for auto-creating element definitions
+          let guideDocIdCache: string | null | undefined = undefined;
+          async function getGuideDocId(): Promise<string | null> {
+            if (guideDocIdCache !== undefined) return guideDocIdCache;
+            const proj = await db.query.projects.findFirst({ where: eq(projects.id, projectId) });
+            if (!proj) { guideDocIdCache = null; return null; }
+            // Find ghiduri subfolder
+            const ghiduriFolder = await db.query.documentFolders.findFirst({
+              where: and(
+                eq(documentFolders.parentId, proj.folderId),
+                eq(documentFolders.type, "ghiduri"),
+                eq(documentFolders.organizationId, organizationId),
+              ),
+            });
+            if (ghiduriFolder) {
+              const guide = await db.query.documents.findFirst({
+                where: and(eq(documents.folderId, ghiduriFolder.id), eq(documents.processingType, "ghid"), eq(documents.status, "processed")),
+              });
+              guideDocIdCache = guide?.id ?? null;
+            } else {
+              guideDocIdCache = null;
+            }
+            return guideDocIdCache;
+          }
+
           for (const el of extractedElements) {
-            const elemDef = keyToElemDef.get(el.key);
+            let elemDef = keyToElemDef.get(el.key);
             const tmplEl = keyToTmplEl.get(el.key);
+
+            // Auto-create elementDefinition for known client doc fields
+            if (!elemDef && !tmplEl && CLIENT_DOC_FIELD_DEFS[el.key]) {
+              const guideDocId = await getGuideDocId();
+              if (guideDocId) {
+                try {
+                  const knownDef = CLIENT_DOC_FIELD_DEFS[el.key];
+                  const created = await upsertElementDefinition({
+                    guideDocumentId: guideDocId,
+                    organizationId,
+                    elementKey: el.key,
+                    displayName: knownDef.displayName,
+                    category: knownDef.category,
+                    dataType: knownDef.dataType,
+                    required: knownDef.required ?? false,
+                    sourcePriority: ["document_extracted", "solomon_chat", "consultant_manual"],
+                  });
+                  elemDef = created;
+                  keyToElemDef.set(el.key, created);
+                  console.log(`[solomon] Auto-created elementDefinition for "${el.key}" → ${created.id}`);
+                } catch (err) {
+                  console.warn(`[solomon] Failed to auto-create elementDef for "${el.key}":`, err);
+                }
+              }
+            }
+
             if (!elemDef && !tmplEl) continue;
 
             // Find existing from in-memory maps

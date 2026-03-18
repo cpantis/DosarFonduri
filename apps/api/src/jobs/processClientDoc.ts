@@ -16,7 +16,7 @@ import { validateElement, logElementChange } from "../services/elementValidation
 import { checkEligibility } from "../services/eligibility";
 import { computeProjectScores } from "../services/scoring";
 import type { ExtractionResult } from "../services/extractionTypes";
-import { resolveFieldKeys, getExtractorVocabulary } from "../services/elementDefinitionService";
+import { resolveFieldKeys, getExtractorVocabulary, upsertElementDefinition } from "../services/elementDefinitionService";
 
 // Extractors
 import { extractCompanyFromDocument } from "../services/companyExtractor";
@@ -593,6 +593,376 @@ async function findTemplateElementByKey(
  * - Existing with source 'solomon' or 'manual' → skip (don't overwrite consultant data),
  *   but log a warning for review
  */
+
+/**
+ * Known client document field definitions — auto-created when no matching
+ * elementDefinition exists. Keyed by field_key from extractors.
+ * Consultants have legal authorization (împuternicire) to process these documents.
+ */
+type FieldDefCategory = "beneficiary" | "farm" | "investment" | "location" | "financial" | "legal" | "technical" | "other";
+type FieldDefDataType = "text" | "number" | "date";
+
+const CLIENT_DOC_FIELD_DEFS: Record<string, {
+  displayName: string;
+  category: FieldDefCategory;
+  dataType: FieldDefDataType;
+  required?: boolean;
+}> = {
+  // ── Carte de identitate ──
+  cnp: { displayName: "CNP reprezentant legal", category: "beneficiary", dataType: "text", required: true },
+  serie_ci: { displayName: "Serie CI", category: "legal", dataType: "text", required: true },
+  numar_ci: { displayName: "Număr CI", category: "legal", dataType: "text", required: true },
+  nume: { displayName: "Nume reprezentant legal", category: "beneficiary", dataType: "text", required: true },
+  prenume: { displayName: "Prenume reprezentant legal", category: "beneficiary", dataType: "text", required: true },
+  cetatenie: { displayName: "Cetățenie", category: "beneficiary", dataType: "text" },
+  loc_nastere: { displayName: "Localitate naștere", category: "beneficiary", dataType: "text" },
+  judet_nastere: { displayName: "Județ naștere", category: "beneficiary", dataType: "text" },
+  domiciliu: { displayName: "Adresă domiciliu", category: "location", dataType: "text", required: true },
+  localitate_domiciliu: { displayName: "Localitate domiciliu", category: "location", dataType: "text", required: true },
+  judet_domiciliu: { displayName: "Județ domiciliu", category: "location", dataType: "text", required: true },
+  data_nastere: { displayName: "Data naștere", category: "beneficiary", dataType: "date", required: true },
+  sex: { displayName: "Sex", category: "beneficiary", dataType: "text" },
+  data_emitere_ci: { displayName: "Data emitere CI", category: "legal", dataType: "date", required: true },
+  data_expirare_ci: { displayName: "Data expirare CI", category: "legal", dataType: "date", required: true },
+  emitent_ci: { displayName: "Emitent CI (SPCLEP)", category: "legal", dataType: "text" },
+
+  // ── Diplomă studii (keys match diplomaExtractor.ts exactly) ──
+  tip_document_studii: { displayName: "Tip document studii", category: "beneficiary", dataType: "text" },
+  institutie_studii: { displayName: "Instituție învățământ", category: "beneficiary", dataType: "text" },
+  facultate: { displayName: "Facultate", category: "beneficiary", dataType: "text" },
+  specializare_studii: { displayName: "Specializare studii", category: "beneficiary", dataType: "text" },
+  nivel_studii: { displayName: "Nivel studii", category: "beneficiary", dataType: "text" },
+  titlu_obtinut: { displayName: "Titlu obținut", category: "beneficiary", dataType: "text" },
+  nume_titular_diploma: { displayName: "Nume titular diplomă", category: "beneficiary", dataType: "text" },
+  cnp_titular_diploma: { displayName: "CNP titular diplomă", category: "beneficiary", dataType: "text" },
+  data_absolvirii: { displayName: "Data absolvirii", category: "beneficiary", dataType: "date" },
+  nr_diploma: { displayName: "Număr diplomă", category: "beneficiary", dataType: "text" },
+  an_absolvire: { displayName: "An absolvire", category: "beneficiary", dataType: "text" },
+  forma_invatamant: { displayName: "Formă învățământ", category: "beneficiary", dataType: "text" },
+  media_absolvire: { displayName: "Medie absolvire", category: "beneficiary", dataType: "number" },
+
+  // ── Certificat constatator (companyExtractor) ──
+  denumire_solicitant: { displayName: "Denumire solicitant", category: "beneficiary", dataType: "text", required: true },
+  cui: { displayName: "Cod unic de înregistrare (CUI)", category: "beneficiary", dataType: "text", required: true },
+  nr_inmatriculare: { displayName: "Nr. înmatriculare ORC", category: "legal", dataType: "text", required: true },
+  forma_juridica: { displayName: "Formă juridică", category: "legal", dataType: "text", required: true },
+  caen_principal: { displayName: "Cod CAEN principal", category: "beneficiary", dataType: "text", required: true },
+  caen_secundare: { displayName: "Coduri CAEN secundare", category: "beneficiary", dataType: "text" },
+  caen_descriere: { displayName: "Descriere CAEN principal", category: "beneficiary", dataType: "text" },
+  adresa_sediu: { displayName: "Adresă sediu social", category: "location", dataType: "text", required: true },
+  localitate: { displayName: "Localitate sediu", category: "location", dataType: "text", required: true },
+  judet: { displayName: "Județ sediu", category: "location", dataType: "text", required: true },
+  stare_firma: { displayName: "Stare firmă", category: "legal", dataType: "text" },
+  capital_social: { displayName: "Capital social", category: "financial", dataType: "number" },
+  data_inregistrare: { displayName: "Data înregistrare", category: "legal", dataType: "date" },
+  euid: { displayName: "EUID", category: "legal", dataType: "text" },
+  telefon: { displayName: "Telefon", category: "beneficiary", dataType: "text" },
+  email: { displayName: "Email", category: "beneficiary", dataType: "text" },
+  durata_societate: { displayName: "Durată societate", category: "legal", dataType: "text" },
+  moneda_capital: { displayName: "Monedă capital social", category: "financial", dataType: "text" },
+  parti_sociale: { displayName: "Număr părți sociale", category: "financial", dataType: "number" },
+  natura_capital: { displayName: "Natura capital", category: "financial", dataType: "text" },
+  sedii_secundare: { displayName: "Sedii secundare", category: "location", dataType: "text" },
+
+  // ── Certificat fiscal ──
+  denumire_contribuabil: { displayName: "Denumire contribuabil", category: "beneficiary", dataType: "text" },
+  cui_fiscal: { displayName: "CUI fiscal", category: "beneficiary", dataType: "text" },
+  adresa_fiscala: { displayName: "Adresă fiscală", category: "location", dataType: "text" },
+  nr_certificat_fiscal: { displayName: "Nr. certificat fiscal", category: "legal", dataType: "text" },
+  data_emitere_certificat_fiscal: { displayName: "Data emitere certificat fiscal", category: "legal", dataType: "date" },
+  data_valabilitate_certificat_fiscal: { displayName: "Data valabilitate certificat fiscal", category: "legal", dataType: "date" },
+  emitent_certificat_fiscal: { displayName: "Emitent certificat fiscal", category: "legal", dataType: "text" },
+  tip_emitent_certificat_fiscal: { displayName: "Tip emitent certificat fiscal", category: "legal", dataType: "text" },
+  obligatii_restante: { displayName: "Obligații restante (da/nu)", category: "financial", dataType: "text", required: true },
+  suma_restanta_fiscala: { displayName: "Sumă restantă fiscală", category: "financial", dataType: "number" },
+  detalii_restante_fiscale: { displayName: "Detalii restanțe fiscale", category: "financial", dataType: "text" },
+  tip_obligatii_fiscale: { displayName: "Tip obligații fiscale", category: "financial", dataType: "text" },
+  scop_certificat_fiscal: { displayName: "Scop certificat fiscal", category: "legal", dataType: "text" },
+  certificat_fiscal_valid: { displayName: "Certificat fiscal valid", category: "legal", dataType: "text" },
+  certificat_fiscal_avertisment: { displayName: "Avertisment certificat fiscal", category: "legal", dataType: "text" },
+
+  // ── Extras de cont ──
+  banca: { displayName: "Bancă", category: "financial", dataType: "text" },
+  sold_disponibil: { displayName: "Sold disponibil", category: "financial", dataType: "number" },
+  data_extras: { displayName: "Data extras cont", category: "financial", dataType: "date" },
+  moneda_extras: { displayName: "Monedă extras", category: "financial", dataType: "text" },
+  iban: { displayName: "IBAN", category: "financial", dataType: "text" },
+  titular_cont: { displayName: "Titular cont", category: "beneficiary", dataType: "text" },
+  titular_cont_cui: { displayName: "CUI titular cont", category: "beneficiary", dataType: "text" },
+  extras_zile_lucratoare_vechime: { displayName: "Vechime extras (zile lucrătoare)", category: "financial", dataType: "number" },
+  extras_afir_valid: { displayName: "Extras valid AFIR", category: "financial", dataType: "text" },
+  extras_avertisment: { displayName: "Avertisment extras cont", category: "financial", dataType: "text" },
+
+  // ── Document mediu ──
+  tip_document_mediu: { displayName: "Tip document mediu", category: "legal", dataType: "text" },
+  numar_document_mediu: { displayName: "Nr. document mediu", category: "legal", dataType: "text" },
+  data_emitere_mediu: { displayName: "Data emitere document mediu", category: "legal", dataType: "date" },
+  emitent_mediu: { displayName: "Emitent document mediu", category: "legal", dataType: "text" },
+  titular_mediu_nume: { displayName: "Titular document mediu", category: "beneficiary", dataType: "text" },
+  titular_mediu_cui: { displayName: "CUI titular mediu", category: "beneficiary", dataType: "text" },
+  proiect_mediu_denumire: { displayName: "Denumire proiect mediu", category: "technical", dataType: "text" },
+  locatie_mediu: { displayName: "Locație document mediu", category: "location", dataType: "text" },
+
+  // ── Declarație expert contabil ──
+  ani_activitate_agroalimentara: { displayName: "Ani activitate agroalimentară", category: "financial", dataType: "number" },
+  coduri_caen_activitate: { displayName: "Coduri CAEN activitate", category: "beneficiary", dataType: "text" },
+  cifra_afaceri_agroalimentara: { displayName: "Cifra afaceri agroalimentară", category: "financial", dataType: "number" },
+  cifra_afaceri_totala: { displayName: "Cifra afaceri totală", category: "financial", dataType: "number" },
+  ponderea_venituri_agro_in_total: { displayName: "Ponderea veniturilor agro în total (%)", category: "financial", dataType: "number" },
+  expert_contabil_nume: { displayName: "Expert contabil — nume", category: "legal", dataType: "text" },
+  expert_contabil_autorizatie: { displayName: "Expert contabil — autorizație", category: "legal", dataType: "text" },
+  data_declaratie_expert: { displayName: "Data declarație expert contabil", category: "legal", dataType: "date" },
+  firma_nume: { displayName: "Denumire firmă (din declarație)", category: "beneficiary", dataType: "text" },
+  firma_cui: { displayName: "CUI firmă (din declarație)", category: "beneficiary", dataType: "text" },
+
+  // ── Contract / Arendă (static fields) ──
+  tip_contract: { displayName: "Tip contract", category: "legal", dataType: "text" },
+  nr_contract: { displayName: "Nr. contract", category: "legal", dataType: "text" },
+  data_contract: { displayName: "Data contract", category: "legal", dataType: "date" },
+  data_start_contract: { displayName: "Data start contract", category: "legal", dataType: "date" },
+  data_sfarsit_contract: { displayName: "Data sfârșit contract", category: "legal", dataType: "date" },
+  durata_contract: { displayName: "Durată contract", category: "legal", dataType: "text" },
+  obiect_contract: { displayName: "Obiect contract", category: "legal", dataType: "text" },
+  valoare_contract: { displayName: "Valoare contract", category: "financial", dataType: "number" },
+  valoare_anuala_contract: { displayName: "Valoare anuală contract", category: "financial", dataType: "number" },
+  moneda_contract: { displayName: "Monedă contract", category: "financial", dataType: "text" },
+  modalitate_plata_contract: { displayName: "Modalitate plată contract", category: "financial", dataType: "text" },
+  clauze_speciale_contract: { displayName: "Clauze speciale contract", category: "legal", dataType: "text" },
+  contract_autentificat: { displayName: "Contract autentificat (da/nu)", category: "legal", dataType: "text" },
+  notar_contract: { displayName: "Notar contract", category: "legal", dataType: "text" },
+  arendas_nume: { displayName: "Nume arendaș", category: "beneficiary", dataType: "text" },
+  arendas_cui: { displayName: "CUI arendaș", category: "beneficiary", dataType: "text" },
+  suprafata_contracte: { displayName: "Suprafață totală contracte", category: "farm", dataType: "number" },
+  numar_parcele: { displayName: "Număr parcele", category: "farm", dataType: "number" },
+
+  // ── Ofertă preț (static fields) ──
+  furnizor_nume: { displayName: "Furnizor — nume", category: "investment", dataType: "text" },
+  furnizor_cui: { displayName: "Furnizor — CUI", category: "investment", dataType: "text" },
+  total_oferta_eur: { displayName: "Total ofertă (EUR)", category: "investment", dataType: "number" },
+  valabilitate_oferta: { displayName: "Valabilitate ofertă", category: "investment", dataType: "text" },
+  data_oferta: { displayName: "Data ofertă", category: "investment", dataType: "date" },
+  nr_oferta: { displayName: "Nr. ofertă", category: "investment", dataType: "text" },
+
+  // ── Registru imobilizări (static fields) ──
+  total_valoare_inventar: { displayName: "Total valoare inventar", category: "financial", dataType: "number" },
+  total_amortizare: { displayName: "Total amortizare", category: "financial", dataType: "number" },
+  data_registru: { displayName: "Data registru imobilizări", category: "financial", dataType: "date" },
+  putere_tractoare_existente: { displayName: "Putere tractoare existente (CP)", category: "farm", dataType: "number" },
+  putere_tractoare_excluse_8ani: { displayName: "Putere tractoare excluse >8 ani (CP)", category: "farm", dataType: "number" },
+  tractoare_excluse_lista: { displayName: "Lista tractoare excluse >8 ani", category: "farm", dataType: "text" },
+
+  // ── Factură (static fields) ──
+  tip_factura: { displayName: "Tip factură", category: "financial", dataType: "text" },
+  serie_numar_factura: { displayName: "Serie/număr factură", category: "financial", dataType: "text" },
+  data_factura: { displayName: "Data factură", category: "financial", dataType: "date" },
+  data_scadenta_factura: { displayName: "Data scadență factură", category: "financial", dataType: "date" },
+  data_livrare_factura: { displayName: "Data livrare factură", category: "financial", dataType: "date" },
+  furnizor_reg_com: { displayName: "Furnizor — reg. comerțului", category: "financial", dataType: "text" },
+  furnizor_adresa: { displayName: "Furnizor — adresă", category: "financial", dataType: "text" },
+  furnizor_banca: { displayName: "Furnizor — bancă", category: "financial", dataType: "text" },
+  furnizor_iban: { displayName: "Furnizor — IBAN", category: "financial", dataType: "text" },
+  cumparator_nume: { displayName: "Cumpărător — nume", category: "beneficiary", dataType: "text" },
+  cumparator_cui: { displayName: "Cumpărător — CUI", category: "beneficiary", dataType: "text" },
+  cumparator_reg_com: { displayName: "Cumpărător — reg. comerțului", category: "beneficiary", dataType: "text" },
+  cumparator_adresa: { displayName: "Cumpărător — adresă", category: "beneficiary", dataType: "text" },
+  total_fara_tva: { displayName: "Total fără TVA", category: "financial", dataType: "number" },
+  total_tva: { displayName: "Total TVA", category: "financial", dataType: "number" },
+  total_de_plata: { displayName: "Total de plată", category: "financial", dataType: "number" },
+  moneda_factura: { displayName: "Monedă factură", category: "financial", dataType: "text" },
+  curs_valutar: { displayName: "Curs valutar", category: "financial", dataType: "number" },
+  modalitate_plata: { displayName: "Modalitate plată", category: "financial", dataType: "text" },
+  termen_plata: { displayName: "Termen plată", category: "financial", dataType: "text" },
+  observatii_factura: { displayName: "Observații factură", category: "financial", dataType: "text" },
+  contract_referinta_factura: { displayName: "Contract referință factură", category: "financial", dataType: "text" },
+  delegat_factura: { displayName: "Delegat factură", category: "financial", dataType: "text" },
+
+  // ── Act constitutiv (static fields) ──
+  denumire_societate: { displayName: "Denumire societate", category: "beneficiary", dataType: "text" },
+  forma_juridica_ac: { displayName: "Formă juridică (act constitutiv)", category: "legal", dataType: "text" },
+  sediu_social: { displayName: "Sediu social", category: "location", dataType: "text" },
+  capital_social_ac: { displayName: "Capital social (act constitutiv)", category: "financial", dataType: "number" },
+  nr_parti_sociale_ac: { displayName: "Nr. părți sociale (act constitutiv)", category: "financial", dataType: "number" },
+  valoare_parte_sociala: { displayName: "Valoare parte socială", category: "financial", dataType: "number" },
+  // durata_societate — already defined in certificat constatator section above
+  caen_principal_ac: { displayName: "CAEN principal (act constitutiv)", category: "beneficiary", dataType: "text" },
+  descriere_caen_principal_ac: { displayName: "Descriere CAEN principal", category: "beneficiary", dataType: "text" },
+  obiecte_secundare_ac: { displayName: "Obiecte secundare activitate", category: "beneficiary", dataType: "text" },
+  administrator_ac: { displayName: "Administrator", category: "beneficiary", dataType: "text" },
+  clauze_cesiune: { displayName: "Clauze cesiune", category: "legal", dataType: "text" },
+  clauze_retragere: { displayName: "Clauze retragere", category: "legal", dataType: "text" },
+  clauze_dizolvare: { displayName: "Clauze dizolvare", category: "legal", dataType: "text" },
+  restrictii_activitate: { displayName: "Restricții activitate", category: "legal", dataType: "text" },
+  repartizare_profit: { displayName: "Repartizare profit", category: "financial", dataType: "text" },
+
+  // ── Bilanț ANAF (static field) ──
+  an_fiscal: { displayName: "An fiscal", category: "financial", dataType: "text" },
+};
+
+/**
+ * Dynamic field patterns — for extracted keys that contain a year suffix (e.g. cifra_afaceri_2023)
+ * or an index (e.g. articol_0_utilaj_denumire, echipament_2_putere_cp).
+ *
+ * Each pattern defines: regex to match, function to generate displayName, category, dataType.
+ * Checked only when the static CLIENT_DOC_FIELD_DEFS lookup fails.
+ */
+const DYNAMIC_FIELD_PATTERNS: Array<{
+  pattern: RegExp;
+  displayName: (match: RegExpMatchArray) => string;
+  category: FieldDefCategory;
+  dataType: FieldDefDataType;
+}> = [
+  // ── Bilanț / Certificat constatator — year-suffixed financial fields ──
+  { pattern: /^cifra_afaceri_(\d{4})$/, displayName: (m) => `Cifra de afaceri ${m[1]}`, category: "financial", dataType: "number" },
+  { pattern: /^profit_net_(\d{4})$/, displayName: (m) => `Profit net ${m[1]}`, category: "financial", dataType: "number" },
+  { pattern: /^profit_brut_(\d{4})$/, displayName: (m) => `Profit brut ${m[1]}`, category: "financial", dataType: "number" },
+  { pattern: /^profit_exploatare_(\d{4})$/, displayName: (m) => `Profit exploatare ${m[1]}`, category: "financial", dataType: "number" },
+  { pattern: /^venituri_exploatare_(\d{4})$/, displayName: (m) => `Venituri exploatare ${m[1]}`, category: "financial", dataType: "number" },
+  { pattern: /^cheltuieli_exploatare_(\d{4})$/, displayName: (m) => `Cheltuieli exploatare ${m[1]}`, category: "financial", dataType: "number" },
+  { pattern: /^venituri_totale_(\d{4})$/, displayName: (m) => `Venituri totale ${m[1]}`, category: "financial", dataType: "number" },
+  { pattern: /^cheltuieli_totale_(\d{4})$/, displayName: (m) => `Cheltuieli totale ${m[1]}`, category: "financial", dataType: "number" },
+  { pattern: /^impozit_profit_(\d{4})$/, displayName: (m) => `Impozit profit ${m[1]}`, category: "financial", dataType: "number" },
+  { pattern: /^active_totale_(\d{4})$/, displayName: (m) => `Active totale ${m[1]}`, category: "financial", dataType: "number" },
+  { pattern: /^active_imobilizate_(\d{4})$/, displayName: (m) => `Active imobilizate ${m[1]}`, category: "financial", dataType: "number" },
+  { pattern: /^active_circulante_(\d{4})$/, displayName: (m) => `Active circulante ${m[1]}`, category: "financial", dataType: "number" },
+  { pattern: /^stocuri_(\d{4})$/, displayName: (m) => `Stocuri ${m[1]}`, category: "financial", dataType: "number" },
+  { pattern: /^creante_(\d{4})$/, displayName: (m) => `Creanțe ${m[1]}`, category: "financial", dataType: "number" },
+  { pattern: /^casa_conturi_(\d{4})$/, displayName: (m) => `Casa și conturi ${m[1]}`, category: "financial", dataType: "number" },
+  { pattern: /^capitaluri_proprii_(\d{4})$/, displayName: (m) => `Capitaluri proprii ${m[1]}`, category: "financial", dataType: "number" },
+  { pattern: /^capital_subscris_varsat_(\d{4})$/, displayName: (m) => `Capital subscris vărsat ${m[1]}`, category: "financial", dataType: "number" },
+  { pattern: /^rezerve_(\d{4})$/, displayName: (m) => `Rezerve ${m[1]}`, category: "financial", dataType: "number" },
+  { pattern: /^datorii_sub_an_(\d{4})$/, displayName: (m) => `Datorii sub 1 an ${m[1]}`, category: "financial", dataType: "number" },
+  { pattern: /^datorii_peste_an_(\d{4})$/, displayName: (m) => `Datorii peste 1 an ${m[1]}`, category: "financial", dataType: "number" },
+  { pattern: /^datorii_totale_(\d{4})$/, displayName: (m) => `Datorii totale ${m[1]}`, category: "financial", dataType: "number" },
+  { pattern: /^numar_angajati_(\d{4})$/, displayName: (m) => `Număr angajați ${m[1]}`, category: "financial", dataType: "number" },
+  { pattern: /^numar_angajati_efectiv_(\d{4})$/, displayName: (m) => `Număr angajați efectiv ${m[1]}`, category: "financial", dataType: "number" },
+  { pattern: /^imobilizari_sold_initial_(\d{4})$/, displayName: (m) => `Imobilizări sold inițial ${m[1]}`, category: "financial", dataType: "number" },
+  { pattern: /^imobilizari_cresteri_(\d{4})$/, displayName: (m) => `Imobilizări creșteri ${m[1]}`, category: "financial", dataType: "number" },
+  { pattern: /^imobilizari_reduceri_(\d{4})$/, displayName: (m) => `Imobilizări reduceri ${m[1]}`, category: "financial", dataType: "number" },
+  { pattern: /^imobilizari_sold_final_(\d{4})$/, displayName: (m) => `Imobilizări sold final ${m[1]}`, category: "financial", dataType: "number" },
+  { pattern: /^amortizare_totala_(\d{4})$/, displayName: (m) => `Amortizare totală ${m[1]}`, category: "financial", dataType: "number" },
+
+  // ── Ofertă preț — indexed articol fields ──
+  { pattern: /^articol_(\d+)_utilaj_denumire$/, displayName: (m) => `Articol ${+m[1] + 1} — denumire utilaj`, category: "investment", dataType: "text" },
+  { pattern: /^articol_(\d+)_specificatii_tehnice$/, displayName: (m) => `Articol ${+m[1] + 1} — specificații tehnice`, category: "investment", dataType: "text" },
+  { pattern: /^articol_(\d+)_pret_unitar_eur$/, displayName: (m) => `Articol ${+m[1] + 1} — preț unitar (EUR)`, category: "investment", dataType: "number" },
+  { pattern: /^articol_(\d+)_pret_total_eur$/, displayName: (m) => `Articol ${+m[1] + 1} — preț total (EUR)`, category: "investment", dataType: "number" },
+  { pattern: /^articol_(\d+)_este_no_till$/, displayName: (m) => `Articol ${+m[1] + 1} — este no-till`, category: "investment", dataType: "text" },
+
+  // ── Contract — indexed parts, bunuri, parcele ──
+  { pattern: /^parte_contract_(\d+)_nume$/, displayName: (m) => `Parte contract ${+m[1] + 1} — nume`, category: "legal", dataType: "text" },
+  { pattern: /^parte_contract_(\d+)_rol$/, displayName: (m) => `Parte contract ${+m[1] + 1} — rol`, category: "legal", dataType: "text" },
+  { pattern: /^parte_contract_(\d+)_tip$/, displayName: (m) => `Parte contract ${+m[1] + 1} — tip`, category: "legal", dataType: "text" },
+  { pattern: /^parte_contract_(\d+)_cui_cnp$/, displayName: (m) => `Parte contract ${+m[1] + 1} — CUI/CNP`, category: "legal", dataType: "text" },
+  { pattern: /^parte_contract_(\d+)_adresa$/, displayName: (m) => `Parte contract ${+m[1] + 1} — adresă`, category: "legal", dataType: "text" },
+  { pattern: /^bun_contract_(\d+)_descriere$/, displayName: (m) => `Bun contract ${+m[1] + 1} — descriere`, category: "farm", dataType: "text" },
+  { pattern: /^bun_contract_(\d+)_locatie$/, displayName: (m) => `Bun contract ${+m[1] + 1} — locație`, category: "farm", dataType: "text" },
+  { pattern: /^bun_contract_(\d+)_suprafata_ha$/, displayName: (m) => `Bun contract ${+m[1] + 1} — suprafață (ha)`, category: "farm", dataType: "number" },
+  { pattern: /^bun_contract_(\d+)_suprafata_mp$/, displayName: (m) => `Bun contract ${+m[1] + 1} — suprafață (mp)`, category: "farm", dataType: "number" },
+  { pattern: /^bun_contract_(\d+)_nr_cadastral$/, displayName: (m) => `Bun contract ${+m[1] + 1} — nr. cadastral`, category: "farm", dataType: "text" },
+  { pattern: /^bun_contract_(\d+)_nr_CF$/, displayName: (m) => `Bun contract ${+m[1] + 1} — nr. CF`, category: "farm", dataType: "text" },
+  { pattern: /^bun_contract_(\d+)_categorie_folosinta$/, displayName: (m) => `Bun contract ${+m[1] + 1} — categorie folosință`, category: "farm", dataType: "text" },
+  { pattern: /^parcela_(\d+)_UAT$/, displayName: (m) => `Parcelă ${+m[1] + 1} — UAT`, category: "farm", dataType: "text" },
+  { pattern: /^parcela_(\d+)_suprafata_ha$/, displayName: (m) => `Parcelă ${+m[1] + 1} — suprafață (ha)`, category: "farm", dataType: "number" },
+
+  // ── Registru imobilizări — indexed echipamente ──
+  { pattern: /^echipament_(\d+)_denumire$/, displayName: (m) => `Echipament ${+m[1] + 1} — denumire`, category: "farm", dataType: "text" },
+  { pattern: /^echipament_(\d+)_an_achizitie$/, displayName: (m) => `Echipament ${+m[1] + 1} — an achiziție`, category: "farm", dataType: "text" },
+  { pattern: /^echipament_(\d+)_valoare_inventar$/, displayName: (m) => `Echipament ${+m[1] + 1} — valoare inventar`, category: "farm", dataType: "number" },
+  { pattern: /^echipament_(\d+)_putere_cp$/, displayName: (m) => `Echipament ${+m[1] + 1} — putere (CP)`, category: "farm", dataType: "number" },
+  { pattern: /^echipament_(\d+)_stare$/, displayName: (m) => `Echipament ${+m[1] + 1} — stare`, category: "farm", dataType: "text" },
+  { pattern: /^echipament_(\d+)_categorie$/, displayName: (m) => `Echipament ${+m[1] + 1} — categorie`, category: "farm", dataType: "text" },
+  { pattern: /^echipament_(\d+)_exclus_anexa3$/, displayName: (m) => `Echipament ${+m[1] + 1} — exclus Anexa 3`, category: "farm", dataType: "text" },
+  { pattern: /^echipament_(\d+)_vechime_ani$/, displayName: (m) => `Echipament ${+m[1] + 1} — vechime (ani)`, category: "farm", dataType: "number" },
+
+  // ── Factură — indexed articole ──
+  { pattern: /^articol_factura_(\d+)_denumire$/, displayName: (m) => `Articol factură ${+m[1] + 1} — denumire`, category: "financial", dataType: "text" },
+  { pattern: /^articol_factura_(\d+)_descriere$/, displayName: (m) => `Articol factură ${+m[1] + 1} — descriere`, category: "financial", dataType: "text" },
+  { pattern: /^articol_factura_(\d+)_um$/, displayName: (m) => `Articol factură ${+m[1] + 1} — UM`, category: "financial", dataType: "text" },
+  { pattern: /^articol_factura_(\d+)_cantitate$/, displayName: (m) => `Articol factură ${+m[1] + 1} — cantitate`, category: "financial", dataType: "number" },
+  { pattern: /^articol_factura_(\d+)_pret_unitar$/, displayName: (m) => `Articol factură ${+m[1] + 1} — preț unitar`, category: "financial", dataType: "number" },
+  { pattern: /^articol_factura_(\d+)_valoare_fara_tva$/, displayName: (m) => `Articol factură ${+m[1] + 1} — valoare fără TVA`, category: "financial", dataType: "number" },
+  { pattern: /^articol_factura_(\d+)_cota_tva$/, displayName: (m) => `Articol factură ${+m[1] + 1} — cotă TVA`, category: "financial", dataType: "number" },
+  { pattern: /^articol_factura_(\d+)_valoare_totala$/, displayName: (m) => `Articol factură ${+m[1] + 1} — valoare totală`, category: "financial", dataType: "number" },
+
+  // ── Act constitutiv — indexed asociați ──
+  { pattern: /^asociat_ac_(\d+)_nume$/, displayName: (m) => `Asociat ${+m[1] + 1} — nume`, category: "beneficiary", dataType: "text" },
+  { pattern: /^asociat_ac_(\d+)_aport$/, displayName: (m) => `Asociat ${+m[1] + 1} — aport`, category: "financial", dataType: "number" },
+  { pattern: /^asociat_ac_(\d+)_procent$/, displayName: (m) => `Asociat ${+m[1] + 1} — procent`, category: "financial", dataType: "number" },
+];
+
+/**
+ * Try to match a field_key against dynamic patterns.
+ * Returns a field definition if matched, null otherwise.
+ */
+function matchDynamicFieldDef(fieldKey: string): {
+  displayName: string;
+  category: FieldDefCategory;
+  dataType: FieldDefDataType;
+} | null {
+  for (const dp of DYNAMIC_FIELD_PATTERNS) {
+    const match = fieldKey.match(dp.pattern);
+    if (match) {
+      return {
+        displayName: dp.displayName(match),
+        category: dp.category,
+        dataType: dp.dataType,
+      };
+    }
+  }
+  return null;
+}
+
+/**
+ * Find the guide document associated with a project's folder tree.
+ * Navigates: project → folderId → children (type=ghiduri) → documents (processingType=ghid, status=processed)
+ */
+async function findGuideDocumentForProject(projectFolderId: string, organizationId: string): Promise<string | null> {
+  // Find the ghiduri subfolder
+  const ghiduriFolder = await db.query.documentFolders.findFirst({
+    where: and(
+      eq(documentFolders.parentId, projectFolderId),
+      eq(documentFolders.type, "ghiduri"),
+      eq(documentFolders.organizationId, organizationId),
+    ),
+  });
+
+  if (!ghiduriFolder) {
+    // Try one level up (project might be nested)
+    const parentFolder = await db.query.documentFolders.findFirst({
+      where: eq(documentFolders.id, projectFolderId),
+    });
+    if (parentFolder?.parentId) {
+      const ghiduriUp = await db.query.documentFolders.findFirst({
+        where: and(
+          eq(documentFolders.parentId, parentFolder.parentId),
+          eq(documentFolders.type, "ghiduri"),
+          eq(documentFolders.organizationId, organizationId),
+        ),
+      });
+      if (ghiduriUp) {
+        const guideDoc = await db.query.documents.findFirst({
+          where: and(
+            eq(documents.folderId, ghiduriUp.id),
+            eq(documents.processingType, "ghid"),
+            eq(documents.status, "processed"),
+          ),
+        });
+        return guideDoc?.id ?? null;
+      }
+    }
+    return null;
+  }
+
+  const guideDoc = await db.query.documents.findFirst({
+    where: and(
+      eq(documents.folderId, ghiduriFolder.id),
+      eq(documents.processingType, "ghid"),
+      eq(documents.status, "processed"),
+    ),
+  });
+  return guideDoc?.id ?? null;
+}
+
 async function saveExtractedFieldsToProjectElements(
   extractionResult: ExtractionResult,
   documentId: string,
@@ -637,14 +1007,48 @@ async function saveExtractedFieldsToProjectElements(
       templateElementId = tmplEl.id;
     }
 
-    // If no anchor at all, log and skip
+    // If no anchor at all, try to auto-create elementDefinition for known client doc fields
     if (!elementDefId && !templateElementId) {
-      unmatchedCount++;
-      console.log(
-        `[saveExtracted] No element_definition or template_element for key "${field.field_key}" — field dropped. ` +
-        `Value: "${String(field.field_value).slice(0, 100)}"`,
-      );
-      continue;
+      // Check static definitions first, then dynamic patterns
+      const knownDef = CLIENT_DOC_FIELD_DEFS[field.field_key] ?? matchDynamicFieldDef(field.field_key);
+      if (knownDef) {
+        // Find guide document to anchor the element definition
+        const guideDocId = await findGuideDocumentForProject(project.folderId, organizationId);
+        if (guideDocId) {
+          try {
+            const created = await upsertElementDefinition({
+              guideDocumentId: guideDocId,
+              organizationId,
+              elementKey: field.field_key,
+              displayName: knownDef.displayName,
+              category: knownDef.category,
+              dataType: knownDef.dataType,
+              required: ("required" in knownDef ? knownDef.required : false) ?? false,
+              sourcePriority: ["document_extracted", "solomon_chat", "consultant_manual"],
+            });
+            elementDefId = created.id;
+            console.log(
+              `[saveExtracted] Auto-created elementDefinition for "${field.field_key}" → ${created.id}`,
+            );
+          } catch (err) {
+            console.warn(`[saveExtracted] Failed to auto-create elementDef for "${field.field_key}":`, err);
+          }
+        } else {
+          console.log(
+            `[saveExtracted] No guide document for project ${project.id} — cannot auto-create elementDef for "${field.field_key}"`,
+          );
+        }
+      }
+
+      // Still no anchor after auto-creation attempt
+      if (!elementDefId && !templateElementId) {
+        unmatchedCount++;
+        console.log(
+          `[saveExtracted] No element_definition or template_element for key "${field.field_key}" — field dropped. ` +
+          `Value: "${String(field.field_value).slice(0, 100)}"`,
+        );
+        continue;
+      }
     }
 
     // Stringify value for storage (project_elements.value is TEXT)

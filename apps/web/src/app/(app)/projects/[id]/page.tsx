@@ -678,6 +678,7 @@ export default function ProjectViewPage() {
     const userText = solomonInput;
     setSolomonMessages(prev => [...prev, { role: "user", text: userText, extractions: null }]);
     setSolomonInput("");
+    setTimeout(() => (document.querySelector("[data-solomon-input]") as HTMLTextAreaElement)?.focus(), 50);
     setSolomonAutoScroll(true);
     setSolomonStreaming(true);
     setSolomonTimedOut(false);

@@ -233,6 +233,27 @@ export const documents = pgTable("documents", {
     aiModel?: string;          // override org default for this template
     language?: string;         // "ro" default
   }>(),
+  blueprint: jsonb("blueprint").$type<{
+    templateId: string;
+    documentPurpose: string;
+    evaluatorExpectations: string;
+    generatedAt: string;
+    generatedBy: string;
+    sections: Array<{
+      sectionId: string;
+      title: string;
+      purpose: string;
+      requiredElementKeys: string[];
+      optionalElementKeys: string[];
+      referenceTableIds: string[];
+      tone: "formal" | "technical" | "narrative";
+      targetLength: { min: number; max: number };
+      keywords: string[];
+      evaluatorChecklist: string[];
+      structureHint?: string;
+      forbiddenPhrases?: string[];
+    }>;
+  }>(),
   documentTypeClass: documentTypeEnum("document_type_class"),
   classificationConfidence: decimal("classification_confidence", { precision: 3, scale: 2 }),
   processingResult: jsonb("processing_result").$type<{

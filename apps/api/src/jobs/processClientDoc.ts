@@ -3,7 +3,7 @@ import { db } from "../db";
 import {
   documents, projects, projectElements, templateElements,
   documentFolders, elementAuditLog, projectEligibility,
-  extractionCache, elementDefinitions,
+  extractionCache, elementDefinitions, projectChecklist,
 } from "../db/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { createHash } from "crypto";
@@ -33,6 +33,75 @@ import { extractFactura } from "../services/facturaExtractor";
 import { extractDiploma } from "../services/diplomaExtractor";
 import { extractActConstitutiv } from "../services/actConstitutivExtractor";
 import { extractGeneric } from "../services/genericExtractor";
+
+// ─── CHECKLIST AUTO-MATCH MAP ───
+// Maps documentTypeClass values to ILIKE-style patterns for matching checklist item names.
+export const CHECKLIST_TYPE_MAP: Record<string, string[]> = {
+  certificat_constatator: ['%certificat%constatator%', '%extras%onrc%'],
+  bilant_anaf: ['%situati%financiar%', '%bilant%', '%bilant%anaf%'],
+  carte_identitate: ['%carte%identitate%', '%ci %', '%ci/%', '%buletin%'],
+  diploma_studii: ['%diplom%', '%studii%'],
+  oferta_pret: ['%ofert%pret%', '%ofert%furnizor%', '%oferta%'],
+  certificat_fiscal: ['%certificat%fiscal%'],
+  contract_arenda: ['%contract%arenda%', '%arenda%', '%concesiune%'],
+  document_mediu: ['%mediu%', '%evaluare%impact%'],
+  extras_cont: ['%extras%cont%', '%extras%bancar%'],
+  declaratie_expert_contabil: ['%declarati%expert%', '%declarati%contabil%'],
+  act_constitutiv: ['%act%constitutiv%', '%statut%societat%'],
+  factura: ['%factura%proforma%', '%factura%'],
+  statut: ['%statut%'],
+  registru_imobilizari: ['%registru%', '%imobilizar%'],
+  memoriu_template: [],
+  cerere_finantare_template: [],
+  anexa_b_template: [],
+  anexa_c_template: [],
+  guide: [],
+  guide_annex_table: [],
+  guide_annex_form: [],
+  adeverinta: ['%adeverint%'],
+  foto_echipament: ['%foto%', '%echipament%'],
+  descriere_proiect: ['%descriere%proiect%'],
+  other: [],
+};
+
+/**
+ * Auto-match a processed document to an unchecked checklist item and mark it done.
+ */
+export async function autoMatchChecklist(
+  projectId: string,
+  documentId: string,
+  documentTypeClass: string,
+): Promise<{ matched: boolean; itemName?: string; itemId?: string }> {
+  const patterns = CHECKLIST_TYPE_MAP[documentTypeClass] || [];
+  if (patterns.length === 0) return { matched: false };
+
+  // Query unchecked checklist items for this project
+  const uncheckedItems = await db.select().from(projectChecklist)
+    .where(and(
+      eq(projectChecklist.projectId, projectId),
+      eq(projectChecklist.done, false),
+    ));
+
+  // Find first matching item by name pattern (case-insensitive)
+  for (const item of uncheckedItems) {
+    const nameLower = item.name.toLowerCase();
+    for (const pattern of patterns) {
+      const parts = pattern.toLowerCase().split('%').filter(Boolean);
+      const allMatch = parts.every(part => nameLower.includes(part));
+      if (allMatch) {
+        // Mark as done
+        await db.update(projectChecklist)
+          .set({ done: true })
+          .where(eq(projectChecklist.id, item.id));
+
+        console.log(`[AUTO-CHECKLIST] ${documentTypeClass} → "${item.name}" (project ${projectId})`);
+        return { matched: true, itemName: item.name, itemId: item.id };
+      }
+    }
+  }
+
+  return { matched: false };
+}
 
 interface ProcessClientDocPayload {
   documentId: string;
@@ -1592,6 +1661,20 @@ export const processClientDocWorker = new Worker<ProcessClientDocPayload>(
             ? `Extrase ${extractionResult.extracted_fields.length} câmpuri din "${doc.name}" (din cache)`
             : `Extrase ${extractionResult.extracted_fields.length} câmpuri din "${doc.name}"`,
         }).catch((e: any) => console.warn("[processClientDoc] sse extraction complete:", e.message));
+      }
+
+      // Step 7: Auto-match checklist items based on document classification
+      const resolvedProjectId = elementsSaveResult?.projectId;
+      if (resolvedProjectId) {
+        autoMatchChecklist(resolvedProjectId, documentId, classification.documentType)
+          .catch((err) => console.error(`[processClientDoc] autoMatchChecklist error:`, err));
+      } else {
+        // No elements saved — still try to resolve project for checklist matching
+        const projectForChecklist = await findProjectForDocument({ folderId: doc.folderId!, organizationId });
+        if (projectForChecklist) {
+          autoMatchChecklist(projectForChecklist.id, documentId, classification.documentType)
+            .catch((err) => console.error(`[processClientDoc] autoMatchChecklist error:`, err));
+        }
       }
 
       await job.updateProgress(100);

@@ -50,6 +50,7 @@ interface ApiDocument {
     raw_text: string;
     processing_time_ms: number;
   } | null;
+  generationMode: "fill" | "compose" | null;
   tags: string[];
   uploadedAt: string;
   uploadedBy: string;
@@ -82,6 +83,8 @@ interface DocItem {
   pageCount: number | null;
   extractedFields: Array<{ field_key: string; field_value: any; confidence: number }>;
   processingError: string | null;
+  generationMode: "fill" | "compose" | null;
+  processingTimeMs: number | null;
   summary?: {
     rulesCount?: number;
     scoringCount?: number;
@@ -186,6 +189,8 @@ function mapApiDocToLocal(doc: ApiDocument): DocItem {
     pageCount: doc.pageCount || null,
     extractedFields: visibleFields,
     processingError: doc.processingError || null,
+    generationMode: doc.generationMode || null,
+    processingTimeMs: doc.processingResult?.processing_time_ms ?? null,
     summary,
   };
 }
@@ -971,6 +976,15 @@ export default function DocumentsPage() {
                   </span>
                   {d.reguliExtrase > 0 && <span className="doc-stat-num">{d.reguliExtrase} reguli</span>}
                   {d.campuri != null && d.campuri > 0 && <span className="doc-stat-num">{d.campuri} elemente</span>}
+                  {d.generationMode && d.processingType === "template" && (
+                    <span className="doc-stat-num" style={{
+                      background: d.generationMode === "fill" ? "rgba(52,211,153,.1)" : "rgba(167,139,250,.1)",
+                      color: d.generationMode === "fill" ? "#059669" : "#7c3aed",
+                      fontWeight: 700, fontSize: 10, padding: "1px 6px", borderRadius: 4, letterSpacing: ".3px",
+                    }}>
+                      {d.generationMode === "fill" ? "FILL" : "COMPOSE"}
+                    </span>
+                  )}
                   {hasSummary && (
                     <button
                       onClick={(e) => { e.stopPropagation(); toggleExpandCard(d.id); }}
@@ -1064,8 +1078,27 @@ export default function DocumentsPage() {
                       </div>
                     </div>
                   )}
+                  {/* Processing time */}
+                  {d.processingTimeMs != null && d.processingTimeMs > 0 && (
+                    <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 8 }}>
+                      Procesat în {d.processingTimeMs >= 1000 ? `${(d.processingTimeMs / 1000).toFixed(1)}s` : `${d.processingTimeMs}ms`}
+                    </div>
+                  )}
                   {/* Action buttons */}
-                  <div style={{ display: "flex", gap: 8 }}>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {d.processingType === "template" && d.status === "template" && (
+                      <a
+                        href={`/documents/template/${d.id}`}
+                        className="doc-detail-btn primary"
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ textDecoration: "none" }}
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+                        </svg>
+                        Deschide Template Viewer
+                      </a>
+                    )}
                     <button className="doc-detail-btn primary" onClick={(e) => { e.stopPropagation(); handleDocDownload(d.id); }}>
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
@@ -1141,10 +1174,19 @@ export default function DocumentsPage() {
                         </button>
                       ))}
                       {d.processingType === "template" && (d.summary?.fieldsCount || 0) > 0 && (
-                        <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "8px 14px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 14px" }}>
                           <span style={{ fontSize: 13 }}>{"\u{1F4DD}"}</span>
                           <span style={{ color: "#64748b" }}>Elemente extrase:</span>
                           <span style={{ fontWeight: 700, color: "#4d8bff", fontFamily: "'JetBrains Mono', monospace" }}>{tplElements[d.id]?.total ?? d.summary?.fieldsCount}</span>
+                          {d.generationMode && (
+                            <span style={{
+                              fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 4, letterSpacing: ".3px",
+                              background: d.generationMode === "fill" ? "rgba(52,211,153,.12)" : "rgba(167,139,250,.12)",
+                              color: d.generationMode === "fill" ? "#059669" : "#7c3aed",
+                            }}>
+                              {d.generationMode === "fill" ? "FILL" : "COMPOSE"}
+                            </span>
+                          )}
                         </div>
                       )}
                       {/* Trust score + completeness */}
@@ -1209,40 +1251,52 @@ export default function DocumentsPage() {
                         ) : activeTab === "criteria" ? (
                           criteria.length === 0 ? (
                             <div style={{ padding: "16px", textAlign: "center", color: "#94a3b8", fontSize: 12 }}>Niciun criteriu extras</div>
-                          ) : criteria.map((cr: any, i: number) => (
-                            <div key={i} style={{
-                              padding: "8px 14px", borderBottom: "1px solid rgba(226,232,240,.4)",
-                              display: "flex", gap: 8, alignItems: "flex-start", transition: "background .15s",
-                            }}
-                            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "#f8fafc"; }}
-                            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
-                            >
-                              <div style={{ flexShrink: 0, marginTop: 2 }}>
-                                <span style={{
-                                  display: "inline-block", fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 4,
-                                  background: "rgba(167,139,250,.1)", color: "#7c3aed", letterSpacing: ".3px",
-                                  fontFamily: "'JetBrains Mono', monospace",
-                                }}>{cr.maxPoints}p</span>
-                              </div>
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontSize: 12, color: "#0f172a", lineHeight: 1.4, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as const, overflow: "hidden" }}>
-                                  {cr.name}
+                          ) : <>
+                            {criteria.map((cr: any, i: number) => (
+                              <div key={i} style={{
+                                padding: "8px 14px", borderBottom: "1px solid rgba(226,232,240,.4)",
+                                display: "flex", gap: 8, alignItems: "flex-start", transition: "background .15s",
+                              }}
+                              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "#f8fafc"; }}
+                              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                              >
+                                <div style={{ flexShrink: 0, marginTop: 2 }}>
+                                  <span style={{
+                                    display: "inline-block", fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 4,
+                                    background: "rgba(167,139,250,.1)", color: "#7c3aed", letterSpacing: ".3px",
+                                    fontFamily: "'JetBrains Mono', monospace",
+                                  }}>{cr.maxPoints}p</span>
                                 </div>
-                                <div style={{ display: "flex", gap: 8, marginTop: 3, alignItems: "center" }}>
-                                  {cr.category && (
-                                    <span style={{ fontSize: 10, padding: "0 6px", borderRadius: 9999, background: (CATEGORY_COLORS[cr.category] || "#64748b") + "15", color: CATEGORY_COLORS[cr.category] || "#64748b", fontWeight: 600 }}>
-                                      {cr.category}
-                                    </span>
-                                  )}
-                                  {cr.evaluationLogic && (
-                                    <span style={{ fontSize: 10, color: "#94a3b8", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "inline-block" }}>
-                                      {typeof cr.evaluationLogic === "string" ? cr.evaluationLogic : cr.evaluationLogic.type || ""}
-                                    </span>
-                                  )}
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: 12, color: "#0f172a", lineHeight: 1.4, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as const, overflow: "hidden" }}>
+                                    {cr.name}
+                                  </div>
+                                  <div style={{ display: "flex", gap: 8, marginTop: 3, alignItems: "center" }}>
+                                    {cr.category && (
+                                      <span style={{ fontSize: 10, padding: "0 6px", borderRadius: 9999, background: (CATEGORY_COLORS[cr.category] || "#64748b") + "15", color: CATEGORY_COLORS[cr.category] || "#64748b", fontWeight: 600 }}>
+                                        {cr.category}
+                                      </span>
+                                    )}
+                                    {cr.evaluationLogic && (
+                                      <span style={{ fontSize: 10, color: "#94a3b8", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "inline-block" }}>
+                                        {typeof cr.evaluationLogic === "string" ? cr.evaluationLogic : cr.evaluationLogic.type || ""}
+                                      </span>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
+                            ))}
+                            {/* Total punctaj footer */}
+                            <div style={{
+                              padding: "8px 14px", background: "#f8fafc", borderTop: "1px solid rgba(226,232,240,.6)",
+                              display: "flex", justifyContent: "space-between", alignItems: "center",
+                            }}>
+                              <span style={{ fontSize: 11, fontWeight: 600, color: "#64748b" }}>Total punctaj maxim</span>
+                              <span style={{ fontSize: 13, fontWeight: 700, color: "#7c3aed", fontFamily: "'JetBrains Mono', monospace" }}>
+                                {criteria.reduce((sum: number, cr: any) => sum + (Number(cr.maxPoints) || 0), 0)}p
+                              </span>
                             </div>
-                          ))
+                          </>
                         ) : activeTab === "elements" ? (
                           elements.length === 0 ? (
                             <div style={{ padding: "16px", textAlign: "center", color: "#94a3b8", fontSize: 12 }}>Niciun element extras</div>
@@ -1280,6 +1334,46 @@ export default function DocumentsPage() {
                         ) : null}
                       </div>
                     )}
+                    {/* Completeness report (ghid) */}
+                    {d.processingType === "ghid" && d.summary?.completenessReport && (() => {
+                      const cr = d.summary.completenessReport;
+                      const found: string[] = cr.categoriesFound || [];
+                      const missing: string[] = cr.categoriesMissing || [];
+                      const warnings: string[] = cr.warnings || [];
+                      if (found.length === 0 && missing.length === 0 && warnings.length === 0) return null;
+                      return (
+                        <div style={{ padding: "10px 14px", borderTop: "1px solid rgba(226,232,240,.6)", background: "#f8fafc" }}>
+                          <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".5px", color: "#94a3b8", marginBottom: 6 }}>
+                            Acoperire ghid
+                          </div>
+                          {found.length > 0 && (
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: missing.length > 0 || warnings.length > 0 ? 6 : 0 }}>
+                              {found.map((cat, i) => (
+                                <span key={i} style={{ fontSize: 10, padding: "1px 6px", borderRadius: 4, background: "rgba(52,211,153,.1)", color: "#059669", fontWeight: 600 }}>
+                                  {"\u2713"} {cat}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          {missing.length > 0 && (
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: warnings.length > 0 ? 6 : 0 }}>
+                              {missing.map((cat, i) => (
+                                <span key={i} style={{ fontSize: 10, padding: "1px 6px", borderRadius: 4, background: "rgba(248,113,113,.1)", color: "#dc2626", fontWeight: 600 }}>
+                                  {"\u2717"} {cat}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          {warnings.length > 0 && (
+                            <div style={{ marginTop: 2 }}>
+                              {warnings.map((w, i) => (
+                                <div key={i} style={{ fontSize: 10, color: "#d97706", lineHeight: 1.4 }}>{"\u26A0"} {w}</div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                     {/* Template elements expandable section */}
                     {d.processingType === "template" && (() => {
                       const tpl = tplElements[d.id];

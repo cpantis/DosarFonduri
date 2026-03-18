@@ -280,6 +280,19 @@ function resolveGenerationMode(explicitType: string | null): "fill" | "compose" 
   return "fill";
 }
 
+/** Heuristic: resolve documentTypeClass from template filename */
+function resolveTemplateTypeClass(fileName: string, fileType: string): string {
+  const name = fileName.toLowerCase();
+  if (/anexa.*[_\s-]?c/i.test(name)) return "anexa_c_template";
+  if (/anexa.*[_\s-]?b/i.test(name)) return "anexa_b_template";
+  if (/cerere.*finan[tț]|cererea/i.test(name)) return "cerere_finantare_template";
+  if (/memoriu/i.test(name)) return "memoriu_template";
+  // Default by extension
+  if (fileType === "docx") return "memoriu_template";
+  if (fileType === "pdf") return "cerere_finantare_template";
+  return "other";
+}
+
 // --- PRESIGNED UPLOAD URL (direct browser → R2 upload, bypasses Node memory) ---
 const presignedSchema = z.object({
   filename: z.string().min(1),
@@ -369,7 +382,7 @@ documentRoutes.post("/presigned-url", async (c) => {
       status: "uploaded",
       processingType: processingType as any,
       generationMode: generationMode as any,
-      documentTypeClass: processingType === "ghid" ? "guide" as any : processingType === "template" ? "cerere_finantare_template" as any : null,
+      documentTypeClass: processingType === "ghid" ? "guide" as any : processingType === "template" ? resolveTemplateTypeClass(body.filename, fileType) as any : null,
       tags: [],
       uploadedBy: auth.userId,
     }).returning();
@@ -604,7 +617,7 @@ documentRoutes.post("/folders/:folderId/documents", async (c) => {
       status: "uploaded",
       processingType: processingType as any,
       generationMode: generationMode as any,
-      documentTypeClass: processingType === "ghid" ? "guide" as any : processingType === "template" ? "cerere_finantare_template" as any : null,
+      documentTypeClass: processingType === "ghid" ? "guide" as any : processingType === "template" ? resolveTemplateTypeClass(file.name, fileType) as any : null,
       tags,
       uploadedBy: auth.userId,
     }).returning();

@@ -308,6 +308,12 @@ export default function ProjectViewPage() {
           setEligibilityRules(mapEligibilityRules(eligData.flat || []));
         }).catch(() => {});
       }
+      if (evt.event === "checklist_updated") {
+        // Re-fetch checklist when backend auto-matches an item
+        apiGet<any>(`/api/projects/${projectId}`).then(proj => {
+          setChecklistItems(mapChecklist(proj.checklist || []));
+        }).catch(() => {});
+      }
     }, [projectId]),
   });
 
@@ -318,6 +324,8 @@ export default function ProjectViewPage() {
   const [elementConstraints, setElementConstraints] = useState<any[]>([]);
   const [elemFilter, setElemFilter] = useState("all");
   const [elemSearch, setElemSearch] = useState("");
+  const [editingElementId, setEditingElementId] = useState<string | null>(null);
+  const [editingElementValue, setEditingElementValue] = useState("");
   const [ghidTab, setGhidTab] = useState<"reguli" | "ghid" | "anexe">("reguli");
   const [referenceTables, setReferenceTables] = useState<any[]>([]);
   const [selectedRefTable, setSelectedRefTable] = useState<string | null>(null);
@@ -1363,6 +1371,23 @@ export default function ProjectViewPage() {
       setElements(prev => prev.map(e => e.id === elId ? { ...e, status: "confirmat" as const, confidence: 100 } : e));
     } catch (err) {
       console.error("Confirm element failed:", err);
+    }
+  };
+
+  const handleSaveElementEdit = async (elId: string) => {
+    if (readOnly) return;
+    try {
+      await apiPut(`/api/projects/${projectId}/elements/${elId}`, {
+        value: editingElementValue,
+        source: "manual",
+      });
+      setElements(prev => prev.map(e =>
+        e.id === elId ? { ...e, value: editingElementValue, source: "manual", sourceLabel: "Completare manuală", status: "propus_ai" as const } : e,
+      ));
+      setEditingElementId(null);
+      setEditingElementValue("");
+    } catch (err) {
+      console.error("Save element edit failed:", err);
     }
   };
 
@@ -3326,10 +3351,33 @@ export default function ProjectViewPage() {
                           </div>
                         </div>
                       )}
-                      {el.status === "propus_ai" && (
+                      {el.status === "propus_ai" && editingElementId !== el.id && (
                         <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
                           <button className="ed-btn" onClick={() => handleConfirmElementApi(el.id)}>✓ Confirmă</button>
-                          <button className="ed-btn border-amber-500 text-amber-500">&#9998; Editează</button>
+                          <button className="ed-btn border-amber-500 text-amber-500" onClick={() => {
+                            setEditingElementId(el.id);
+                            setEditingElementValue(el.value || "");
+                          }}>&#9998; Editează</button>
+                        </div>
+                      )}
+                      {editingElementId === el.id && (
+                        <div style={{ marginTop: 12 }}>
+                          <input
+                            type="text"
+                            value={editingElementValue}
+                            onChange={(e) => setEditingElementValue(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") handleSaveElementEdit(el.id);
+                              if (e.key === "Escape") { setEditingElementId(null); setEditingElementValue(""); }
+                            }}
+                            autoFocus
+                            className="w-full px-3 py-2 rounded-md border text-sm"
+                            style={{ background: "var(--bg-elevated)", borderColor: "var(--border-active)", color: "var(--text-primary)" }}
+                          />
+                          <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
+                            <button className="ed-btn" onClick={() => handleSaveElementEdit(el.id)}>✓ Salvează</button>
+                            <button className="ed-btn border-red-500 text-red-500" onClick={() => { setEditingElementId(null); setEditingElementValue(""); }}>✕ Anulează</button>
+                          </div>
                         </div>
                       )}
                     </div>

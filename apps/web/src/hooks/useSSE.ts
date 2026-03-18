@@ -135,6 +135,9 @@ export function useSSE({ projectId, enabled = true, onEvent }: UseSSEOptions = {
       case "elements_updated":
         showToast("info", data.message || `${data.updatedCount} elemente actualizate`);
         break;
+      case "checklist_updated":
+        showToast("success", data.message || `Checklist actualizat automat`);
+        break;
       case "job_progress":
         setJobProgress(prev => {
           const next = new Map(prev);

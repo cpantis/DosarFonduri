@@ -7,10 +7,11 @@ import {
 } from "../db/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { createHash } from "crypto";
+import { encrypt } from "../lib/crypto";
 import { getFileBuffer } from "../services/storage";
 import { extractTextFromPDF, extractTextFromDOCX, extractTextFromXLSX, extractTextFromImage, extractTextFromDOC, classifyDocument, shouldPreStructure, preStructureClientText } from "../services/ocr";
 import { logAIUsage } from "../services/aiUsage";
-import { publishEvent, publishEligibilityUpdated, publishScoreUpdated, publishFieldExtracted, publishExtractionStarted } from "../lib/sse";
+import { publishEvent, publishEligibilityUpdated, publishScoreUpdated, publishFieldExtracted, publishExtractionStarted, publishChecklistUpdated } from "../lib/sse";
 import { redis } from "../lib/redis";
 import { validateElement, logElementChange } from "../services/elementValidation";
 import { checkEligibility } from "../services/eligibility";
@@ -1098,6 +1099,9 @@ async function findGuideDocumentForProject(projectFolderId: string, organization
   return guideDoc?.id ?? null;
 }
 
+// GDPR: PII fields that must be encrypted before storage
+const SENSITIVE_ELEMENT_KEYS = new Set(["cnp", "cnp_titular_diploma"]);
+
 async function saveExtractedFieldsToProjectElements(
   extractionResult: ExtractionResult,
   documentId: string,
@@ -1221,9 +1225,21 @@ async function saveExtractedFieldsToProjectElements(
     }
 
     // Stringify value for storage (project_elements.value is TEXT)
-    const stringValue = typeof field.field_value === "object"
+    let stringValue = typeof field.field_value === "object"
       ? JSON.stringify(field.field_value)
       : String(field.field_value);
+
+    // GDPR: Encrypt sensitive PII fields (CNP) before storage
+    const resolvedKey = elemDefMatch?.elementKey ?? tmplEl?.key ?? field.field_key;
+    if (SENSITIVE_ELEMENT_KEYS.has(resolvedKey) && stringValue) {
+      try {
+        stringValue = encrypt(stringValue);
+      } catch (err) {
+        console.error(`[saveExtracted] GDPR: Failed to encrypt ${resolvedKey}:`, err);
+        // Do NOT store plaintext CNP — skip this field
+        continue;
+      }
+    }
 
     // Check for existing project element (by elementDefId or templateElementId)
     let existing = null;
@@ -1665,15 +1681,23 @@ export const processClientDocWorker = new Worker<ProcessClientDocPayload>(
 
       // Step 7: Auto-match checklist items based on document classification
       const resolvedProjectId = elementsSaveResult?.projectId;
-      if (resolvedProjectId) {
-        autoMatchChecklist(resolvedProjectId, documentId, classification.documentType)
-          .catch((err) => console.error(`[processClientDoc] autoMatchChecklist error:`, err));
-      } else {
-        // No elements saved — still try to resolve project for checklist matching
-        const projectForChecklist = await findProjectForDocument({ folderId: doc.folderId!, organizationId });
-        if (projectForChecklist) {
-          autoMatchChecklist(projectForChecklist.id, documentId, classification.documentType)
-            .catch((err) => console.error(`[processClientDoc] autoMatchChecklist error:`, err));
+      const checklistProjectId = resolvedProjectId
+        || (await findProjectForDocument({ folderId: doc.folderId!, organizationId }))?.id;
+
+      if (checklistProjectId) {
+        try {
+          const matchResult = await autoMatchChecklist(checklistProjectId, documentId, classification.documentType);
+          if (matchResult.matched && matchResult.itemId && matchResult.itemName) {
+            publishChecklistUpdated(checklistProjectId, {
+              itemId: matchResult.itemId,
+              itemName: matchResult.itemName,
+              documentType: classification.documentType,
+              documentId,
+              message: `Checklist: "${matchResult.itemName}" bifat automat (${classification.documentType})`,
+            }).catch((e: any) => console.warn("[processClientDoc] sse checklist_updated:", e.message));
+          }
+        } catch (err) {
+          console.error(`[processClientDoc] autoMatchChecklist error:`, err);
         }
       }
 

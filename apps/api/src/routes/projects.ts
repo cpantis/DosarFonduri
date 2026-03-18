@@ -23,6 +23,10 @@ import { deleteFile, getFileUrl } from "../services/storage";
 import { validateElement, logElementChange } from "../services/elementValidation";
 import { computeProjectScores } from "../services/scoring";
 import { publishElementValidated, publishEligibilityUpdated, publishScoreUpdated } from "../lib/sse";
+import { decrypt } from "../lib/crypto";
+
+// GDPR: PII fields stored encrypted — must decrypt before sending to frontend
+const SENSITIVE_ELEMENT_KEYS = new Set(["cnp", "cnp_titular_diploma"]);
 import { validateBudget } from "../services/budgetValidation";
 import { getApprovedProjectLearnings } from "../services/projectLearning";
 
@@ -441,7 +445,25 @@ projectRoutes.get("/:id", async (c) => {
       });
     }
 
-    return { ...el, templateElement: templateEl, elementDefinition: elemDef };
+    // GDPR: Decrypt sensitive PII fields + mask for display
+    const elementKey = elemDef?.elementKey || templateEl?.key || "";
+    let value = el.value;
+    if (SENSITIVE_ELEMENT_KEYS.has(elementKey) && value) {
+      try {
+        const decrypted = decrypt(value);
+        // Mask: show first 3 + last 2 digits, rest = *
+        value = decrypted.length > 5
+          ? decrypted.slice(0, 3) + "*".repeat(decrypted.length - 5) + decrypted.slice(-2)
+          : "***";
+      } catch {
+        // Value might be plaintext (pre-encryption migration) — mask it directly
+        value = value.length > 5
+          ? value.slice(0, 3) + "*".repeat(value.length - 5) + value.slice(-2)
+          : "***";
+      }
+    }
+
+    return { ...el, value, templateElement: templateEl, elementDefinition: elemDef };
   }));
 
   const eligibility = await db.query.projectEligibility.findMany({

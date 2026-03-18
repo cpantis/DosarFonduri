@@ -84,6 +84,7 @@ export interface ComposeContext {
   companyCui: string;
   programFinantare: string;
   codMasura: string;
+  numberFormat: "ro" | "en";
   elements: Record<string, { value: string; label: string; source: string }>;
   referenceTables: Array<{
     id: string;
@@ -214,12 +215,19 @@ export async function buildComposeContext(
     }
   }
 
+  // Load org branding for number format
+  const org = await db.query.organizations.findFirst({
+    where: eq(organizations.id, organizationId),
+  });
+  const cabinetStyle = org?.cabinetDocumentStyle as Record<string, any> || {};
+
   return {
     projectName: project.name,
     companyName: company?.denumire || "N/A",
     companyCui: company?.cui || "N/A",
     programFinantare: project.programFinantare || "N/A",
     codMasura: project.codMasura || "N/A",
+    numberFormat: (cabinetStyle.numberFormat as "ro" | "en") || "ro",
     elements,
     referenceTables: relevantRefTables.map(t => ({
       id: t.id,
@@ -365,7 +373,7 @@ REGULI STRICTE:
 7. Argumentează legătura între datele proiectului și regulile din ghidul de finanțare.
 8. Evidențiază (prin highlight) rândurile din tabele care sunt relevante pentru proiect.
 9. Dacă o dată lipsește, marchează cu {{PLACEHOLDER_DESCRIERE}} — nu inventa.
-10. Numere formatate RO: 1.234.567,89 RON (punct separare mii, virgulă zecimale).
+10. Numere formatate ${context.numberFormat === "en" ? "EN: 1,234,567.89 RON (virgulă separare mii, punct zecimale)" : "RO: 1.234.567,89 RON (punct separare mii, virgulă zecimale)"}.
 ${writingKitContext ? `
 WRITING KIT — Terminologie și keywords profesionale:
 ${writingKitContext}
@@ -599,12 +607,18 @@ export async function composeDocument(params: ComposeDocParams): Promise<Readabl
         }
         if (cabinetStyle.footerText) simpleElements["footer_cabinet"] = cabinetStyle.footerText;
 
+        // Pass work/submission context for watermark decision
+        const styleWithContext = {
+          ...cabinetStyle,
+          _isWorkDocument: true, // compose generates work documents by default
+        };
+
         const filledBuffer = await composeDocxTemplate(
           templateBuffer,
           templateName,
           simpleElements,
           composeSections,
-          cabinetStyle,
+          styleWithContext,
         );
 
         // Step 3: Upload and save
@@ -1120,6 +1134,9 @@ for table in doc.tables:
 # Apply cabinet document style
 cab_font = cabinet_style.get('fontFamily')
 cab_footer = cabinet_style.get('footerText')
+cab_draft_watermark = cabinet_style.get('draftWatermark', False)
+cab_watermark_text = cabinet_style.get('draftWatermarkText', 'DRAFT')
+cab_is_work_doc = cabinet_style.get('_isWorkDocument', True)
 
 if cab_font:
     for para in doc.paragraphs:
@@ -1135,14 +1152,36 @@ if cab_font:
                             run.font.name = cab_font
 
 if cab_footer:
-    last_section = doc.sections[-1] if doc.sections else None
-    if last_section and last_section.footer:
-        p = last_section.footer.add_paragraph()
-        run = p.add_run(cab_footer)
-        run.font.size = Pt(8)
-        run.font.color.rgb = RGBColor(0x88, 0x88, 0x88)
-        if cab_font:
-            run.font.name = cab_font
+    for section in doc.sections:
+        if section.footer:
+            p = section.footer.add_paragraph()
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            run = p.add_run(cab_footer)
+            run.font.size = Pt(8)
+            run.font.color.rgb = RGBColor(0x88, 0x88, 0x88)
+            if cab_font:
+                run.font.name = cab_font
+
+# Add DRAFT watermark on work documents
+if cab_draft_watermark and cab_is_work_doc and cab_watermark_text:
+    for section in doc.sections:
+        header = section.header
+        p = header.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        watermark_xml = f'''<w:r {nsdecls('w')}>
+          <w:rPr>
+            <w:color w:val="D0D0D0"/>
+            <w:sz w:val="96"/>
+            <w:szCs w:val="96"/>
+          </w:rPr>
+          <w:t>{cab_watermark_text}</w:t>
+        </w:r>'''
+        try:
+            p._element.append(parse_xml(watermark_xml))
+        except Exception:
+            run = p.add_run(cab_watermark_text)
+            run.font.size = Pt(48)
+            run.font.color.rgb = RGBColor(0xD0, 0xD0, 0xD0)
 
 doc.save(output_path)
 

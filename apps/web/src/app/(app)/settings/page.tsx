@@ -86,6 +86,9 @@ export default function SettingsPage() {
     warningColor: string;
     logoOnWorkDocs: boolean;
     logoOnFinalDocs: boolean;
+    numberFormat: "ro" | "en";
+    draftWatermark: boolean;
+    draftWatermarkText: string;
   }>({
     primaryColor: "#1a3a5c",
     accentColor: "#4d8bff",
@@ -95,6 +98,9 @@ export default function SettingsPage() {
     warningColor: "#f87171",
     logoOnWorkDocs: true,
     logoOnFinalDocs: false,
+    numberFormat: "ro",
+    draftWatermark: true,
+    draftWatermarkText: "DRAFT",
   });
   const [brandingSaved, setBrandingSaved] = useState(false);
 
@@ -874,7 +880,38 @@ export default function SettingsPage() {
                 />
               </div>
 
-              <div className="flex gap-6 mb-6">
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                <div>
+                  <label className="block text-[11px] uppercase tracking-wide font-medium mb-1 text-slate-500" style={{ letterSpacing: ".7px" }}>Format numere</label>
+                  <select
+                    className="cfg-select w-full"
+                    value={branding.numberFormat}
+                    onChange={(e) => setBranding(prev => ({ ...prev, numberFormat: e.target.value as "ro" | "en" }))}
+                  >
+                    <option value="ro">RO — 2.500.000 EUR (standard AFIR)</option>
+                    <option value="en">EN — 2,500,000 EUR</option>
+                  </select>
+                  <div className="text-[11px] text-slate-400 mt-1">Documentele AFIR necesita format RO</div>
+                </div>
+                <div>
+                  <label className="block text-[11px] uppercase tracking-wide font-medium mb-1 text-slate-500" style={{ letterSpacing: ".7px" }}>Culoare atentionare (badge-uri)</label>
+                  <div className="flex gap-2 items-center">
+                    <input
+                      type="color"
+                      value={branding.warningColor}
+                      onChange={(e) => setBranding(prev => ({ ...prev, warningColor: e.target.value }))}
+                      className="cursor-pointer w-10 h-8 rounded-md p-0 border border-slate-200/80 bg-transparent"
+                    />
+                    <input
+                      className="cfg-input cfg-input-mono flex-1"
+                      value={branding.warningColor}
+                      onChange={(e) => setBranding(prev => ({ ...prev, warningColor: e.target.value }))}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-6 mb-6">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
@@ -891,28 +928,91 @@ export default function SettingsPage() {
                   />
                   <span className="text-[13px] text-slate-900">Logo pe documente finale</span>
                 </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={branding.draftWatermark}
+                    onChange={(e) => setBranding(prev => ({ ...prev, draftWatermark: e.target.checked }))}
+                  />
+                  <span className="text-[13px] text-slate-900">Watermark pe documente de lucru</span>
+                </label>
               </div>
 
-              {/* Preview */}
+              {branding.draftWatermark && (
+                <div className="mb-6">
+                  <label className="block text-[11px] uppercase tracking-wide font-medium mb-1 text-slate-500" style={{ letterSpacing: ".7px" }}>Text watermark</label>
+                  <input
+                    className="cfg-input w-48"
+                    value={branding.draftWatermarkText}
+                    onChange={(e) => setBranding(prev => ({ ...prev, draftWatermarkText: e.target.value }))}
+                    placeholder="DRAFT"
+                    maxLength={50}
+                  />
+                </div>
+              )}
+
+              {/* Preview — Document page mock */}
               <div className="mb-6 p-4 rounded-[10px] border border-slate-200/80 bg-slate-50">
-                <div className="text-[11px] uppercase tracking-wide font-medium mb-3 text-slate-500" style={{ letterSpacing: ".7px" }}>Previzualizare tabel</div>
-                <table className="w-full text-[12px]" style={{ borderCollapse: "collapse" }}>
-                  <thead>
-                    <tr>
-                      <th style={{ background: branding.primaryColor, color: "#fff", padding: "6px 10px", fontFamily: branding.fontFamily, fontWeight: 700, textAlign: "left" }}>Element</th>
-                      <th style={{ background: branding.primaryColor, color: "#fff", padding: "6px 10px", fontFamily: branding.fontFamily, fontWeight: 700, textAlign: "left" }}>Valoare</th>
-                      <th style={{ background: branding.primaryColor, color: "#fff", padding: "6px 10px", fontFamily: branding.fontFamily, fontWeight: 700, textAlign: "center" }}>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr><td style={{ padding: "5px 10px", fontFamily: branding.fontFamily, borderBottom: "1px solid #dee2e6" }}>Denumire firma</td><td style={{ padding: "5px 10px", fontFamily: branding.fontFamily, borderBottom: "1px solid #dee2e6" }}>COMEXIM R SRL</td><td style={{ padding: "5px 10px", fontFamily: branding.fontFamily, borderBottom: "1px solid #dee2e6", textAlign: "center", color: branding.accentColor, fontWeight: 700 }}>CONFORM</td></tr>
-                    <tr style={{ background: "#f8f9fa" }}><td style={{ padding: "5px 10px", fontFamily: branding.fontFamily, borderBottom: "1px solid #dee2e6" }}>CUI</td><td style={{ padding: "5px 10px", fontFamily: branding.fontFamily, borderBottom: "1px solid #dee2e6" }}>2146135</td><td style={{ padding: "5px 10px", fontFamily: branding.fontFamily, borderBottom: "1px solid #dee2e6", textAlign: "center", color: branding.accentColor, fontWeight: 700 }}>CONFORM</td></tr>
-                    <tr style={{ background: branding.highlightColor }}><td style={{ padding: "5px 10px", fontFamily: branding.fontFamily, fontWeight: 700, borderBottom: "1px solid #dee2e6" }}>Valoare proiect</td><td style={{ padding: "5px 10px", fontFamily: branding.fontFamily, fontWeight: 700, borderBottom: "1px solid #dee2e6" }}>2,500,000 EUR</td><td style={{ padding: "5px 10px", fontFamily: branding.fontFamily, borderBottom: "1px solid #dee2e6", textAlign: "center", color: branding.warningColor, fontWeight: 700 }}>ATENTIE</td></tr>
-                  </tbody>
-                </table>
-                {branding.footerText && (
-                  <div className="mt-3 text-[10px] text-slate-400" style={{ fontFamily: branding.fontFamily }}>{branding.footerText}</div>
-                )}
+                <div className="text-[11px] uppercase tracking-wide font-medium mb-3 text-slate-500" style={{ letterSpacing: ".7px" }}>Previzualizare pagina document</div>
+                <div style={{ background: "#fff", border: "1px solid #dee2e6", borderRadius: "4px", padding: "24px 28px", maxWidth: "520px", position: "relative", overflow: "hidden", fontFamily: branding.fontFamily }}>
+                  {/* Draft watermark overlay */}
+                  {branding.draftWatermark && (
+                    <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%) rotate(-35deg)", fontSize: "48px", fontWeight: 900, color: "rgba(200,200,200,0.25)", letterSpacing: "12px", pointerEvents: "none", whiteSpace: "nowrap", userSelect: "none" }}>
+                      {branding.draftWatermarkText || "DRAFT"}
+                    </div>
+                  )}
+
+                  {/* Document title */}
+                  <div style={{ fontSize: "14px", fontWeight: 700, color: branding.primaryColor, textAlign: "center", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                    Memoriu Justificativ
+                  </div>
+                  <div style={{ fontSize: "10px", color: "#8892a8", textAlign: "center", marginBottom: "16px" }}>
+                    sM 4.1 — Investitii in exploatatii agricole
+                  </div>
+
+                  {/* Narrative section sample */}
+                  <div style={{ fontSize: "11px", fontWeight: 600, color: branding.primaryColor, marginBottom: "6px", borderBottom: `2px solid ${branding.primaryColor}`, paddingBottom: "2px" }}>
+                    1. Descrierea investitiei
+                  </div>
+                  <div style={{ fontSize: "10px", color: "#333", lineHeight: "1.6", marginBottom: "14px" }}>
+                    Societatea COMEXIM R SRL, CUI 2146135, propune modernizarea exploatatiei agricole prin achizitia de utilaje performante. Investitia in valoare de {branding.numberFormat === "ro" ? "2.500.000" : "2,500,000"} EUR vizeaza cresterea capacitatii de productie pe o suprafata de 270 ha...
+                  </div>
+
+                  {/* Table sample */}
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "10px", marginBottom: "14px" }}>
+                    <thead>
+                      <tr>
+                        <th style={{ background: branding.primaryColor, color: "#fff", padding: "5px 8px", fontWeight: 700, textAlign: "left" }}>Element</th>
+                        <th style={{ background: branding.primaryColor, color: "#fff", padding: "5px 8px", fontWeight: 700, textAlign: "left" }}>Valoare</th>
+                        <th style={{ background: branding.primaryColor, color: "#fff", padding: "5px 8px", fontWeight: 700, textAlign: "center" }}>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td style={{ padding: "4px 8px", borderBottom: "1px solid #dee2e6" }}>Denumire firma</td>
+                        <td style={{ padding: "4px 8px", borderBottom: "1px solid #dee2e6" }}>COMEXIM R SRL</td>
+                        <td style={{ padding: "4px 8px", borderBottom: "1px solid #dee2e6", textAlign: "center", color: branding.accentColor, fontWeight: 700 }}>CONFORM</td>
+                      </tr>
+                      <tr style={{ background: "#f8f9fa" }}>
+                        <td style={{ padding: "4px 8px", borderBottom: "1px solid #dee2e6" }}>CUI</td>
+                        <td style={{ padding: "4px 8px", borderBottom: "1px solid #dee2e6" }}>2146135</td>
+                        <td style={{ padding: "4px 8px", borderBottom: "1px solid #dee2e6", textAlign: "center", color: branding.accentColor, fontWeight: 700 }}>CONFORM</td>
+                      </tr>
+                      <tr style={{ background: branding.highlightColor }}>
+                        <td style={{ padding: "4px 8px", fontWeight: 700, borderBottom: "1px solid #dee2e6" }}>Valoare proiect</td>
+                        <td style={{ padding: "4px 8px", fontWeight: 700, borderBottom: "1px solid #dee2e6" }}>{branding.numberFormat === "ro" ? "2.500.000" : "2,500,000"} EUR</td>
+                        <td style={{ padding: "4px 8px", borderBottom: "1px solid #dee2e6", textAlign: "center", color: branding.warningColor, fontWeight: 700 }}>ATENTIE</td>
+                      </tr>
+                    </tbody>
+                  </table>
+
+                  {/* Footer */}
+                  {branding.footerText && (
+                    <div style={{ borderTop: "1px solid #dee2e6", paddingTop: "6px", fontSize: "8px", color: "#aaa", textAlign: "center" }}>
+                      {branding.footerText}
+                    </div>
+                  )}
+                </div>
               </div>
 
               <BtnPrimary icon={<IconSave />} onClick={handleSaveBranding}>

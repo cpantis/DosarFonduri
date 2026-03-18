@@ -4,10 +4,10 @@ Data: 2026-03-18
 
 ## Sumar
 
-- **Total probleme: 42**
-- **CRITICE: 8**
-- **MEDII: 18**
-- **MINORE: 16**
+- **Total probleme: 48**
+- **CRITICE: 10**
+- **MEDII: 20**
+- **MINORE: 18**
 
 ---
 
@@ -60,6 +60,18 @@ Data: 2026-03-18
 - **Descriere:** Un fișier monolitic de 4600+ linii cu 41+ `useState`, 1400+ linii CSS inline în `<style>`, 7 leaf-uri, handlers, rendering. Imposibil de navigat sau menținut.
 - **Impact:** Orice bugfix sau feature nouă e riscantă — dev-ul nu vede tot contextul.
 - **Ce ar trebui:** Extract fiecare leaf ca componentă separată: `<EligibilityLeaf>`, `<SolomonLeaf>`, `<NeemiaLeaf>`, etc.
+
+### C9. Zero componente reutilizabile pentru formulare (Input/Select/Textarea)
+- **Fișier:** Multiple pagini — `companies/page.tsx`, `projects/page.tsx`, `settings/page.tsx`, `projects/[id]/page.tsx`
+- **Descriere:** Toate input-urile, select-urile și textarea-urile sunt stilizate inline pe fiecare pagină. Nu există componentă `<Input>`, `<Select>`, `<Textarea>` partajată. Fiecare pagină reinventează sizing, padding, border, focus ring.
+- **Impact:** Inconsistență vizuală, zero error state standardizat, mentenanță imposibilă.
+- **Ce ar trebui:** Componente `Input`, `Select`, `Textarea` în `components/ui/` cu variante (size, error, disabled).
+
+### C10. DataTable component există dar nu e folosit nicăieri
+- **Fișier:** `components/ui/DataTable.tsx` (existent), dar tabelele din `admin/page.tsx`, `companies/page.tsx`, `projects/[id]/page.tsx` sunt toate custom `<table>` cu inline CSS.
+- **Descriere:** Componenta `DataTable` a fost creată dar nicio pagină nu o folosește. Fiecare pagină are propria implementare de tabel fără sticky header, sorting, sau paginare.
+- **Impact:** 5+ implementări diferite de tabele, fără consistență.
+- **Ce ar trebui:** Migrare pe `DataTable` cu props: `columns`, `data`, `sortable`, `paginated`, `emptyState`.
 
 ---
 
@@ -150,7 +162,17 @@ Data: 2026-03-18
 - **Descriere:** Multe butoane au 28-32px height — sub minimul 44px pentru touch.
 - **Ce ar trebui:** `min-height: 44px` pe butoane interactive pe mobile.
 
-### M18. Text truncation lipsă pe ecrane înguste
+### M18. Companies + Settings — 200-170 linii inline CSS fiecare
+- **Fișiere:** `companies/page.tsx` (~200 linii), `settings/page.tsx` (~170 linii)
+- **Descriere:** Similar cu ProjectView, aceste pagini au CSS inline masiv (`.co-card`, `.co-search`, `.cfg-layout`, `.cfg-nav`, `.toggle`, etc.).
+- **Ce ar trebui:** Extract la CSS modules sau componente reutilizabile.
+
+### M19. ProjectView — fără skeleton loading pe secțiuni
+- **Fișier:** `projects/[id]/page.tsx`
+- **Descriere:** Când se schimbă leaf-ul activ (Eligibilitate, Solomon, etc.), conținutul apare gol până se încarcă datele. Fără skeleton.
+- **Ce ar trebui:** Skeleton placeholder per secțiune.
+
+### M20. Text truncation lipsă pe ecrane înguste
 - **Fișier:** Multiple componente
 - **Descriere:** Nume lungi de proiecte/firme nu au `text-overflow: ellipsis`. Pe ecran mic, overflow.
 - **Ce ar trebui:** `truncate` class pe labels cu `title` tooltip.
@@ -302,6 +324,9 @@ Data: 2026-03-18
 - [ ] **Search inline pe Companies** — fără filter vizibil
 - [ ] **Drag & drop fișier Solomon** — doar buton upload
 - [ ] **Keyboard shortcut focus Solomon** — Ctrl+/ sau similar
+- [ ] **Sidebar collapse state persist** — nu se salvează în localStorage
+- [ ] **Modal URL state** — create project/company modals nu actualizează URL-ul
+- [ ] **Skeleton loading per ProjectView section** — conținut blank la switch
 
 ---
 

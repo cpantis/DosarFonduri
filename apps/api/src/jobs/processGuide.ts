@@ -13,6 +13,19 @@ import { repairTruncatedJSON } from "../lib/safeExtract";
 import { preflightCached } from "../services/dbPreflight";
 import { z } from "zod";
 
+/** Generate a slugified rule_key from category + description */
+function generateRuleKey(category: string, description: string): string {
+  const slug = `${category}_${description.slice(0, 50)}`
+    .toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[ăâ]/gi, "a").replace(/[îì]/gi, "i")
+    .replace(/[șş]/gi, "s").replace(/[țţ]/gi, "t")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_|_$/g, "");
+  return slug;
+}
+
 // W2.3: Zod schema for evaluationLogic JSONB validation
 const evaluationLogicSchema = z.object({
   type: z.enum(["lookup", "range", "boolean", "formula"]),
@@ -408,6 +421,7 @@ async function saveFixedRules(fixedRules: any[], documentId: string, organizatio
       documentId,
       organizationId,
       type: "fixed" as const,
+      ruleKey: r.rule_key || r.ruleKey || generateRuleKey(r.category || "eligibilitate", r.description || ""),
       category: r.category || "eligibilitate",
       description: r.description,
       condition: r.condition,
@@ -426,12 +440,14 @@ async function saveInterpretedRules(interpRules: any[], documentId: string, orga
       documentId,
       organizationId,
       type: "interpreted" as const,
+      ruleKey: r.rule_key || r.ruleKey || generateRuleKey(r.category || "selectie", r.description || ""),
       category: r.category || "selectie",
       description: r.description,
       condition: r.condition,
       sourcePage: r.source_page,
       sourceText: r.source_text,
       confidence: String(Number(r.confidence) || 0.75),
+      needsReview: r.needs_review ?? (Number(r.confidence || 0.75) < 0.85),
       validated: false,
     }))
   );
@@ -1136,6 +1152,7 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
       await db.update(documents).set({
         status: "processed",
         pageCount,
+        documentTypeClass: "guide" as any,
         processingResult: qualityMetrics,
         processedAt: new Date(),
       }).where(eq(documents.id, documentId));

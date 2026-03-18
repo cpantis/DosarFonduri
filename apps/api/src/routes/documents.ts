@@ -369,6 +369,7 @@ documentRoutes.post("/presigned-url", async (c) => {
       status: "uploaded",
       processingType: processingType as any,
       generationMode: generationMode as any,
+      documentTypeClass: processingType === "ghid" ? "guide" as any : processingType === "template" ? "cerere_finantare_template" as any : null,
       tags: [],
       uploadedBy: auth.userId,
     }).returning();
@@ -603,6 +604,7 @@ documentRoutes.post("/folders/:folderId/documents", async (c) => {
       status: "uploaded",
       processingType: processingType as any,
       generationMode: generationMode as any,
+      documentTypeClass: processingType === "ghid" ? "guide" as any : processingType === "template" ? "cerere_finantare_template" as any : null,
       tags,
       uploadedBy: auth.userId,
     }).returning();

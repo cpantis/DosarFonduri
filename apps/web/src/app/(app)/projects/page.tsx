@@ -70,6 +70,7 @@ export default function ProjectsPage() {
   const [searchFilter, setSearchFilter] = useState("");
   const [sortBy, setSortBy] = useState<"date" | "name" | "value">("date");
   const [folderTree, setFolderTree] = useState<ProgramTree[]>([]);
+  const [guideWarning, setGuideWarning] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -90,6 +91,23 @@ export default function ProjectsPage() {
       setFolderTree(buildProgramTree(folders));
     }).catch((err) => { console.warn("[projects] folders load:", err.message); setFolderTree([]); });
   }, [showCreate]);
+
+  // Check if selected session has a processed guide
+  useEffect(() => {
+    if (!createData.folderId) { setGuideWarning(null); return; }
+    setGuideWarning(null);
+    apiGet(`/api/documents/folders/${createData.folderId}/documents`)
+      .then((data: any) => {
+        const docs = Array.isArray(data) ? data : data.documents || [];
+        const hasProcessedGuide = docs.some((d: any) =>
+          d.processingType === "guide" && d.status === "processed"
+        );
+        if (!hasProcessedGuide) {
+          setGuideWarning("Măsura selectată nu are ghid procesat. Proiectul nu va avea reguli de eligibilitate.");
+        }
+      })
+      .catch(() => { /* ignore — non-critical check */ });
+  }, [createData.folderId]);
 
   const [createError, setCreateError] = useState<string | null>(null);
 
@@ -360,6 +378,12 @@ export default function ProjectsPage() {
                     </div>
                   ))}
                 </div>
+                {guideWarning && (
+                  <div className="mb-3 flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5 text-[12px] text-amber-800">
+                    <span className="shrink-0 mt-0.5">⚠️</span>
+                    <span>{guideWarning}</span>
+                  </div>
+                )}
                 <div className="flex gap-2.5 justify-end pt-2 border-t border-slate-100">
                   <BtnSecondary icon={<IconArrowLeft />} onClick={() => setCreateStep(1)}>Înapoi</BtnSecondary>
                   <BtnPrimary icon={<IconArrowRight />} disabled={!createData.folderId} onClick={() => setCreateStep(3)}>Continuă</BtnPrimary>

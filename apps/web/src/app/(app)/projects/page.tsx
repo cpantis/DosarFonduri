@@ -103,7 +103,7 @@ export default function ProjectsPage() {
           d.processingType === "ghid" && d.status === "processed"
         );
         if (!hasProcessedGuide) {
-          setGuideWarning("Măsura selectată nu are ghid procesat. Proiectul nu va avea reguli de eligibilitate.");
+          setGuideWarning("Sesiunea selectată nu are ghid procesat. Proiectul nu va avea reguli de eligibilitate.");
         }
       })
       .catch(() => { /* ignore — non-critical check */ });

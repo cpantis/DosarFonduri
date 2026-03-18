@@ -8,6 +8,7 @@ import {
   solomonConversations, solomonMessages,
   orgConfig, solomonKnowledge,
   elementRuleLinks, elementDefinitions, guideReferenceTables,
+  projectChecklist, scoringCriteria,
 } from "../db/schema";
 import { eq, and, inArray } from "drizzle-orm";
 import { logAIUsage } from "./aiUsage";
@@ -294,6 +295,21 @@ async function buildSystemPrompt(projectId: string, organizationId: string): Pro
       passedRules.push(`- ✅ ${rule.description}`);
     }
   }
+
+  // Get project checklist items
+  const checklistItems = await db.query.projectChecklist.findMany({
+    where: eq(projectChecklist.projectId, projectId),
+    orderBy: (c, { asc }) => [asc(c.category), asc(c.sortOrder)],
+  });
+  const doneItems = checklistItems.filter(i => i.done);
+  const missingItems = checklistItems.filter(i => !i.done);
+
+  // Get scoring criteria for the guide document
+  const allScoringCriteria = await db.query.scoringCriteria.findMany({
+    where: eq(scoringCriteria.organizationId, organizationId),
+    orderBy: (c, { asc }) => [asc(c.category), asc(c.sortOrder)],
+  });
+  const totalMaxPoints = allScoringCriteria.reduce((sum, c) => sum + Number(c.maxPoints), 0);
 
   // Company financials (all years for trends)
   const allFinancials = await db.query.companyFinancials.findMany({
@@ -818,6 +834,28 @@ ${activeKnowledge.map(k => {
   entry += `\n${k.content}`;
   return entry;
 }).join("\n\n")}
+` : ""}
+${checklistItems.length > 0 ? `═══════════════════════════════════════════
+## CHECKLIST DOCUMENTE PROIECT
+═══════════════════════════════════════════
+Documente depuse (${doneItems.length}/${checklistItems.length}):
+${doneItems.map(i => `✅ ${i.name} (${i.category})`).join("\n")}
+
+Documente LIPSĂ:
+${missingItems.map(i => `❌ ${i.name} (${i.category})`).join("\n")}
+
+Dacă utilizatorul întreabă ce documente mai are nevoie, răspunde din această listă. Dacă un document lipsă e critic pentru completarea câmpurilor, menționează proactiv.
+` : ""}
+${allScoringCriteria.length > 0 ? `═══════════════════════════════════════════
+## CRITERII DE SELECȚIE (SCORING)
+═══════════════════════════════════════════
+Total punctaj maxim: ${totalMaxPoints} puncte
+Prag calitate estimat: 56 puncte
+
+Per criteriu:
+${allScoringCriteria.map(c => `- ${c.name} (max ${c.maxPoints}p): ${c.evaluationLogic ? JSON.stringify(c.evaluationLogic) : "fără logică definită"}`).join("\n")}
+
+Când completezi câmpuri, menționează impactul pe punctaj: "Dacă setezi X la valoarea Y, câștigi Z puncte la criteriul W."
 ` : ""}
 ═══════════════════════════════════════════
 ## CÂMPURI DE COMPLETAT (${emptyElements.length} rămase)
@@ -1412,7 +1450,7 @@ export async function processSolomonMessage(params: {
           const peByDefId = new Map(allProjectElements.filter(pe => pe.elementDefId).map(pe => [pe.elementDefId!, pe]));
           const peByTmplId = new Map(allProjectElements.filter(pe => pe.templateElementId).map(pe => [pe.templateElementId!, pe]));
 
-          const toUpdate: Array<{ id: string; value: string; elementDefId?: string }> = [];
+          const toUpdate: Array<{ id: string; value: string; oldValue: string | null; elementDefId?: string }> = [];
           const toInsert: Array<{ projectId: string; elementDefId?: string; templateElementId?: string; value: string; source: "solomon_chat"; confirmed: boolean; validationStatus: "pending" }> = [];
           const modifiedElementIds: string[] = [];
 
@@ -1507,6 +1545,7 @@ export async function processSolomonMessage(params: {
                 toUpdate.push({
                   id: existing.id,
                   value: el.value,
+                  oldValue: existing.value || null,
                   ...(elemDef && !existing.elementDefId ? { elementDefId: elemDef.id } : {}),
                 });
                 modifiedElementIds.push(existing.id);
@@ -1533,6 +1572,13 @@ export async function processSolomonMessage(params: {
               ...(upd.elementDefId ? { elementDefId: upd.elementDefId } : {}),
               updatedAt: new Date(),
             }).where(eq(projectElements.id, upd.id));
+            await logElementChange({
+              projectElementId: upd.id,
+              oldValue: upd.oldValue,
+              newValue: upd.value,
+              changedBy: userId,
+              changeSource: "solomon",
+            });
           }
 
           // Batch inserts
@@ -1540,6 +1586,15 @@ export async function processSolomonMessage(params: {
             try {
               const inserted = await db.insert(projectElements).values(toInsert).returning({ id: projectElements.id });
               modifiedElementIds.push(...inserted.map(r => r.id));
+              for (let idx = 0; idx < inserted.length; idx++) {
+                await logElementChange({
+                  projectElementId: inserted[idx].id,
+                  oldValue: null,
+                  newValue: toInsert[idx].value || null,
+                  changedBy: userId,
+                  changeSource: "solomon",
+                });
+              }
             } catch (insertErr: any) {
               // Fallback to per-element insert on conflict
               if (insertErr.code === "23505") {
@@ -1548,6 +1603,13 @@ export async function processSolomonMessage(params: {
                   try {
                     const [ins] = await db.insert(projectElements).values(row).returning({ id: projectElements.id });
                     modifiedElementIds.push(ins.id);
+                    await logElementChange({
+                      projectElementId: ins.id,
+                      oldValue: null,
+                      newValue: row.value || null,
+                      changedBy: userId,
+                      changeSource: "solomon",
+                    });
                   } catch (perErr: any) {
                     if (perErr.code === "23505") {
                       const retryExisting = await db.query.projectElements.findFirst({
@@ -1559,6 +1621,13 @@ export async function processSolomonMessage(params: {
                       if (retryExisting) {
                         await db.update(projectElements).set({ value: row.value, source: "solomon_chat", confirmed: false, updatedAt: new Date() }).where(eq(projectElements.id, retryExisting.id));
                         modifiedElementIds.push(retryExisting.id);
+                        await logElementChange({
+                          projectElementId: retryExisting.id,
+                          oldValue: retryExisting.value || null,
+                          newValue: row.value || null,
+                          changedBy: userId,
+                          changeSource: "solomon",
+                        });
                       }
                     } else {
                       throw perErr;

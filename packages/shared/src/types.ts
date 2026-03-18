@@ -29,6 +29,7 @@ export type ElementCategory = "beneficiary" | "farm" | "investment" | "location"
 export type ElementDataType = "number" | "text" | "enum" | "boolean" | "date" | "document_ref" | "list_items";
 export type PlaceholderMappedBy = "auto" | "manual";
 export type ValidationStatus = "pending" | "valid" | "warning" | "invalid";
+export type BlueprintTone = "formal" | "technical" | "narrative";
 
 export interface AuthUser {
   id: string;

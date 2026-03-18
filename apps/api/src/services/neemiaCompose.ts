@@ -33,7 +33,34 @@ function safeTmpPath(prefix: string, ext: string): string {
   return path.join(os.tmpdir(), `${prefix}_${crypto.randomUUID()}.${ext}`);
 }
 
-// ═══ TYPES ═══
+// ═══ BLUEPRINT TYPES (Phase 1: Document Understanding) ═══
+
+/** Generated once per template by AI — cached and reused across all projects */
+export interface DocumentBlueprint {
+  templateId: string;
+  documentPurpose: string;          // "Memoriu Justificativ sM 4.1"
+  evaluatorExpectations: string;    // Ce caută evaluatorul AFIR
+  generatedAt: string;              // ISO timestamp
+  generatedBy: string;              // AI model used
+  sections: SectionBlueprint[];
+}
+
+export interface SectionBlueprint {
+  sectionId: string;                 // matches compose marker
+  title: string;                     // "Descrierea investiției"
+  purpose: string;                   // "Demonstrează necesitatea investiției"
+  requiredElementKeys: string[];     // Ce date TREBUIE să fie prezente
+  optionalElementKeys: string[];     // Ce date îmbunătățesc secțiunea
+  referenceTableIds: string[];       // Anexa 3, Anexa 4 dacă relevant
+  tone: "formal" | "technical" | "narrative";
+  targetLength: { min: number; max: number };  // cuvinte
+  keywords: string[];                // "viabilitate", "modernizare" — ce caută evaluatorul
+  evaluatorChecklist: string[];      // Ce bifează evaluatorul la această secțiune
+  structureHint?: string;            // "CINE/CE → UNDE → DIMENSIUNE → URGENȚĂ"
+  forbiddenPhrases?: string[];       // Expresii de evitat
+}
+
+// ═══ COMPOSE TYPES ═══
 
 export interface ComposeSection {
   marker: string;

@@ -145,6 +145,30 @@ export const generationModeSchema = z.object({
   mode: z.enum(["fill", "compose"]),
 });
 
+export const sectionBlueprintSchema = z.object({
+  sectionId: z.string().min(1).max(255),
+  title: z.string().max(500),
+  purpose: z.string().max(5000),
+  requiredElementKeys: z.array(z.string()),
+  optionalElementKeys: z.array(z.string()),
+  referenceTableIds: z.array(z.string()),
+  tone: z.enum(["formal", "technical", "narrative"]),
+  targetLength: z.object({ min: z.number().int().min(0), max: z.number().int().min(1) }),
+  keywords: z.array(z.string()),
+  evaluatorChecklist: z.array(z.string()),
+  structureHint: z.string().max(2000).optional(),
+  forbiddenPhrases: z.array(z.string()).optional(),
+});
+
+export const documentBlueprintSchema = z.object({
+  templateId: z.string().uuid(),
+  documentPurpose: z.string().max(5000),
+  evaluatorExpectations: z.string().max(10000),
+  generatedAt: z.string(),
+  generatedBy: z.string().max(100),
+  sections: z.array(sectionBlueprintSchema),
+});
+
 export const composeConfigSchema = z.object({
   sections: z.array(z.object({
     marker: z.string().min(1).max(255),

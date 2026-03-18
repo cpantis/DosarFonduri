@@ -38,8 +38,8 @@ healthRoutes.get("/db", async (c) => {
     }
   } catch { /* redis down */ }
 
-  // Check R2/S3 config
-  const r2Ok = !!(process.env.R2_ACCOUNT_ID && process.env.R2_ACCESS_KEY_ID);
+  // Check R2/S3 config (must match storage.ts: S3_ACCESS_KEY + S3_SECRET_KEY + S3_ENDPOINT)
+  const r2Ok = !!(process.env.S3_ACCESS_KEY && process.env.S3_SECRET_KEY && process.env.S3_ENDPOINT);
 
   const status = allReady && redisOk ? "healthy" : "unhealthy";
 

@@ -100,7 +100,7 @@ export default function ProjectsPage() {
       .then((data: any) => {
         const docs = Array.isArray(data) ? data : data.documents || [];
         const hasProcessedGuide = docs.some((d: any) =>
-          d.processingType === "guide" && d.status === "processed"
+          d.processingType === "ghid" && d.status === "processed"
         );
         if (!hasProcessedGuide) {
           setGuideWarning("Măsura selectată nu are ghid procesat. Proiectul nu va avea reguli de eligibilitate.");

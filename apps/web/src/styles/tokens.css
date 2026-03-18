@@ -50,13 +50,13 @@
   --spinner-track: rgba(255,255,255,.3);
   --spinner-head: #fff;
   /* Sidebar */
-  --sidebar-bg: #0F172A;
-  --sidebar-hover: rgba(255,255,255,.06);
-  --sidebar-active-bg: rgba(77,139,255,.12);
-  --sidebar-border: rgba(255,255,255,.06);
-  --sidebar-text: rgba(255,255,255,.7);
-  --sidebar-text-active: #ffffff;
-  --sidebar-section: rgba(255,255,255,.35);
+  --sidebar-bg: #ffffff;
+  --sidebar-hover: rgba(0,0,0,.04);
+  --sidebar-active-bg: rgba(37,99,235,.08);
+  --sidebar-border: #e2e8f0;
+  --sidebar-text: #64748b;
+  --sidebar-text-active: #0f172a;
+  --sidebar-section: #94a3b8;
   --badge-draft-color: #5a6478;
   --badge-draft-bg: rgba(90,100,120,0.12);
   --badge-progress-color: #4d8bff;
@@ -115,13 +115,13 @@
   --spinner-track: rgba(0,0,0,.15);
   --spinner-head: #2563eb;
   /* Sidebar */
-  --sidebar-bg: #0F172A;
-  --sidebar-hover: rgba(0,0,0,.06);
-  --sidebar-active-bg: rgba(37,99,235,.1);
-  --sidebar-border: rgba(0,0,0,.08);
-  --sidebar-text: rgba(255,255,255,.7);
-  --sidebar-text-active: #ffffff;
-  --sidebar-section: rgba(255,255,255,.35);
+  --sidebar-bg: #ffffff;
+  --sidebar-hover: rgba(0,0,0,.04);
+  --sidebar-active-bg: rgba(37,99,235,.08);
+  --sidebar-border: #e2e8f0;
+  --sidebar-text: #64748b;
+  --sidebar-text-active: #0f172a;
+  --sidebar-section: #94a3b8;
   --badge-draft-color: #64748b;
   --badge-draft-bg: rgba(100,116,139,0.1);
   --badge-progress-color: #2563eb;

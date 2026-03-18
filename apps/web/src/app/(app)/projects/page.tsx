@@ -191,13 +191,13 @@ export default function ProjectsPage() {
               return (
                 <div
                   key={p.id}
-                  className="bg-white rounded-xl border border-slate-200/80 p-5 hover:shadow-sm hover:border-slate-300/80 transition-all cursor-pointer group"
+                  className="bg-white rounded-xl border border-slate-200/80 p-5 hover:shadow-sm hover:border-slate-300/80 transition-all cursor-pointer group overflow-hidden"
                   onClick={() => router.push(`/projects/${p.id}`)}
                 >
                   <div className="flex items-center justify-between">
                     <div className="min-w-0">
-                      <div className="flex items-center gap-2.5">
-                        <span className="text-[15px] font-semibold text-slate-900 group-hover:text-blue-600 transition-colors">{p.name}</span>
+                      <div className="flex items-center gap-2.5 flex-wrap">
+                        <span className="text-[15px] font-semibold text-slate-900 group-hover:text-blue-600 transition-colors truncate max-w-full">{p.name}</span>
                         <StatusBadge status={p.status} />
                         {p.scoreSummary && p.scoreSummary.maxTotalPoints > 0 && (
                           <span className="text-[12px] font-mono font-bold tabular-nums px-1.5 py-0.5 rounded" style={{
@@ -207,9 +207,9 @@ export default function ProjectsPage() {
                         )}
                         {p.valoare && <span className="text-[13px] font-mono font-semibold text-emerald-600 tabular-nums">{formatValoare(p.valoare)}</span>}
                       </div>
-                      <div className="text-[13px] text-slate-500 mt-1 flex items-center gap-2">
-                        <span>{p.company?.denumire || "—"}</span>
-                        {programPath.masura && <><span className="text-slate-200">·</span><span className="text-slate-400">{programPath.masura}</span></>}
+                      <div className="text-[13px] text-slate-500 mt-1 flex items-center gap-2 flex-wrap">
+                        <span className="truncate max-w-[200px]">{p.company?.denumire || "—"}</span>
+                        {programPath.masura && <><span className="text-slate-200">·</span><span className="text-slate-400 truncate max-w-[200px]">{programPath.masura}</span></>}
                         {p.updatedAt && <><span className="text-slate-200">·</span><span className="text-slate-400">{formatRelativeTime(p.updatedAt)}</span></>}
                       </div>
                     </div>

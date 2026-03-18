@@ -3705,9 +3705,19 @@ export default function ProjectViewPage() {
                       <div key={msgIdx}>
                         <div className={`chat-msg ${msg.role}`}>
                           {renderMsgText(msg.text)}
-                          {msg.extractions && (
+                          {msg.extractions && (() => {
+                            const pendingIndices = msg.extractions.map((_: any, i: number) => i).filter((i: number) => !extractionStates[`${msgIdx}-${i}`]);
+                            return (
                             <div className="extraction-cards">
-                              {msg.extractions.map((ext, extIdx) => {
+                              {pendingIndices.length > 1 && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); pendingIndices.forEach((i: number) => handleConfirmExtraction(msgIdx, i)); }}
+                                  style={{ alignSelf: "flex-start", padding: "4px 12px", fontSize: 12, fontWeight: 600, borderRadius: 8, background: "#059669", color: "#fff", border: "none", cursor: "pointer", marginBottom: 4 }}
+                                >
+                                  &#10003; Confirmă toate ({pendingIndices.length})
+                                </button>
+                              )}
+                              {msg.extractions.map((ext: any, extIdx: number) => {
                                 const k = `${msgIdx}-${extIdx}`;
                                 const state = extractionStates[k];
                                 return (
@@ -3760,7 +3770,8 @@ export default function ProjectViewPage() {
                                 );
                               })}
                             </div>
-                          )}
+                            );
+                          })()}
                         </div>
                         {msg.role === "assistant" && (
                           <div className="chat-timestamp">

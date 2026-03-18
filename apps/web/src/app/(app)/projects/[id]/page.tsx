@@ -364,6 +364,8 @@ export default function ProjectViewPage() {
   const [refinePopup, setRefinePopup] = useState<{ text: string; x: number; y: number } | null>(null);
   const [refineInput, setRefineInput] = useState("");
   const chatRef = useRef<HTMLDivElement>(null);
+  const chatBottomRef = useRef<HTMLDivElement>(null);
+  const [solomonAutoScroll, setSolomonAutoScroll] = useState(true);
   const popupRef = useRef<HTMLDivElement>(null);
   const solomonFileRef = useRef<HTMLInputElement>(null);
   const [solomonDragOver, setSolomonDragOver] = useState(false);
@@ -599,8 +601,17 @@ export default function ProjectViewPage() {
   }, [ghidTab, projectId, ghidViewerData, ghidViewerLoading]);
 
   useEffect(() => {
-    if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
-  }, [solomonMessages]);
+    if (solomonAutoScroll && chatBottomRef.current) {
+      chatBottomRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [solomonMessages, solomonAutoScroll]);
+
+  const handleChatScroll = () => {
+    const el = chatRef.current;
+    if (!el) return;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 100;
+    setSolomonAutoScroll(atBottom);
+  };
 
   useEffect(() => {
     const close = (e: MouseEvent) => {
@@ -666,6 +677,7 @@ export default function ProjectViewPage() {
     const userText = solomonInput;
     setSolomonMessages(prev => [...prev, { role: "user", text: userText, extractions: null }]);
     setSolomonInput("");
+    setSolomonAutoScroll(true);
     setSolomonStreaming(true);
     setSolomonTimedOut(false);
 
@@ -3672,7 +3684,7 @@ export default function ProjectViewPage() {
                   </div>
 
                   {/* Messages */}
-                  <div className="chat-messages" ref={chatRef} onMouseUp={handleTextSelect}>
+                  <div className="chat-messages" ref={chatRef} onScroll={handleChatScroll} onMouseUp={handleTextSelect}>
                     {solomonMessages.map((msg, msgIdx) => (
                       <div key={msgIdx}>
                         <div className={`chat-msg ${msg.role}`}>
@@ -3742,6 +3754,7 @@ export default function ProjectViewPage() {
                         )}
                       </div>
                     ))}
+                    <div ref={chatBottomRef} />
                   </div>
 
                   {/* F6.1: Timeout warning */}

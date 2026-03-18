@@ -578,13 +578,12 @@ export async function generateDocument(params: GenerateDocParams): Promise<Reada
         await logAIUsage({
           organizationId,
           userId,
+          agent: "neemia",
           model: "deterministic-fill",
-          operation: "neemia_fill",
-          inputTokens: 0,
-          outputTokens: 0,
-          cost: 0,
+          tokensInput: 0,
+          tokensOutput: 0,
+          action: "neemia_fill",
           projectId,
-          metadata: { templateName: templateDoc.name, filledCount, missingCount },
         }).catch(() => {});
 
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({

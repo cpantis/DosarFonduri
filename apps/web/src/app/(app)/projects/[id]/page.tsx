@@ -909,6 +909,7 @@ export default function ProjectViewPage() {
           }).catch(() => {}); // Silently fail validation
         } catch (err) {
           console.error("Failed to persist Solomon extraction:", err);
+          toast("error", "Eroare la salvarea datelor extrase");
         }
       } else {
         toast("warning", `Elementul extras „${ext.label || ext.key}" nu corespunde niciunui câmp din template — valoarea nu a fost salvată.`);
@@ -940,6 +941,7 @@ export default function ProjectViewPage() {
         ));
       } catch (err) {
         console.error("Failed to persist Solomon element confirmation:", err);
+        toast("error", "Eroare la confirmarea elementului");
       }
     }
   };
@@ -1330,6 +1332,7 @@ export default function ProjectViewPage() {
       setNeemiaVersionsOpen(templateDocumentId);
     } catch (err) {
       console.error("Failed to load versions:", err);
+      toast("error", "Eroare la încărcarea istoricului");
     }
   };
 
@@ -1349,6 +1352,7 @@ export default function ProjectViewPage() {
       setGuideRules(mapGuideRules(eligData.grouped || []));
     } catch (err) {
       console.error("Re-check eligibility failed:", err);
+      toast("error", "Eroare la re-verificarea eligibilității");
     } finally {
       setRecheckLoading(false);
     }
@@ -1361,6 +1365,7 @@ export default function ProjectViewPage() {
       await apiPut(`/api/projects/${projectId}/checklist/${itemId}`, { done: !currentDone });
     } catch (err) {
       console.error("Checklist toggle failed:", err);
+      toast("error", "Eroare la actualizarea checklistului");
       setChecklistItems(items => items.map(i => i.id === itemId ? { ...i, done: currentDone } : i));
     }
   };
@@ -1373,7 +1378,7 @@ export default function ProjectViewPage() {
       setCheckNewName("");
       setCheckNewCat("");
       setCheckAddOpen(false);
-    } catch (err) { console.error("Checklist add failed:", err); }
+    } catch (err) { console.error("Checklist add failed:", err); toast("error", "Eroare la adăugarea în checklist"); }
   };
 
   const handleChecklistDelete = async (itemId: string) => {
@@ -1382,7 +1387,7 @@ export default function ProjectViewPage() {
       await apiDelete(`/api/projects/${projectId}/checklist/${itemId}`);
       setChecklistItems(prev => prev.filter(i => i.id !== itemId));
       setCheckActionId(null);
-    } catch (err) { console.error("Checklist delete failed:", err); }
+    } catch (err) { console.error("Checklist delete failed:", err); toast("error", "Eroare la ștergerea din checklist"); }
   };
 
   const handleChecklistMapTemplate = async (itemId: string, templateId: string | null) => {
@@ -1393,7 +1398,7 @@ export default function ProjectViewPage() {
       const tmpl = neemiaTemplates.find(t => t.id === templateId);
       setChecklistItems(prev => prev.map(i => i.id === itemId ? { ...i, templateId, templateName: tmpl?.name || null } : i));
       setCheckMapOpen(null);
-    } catch (err) { console.error("Checklist map template failed:", err); }
+    } catch (err) { console.error("Checklist map template failed:", err); toast("error", "Eroare la asocierea template-ului"); }
   };
 
   const handleChecklistMoveCategory = async (itemId: string, newCategory: string) => {
@@ -1402,7 +1407,7 @@ export default function ProjectViewPage() {
       await apiPut(`/api/projects/${projectId}/checklist/${itemId}`, { category: newCategory });
       setChecklistItems(prev => prev.map(i => i.id === itemId ? { ...i, category: newCategory } : i));
       setCheckActionId(null);
-    } catch (err) { console.error("Checklist move failed:", err); }
+    } catch (err) { console.error("Checklist move failed:", err); toast("error", "Eroare la mutarea în checklist"); }
   };
 
   // Close checklist actions menu on outside click
@@ -1424,6 +1429,7 @@ export default function ProjectViewPage() {
       setElements(prev => prev.map(e => e.id === elId ? { ...e, status: "confirmat" as const, confidence: 100 } : e));
     } catch (err) {
       console.error("Confirm element failed:", err);
+      toast("error", "Eroare la confirmarea elementului");
     }
   };
 
@@ -1441,6 +1447,7 @@ export default function ProjectViewPage() {
       setEditingElementValue("");
     } catch (err) {
       console.error("Save element edit failed:", err);
+      toast("error", "Eroare la salvarea elementului");
     }
   };
 
@@ -2578,6 +2585,15 @@ export default function ProjectViewPage() {
               const eligStatusIcons: Record<string, string> = { pass: "✓", fail: "✕", pending: "?" };
               const eligStatusLabels: Record<string, string> = { pass: "ELIGIBIL", fail: "NEELIGIBIL", pending: "PENDING" };
 
+              if (eligibilityRules.length === 0) {
+                return (
+                  <div className="elig-panel" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 200, color: "#8892a8" }}>
+                    <div style={{ fontSize: 32, marginBottom: 8 }}>&#128737;</div>
+                    <div style={{ fontSize: 14, fontWeight: 600 }}>Nicio regulă de eligibilitate</div>
+                    <div style={{ fontSize: 12, marginTop: 4 }}>Procesează un ghid de finanțare pentru a vedea regulile de eligibilitate</div>
+                  </div>
+                );
+              }
               return (
               <div className="elig-panel">
                 <div className="elig-summary">
@@ -2684,6 +2700,16 @@ export default function ProjectViewPage() {
               const sel = selectedRule ? guideRules.find(r => r.id === selectedRule) : null;
 
               const guideTrustScore = (project as any)?.guideTrustScore as number | null;
+
+              if (guideRules.length === 0) {
+                return (
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 200, color: "#8892a8", padding: 24 }}>
+                    <div style={{ fontSize: 32, marginBottom: 8 }}>&#128214;</div>
+                    <div style={{ fontSize: 14, fontWeight: 600 }}>Nicio regulă extrasă încă</div>
+                    <div style={{ fontSize: 12, marginTop: 4 }}>Uploadează un ghid de finanțare pentru a extrage regulile automat</div>
+                  </div>
+                );
+              }
 
               return (
               <div className="ghid-layout">
@@ -3197,7 +3223,14 @@ export default function ProjectViewPage() {
             })()}
 
             {/* ELEMENTE */}
-            {activeLeaf === "elemente" && (
+            {activeLeaf === "elemente" && elements.length === 0 && (
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 200, color: "#8892a8", padding: 24 }}>
+                <div style={{ fontSize: 32, marginBottom: 8 }}>&#128202;</div>
+                <div style={{ fontSize: 14, fontWeight: 600 }}>Niciun element extras</div>
+                <div style={{ fontSize: 12, marginTop: 4 }}>Uploadează documente client sau folosește Solomon pentru a extrage date</div>
+              </div>
+            )}
+            {activeLeaf === "elemente" && elements.length > 0 && (
               <div className="elemente-layout">
                 <div className="elemente-list">
                   <div className="completitudine-bar">
@@ -4010,6 +4043,12 @@ export default function ProjectViewPage() {
                     </div>
                   )}
 
+                  {neemiaTemplates.length === 0 && (
+                    <div style={{ padding: "24px 12px", textAlign: "center", color: "#8892a8", fontSize: 13 }}>
+                      <div style={{ fontSize: 28, marginBottom: 6 }}>&#128196;</div>
+                      Niciun template asociat proiectului. Uploadează template-uri DOCX/PDF/XLSX.
+                    </div>
+                  )}
                   {neemiaTemplates.map((tmpl, i) => {
                     const p = neemiaProgressPct(tmpl);
                     return (

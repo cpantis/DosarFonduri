@@ -263,11 +263,15 @@ console.log(`  REDIS_URL: ${process.env.REDIS_URL ? "✅ set" : "⚠️ default"
     const { sql: sqlTag } = await import("drizzle-orm");
     const stmts = [
       `DO $$ BEGIN CREATE TYPE "generation_mode" AS ENUM('fill','compose'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+      `DO $$ BEGIN CREATE TYPE "generation_context" AS ENUM('work','submission'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
       `DO $$ BEGIN CREATE TYPE "document_type_class" AS ENUM('guide','guide_annex_table','guide_annex_form','certificat_constatator','bilant_anaf','contract_arenda','oferta_pret','registru_imobilizari','declaratie_expert_contabil','document_mediu','extras_cont','certificat_fiscal','memoriu_template','cerere_finantare_template','anexa_b_template','anexa_c_template','carte_identitate','diploma_studii','act_constitutiv','statut','descriere_proiect','adeverinta','foto_echipament','other'); EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
       `ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "mime_type" varchar(100) NOT NULL DEFAULT 'application/octet-stream'`,
       `ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "file_hash" varchar(64)`,
       `ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "generation_mode" "generation_mode" DEFAULT 'fill'`,
       `ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "compose_config" jsonb`,
+      `ALTER TABLE "project_documents" ADD COLUMN IF NOT EXISTS "generation_mode" "generation_mode" DEFAULT 'fill'`,
+      `ALTER TABLE "project_documents" ADD COLUMN IF NOT EXISTS "compose_content" jsonb`,
+      `ALTER TABLE "project_documents" ADD COLUMN IF NOT EXISTS "generation_context" "generation_context" DEFAULT 'work'`,
       `ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "document_type_class" "document_type_class"`,
       `ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "classification_confidence" decimal(3,2)`,
       `ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "processing_result" jsonb`,

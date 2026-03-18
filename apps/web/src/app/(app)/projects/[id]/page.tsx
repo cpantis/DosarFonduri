@@ -361,6 +361,8 @@ export default function ProjectViewPage() {
   const [solomonStreaming, setSolomonStreaming] = useState(false);
   const [extractionStates, setExtractionStates] = useState<Record<string, "confirmed" | "rejected">>({});
   const [extractionValidations, setExtractionValidations] = useState<Record<string, any>>({});
+  const [editingExtraction, setEditingExtraction] = useState<string | null>(null);
+  const [editingExtractionValue, setEditingExtractionValue] = useState("");
   const [refinePopup, setRefinePopup] = useState<{ text: string; x: number; y: number } | null>(null);
   const [refineInput, setRefineInput] = useState("");
   const chatRef = useRef<HTMLDivElement>(null);
@@ -3726,13 +3728,55 @@ export default function ProjectViewPage() {
                                       <span className="exc-label">{ext.label}</span>
                                       <span className="exc-confidence">{ext.confidence}%</span>
                                     </div>
-                                    <div className="exc-value">{ext.value}</div>
+                                    {editingExtraction === k ? (
+                                      <input
+                                        className="exc-value"
+                                        autoFocus
+                                        value={editingExtractionValue}
+                                        onChange={(e) => setEditingExtractionValue(e.target.value)}
+                                        onKeyDown={(e) => {
+                                          if (e.key === "Enter") {
+                                            setSolomonMessages(prev => {
+                                              const updated = [...prev];
+                                              const m = { ...updated[msgIdx] };
+                                              const exts = [...(m.extractions || [])];
+                                              exts[extIdx] = { ...exts[extIdx], value: editingExtractionValue };
+                                              m.extractions = exts;
+                                              updated[msgIdx] = m;
+                                              return updated;
+                                            });
+                                            setEditingExtraction(null);
+                                          } else if (e.key === "Escape") {
+                                            setEditingExtraction(null);
+                                          }
+                                        }}
+                                        onBlur={() => {
+                                          setSolomonMessages(prev => {
+                                            const updated = [...prev];
+                                            const m = { ...updated[msgIdx] };
+                                            const exts = [...(m.extractions || [])];
+                                            exts[extIdx] = { ...exts[extIdx], value: editingExtractionValue };
+                                            m.extractions = exts;
+                                            updated[msgIdx] = m;
+                                            return updated;
+                                          });
+                                          setEditingExtraction(null);
+                                        }}
+                                        style={{ width: "100%", background: "#fff", border: "1px solid #2563eb", borderRadius: 6, padding: "4px 8px", fontSize: 13, fontFamily: "var(--font-mono, monospace)" }}
+                                      />
+                                    ) : (
+                                      <div className="exc-value">{ext.value}</div>
+                                    )}
                                     {!state ? (
                                       <div className="exc-actions">
                                         <button className="exc-btn confirm-btn" onClick={(e) => { e.stopPropagation(); handleConfirmExtraction(msgIdx, extIdx); }}>
                                           &#10003; Confirmă
                                         </button>
-                                        <button className="exc-btn edit-btn" title="Editează înainte de confirmare">
+                                        <button className="exc-btn edit-btn" title="Editează înainte de confirmare" onClick={(e) => {
+                                          e.stopPropagation();
+                                          setEditingExtraction(k);
+                                          setEditingExtractionValue(ext.value);
+                                        }}>
                                           &#9998; Editează
                                         </button>
                                         <button className="exc-btn reject-btn" onClick={(e) => { e.stopPropagation(); handleRejectExtraction(msgIdx, extIdx); }}>

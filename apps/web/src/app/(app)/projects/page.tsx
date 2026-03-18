@@ -70,6 +70,7 @@ export default function ProjectsPage() {
   const [searchFilter, setSearchFilter] = useState("");
   const [sortBy, setSortBy] = useState<"date" | "name" | "value">("date");
   const [folderTree, setFolderTree] = useState<ProgramTree[]>([]);
+  const [rawFolders, setRawFolders] = useState<FolderNode[]>([]);
   const [guideWarning, setGuideWarning] = useState<string | null>(null);
 
   useEffect(() => {
@@ -88,26 +89,50 @@ export default function ProjectsPage() {
     }).catch((err) => { console.warn("[projects] companies load:", err.message); setCompanies([]); });
     apiGet("/api/documents/folders").then((data: any) => {
       const folders = Array.isArray(data) ? data : data.folders || [];
+      setRawFolders(folders);
       setFolderTree(buildProgramTree(folders));
-    }).catch((err) => { console.warn("[projects] folders load:", err.message); setFolderTree([]); });
+    }).catch((err) => { console.warn("[projects] folders load:", err.message); setRawFolders([]); setFolderTree([]); });
   }, [showCreate]);
 
-  // Check if selected session has a processed guide
+  // Check if selected session has a processed guide (guides live in a "ghiduri" child folder of the session)
   useEffect(() => {
     if (!createData.folderId) { setGuideWarning(null); return; }
     setGuideWarning(null);
-    apiGet(`/api/documents/folders/${createData.folderId}/documents`)
+
+    // Find the "ghiduri" subfolder of the selected session from the raw folder tree
+    const findGhiduriFolderId = (nodes: FolderNode[]): string | null => {
+      for (const node of nodes) {
+        if (node.id === createData.folderId) {
+          // Found session folder — look for "ghiduri" child
+          const ghiduri = node.children?.find((c: FolderNode) => c.type === "ghiduri");
+          return ghiduri?.id || null;
+        }
+        if (node.children) {
+          const found = findGhiduriFolderId(node.children);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+
+    const ghiduriFolderId = findGhiduriFolderId(rawFolders);
+    if (!ghiduriFolderId) {
+      setGuideWarning("Sesiunea selectată nu are folder de ghiduri. Proiectul nu va avea reguli de eligibilitate.");
+      return;
+    }
+
+    apiGet(`/api/documents/folders/${ghiduriFolderId}/documents`)
       .then((data: any) => {
         const docs = Array.isArray(data) ? data : data.documents || [];
         const hasProcessedGuide = docs.some((d: any) =>
           d.processingType === "ghid" && d.status === "processed"
         );
         if (!hasProcessedGuide) {
-          setGuideWarning("Măsura selectată nu are ghid procesat. Proiectul nu va avea reguli de eligibilitate.");
+          setGuideWarning("Sesiunea selectată nu are ghid procesat. Proiectul nu va avea reguli de eligibilitate.");
         }
       })
       .catch(() => { /* ignore — non-critical check */ });
-  }, [createData.folderId]);
+  }, [createData.folderId, rawFolders]);
 
   const [createError, setCreateError] = useState<string | null>(null);
 

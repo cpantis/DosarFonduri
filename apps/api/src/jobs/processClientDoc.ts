@@ -16,7 +16,7 @@ import { validateElement, logElementChange } from "../services/elementValidation
 import { checkEligibility } from "../services/eligibility";
 import { computeProjectScores } from "../services/scoring";
 import type { ExtractionResult } from "../services/extractionTypes";
-import { resolveFieldKeys, getExtractorVocabulary } from "../services/elementDefinitionService";
+import { resolveFieldKeys, getExtractorVocabulary, upsertElementDefinition } from "../services/elementDefinitionService";
 
 // Extractors
 import { extractCompanyFromDocument } from "../services/companyExtractor";
@@ -593,6 +593,94 @@ async function findTemplateElementByKey(
  * - Existing with source 'solomon' or 'manual' → skip (don't overwrite consultant data),
  *   but log a warning for review
  */
+
+/**
+ * Known client document field definitions — auto-created when no matching
+ * elementDefinition exists. Keyed by field_key from extractors.
+ * Consultants have legal authorization (împuternicire) to process these documents.
+ */
+const CLIENT_DOC_FIELD_DEFS: Record<string, {
+  displayName: string;
+  category: "beneficiary" | "legal" | "location" | "other";
+  dataType: "text" | "number" | "date";
+  required?: boolean;
+}> = {
+  // Carte de identitate
+  cnp: { displayName: "CNP reprezentant legal", category: "beneficiary", dataType: "text", required: true },
+  serie_ci: { displayName: "Serie CI", category: "legal", dataType: "text", required: true },
+  numar_ci: { displayName: "Număr CI", category: "legal", dataType: "text", required: true },
+  nume: { displayName: "Nume reprezentant legal", category: "beneficiary", dataType: "text", required: true },
+  prenume: { displayName: "Prenume reprezentant legal", category: "beneficiary", dataType: "text", required: true },
+  cetatenie: { displayName: "Cetățenie", category: "beneficiary", dataType: "text" },
+  loc_nastere: { displayName: "Localitate naștere", category: "beneficiary", dataType: "text" },
+  judet_nastere: { displayName: "Județ naștere", category: "beneficiary", dataType: "text" },
+  domiciliu: { displayName: "Adresă domiciliu", category: "location", dataType: "text", required: true },
+  localitate_domiciliu: { displayName: "Localitate domiciliu", category: "location", dataType: "text", required: true },
+  judet_domiciliu: { displayName: "Județ domiciliu", category: "location", dataType: "text", required: true },
+  data_nastere: { displayName: "Data naștere", category: "beneficiary", dataType: "date", required: true },
+  sex: { displayName: "Sex", category: "beneficiary", dataType: "text" },
+  data_emitere_ci: { displayName: "Data emitere CI", category: "legal", dataType: "date", required: true },
+  data_expirare_ci: { displayName: "Data expirare CI", category: "legal", dataType: "date", required: true },
+  emitent_ci: { displayName: "Emitent CI (SPCLEP)", category: "legal", dataType: "text" },
+  // Diploma studii
+  tip_diploma: { displayName: "Tip diplomă", category: "beneficiary", dataType: "text" },
+  institutie_invatamant: { displayName: "Instituție învățământ", category: "beneficiary", dataType: "text" },
+  specializare: { displayName: "Specializare", category: "beneficiary", dataType: "text" },
+  data_absolvire: { displayName: "Data absolvire", category: "beneficiary", dataType: "date" },
+  numar_diploma: { displayName: "Număr diplomă", category: "beneficiary", dataType: "text" },
+};
+
+/**
+ * Find the guide document associated with a project's folder tree.
+ * Navigates: project → folderId → children (type=ghiduri) → documents (processingType=ghid, status=processed)
+ */
+async function findGuideDocumentForProject(projectFolderId: string, organizationId: string): Promise<string | null> {
+  // Find the ghiduri subfolder
+  const ghiduriFolder = await db.query.documentFolders.findFirst({
+    where: and(
+      eq(documentFolders.parentId, projectFolderId),
+      eq(documentFolders.type, "ghiduri"),
+      eq(documentFolders.organizationId, organizationId),
+    ),
+  });
+
+  if (!ghiduriFolder) {
+    // Try one level up (project might be nested)
+    const parentFolder = await db.query.documentFolders.findFirst({
+      where: eq(documentFolders.id, projectFolderId),
+    });
+    if (parentFolder?.parentId) {
+      const ghiduriUp = await db.query.documentFolders.findFirst({
+        where: and(
+          eq(documentFolders.parentId, parentFolder.parentId),
+          eq(documentFolders.type, "ghiduri"),
+          eq(documentFolders.organizationId, organizationId),
+        ),
+      });
+      if (ghiduriUp) {
+        const guideDoc = await db.query.documents.findFirst({
+          where: and(
+            eq(documents.folderId, ghiduriUp.id),
+            eq(documents.processingType, "ghid"),
+            eq(documents.status, "processed"),
+          ),
+        });
+        return guideDoc?.id ?? null;
+      }
+    }
+    return null;
+  }
+
+  const guideDoc = await db.query.documents.findFirst({
+    where: and(
+      eq(documents.folderId, ghiduriFolder.id),
+      eq(documents.processingType, "ghid"),
+      eq(documents.status, "processed"),
+    ),
+  });
+  return guideDoc?.id ?? null;
+}
+
 async function saveExtractedFieldsToProjectElements(
   extractionResult: ExtractionResult,
   documentId: string,
@@ -637,14 +725,47 @@ async function saveExtractedFieldsToProjectElements(
       templateElementId = tmplEl.id;
     }
 
-    // If no anchor at all, log and skip
+    // If no anchor at all, try to auto-create elementDefinition for known client doc fields
     if (!elementDefId && !templateElementId) {
-      unmatchedCount++;
-      console.log(
-        `[saveExtracted] No element_definition or template_element for key "${field.field_key}" — field dropped. ` +
-        `Value: "${String(field.field_value).slice(0, 100)}"`,
-      );
-      continue;
+      const knownDef = CLIENT_DOC_FIELD_DEFS[field.field_key];
+      if (knownDef) {
+        // Find guide document to anchor the element definition
+        const guideDocId = await findGuideDocumentForProject(project.folderId, organizationId);
+        if (guideDocId) {
+          try {
+            const created = await upsertElementDefinition({
+              guideDocumentId: guideDocId,
+              organizationId,
+              elementKey: field.field_key,
+              displayName: knownDef.displayName,
+              category: knownDef.category,
+              dataType: knownDef.dataType,
+              required: knownDef.required ?? false,
+              sourcePriority: ["document_extracted", "solomon_chat", "consultant_manual"],
+            });
+            elementDefId = created.id;
+            console.log(
+              `[saveExtracted] Auto-created elementDefinition for "${field.field_key}" → ${created.id}`,
+            );
+          } catch (err) {
+            console.warn(`[saveExtracted] Failed to auto-create elementDef for "${field.field_key}":`, err);
+          }
+        } else {
+          console.log(
+            `[saveExtracted] No guide document for project ${project.id} — cannot auto-create elementDef for "${field.field_key}"`,
+          );
+        }
+      }
+
+      // Still no anchor after auto-creation attempt
+      if (!elementDefId && !templateElementId) {
+        unmatchedCount++;
+        console.log(
+          `[saveExtracted] No element_definition or template_element for key "${field.field_key}" — field dropped. ` +
+          `Value: "${String(field.field_value).slice(0, 100)}"`,
+        );
+        continue;
+      }
     }
 
     // Stringify value for storage (project_elements.value is TEXT)

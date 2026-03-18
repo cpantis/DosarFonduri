@@ -3,8 +3,10 @@ import {
   projects, projectElements, projectDocuments,
   templateElements, documents, orgConfig, companies,
   organizations, templatePlaceholderMapping, elementDefinitions,
+  projectChecklist,
 } from "../db/schema";
 import { eq, and, inArray } from "drizzle-orm";
+import { logAIUsage } from "./aiUsage";
 import { getFileBuffer, uploadFile } from "./storage";
 import crypto from "crypto";
 import { preflightCached } from "./dbPreflight";
@@ -82,6 +84,7 @@ async function fillDocxTemplate(
   _templateFileName: string,
   elements: Record<string, string>,
   cabinetStyle?: Record<string, any>,
+  checklistDone?: string[],
 ): Promise<Buffer> {
   const { execFileSync } = await import("child_process");
   const fs = await import("fs");
@@ -91,10 +94,14 @@ async function fillDocxTemplate(
   const dataPath = safeTmpPath("data", "json");
 
   fs.writeFileSync(inputPath, templateBuffer);
-  fs.writeFileSync(dataPath, JSON.stringify({ elements, cabinetStyle: cabinetStyle || {} }));
+  fs.writeFileSync(dataPath, JSON.stringify({
+    elements,
+    cabinetStyle: cabinetStyle || {},
+    checklistDone: checklistDone || [],
+  }));
 
   const script = `
-import sys, json
+import sys, json, re
 from docx import Document
 from docx.shared import Pt, RGBColor
 
@@ -107,6 +114,8 @@ with open(data_path, 'r', encoding='utf-8') as f:
 
 data = payload.get('elements', payload) if isinstance(payload, dict) and 'elements' in payload else payload
 cabinet_style = payload.get('cabinetStyle', {}) if isinstance(payload, dict) else {}
+checklist_done = payload.get('checklistDone', []) if isinstance(payload, dict) else []
+checklist_done_lower = [item.lower() for item in checklist_done]
 
 doc = Document(template_path)
 current_page = 1
@@ -115,20 +124,46 @@ current_page = 1
 def format_ro(value):
     """Format value for Romanian locale: decimal comma, dot thousands separator."""
     s = str(value) if value else ''
-    # Check if it looks like a number
     try:
         num = float(s.replace(',', '.'))
         if num == int(num) and '.' not in s and ',' not in s:
-            # Integer — format with dot thousands separator
             return '{:,.0f}'.format(num).replace(',', '.')
         else:
-            # Decimal — format with comma decimal and dot thousands
             formatted = '{:,.2f}'.format(num)
-            # Swap: comma→temp, dot→comma, temp→dot
             formatted = formatted.replace(',', '_').replace('.', ',').replace('_', '.')
             return formatted
     except (ValueError, TypeError):
         return s
+
+# FIX 4: Replace unfilled placeholders with [DE COMPLETAT] markup
+def mark_unfilled(text, data):
+    """Replace any remaining {{key}} with [DE COMPLETAT - Display Name]."""
+    def replacer(match):
+        key = match.group(1)
+        if key in data and data[key]:
+            return format_ro(data[key])
+        # Try to derive display name from key
+        display = key.replace('_', ' ').title()
+        return '[DE COMPLETAT - ' + display + ']'
+    return re.sub(r'\\{\\{([^}]+)\\}\\}', replacer, text)
+
+# FIX 3: Section E checkbox replacement
+def replace_checkbox(text, checklist_lower):
+    """Replace ☐ (unchecked) with ☒ (checked) for checklist items that are done."""
+    if not checklist_lower:
+        return text
+    # Common checkbox patterns: ☐ Item Name or □ Item Name
+    for item in checklist_lower:
+        # Match checkbox followed by text that matches the checklist item
+        for checkbox_char in ['\\u2610', '\\u25A1', '[ ]']:
+            pattern = re.escape(checkbox_char)
+            for match in re.finditer(pattern + r'\\s*(.{5,80})', text):
+                context = match.group(1).lower().strip()
+                if any(kw in context for kw in item.split()[:3]):
+                    checked = '\\u2612' if checkbox_char != '[ ]' else '[X]'
+                    text = text[:match.start()] + checked + text[match.start() + len(match.group(0)) - len(match.group(1)):]
+                    break
+    return text
 
 def replace_in_paragraph(paragraph, data):
     full_text = paragraph.text
@@ -137,15 +172,24 @@ def replace_in_paragraph(paragraph, data):
         placeholder = '{{' + key + '}}'
         if placeholder in full_text:
             replacements_made.append(key)
-    if not replacements_made:
+    if not replacements_made and '{{' not in full_text:
+        # FIX 3: Still check for checkboxes even if no placeholders
+        if checklist_done_lower and any(c in full_text for c in ['\\u2610', '\\u25A1', '[ ]']):
+            combined = full_text
+            combined = replace_checkbox(combined, checklist_done_lower)
+            if combined != full_text and paragraph.runs:
+                paragraph.runs[0].text = combined
+                for run in paragraph.runs[1:]:
+                    run.text = ''
         return replacements_made
     runs_text = []
     for run in paragraph.runs:
         runs_text.append(run.text)
     combined = ''.join(runs_text)
-    for key, value in data.items():
-        placeholder = '{{' + key + '}}'
-        combined = combined.replace(placeholder, format_ro(value) if value else '')
+    # FIX 4: Replace all placeholders — filled ones get value, unfilled get [DE COMPLETAT]
+    combined = mark_unfilled(combined, data)
+    # FIX 3: Replace checkboxes for Section E
+    combined = replace_checkbox(combined, checklist_done_lower)
     if paragraph.runs:
         paragraph.runs[0].text = combined
         for run in paragraph.runs[1:]:
@@ -251,7 +295,7 @@ async function fillXlsxTemplate(
   fs.writeFileSync(dataPath, JSON.stringify(elements));
 
   const script = `
-import sys, json
+import sys, json, re
 import openpyxl
 
 template_path = sys.argv[1]
@@ -260,6 +304,20 @@ data_path = sys.argv[3]
 
 with open(data_path, 'r', encoding='utf-8') as f:
     data = json.load(f)
+
+# FIX 10: Romanian number formatting for XLSX
+def format_ro(value):
+    s = str(value) if value else ''
+    try:
+        num = float(s.replace(',', '.'))
+        if num == int(num) and '.' not in s and ',' not in s:
+            return '{:,.0f}'.format(num).replace(',', '.')
+        else:
+            formatted = '{:,.2f}'.format(num)
+            formatted = formatted.replace(',', '_').replace('.', ',').replace('_', '.')
+            return formatted
+    except (ValueError, TypeError):
+        return s
 
 wb = openpyxl.load_workbook(template_path)
 filled = []
@@ -274,11 +332,16 @@ for sheet in wb.sheetnames:
                 for key, value in data.items():
                     placeholder = '{{' + key + '}}'
                     if placeholder in new_value:
-                        new_value = new_value.replace(placeholder, str(value) if value else '')
+                        formatted = format_ro(value) if value else ''
+                        new_value = new_value.replace(placeholder, formatted)
                         filled.append(key)
                 if new_value != original:
+                    # FIX 4: Mark unfilled placeholders
+                    new_value = re.sub(r'\\{\\{([^}]+)\\}\\}', lambda m: '[DE COMPLETAT - ' + m.group(1).replace('_', ' ').title() + ']', new_value)
                     try:
-                        cell.value = float(new_value) if '.' in new_value else int(new_value)
+                        # Try to store as number for formulas (use dot as decimal for Excel)
+                        numeric = new_value.replace('.', '').replace(',', '.')
+                        cell.value = float(numeric) if '.' in numeric else int(numeric)
                     except (ValueError, TypeError):
                         cell.value = new_value
 
@@ -409,6 +472,30 @@ export async function generateDocument(params: GenerateDocParams): Promise<Reada
         // Inject cabinet branding into elements map
         if (cabinetStyle.footerText) elementsMap["footer_cabinet"] = cabinetStyle.footerText;
 
+        // FIX 3: Load checklist done items for Section E checkbox filling
+        const checklistItems = await db.select().from(projectChecklist)
+          .where(eq(projectChecklist.projectId, projectId));
+        const checklistDoneNames = checklistItems.filter(i => i.done).map(i => i.name);
+
+        // FIX 5: Inject financial plan data from company financials + project elements
+        if (company) {
+          const { companyFinancials } = await import("../db/schema");
+          const financials = await db.query.companyFinancials.findMany({
+            where: eq(companyFinancials.companyId, company.id),
+          });
+          if (financials.length > 0) {
+            const latest = financials.sort((a, b) => b.year - a.year)[0];
+            // Inject F10/F20 balance sheet data as elements if not already present
+            const f10 = (latest.f10 as Record<string, any>) || {};
+            const f20 = (latest.f20 as Record<string, any>) || {};
+            for (const [key, value] of Object.entries({ ...f10, ...f20 })) {
+              if (value && !elementsMap[key]) {
+                elementsMap[key] = String(value);
+              }
+            }
+          }
+        }
+
         // Fill template
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "status", message: "Se completează documentul..." })}\n\n`));
 
@@ -430,7 +517,7 @@ export async function generateDocument(params: GenerateDocParams): Promise<Reada
             filledBuffer = templateBuffer;
           }
         } else {
-          filledBuffer = await fillDocxTemplate(templateBuffer, templateName, elementsMap, cabinetStyle);
+          filledBuffer = await fillDocxTemplate(templateBuffer, templateName, elementsMap, cabinetStyle, checklistDoneNames);
         }
 
         // Post-generation verification: check for remaining {{...}} placeholders
@@ -484,6 +571,22 @@ export async function generateDocument(params: GenerateDocParams): Promise<Reada
           generatedBy: userId,
         }).returning();
 
+        // FIX 2: Auto-update checklist items matching this template
+        await autoUpdateChecklist(projectId, templateDoc.name);
+
+        // FIX 9: Log AI usage for FILL mode (deterministic but tracks generation)
+        await logAIUsage({
+          organizationId,
+          userId,
+          model: "deterministic-fill",
+          operation: "neemia_fill",
+          inputTokens: 0,
+          outputTokens: 0,
+          cost: 0,
+          projectId,
+          metadata: { templateName: templateDoc.name, filledCount, missingCount },
+        }).catch(() => {});
+
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({
           type: "complete",
           documentId: projectDoc.id,
@@ -491,6 +594,7 @@ export async function generateDocument(params: GenerateDocParams): Promise<Reada
           fileName: generatedFileName,
           filledCount,
           missingCount,
+          version: nextVersion,
         })}\n\n`));
 
         controller.close();
@@ -503,6 +607,45 @@ export async function generateDocument(params: GenerateDocParams): Promise<Reada
       }
     },
   });
+}
+
+// ═══ AUTO-UPDATE CHECKLIST POST-GENERATION ═══
+// Marks checklist items as done when their associated template document is generated
+async function autoUpdateChecklist(projectId: string, templateName: string): Promise<void> {
+  const items = await db.select().from(projectChecklist)
+    .where(and(
+      eq(projectChecklist.projectId, projectId),
+      eq(projectChecklist.done, false),
+    ));
+
+  const nameLower = templateName.toLowerCase();
+  const matchKeywords = [
+    // Map template name fragments to checklist item keywords
+    { templateFragment: "cerere", checklistKeywords: ["cerere finantare", "cerere de finantare"] },
+    { templateFragment: "memoriu", checklistKeywords: ["memoriu justificativ", "memoriu"] },
+    { templateFragment: "anexa_b", checklistKeywords: ["anexa b", "viabilitate"] },
+    { templateFragment: "anexa_c", checklistKeywords: ["anexa c"] },
+    { templateFragment: "plan_afaceri", checklistKeywords: ["plan afaceri", "plan de afaceri"] },
+    { templateFragment: "buget", checklistKeywords: ["buget", "deviz"] },
+  ];
+
+  const itemsToUpdate: string[] = [];
+  for (const item of items) {
+    const itemNameLower = item.name.toLowerCase();
+    for (const mapping of matchKeywords) {
+      if (nameLower.includes(mapping.templateFragment) &&
+          mapping.checklistKeywords.some(kw => itemNameLower.includes(kw))) {
+        itemsToUpdate.push(item.id);
+        break;
+      }
+    }
+  }
+
+  if (itemsToUpdate.length > 0) {
+    await db.update(projectChecklist)
+      .set({ done: true, notes: `Auto-marcat la generarea documentului "${templateName}"` })
+      .where(inArray(projectChecklist.id, itemsToUpdate));
+  }
 }
 
 // ═══ VALIDATE BEFORE GENERATE ═══
@@ -789,6 +932,134 @@ export async function computeCalculatedFields(
           d.setFullYear(d.getFullYear() + 3); // 3 ani sustenabilitate IMM
           return d.toISOString().slice(0, 10);
         } catch { return null; }
+      },
+    },
+    // ═══ ANEXA B: Indicatori viabilitate financiară (formule deterministe) ═══
+    {
+      targetKey: "rata_autonomiei_financiare_nete",
+      label: "RAFN — Rata Autonomiei Financiare Nete",
+      formula: "capitaluri_proprii / total_activ (minim 1.2)",
+      compute: () => {
+        const capitalPropriu = getNum("capitaluri_proprii") ?? getNum("capital_propriu") ?? getNum("total_capitaluri_proprii");
+        const totalActiv = getNum("total_activ") ?? getNum("activ_total") ?? getNum("total_active");
+        if (capitalPropriu !== null && totalActiv !== null && totalActiv > 0) {
+          const rafn = capitalPropriu / totalActiv;
+          return fmtRo(rafn, 4);
+        }
+        return null;
+      },
+    },
+    {
+      targetKey: "rata_indatorarii",
+      label: "Rata Îndatorării",
+      formula: "datorii_totale / total_activ × 100 (maxim 60%)",
+      compute: () => {
+        const datoriiTotale = getNum("datorii_totale") ?? getNum("total_datorii");
+        const totalActiv = getNum("total_activ") ?? getNum("activ_total") ?? getNum("total_active");
+        if (datoriiTotale !== null && totalActiv !== null && totalActiv > 0) {
+          const rata = (datoriiTotale / totalActiv) * 100;
+          return fmtRo(rata);
+        }
+        return null;
+      },
+    },
+    {
+      targetKey: "rata_lichiditate_curenta",
+      label: "Rata Lichidității Curente",
+      formula: "active_curente / datorii_curente (minim 1.0)",
+      compute: () => {
+        const activeCurente = getNum("active_curente") ?? getNum("active_circulante") ?? getNum("total_active_circulante");
+        const datoriiCurente = getNum("datorii_curente") ?? getNum("datorii_sub_1an") ?? getNum("datorii_termen_scurt");
+        if (activeCurente !== null && datoriiCurente !== null && datoriiCurente > 0) {
+          return fmtRo(activeCurente / datoriiCurente, 4);
+        }
+        return null;
+      },
+    },
+    {
+      targetKey: "rata_solvabilitate",
+      label: "Rata Solvabilității",
+      formula: "total_activ / datorii_totale (minim 1.5)",
+      compute: () => {
+        const totalActiv = getNum("total_activ") ?? getNum("activ_total") ?? getNum("total_active");
+        const datoriiTotale = getNum("datorii_totale") ?? getNum("total_datorii");
+        if (totalActiv !== null && datoriiTotale !== null && datoriiTotale > 0) {
+          return fmtRo(totalActiv / datoriiTotale, 4);
+        }
+        return null;
+      },
+    },
+    {
+      targetKey: "van_proiect",
+      label: "VAN — Valoarea Actualizată Netă",
+      formula: "Σ(cash_flow_year_n / (1 + rata_actualizare)^n) − investitie_initiala (minim 0)",
+      compute: () => {
+        const investitie = getNum("valoare_totala_proiect") ?? getNum("valoare_totala") ?? getNum("investitie_totala");
+        if (investitie === null) return null;
+        const rataActualizare = getNum("rata_actualizare") ?? 0.05; // default 5%
+        const durata = getNum("durata_implementare_ani") ?? getNum("durata_proiect_ani") ?? 5;
+
+        // Estimate annual cash flows from available data
+        const venitAnual = getNum("venituri_estimate_anual") ?? getNum("cifra_afaceri_previzionata") ?? getNum("venituri_exploatare");
+        const cheltuieliAnuale = getNum("cheltuieli_estimate_anual") ?? getNum("cheltuieli_exploatare");
+
+        if (venitAnual !== null && cheltuieliAnuale !== null) {
+          const cfAnual = venitAnual - cheltuieliAnuale;
+          let van = -investitie;
+          for (let n = 1; n <= durata; n++) {
+            van += cfAnual / Math.pow(1 + rataActualizare, n);
+          }
+          return fmtRo(van);
+        }
+        return null;
+      },
+    },
+    {
+      targetKey: "rir_proiect",
+      label: "RIR — Rata Internă de Rentabilitate",
+      formula: "Rata la care VAN = 0 (estimare prin interpolare)",
+      compute: () => {
+        const investitie = getNum("valoare_totala_proiect") ?? getNum("valoare_totala") ?? getNum("investitie_totala");
+        if (investitie === null || investitie === 0) return null;
+        const durata = getNum("durata_implementare_ani") ?? getNum("durata_proiect_ani") ?? 5;
+
+        const venitAnual = getNum("venituri_estimate_anual") ?? getNum("cifra_afaceri_previzionata") ?? getNum("venituri_exploatare");
+        const cheltuieliAnuale = getNum("cheltuieli_estimate_anual") ?? getNum("cheltuieli_exploatare");
+        if (venitAnual === null || cheltuieliAnuale === null) return null;
+        const cfAnual = venitAnual - cheltuieliAnuale;
+        if (cfAnual <= 0) return fmtRo(0);
+
+        // Newton-Raphson approximation for IRR
+        let rate = 0.1;
+        for (let iter = 0; iter < 50; iter++) {
+          let npv = -investitie;
+          let dnpv = 0;
+          for (let n = 1; n <= durata; n++) {
+            const factor = Math.pow(1 + rate, n);
+            npv += cfAnual / factor;
+            dnpv -= n * cfAnual / (factor * (1 + rate));
+          }
+          if (Math.abs(dnpv) < 1e-10) break;
+          const newRate = rate - npv / dnpv;
+          if (Math.abs(newRate - rate) < 1e-8) { rate = newRate; break; }
+          rate = newRate;
+        }
+        return fmtRo(rate * 100); // as percentage
+      },
+    },
+    {
+      targetKey: "durata_recuperare_investitie",
+      label: "Durata de recuperare a investiției (ani)",
+      formula: "investitie_totala / cash_flow_anual",
+      compute: () => {
+        const investitie = getNum("valoare_totala_proiect") ?? getNum("valoare_totala") ?? getNum("investitie_totala");
+        const venitAnual = getNum("venituri_estimate_anual") ?? getNum("cifra_afaceri_previzionata");
+        const cheltuieliAnuale = getNum("cheltuieli_estimate_anual") ?? getNum("cheltuieli_exploatare");
+        if (investitie !== null && venitAnual !== null && cheltuieliAnuale !== null) {
+          const cfAnual = venitAnual - cheltuieliAnuale;
+          if (cfAnual > 0) return fmtRo(investitie / cfAnual, 1);
+        }
+        return null;
       },
     },
   ];

@@ -156,7 +156,7 @@ async function runMigrations() {
     const appliedSet = new Set((applied as unknown as Array<{ filename: string }>).map(r => r.filename));
 
     const extraFiles = fs.readdirSync(migrationsPath)
-      .filter(f => f.endsWith(".sql") && !f.startsWith("0000") && !f.startsWith("0001") && !f.startsWith("0002") && !f.startsWith("0003"))
+      .filter(f => f.endsWith(".sql") && !f.startsWith("0000"))
       .sort();
 
     for (const file of extraFiles) {

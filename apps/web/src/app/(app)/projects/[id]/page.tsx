@@ -3769,6 +3769,14 @@ export default function ProjectViewPage() {
                         )}
                       </div>
                     ))}
+                    {solomonStreaming && solomonMessages.length > 0 && solomonMessages[solomonMessages.length - 1]?.role === "user" && (
+                      <div className="flex items-center gap-1 py-3 px-4">
+                        <div className="solomon-avatar" style={{ width: 24, height: 24, fontSize: 11, marginRight: 8 }}>S</div>
+                        <span className="inline-block w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" />
+                        <span className="inline-block w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                        <span className="inline-block w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                      </div>
+                    )}
                     <div ref={chatBottomRef} />
                   </div>
 

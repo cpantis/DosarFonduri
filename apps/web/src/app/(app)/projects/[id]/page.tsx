@@ -308,6 +308,11 @@ export default function ProjectViewPage() {
           setEligibilityRules(mapEligibilityRules(eligData.flat || []));
         }).catch(() => {});
       }
+      if (evt.event === "score_updated") {
+        apiGet<any>(`/api/projects/${projectId}/scores`)
+          .then(setProjectScores)
+          .catch(console.error);
+      }
       if (evt.event === "checklist_updated") {
         // Re-fetch checklist when backend auto-matches an item
         apiGet<any>(`/api/projects/${projectId}`).then(proj => {
@@ -2381,6 +2386,16 @@ export default function ProjectViewPage() {
                         background: projectScores.percentage >= 80 ? "#34d399" : projectScores.percentage >= 60 ? "#fbbf24" : "#f87171",
                       }} />
                     </div>
+                    {projectScores.totalPoints < 56 && (
+                      <div style={{
+                        background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 8,
+                        padding: "10px 14px", marginBottom: 10, fontSize: 13, color: "#92400e",
+                        display: "flex", alignItems: "center", gap: 8,
+                      }}>
+                        <span style={{ fontSize: 16 }}>⚠</span>
+                        Punctajul estimat ({projectScores.totalPoints}p) este sub pragul de calitate de 56 puncte. Proiectul nu poate fi depus în luna curentă.
+                      </div>
+                    )}
                     {projectScores.scores.length > 0 && (
                       <div style={{ fontSize: 12 }}>
                         {projectScores.scores.map((s: any, i: number) => (

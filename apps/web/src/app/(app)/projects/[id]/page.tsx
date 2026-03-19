@@ -1647,7 +1647,7 @@ export default function ProjectViewPage() {
         .lock-banner .lb-icon{font-size:18px}
         .lock-banner .lb-name{font-weight:700;color:#d97706}
         .lock-banner .lb-time{font-size:11px;color:#94a3b8;margin-left:auto;font-family:'JetBrains Mono',monospace}
-        .pv-container{display:flex;flex-direction:column;height:100%;overflow:hidden;background:#f0f2f5}
+        .pv-container{display:flex;flex-direction:column;height:100%;overflow:hidden;background:#ffffff}
 
         .pv-project-header{padding:20px 32px 0;background:#ffffff}
         .pv-breadcrumb{font-size:13px;color:#2563eb;margin-bottom:4px;display:flex;align-items:center;gap:4px}
@@ -1673,7 +1673,7 @@ export default function ProjectViewPage() {
         .pv-tab-badge.red{background:rgba(248,113,113,.1);color:#dc2626}
 
         .main-content{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
-        .content-body{flex:1;overflow:hidden;min-height:0}
+        .content-body{flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0}
 
         /* Sumar */
         .sumar-panel{padding:24px;overflow-y:auto;height:100%}
@@ -1724,7 +1724,7 @@ export default function ProjectViewPage() {
         .elig-type-badge.interpreted{background:rgba(251,191,36,.1);color:#d97706;border-color:#fed7aa}
 
         /* Ghid */
-        .ghid-layout{display:flex;flex-direction:column;height:100%}
+        .ghid-layout{display:flex;flex-direction:column;flex:1;min-height:0}
         .ghid-sub-tabs{display:flex;gap:0;border-bottom:1px solid rgba(226,232,240,.8);background:#ffffff;padding:0 24px}
         .ghid-sub-tab{padding:12px 20px;font-size:13px;font-weight:600;color:#64748b;cursor:pointer;border-bottom:2px solid transparent;transition:all .15s cubic-bezier(.4,0,.2,1);background:none;border-top:none;border-left:none;border-right:none;font-family:'Inter',system-ui,sans-serif}
         .ghid-sub-tab:hover{color:#0f172a}
@@ -1866,7 +1866,7 @@ export default function ProjectViewPage() {
         .pdf-page-num{position:absolute;bottom:16px;right:24px;font-size:12px;color:#94a3b8;font-family:'JetBrains Mono',monospace}
 
         /* Elemente */
-        .elemente-layout{display:flex;height:100%}
+        .elemente-layout{display:flex;flex:1;min-height:0}
         .elemente-list{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
         .completitudine-bar{padding:20px 24px;background:#ffffff;border-bottom:1px solid rgba(226,232,240,.8)}
         .completitudine-top{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px}
@@ -2003,8 +2003,8 @@ export default function ProjectViewPage() {
         .check-unmapped strong{font-weight:700}
 
         /* Solomon Chat */
-        .solomon-layout{display:flex;height:100%;overflow:hidden;background:#ffffff}
-        .solomon-chat{flex:1;display:flex;flex-direction:column;min-width:0;height:100%;overflow:hidden;position:relative;background:#ffffff}
+        .solomon-layout{display:flex;flex:1;overflow:hidden;background:#ffffff;min-height:0}
+        .solomon-chat{flex:1;display:flex;flex-direction:column;min-width:0;overflow:hidden;position:relative;background:#ffffff}
         .solomon-chat.drag-active{outline:2px dashed #4d8bff;outline-offset:-4px;border-radius:8px}
         .solomon-drop-overlay{position:absolute;inset:0;background:rgba(77,139,255,.08);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:20;pointer-events:none;border-radius:8px}
         .solomon-drop-icon{font-size:40px;margin-bottom:8px}
@@ -2067,7 +2067,7 @@ export default function ProjectViewPage() {
         .chat-btn.send:hover{background:#1d4ed8}
         .chat-btn.upload-btn{background:transparent;color:#94a3b8;border:none;font-size:16px}
         .chat-btn.upload-btn:hover{color:#0f172a}
-        .solomon-elements-panel{width:300px;min-width:260px;border-left:1px solid rgba(226,232,240,.8);background:#ffffff;display:flex;flex-direction:column;overflow:hidden;height:100%}
+        .solomon-elements-panel{width:300px;min-width:260px;border-left:1px solid rgba(226,232,240,.8);background:#f8fafc;display:flex;flex-direction:column;overflow:hidden}
         .sep-header{padding:16px 16px 12px;border-bottom:1px solid rgba(226,232,240,.8);display:flex;flex-direction:column;gap:8px}
         .sep-header-top{display:flex;align-items:center;justify-content:space-between}
         .sep-header-title{font-size:14px;font-weight:700;color:#0f172a}
@@ -2098,7 +2098,7 @@ export default function ProjectViewPage() {
         .refine-submit{padding:8px 14px;border-radius:8px;border:none;background:#2563eb;color:#ffffff;font-size:13px;font-weight:600;cursor:pointer;font-family:'Inter',system-ui,sans-serif}
 
         /* Neemia */
-        .neemia-layout{display:flex;height:100%}
+        .neemia-layout{display:flex;flex:1;min-height:0}
         .neemia-templates{width:260px;min-width:260px;border-right:1px solid rgba(226,232,240,.8);padding:16px;overflow-y:auto}
         .neemia-templates h3{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#94a3b8;margin-bottom:12px}
         .template-card{padding:12px 14px;border-radius:12px;border:1px solid rgba(226,232,240,.8);margin-bottom:8px;cursor:pointer;transition:all .15s cubic-bezier(.4,0,.2,1);background:#ffffff}

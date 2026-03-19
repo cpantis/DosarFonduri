@@ -781,9 +781,12 @@ export default function ProjectViewPage() {
                 });
               }
               // Refresh elements from DB — Solomon backend already saved these values
-              apiGet<any>(`/api/projects/${projectId}`).then(proj => {
-                setElements(mapElements(proj.elements || []));
-              }).catch(() => {});
+              // Small delay to let backend finish DB writes before re-fetching
+              setTimeout(() => {
+                apiGet<any>(`/api/projects/${projectId}`).then(proj => {
+                  setElements(mapElements(proj.elements || []));
+                }).catch(() => {});
+              }, 800);
             } else if (evt.type === "metadata_updated" && evt.metadata) {
               // Solomon confirmed program metadata — update project state
               setProject(prev => prev ? {
@@ -943,7 +946,16 @@ export default function ProjectViewPage() {
       ]);
 
       // Persist to API — find matching element by key and update value + confirm
-      const matchingEl = elements.find(e => e.key === ext.key);
+      // Try local match first; if not found, re-fetch from API (backend may have auto-created it during stream)
+      let matchingEl = elements.find(e => e.key === ext.key);
+      if (!matchingEl) {
+        try {
+          const proj = await apiGet<any>(`/api/projects/${projectId}`);
+          const freshElements = mapElements(proj.elements || []);
+          setElements(freshElements);
+          matchingEl = freshElements.find(e => e.key === ext.key);
+        } catch { /* re-fetch failed, continue */ }
+      }
       if (matchingEl) {
         try {
           await apiPut(`/api/projects/${projectId}/elements/${matchingEl.id}`, {
@@ -951,7 +963,7 @@ export default function ProjectViewPage() {
             source: "solomon",
             confirmed: true,
           });
-          setElements(prev => prev.map(e => e.id === matchingEl.id
+          setElements(prev => prev.map(e => e.id === matchingEl!.id
             ? { ...e, value: ext.value, source: "solomon", sourceLabel: "Solomon", status: "confirmat" as const, confidence: 100 }
             : e
           ));
@@ -970,8 +982,6 @@ export default function ProjectViewPage() {
           console.error("Failed to persist Solomon extraction:", err);
           toast("error", "Eroare la salvarea datelor extrase");
         }
-      } else {
-        toast("warning", `Elementul extras „${ext.label || ext.key}" nu corespunde niciunui câmp din template — valoarea nu a fost salvată.`);
       }
     }
   };
@@ -985,8 +995,16 @@ export default function ProjectViewPage() {
     const el = solomonElements[idx];
     setSolomonElements(prev => prev.map((e, i) => i === idx ? { ...e, status: "confirmat" } : e));
 
-    // Persist to API
-    const matchingEl = elements.find(e => e.key === el.key);
+    // Persist to API — re-fetch if not found locally (backend may have auto-created)
+    let matchingEl = elements.find(e => e.key === el.key);
+    if (!matchingEl) {
+      try {
+        const proj = await apiGet<any>(`/api/projects/${projectId}`);
+        const freshElements = mapElements(proj.elements || []);
+        setElements(freshElements);
+        matchingEl = freshElements.find(e => e.key === el.key);
+      } catch { /* re-fetch failed */ }
+    }
     if (matchingEl) {
       try {
         await apiPut(`/api/projects/${projectId}/elements/${matchingEl.id}`, {
@@ -994,7 +1012,7 @@ export default function ProjectViewPage() {
           source: "solomon",
           confirmed: true,
         });
-        setElements(prev => prev.map(e => e.id === matchingEl.id
+        setElements(prev => prev.map(e => e.id === matchingEl!.id
           ? { ...e, value: el.value, source: "solomon", sourceLabel: "Solomon", status: "confirmat" as const, confidence: 100 }
           : e
         ));

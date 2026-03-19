@@ -93,6 +93,7 @@ type ElementItem = {
   source: string | null;
   sourceLabel: string | null;
   templates: string[];
+  category: string;
 };
 
 type ChecklistItem = {
@@ -260,6 +261,7 @@ function mapElements(elements: any[]): ElementItem[] {
       source: el.source,
       sourceLabel: sourceMap[el.source] || el.source || null,
       templates: [],
+      category: elemDef?.category || tmplEl?.category || "other",
     };
   });
 }
@@ -2094,16 +2096,18 @@ export default function ProjectViewPage() {
         .confirm-all-bar span{font-size:13px;color:#2563eb;font-weight:500}
         .chat-timestamp{font-size:10px;color:#94a3b8;margin-top:4px}
         .chat-input-area{padding:16px 20px;border-top:1px solid rgba(226,232,240,.8);background:#ffffff}
-        .chat-input-inner{max-width:720px;margin:0 auto}
-        .chat-input-row{display:flex;gap:8px;align-items:flex-end;background:#ffffff;border:1px solid rgba(226,232,240,.8);border-radius:20px;padding:10px 12px 10px 16px;transition:border-color .15s}
+        .chat-input-inner{max-width:760px;margin:0 auto}
+        .chat-input-wrapper{display:flex;gap:10px;align-items:flex-end;max-width:720px;margin:0 auto;width:100%}
+        .chat-attach-btn{width:36px;height:36px;border-radius:50%;border:1px solid rgba(226,232,240,.8);background:#ffffff;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#94a3b8;transition:all .15s cubic-bezier(.4,0,.2,1);flex-shrink:0}
+        .chat-attach-btn:hover{color:#475569;border-color:#cbd5e1;background:#f8fafc}
+        .chat-attach-btn:disabled{opacity:.4;cursor:not-allowed}
+        .chat-input-row{display:flex;gap:8px;align-items:flex-end;background:#ffffff;border:1px solid rgba(226,232,240,.8);border-radius:20px;padding:10px 12px 10px 16px;transition:border-color .15s;flex:1;min-width:0}
         .chat-input-row:focus-within{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.1)}
         .chat-input{flex:1;padding:8px 10px;border-radius:8px;border:none;background:transparent;color:#0f172a;font-size:14px;font-family:'Inter',system-ui,sans-serif;line-height:1.5;resize:none;outline:none;min-height:36px;max-height:160px;overflow-y:auto}
         .chat-input::placeholder{color:#94a3b8}
         .chat-btn{width:36px;height:36px;border-radius:50%;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s cubic-bezier(.4,0,.2,1);flex-shrink:0}
         .chat-btn.send{background:#2563eb;color:#ffffff;font-size:16px}
         .chat-btn.send:hover{background:#1d4ed8}
-        .chat-btn.upload-btn{background:transparent;color:#cbd5e1;border:none;width:32px;height:32px}
-        .chat-btn.upload-btn:hover{color:#64748b}
         .solomon-elements-panel{width:300px;min-width:260px;border-left:1px solid rgba(226,232,240,.8);background:#f8fafc;display:flex;flex-direction:column;overflow:hidden}
         .sep-header{padding:16px 16px 12px;border-bottom:1px solid rgba(226,232,240,.8);display:flex;flex-direction:column;gap:8px}
         .sep-header-top{display:flex;align-items:center;justify-content:space-between}
@@ -2111,21 +2115,29 @@ export default function ProjectViewPage() {
         .sep-count{font-size:13px;font-weight:700;color:#2563eb;font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums}
         .sep-progress-bar{height:4px;background:#f0f2f5;border-radius:2px;overflow:hidden}
         .sep-progress-fill{height:100%;background:#2563eb;border-radius:2px;transition:width .3s}
-        .sep-scroll{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:8px}
-        .sep-card{padding:12px 14px;border-radius:12px;border:1px solid rgba(226,232,240,.8);background:#f8fafc;transition:all .15s cubic-bezier(.4,0,.2,1)}
-        .sep-card:hover{border-color:#cbd5e1;box-shadow:0 1px 2px rgba(0,0,0,.04)}
-        .sep-card.is-confirmed{border-left:3px solid #34d399}
-        .sep-card.is-proposed{border-left:3px solid #fbbf24}
-        .sep-card-label{font-size:13px;font-weight:700;color:#0f172a;margin-bottom:3px}
-        .sep-card-value{font-size:14px;font-weight:600;color:#d97706;font-family:'JetBrains Mono',monospace;margin-bottom:6px;word-break:break-word}
-        .sep-card.is-confirmed .sep-card-value{color:#059669}
-        .sep-card-source{font-size:11px;color:#94a3b8;display:flex;align-items:center;gap:4px}
-        .sep-confirm-row{margin-top:8px;display:flex;gap:6px}
-        .sep-confirm-btn{padding:3px 10px;border-radius:8px;border:1px solid #34d399;background:transparent;color:#059669;font-size:11px;font-weight:600;cursor:pointer;font-family:'Inter',system-ui,sans-serif;display:flex;align-items:center;gap:3px;transition:all .15s cubic-bezier(.4,0,.2,1)}
-        .sep-confirm-btn:hover{background:rgba(52,211,153,.1)}
-        .sep-reject-btn{padding:3px 10px;border-radius:8px;border:1px solid rgba(226,232,240,.8);background:transparent;color:#94a3b8;font-size:11px;font-weight:600;cursor:pointer;font-family:'Inter',system-ui,sans-serif;transition:all .15s cubic-bezier(.4,0,.2,1)}
-        .sep-reject-btn:hover{color:#dc2626;border-color:#dc2626}
-        .sep-confirmed-badge{font-size:10px;color:#059669;font-weight:700;margin-top:6px;display:flex;align-items:center;gap:4px}
+        .sep-scroll{flex:1;overflow-y:auto;padding:8px 10px;display:flex;flex-direction:column;gap:2px}
+        .sep-category-group{margin-bottom:8px}
+        .sep-category-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#94a3b8;padding:10px 8px 4px;font-family:'Inter',system-ui,sans-serif}
+        .sep-row{display:flex;align-items:flex-start;justify-content:space-between;padding:6px 8px;border-radius:8px;transition:background .1s}
+        .sep-row:hover{background:rgba(0,0,0,.03)}
+        .sep-row-left{display:flex;align-items:flex-start;gap:8px;flex:1;min-width:0}
+        .sep-row-icon{font-size:12px;flex-shrink:0;width:16px;text-align:center;margin-top:1px}
+        .sep-row-icon.confirmat{color:#059669}
+        .sep-row-icon.propus_ai,.sep-row-icon.proposed{color:#d97706}
+        .sep-row-icon.gol{color:#cbd5e1;font-size:10px}
+        .sep-row-info{flex:1;min-width:0}
+        .sep-row-label{font-size:12px;color:#64748b;line-height:1.3}
+        .sep-row-value{font-size:13px;font-weight:600;color:#0f172a;line-height:1.3;word-break:break-word}
+        .sep-row-value.confirmat{color:#059669}
+        .sep-row-value.propus_ai{color:#d97706}
+        .sep-row-value.proposed{color:#d97706}
+        .sep-row-value.empty{color:#f97316;font-weight:500;font-style:italic;font-size:12px}
+        .sep-row-actions{display:flex;gap:2px;flex-shrink:0;margin-top:1px}
+        .sep-mini-btn{width:22px;height:22px;border-radius:6px;border:1px solid rgba(226,232,240,.8);background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:11px;transition:all .12s}
+        .sep-mini-btn.confirm{color:#059669}
+        .sep-mini-btn.confirm:hover{background:rgba(52,211,153,.12);border-color:#34d399}
+        .sep-mini-btn.reject{color:#94a3b8}
+        .sep-mini-btn.reject:hover{color:#dc2626;border-color:#dc2626;background:rgba(248,113,113,.08)}
         .inline-refine-popup{position:fixed;z-index:1000;background:#ffffff;border:1px solid #2563eb;border-radius:12px;padding:12px;box-shadow:0 8px 32px rgba(0,0,0,.12),0 2px 8px rgba(0,0,0,.06);width:340px;animation:popIn .15s ease}
         @keyframes popIn{from{opacity:0;transform:translateY(4px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
         .refine-selected-text{font-size:12px;color:#64748b;background:#f0f2f5;padding:8px 10px;border-radius:8px;margin-bottom:8px;max-height:60px;overflow:hidden;border-left:3px solid #2563eb}
@@ -3850,75 +3862,77 @@ export default function ProjectViewPage() {
                   {/* Input area */}
                   <div className="chat-input-area">
                     <div className="chat-input-inner">
-                      <div className="chat-input-row">
-                        <input
-                          ref={solomonFileRef}
-                          type="file"
-                          accept=".pdf,.docx,.xlsx,.doc,.png,.jpg,.jpeg"
-                          style={{ display: "none" }}
-                          onChange={e => {
-                            const file = e.target.files?.[0];
-                            if (file) handleSolomonUpload(file);
-                            e.target.value = "";
-                          }}
-                        />
-                        <button className="chat-btn upload-btn" title="Upload document" onClick={() => solomonFileRef.current?.click()} disabled={solomonStreaming || readOnly}>
-                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+                      <input
+                        ref={solomonFileRef}
+                        type="file"
+                        accept=".pdf,.docx,.xlsx,.doc,.png,.jpg,.jpeg"
+                        style={{ display: "none" }}
+                        onChange={e => {
+                          const file = e.target.files?.[0];
+                          if (file) handleSolomonUpload(file);
+                          e.target.value = "";
+                        }}
+                      />
+                      <div className="chat-input-wrapper">
+                        <button className="chat-attach-btn" title="Atașează document sau imagine" onClick={() => solomonFileRef.current?.click()} disabled={solomonStreaming || readOnly}>
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
                         </button>
-                        <textarea
-                          className="chat-input"
-                          data-solomon-input
-                          placeholder="Scrie detalii despre proiect, lipește date sau poze, sau întreabă..."
-                          value={solomonInput}
-                          rows={1}
-                          onChange={e => {
-                            setSolomonInput(e.target.value);
-                            e.target.style.height = "auto";
-                            e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
-                          }}
-                          onKeyDown={e => {
-                            if (e.key === "Enter" && !e.shiftKey) {
-                              e.preventDefault();
-                              handleSolomonSend();
-                              (e.target as HTMLTextAreaElement).style.height = "auto";
-                            }
-                          }}
-                          onPaste={e => {
-                            const items = e.clipboardData?.items;
-                            if (!items) return;
-                            for (let i = 0; i < items.length; i++) {
-                              if (items[i].type.startsWith("image/")) {
+                        <div className="chat-input-row">
+                          <textarea
+                            className="chat-input"
+                            data-solomon-input
+                            placeholder="Scrie detalii despre proiect, lipește date sau poze, sau întreabă..."
+                            value={solomonInput}
+                            rows={1}
+                            onChange={e => {
+                              setSolomonInput(e.target.value);
+                              e.target.style.height = "auto";
+                              e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
+                            }}
+                            onKeyDown={e => {
+                              if (e.key === "Enter" && !e.shiftKey) {
                                 e.preventDefault();
-                                const blob = items[i].getAsFile();
-                                if (blob) {
-                                  const ext = blob.type === "image/png" ? "png" : "jpg";
-                                  const file = new File([blob], `clipboard_${Date.now()}.${ext}`, { type: blob.type });
-                                  handleSolomonUpload(file);
-                                }
-                                return;
+                                handleSolomonSend();
+                                (e.target as HTMLTextAreaElement).style.height = "auto";
                               }
-                            }
-                          }}
-                        />
-                        {solomonStreaming ? (
-                          <button className="chat-btn send" onClick={handleSolomonStop} title="Oprește generarea" style={{ background: "#64748b" }}>
-                            <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="1" y="1" width="12" height="12" rx="2.5"/></svg>
-                          </button>
-                        ) : (
-                          <button className="chat-btn send" onClick={handleSolomonSend}>
-                            &#10148;
-                          </button>
-                        )}
+                            }}
+                            onPaste={e => {
+                              const items = e.clipboardData?.items;
+                              if (!items) return;
+                              for (let i = 0; i < items.length; i++) {
+                                if (items[i].type.startsWith("image/")) {
+                                  e.preventDefault();
+                                  const blob = items[i].getAsFile();
+                                  if (blob) {
+                                    const ext = blob.type === "image/png" ? "png" : "jpg";
+                                    const file = new File([blob], `clipboard_${Date.now()}.${ext}`, { type: blob.type });
+                                    handleSolomonUpload(file);
+                                  }
+                                  return;
+                                }
+                              }
+                            }}
+                          />
+                          {solomonStreaming ? (
+                            <button className="chat-btn send" onClick={handleSolomonStop} title="Oprește generarea" style={{ background: "#64748b" }}>
+                              <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="1" y="1" width="12" height="12" rx="2.5"/></svg>
+                            </button>
+                          ) : (
+                            <button className="chat-btn send" onClick={handleSolomonSend}>
+                              &#10148;
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Elements panel */}
+                {/* Elements panel — grouped by category like prototype */}
                 <div className="solomon-elements-panel">
                   <div className="sep-header">
                     <div className="sep-header-top">
-                      <span className="sep-header-title">Elemente completate</span>
+                      <span className="sep-header-title">Elemente proiect</span>
                       <span className="sep-count">{elemFilled} / {elemTotal}</span>
                     </div>
                     <div className="sep-progress-bar">
@@ -3926,36 +3940,67 @@ export default function ProjectViewPage() {
                     </div>
                   </div>
                   <div className="sep-scroll">
-                    {/* Show actual project elements (confirmed + proposed) */}
-                    {elements.filter(e => e.value).map((el) => (
-                      <div key={el.id} className={`sep-card ${el.status === "confirmat" ? "is-confirmed" : "is-proposed"}`}>
-                        <div style={{ fontSize: 10, color: "#94a3b8", textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 2 }}>{el.sourceLabel || el.source || ""}</div>
-                        <div className="sep-card-label">{el.label}</div>
-                        <div className="sep-card-value">{el.value}</div>
-                        {el.status === "confirmat" && (
-                          <div className="sep-confirmed-badge">&#10003; Confirmat</div>
-                        )}
+                    {/* Solomon proposed elements not yet in DB — show first */}
+                    {solomonElements.filter(se => se.status !== "confirmat" && !elements.some(e => e.key === se.key && e.value)).length > 0 && (
+                      <div className="sep-category-group">
+                        <div className="sep-category-title">DE CONFIRMAT</div>
+                        {solomonElements.filter(se => se.status !== "confirmat" && !elements.some(e => e.key === se.key && e.value)).map((el, i) => (
+                          <div key={`sol-${el.key}-${i}`} className="sep-row is-proposed">
+                            <div className="sep-row-left">
+                              <span className="sep-row-icon proposed">&#9888;</span>
+                              <div className="sep-row-info">
+                                <div className="sep-row-label">{el.label}</div>
+                                <div className="sep-row-value proposed">{el.value}</div>
+                              </div>
+                            </div>
+                            <div className="sep-row-actions">
+                              <button className="sep-mini-btn confirm" onClick={() => handleConfirmElement(solomonElements.indexOf(el))} title="Confirmă">&#10003;</button>
+                              <button className="sep-mini-btn reject" onClick={() => handleRejectElement(solomonElements.indexOf(el))} title="Respinge">&#10005;</button>
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                    {/* Solomon proposed elements not yet in DB */}
-                    {solomonElements.filter(se => se.status !== "confirmat" && !elements.some(e => e.key === se.key && e.value)).map((el, i) => (
-                      <div key={`sol-${el.key}-${i}`} className="sep-card is-proposed">
-                        <div className="sep-card-label">{el.label}</div>
-                        <div className="sep-card-value">{el.value}</div>
-                        <div className="sep-card-source">
-                          <span style={{ fontSize: 10 }}>&#128196;</span>
-                          {el.source}
+                    )}
+                    {/* All project elements grouped by category */}
+                    {(() => {
+                      const CATEGORY_LABELS: Record<string, string> = {
+                        beneficiary: "DATE FIRMĂ",
+                        financial: "DATE FINANCIARE",
+                        farm: "DATE EXPLOATAȚIE",
+                        investment: "INVESTIȚIE",
+                        location: "LOCAȚIE",
+                        legal: "DATE JURIDICE",
+                        technical: "DATE TEHNICE",
+                        other: "ALTE DATE",
+                      };
+                      const CATEGORY_ORDER = ["beneficiary", "financial", "farm", "investment", "location", "legal", "technical", "other"];
+                      const grouped = CATEGORY_ORDER
+                        .map(cat => ({ cat, label: CATEGORY_LABELS[cat], items: elements.filter(e => e.category === cat) }))
+                        .filter(g => g.items.length > 0);
+
+                      return grouped.map(group => (
+                        <div key={group.cat} className="sep-category-group">
+                          <div className="sep-category-title">{group.label}</div>
+                          {group.items.map(el => (
+                            <div key={el.id} className={`sep-row ${el.status}`}>
+                              <div className="sep-row-left">
+                                <span className={`sep-row-icon ${el.status}`}>
+                                  {el.status === "confirmat" ? "\u2713" : el.status === "propus_ai" ? "\u26A0" : "\u25CB"}
+                                </span>
+                                <div className="sep-row-info">
+                                  <div className="sep-row-label">{el.label}</div>
+                                  {el.value ? (
+                                    <div className={`sep-row-value ${el.status}`}>{el.value}</div>
+                                  ) : (
+                                    <div className="sep-row-value empty">De completat</div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
                         </div>
-                        <div className="sep-confirm-row">
-                          <button className="sep-confirm-btn" onClick={() => handleConfirmElement(solomonElements.indexOf(el))}>
-                            &#10003; Confirmă
-                          </button>
-                          <button className="sep-reject-btn" onClick={() => handleRejectElement(solomonElements.indexOf(el))}>
-                            &#10005;
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                      ));
+                    })()}
                   </div>
                 </div>
               </div>

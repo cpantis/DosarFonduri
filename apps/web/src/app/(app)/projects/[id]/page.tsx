@@ -352,8 +352,8 @@ export default function ProjectViewPage() {
   const [checkActionId, setCheckActionId] = useState<string | null>(null);
   const [checkMapOpen, setCheckMapOpen] = useState<string | null>(null);
 
-  const [solomonModel, setSolomonModel] = useState<"sonnet" | "opus">("opus");
-  const [solomonET, setSolomonET] = useState(true);
+  const [solomonModel, setSolomonModel] = useState<"sonnet" | "opus">("sonnet");
+  const [solomonET, setSolomonET] = useState(false);
   const [solomonMessages, setSolomonMessages] = useState<SolomonMessage[]>([]);
   const [solomonInput, setSolomonInput] = useState("");
   const [solomonElements, setSolomonElements] = useState<SolomonElement[]>([]);
@@ -636,6 +636,8 @@ export default function ProjectViewPage() {
       if (convs && convs.length > 0) {
         const conv = convs[0];
         setSolomonConvId(conv.id);
+        // Ensure conversation uses Sonnet by default
+        apiPut(`/api/solomon/conversations/${conv.id}/model`, { model: "claude-sonnet-4-20250514" }).catch(() => {});
         const msgs = await apiGet<any[]>(`/api/solomon/conversations/${conv.id}/messages`);
         setSolomonMessages((msgs || []).map((m: any) => ({
           role: m.role as "user" | "assistant",
@@ -675,6 +677,19 @@ export default function ProjectViewPage() {
     }
   }
 
+  // Detect if user is requesting Opus-level processing
+  const needsOpus = (text: string): boolean => {
+    const lower = text.toLowerCase();
+    const opusPatterns = [
+      /\bopus\b/, /\bnevoie de opus\b/, /\bfoloseste opus\b/, /\bfolosește opus\b/,
+      /\bcu opus\b/, /\btreci pe opus\b/, /\bmodel opus\b/, /\banaliz[aă] complex[aă]\b/,
+      /\banaliz[aă] detaliat[aă]\b/, /\banaliz[aă] aprofundat[aă]\b/,
+      /\bgândește mai profund\b/, /\bgandeste mai profund\b/,
+      /\bextended thinking\b/, /\bthinking extins\b/,
+    ];
+    return opusPatterns.some(p => p.test(lower));
+  };
+
   const handleSolomonSend = async () => {
     if (readOnly || !solomonInput.trim() || !solomonConvId || solomonStreaming) return;
     const userText = solomonInput;
@@ -685,9 +700,17 @@ export default function ProjectViewPage() {
     setSolomonStreaming(true);
     setSolomonTimedOut(false);
 
+    // Auto-detect Opus requests — temporarily upgrade model for this message
+    const requestedOpus = needsOpus(userText);
+    let useET = solomonET;
+    if (requestedOpus && solomonModel !== "opus") {
+      await handleSolomonModelChange("opus");
+      useET = true; // Opus benefits from ET
+    }
+
     // F6.1: Start a 60s timeout — if no data arrives, show warning
     if (solomonTimeoutRef.current) clearTimeout(solomonTimeoutRef.current);
-    solomonTimeoutRef.current = setTimeout(() => setSolomonTimedOut(true), 60000);
+    solomonTimeoutRef.current = setTimeout(() => setSolomonTimedOut(true), requestedOpus ? 120000 : 60000);
 
     try {
       const abortCtrl = new AbortController();
@@ -699,7 +722,7 @@ export default function ProjectViewPage() {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ content: userText, useET: solomonET }),
+        body: JSON.stringify({ content: userText, useET }),
         signal: abortCtrl.signal,
       });
 
@@ -793,6 +816,10 @@ export default function ProjectViewPage() {
       setSolomonStreaming(false);
       setSolomonTimedOut(false);
       if (solomonTimeoutRef.current) clearTimeout(solomonTimeoutRef.current);
+      // Revert to Sonnet after Opus one-shot
+      if (requestedOpus) {
+        handleSolomonModelChange("sonnet");
+      }
     }
   };
 
@@ -3628,20 +3655,6 @@ export default function ProjectViewPage() {
                       <div className="solomon-drop-text">Elibereaza pentru upload document</div>
                     </div>
                   )}
-                  {/* Model controls — subtle top bar */}
-                  <div className="solomon-toolbar">
-                    <div className="solomon-toolbar-inner">
-                      <div style={{ flex: 1 }} />
-                      <div className="model-selector">
-                        <button className={`model-btn ${solomonModel === "sonnet" ? "active" : ""}`} onClick={() => handleSolomonModelChange("sonnet")}>Sonnet</button>
-                        <button className={`model-btn ${solomonModel === "opus" ? "active" : ""}`} onClick={() => handleSolomonModelChange("opus")}>Opus</button>
-                      </div>
-                      <button className={`et-toggle ${solomonET ? "on" : ""}`} onClick={() => setSolomonET(!solomonET)}>
-                        &#10024; ET
-                      </button>
-                    </div>
-                  </div>
-
                   {/* Messages */}
                   <div className="chat-messages" ref={chatRef} onScroll={handleChatScroll} onMouseUp={handleTextSelect}>
                     <div className="chat-messages-inner">

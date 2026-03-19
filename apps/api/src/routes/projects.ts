@@ -13,6 +13,7 @@ import { AuthContext } from "../middleware/auth";
 import {
   updateProjectSchema,
   updateElementSchema,
+  createProjectElementSchema,
   bulkConfirmElementsSchema,
   overrideEligibilitySchema,
   createChecklistItemSchema,
@@ -503,6 +504,124 @@ projectRoutes.get("/:id", async (c) => {
     guideTrustScore: guideDoc?.trustScore ? Number(guideDoc.trustScore) : null,
     guideCompletenessReport: guideDoc?.completenessReport || null,
   });
+});
+
+// ─── CREATE PROJECT ELEMENT (manual) ───
+projectRoutes.post("/:id/elements", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const { id } = c.req.param();
+
+  const lockErr = await requireLock(id, auth.userId);
+  if (lockErr) return c.json({ error: lockErr }, 423);
+
+  const body = createProjectElementSchema.parse(await c.req.json());
+
+  // Verify project belongs to org
+  const project = await db.query.projects.findFirst({
+    where: and(eq(projects.id, id), eq(projects.organizationId, auth.organizationId!)),
+  });
+  if (!project) return c.json({ error: "Proiectul nu a fost găsit" }, 404);
+
+  // Check for duplicate key: look in elementDefinitions and templateElements
+  const existingByDef = await db.query.projectElements.findFirst({
+    where: and(
+      eq(projectElements.projectId, id),
+      sql`${projectElements.elementDefId} IN (SELECT id FROM "elementDefinitions" WHERE "elementKey" = ${body.key} AND "organizationId" = ${auth.organizationId})`,
+    ),
+  });
+  if (existingByDef) return c.json({ error: `Elementul cu cheia „${body.key}" există deja în proiect` }, 409);
+
+  const existingByTmpl = await db.query.projectElements.findFirst({
+    where: and(
+      eq(projectElements.projectId, id),
+      sql`${projectElements.templateElementId} IN (SELECT id FROM "templateElements" WHERE "key" = ${body.key} AND "organizationId" = ${auth.organizationId})`,
+    ),
+  });
+  if (existingByTmpl) return c.json({ error: `Elementul cu cheia „${body.key}" există deja în proiect` }, 409);
+
+  // Try to find or create an elementDefinition for this key
+  let elementDefId: string | null = null;
+  const existingDef = await db.query.elementDefinitions.findFirst({
+    where: and(
+      eq(elementDefinitions.elementKey, body.key),
+      eq(elementDefinitions.organizationId, auth.organizationId!),
+    ),
+  });
+  if (existingDef) {
+    elementDefId = existingDef.id;
+  } else {
+    // Auto-create elementDefinition so the field is anchored
+    const ghiduriFolder = await db.query.documentFolders.findFirst({
+      where: and(
+        eq(documentFolders.parentId, project.folderId),
+        eq(documentFolders.type, "ghiduri"),
+        eq(documentFolders.organizationId, auth.organizationId!),
+      ),
+    });
+    let guideDocId: string | null = null;
+    if (ghiduriFolder) {
+      const guide = await db.query.documents.findFirst({
+        where: and(eq(documents.folderId, ghiduriFolder.id), eq(documents.processingType, "ghid"), eq(documents.status, "processed")),
+      });
+      guideDocId = guide?.id ?? null;
+    }
+    if (guideDocId) {
+      const [created] = await db.insert(elementDefinitions).values({
+        guideDocumentId: guideDocId,
+        organizationId: auth.organizationId!,
+        elementKey: body.key,
+        displayName: body.label,
+        category: "other",
+        dataType: body.fieldType === "number" ? "number" : body.fieldType === "date" ? "date" : "text",
+        required: false,
+        sourcePriority: ["consultant_manual", "solomon_chat", "document_extracted"],
+        helpText: "[manual] Adăugat manual de consultant.",
+      }).returning();
+      elementDefId = created.id;
+    }
+  }
+
+  // Create the project element
+  const [created] = await db.insert(projectElements).values({
+    projectId: id,
+    elementDefId,
+    value: body.value || null,
+    source: "consultant_manual",
+    confirmed: !!body.value,
+    confirmedBy: body.value ? auth.userId : null,
+    validationStatus: "pending",
+  }).returning();
+
+  // Validate if value provided
+  if (body.value) {
+    try {
+      const validation = await validateElement(created.id, id);
+      await db.update(projectElements).set({
+        validationStatus: validation.status,
+        validationDetails: validation.details,
+      }).where(eq(projectElements.id, created.id));
+    } catch {}
+  }
+
+  // Audit log
+  await logElementChange({
+    projectElementId: created.id,
+    oldValue: null,
+    newValue: body.value || null,
+    changedBy: auth.userId,
+    changeSource: "consultant_manual",
+  });
+
+  // SSE notify
+  publishElementValidated(id, {
+    elementId: created.id,
+    elementKey: body.key,
+    value: body.value ?? null,
+    validationStatus: "pending",
+    message: `Element "${body.label}" adăugat manual`,
+  }).catch(() => {});
+
+  return c.json(created, 201);
 });
 
 // ─── UPDATE ELEMENT VALUE ───

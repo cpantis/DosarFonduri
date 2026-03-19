@@ -100,6 +100,13 @@ export const updateElementSchema = z.object({
   confirmed: z.boolean().optional(),
 });
 
+export const createProjectElementSchema = z.object({
+  key: z.string().min(1).max(255),
+  label: z.string().min(1).max(255),
+  value: z.string().max(50000).optional().nullable(),
+  fieldType: z.enum(["text", "number", "textarea", "date", "table", "signature", "select"]).default("text"),
+});
+
 export const bulkConfirmElementsSchema = z.object({
   elementIds: z.array(z.string().uuid()).min(1).max(500),
 });

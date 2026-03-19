@@ -333,6 +333,10 @@ export default function ProjectViewPage() {
   const [elemSearch, setElemSearch] = useState("");
   const [editingElementId, setEditingElementId] = useState<string | null>(null);
   const [editingElementValue, setEditingElementValue] = useState("");
+  const [addingElement, setAddingElement] = useState(false);
+  const [newElementKey, setNewElementKey] = useState("");
+  const [newElementLabel, setNewElementLabel] = useState("");
+  const [newElementValue, setNewElementValue] = useState("");
   const [ghidTab, setGhidTab] = useState<"reguli" | "ghid" | "anexe">("reguli");
   const [referenceTables, setReferenceTables] = useState<any[]>([]);
   const [selectedRefTable, setSelectedRefTable] = useState<string | null>(null);
@@ -1025,6 +1029,31 @@ export default function ProjectViewPage() {
 
   const handleRejectElement = (idx: number) => {
     setSolomonElements(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const handleAddElement = async () => {
+    if (!newElementKey.trim() || !newElementLabel.trim()) {
+      toast("error", "Cheia și eticheta sunt obligatorii");
+      return;
+    }
+    try {
+      await apiPost(`/api/projects/${projectId}/elements`, {
+        key: newElementKey.trim().toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, ""),
+        label: newElementLabel.trim(),
+        value: newElementValue.trim() || null,
+      });
+      // Refresh elements from API
+      const proj = await apiGet<any>(`/api/projects/${projectId}`);
+      setElements(mapElements(proj.elements || []));
+      setAddingElement(false);
+      setNewElementKey("");
+      setNewElementLabel("");
+      setNewElementValue("");
+      toast("success", `Element „${newElementLabel.trim()}" adăugat`);
+    } catch (err: any) {
+      const msg = err?.message || err?.error || "Eroare la adăugare";
+      toast("error", typeof msg === "string" ? msg : "Eroare la adăugare");
+    }
   };
 
   const handleTextSelect = useCallback(() => {
@@ -3267,11 +3296,35 @@ export default function ProjectViewPage() {
             })()}
 
             {/* ELEMENTE */}
-            {activeLeaf === "elemente" && elements.length === 0 && (
+            {activeLeaf === "elemente" && elements.length === 0 && !addingElement && (
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 200, color: "#8892a8", padding: 24 }}>
                 <div style={{ fontSize: 32, marginBottom: 8 }}>&#128202;</div>
                 <div style={{ fontSize: 14, fontWeight: 600 }}>Niciun element extras</div>
                 <div style={{ fontSize: 12, marginTop: 4 }}>Uploadează documente client sau folosește Solomon pentru a extrage date</div>
+                {!readOnly && (
+                  <button
+                    onClick={() => setAddingElement(true)}
+                    style={{ marginTop: 12, padding: "6px 14px", fontSize: 12, fontWeight: 600, borderRadius: 6, background: "#2563eb", color: "#fff", border: "none", cursor: "pointer" }}
+                  >
+                    + Adaugă element manual
+                  </button>
+                )}
+              </div>
+            )}
+            {activeLeaf === "elemente" && elements.length === 0 && addingElement && (
+              <div style={{ padding: 24 }}>
+                <div style={{ padding: "12px 16px", background: "rgba(77,139,255,.04)", border: "1px solid rgba(77,139,255,.15)", borderRadius: 8 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8, color: "#1e293b" }}>Element nou</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
+                    <input placeholder="Cheie (ex: nr_angajati)" value={newElementKey} onChange={e => setNewElementKey(e.target.value)} style={{ padding: "6px 10px", fontSize: 12, borderRadius: 6, border: "1px solid #e2e8f0", background: "#fff" }} />
+                    <input placeholder="Etichetă (ex: Număr angajați)" value={newElementLabel} onChange={e => setNewElementLabel(e.target.value)} style={{ padding: "6px 10px", fontSize: 12, borderRadius: 6, border: "1px solid #e2e8f0", background: "#fff" }} />
+                  </div>
+                  <input placeholder="Valoare (opțional)" value={newElementValue} onChange={e => setNewElementValue(e.target.value)} onKeyDown={e => { if (e.key === "Enter") handleAddElement(); if (e.key === "Escape") setAddingElement(false); }} style={{ width: "100%", padding: "6px 10px", fontSize: 12, borderRadius: 6, border: "1px solid #e2e8f0", background: "#fff", marginBottom: 8 }} />
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button onClick={handleAddElement} style={{ padding: "5px 12px", fontSize: 11, fontWeight: 600, borderRadius: 6, background: "#2563eb", color: "#fff", border: "none", cursor: "pointer" }}>Salvează</button>
+                    <button onClick={() => { setAddingElement(false); setNewElementKey(""); setNewElementLabel(""); setNewElementValue(""); }} style={{ padding: "5px 12px", fontSize: 11, fontWeight: 600, borderRadius: 6, background: "#fff", color: "#64748b", border: "1px solid #e2e8f0", cursor: "pointer" }}>Anulează</button>
+                  </div>
+                </div>
               </div>
             )}
             {activeLeaf === "elemente" && elements.length > 0 && (
@@ -3331,7 +3384,56 @@ export default function ProjectViewPage() {
                         {"\u2713\u2713"} Confirmă toate propuse ({elements.filter(e => e.status === "propus_ai").length})
                       </button>
                     )}
+                    {!readOnly && (
+                      <button
+                        style={{ padding: "6px 10px", fontSize: 11, fontWeight: 600, borderRadius: 6, border: "1px solid rgba(77,139,255,.3)", background: "rgba(77,139,255,.06)", color: "#2563eb", cursor: "pointer" }}
+                        onClick={() => setAddingElement(true)}
+                      >
+                        + Adaugă element
+                      </button>
+                    )}
                   </div>
+
+                  {addingElement && (
+                    <div style={{ padding: "12px 16px", background: "rgba(77,139,255,.04)", border: "1px solid rgba(77,139,255,.15)", borderRadius: 8, marginBottom: 8 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8, color: "#1e293b" }}>Element nou</div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
+                        <input
+                          placeholder="Cheie (ex: nr_angajati)"
+                          value={newElementKey}
+                          onChange={e => setNewElementKey(e.target.value)}
+                          style={{ padding: "6px 10px", fontSize: 12, borderRadius: 6, border: "1px solid #e2e8f0", background: "#fff" }}
+                        />
+                        <input
+                          placeholder="Etichetă (ex: Număr angajați)"
+                          value={newElementLabel}
+                          onChange={e => setNewElementLabel(e.target.value)}
+                          style={{ padding: "6px 10px", fontSize: 12, borderRadius: 6, border: "1px solid #e2e8f0", background: "#fff" }}
+                        />
+                      </div>
+                      <input
+                        placeholder="Valoare (opțional)"
+                        value={newElementValue}
+                        onChange={e => setNewElementValue(e.target.value)}
+                        onKeyDown={e => { if (e.key === "Enter") handleAddElement(); if (e.key === "Escape") setAddingElement(false); }}
+                        style={{ width: "100%", padding: "6px 10px", fontSize: 12, borderRadius: 6, border: "1px solid #e2e8f0", background: "#fff", marginBottom: 8 }}
+                      />
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button
+                          onClick={handleAddElement}
+                          style={{ padding: "5px 12px", fontSize: 11, fontWeight: 600, borderRadius: 6, background: "#2563eb", color: "#fff", border: "none", cursor: "pointer" }}
+                        >
+                          Salvează
+                        </button>
+                        <button
+                          onClick={() => { setAddingElement(false); setNewElementKey(""); setNewElementLabel(""); setNewElementValue(""); }}
+                          style={{ padding: "5px 12px", fontSize: 11, fontWeight: 600, borderRadius: 6, background: "#fff", color: "#64748b", border: "1px solid #e2e8f0", cursor: "pointer" }}
+                        >
+                          Anulează
+                        </button>
+                      </div>
+                    </div>
+                  )}
 
                   <div className="elemente-filter-bar">
                     <input className="elem-search" placeholder="Caută element..." value={elemSearch} onChange={e => setElemSearch(e.target.value)} />

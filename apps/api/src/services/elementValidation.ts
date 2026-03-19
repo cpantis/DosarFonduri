@@ -526,7 +526,7 @@ export async function logElementChange(params: {
   oldValidationStatus?: "pending" | "valid" | "warning" | "invalid";
   newValidationStatus?: "pending" | "valid" | "warning" | "invalid";
   changedBy: string | null;
-  changeSource: "onrc" | "solomon" | "manual" | "calculated" | "ghid" | "document_extracted";
+  changeSource: "onrc" | "solomon" | "manual" | "calculated" | "ghid" | "document_extracted" | "onrc_auto" | "anaf_auto" | "solomon_chat" | "consultant_manual" | "derived";
 }): Promise<void> {
   await db.insert(elementAuditLog).values({
     projectElementId: params.projectElementId,

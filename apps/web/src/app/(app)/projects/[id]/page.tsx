@@ -352,8 +352,8 @@ export default function ProjectViewPage() {
   const [checkActionId, setCheckActionId] = useState<string | null>(null);
   const [checkMapOpen, setCheckMapOpen] = useState<string | null>(null);
 
-  const [solomonModel, setSolomonModel] = useState<"sonnet" | "opus">("opus");
-  const [solomonET, setSolomonET] = useState(true);
+  const [solomonModel, setSolomonModel] = useState<"sonnet" | "opus">("sonnet");
+  const [solomonET, setSolomonET] = useState(false);
   const [solomonMessages, setSolomonMessages] = useState<SolomonMessage[]>([]);
   const [solomonInput, setSolomonInput] = useState("");
   const [solomonElements, setSolomonElements] = useState<SolomonElement[]>([]);
@@ -636,6 +636,8 @@ export default function ProjectViewPage() {
       if (convs && convs.length > 0) {
         const conv = convs[0];
         setSolomonConvId(conv.id);
+        // Ensure conversation uses Sonnet by default
+        apiPut(`/api/solomon/conversations/${conv.id}/model`, { model: "claude-sonnet-4-20250514" }).catch(() => {});
         const msgs = await apiGet<any[]>(`/api/solomon/conversations/${conv.id}/messages`);
         setSolomonMessages((msgs || []).map((m: any) => ({
           role: m.role as "user" | "assistant",
@@ -675,6 +677,19 @@ export default function ProjectViewPage() {
     }
   }
 
+  // Detect if user is requesting Opus-level processing
+  const needsOpus = (text: string): boolean => {
+    const lower = text.toLowerCase();
+    const opusPatterns = [
+      /\bopus\b/, /\bnevoie de opus\b/, /\bfoloseste opus\b/, /\bfolosește opus\b/,
+      /\bcu opus\b/, /\btreci pe opus\b/, /\bmodel opus\b/, /\banaliz[aă] complex[aă]\b/,
+      /\banaliz[aă] detaliat[aă]\b/, /\banaliz[aă] aprofundat[aă]\b/,
+      /\bgândește mai profund\b/, /\bgandeste mai profund\b/,
+      /\bextended thinking\b/, /\bthinking extins\b/,
+    ];
+    return opusPatterns.some(p => p.test(lower));
+  };
+
   const handleSolomonSend = async () => {
     if (readOnly || !solomonInput.trim() || !solomonConvId || solomonStreaming) return;
     const userText = solomonInput;
@@ -685,9 +700,17 @@ export default function ProjectViewPage() {
     setSolomonStreaming(true);
     setSolomonTimedOut(false);
 
+    // Auto-detect Opus requests — temporarily upgrade model for this message
+    const requestedOpus = needsOpus(userText);
+    let useET = solomonET;
+    if (requestedOpus && solomonModel !== "opus") {
+      await handleSolomonModelChange("opus");
+      useET = true; // Opus benefits from ET
+    }
+
     // F6.1: Start a 60s timeout — if no data arrives, show warning
     if (solomonTimeoutRef.current) clearTimeout(solomonTimeoutRef.current);
-    solomonTimeoutRef.current = setTimeout(() => setSolomonTimedOut(true), 60000);
+    solomonTimeoutRef.current = setTimeout(() => setSolomonTimedOut(true), requestedOpus ? 120000 : 60000);
 
     try {
       const abortCtrl = new AbortController();
@@ -699,7 +722,7 @@ export default function ProjectViewPage() {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ content: userText, useET: solomonET }),
+        body: JSON.stringify({ content: userText, useET }),
         signal: abortCtrl.signal,
       });
 
@@ -793,6 +816,10 @@ export default function ProjectViewPage() {
       setSolomonStreaming(false);
       setSolomonTimedOut(false);
       if (solomonTimeoutRef.current) clearTimeout(solomonTimeoutRef.current);
+      // Revert to Sonnet after Opus one-shot
+      if (requestedOpus) {
+        handleSolomonModelChange("sonnet");
+      }
     }
   };
 
@@ -1052,20 +1079,34 @@ export default function ProjectViewPage() {
     }
   };
 
-  const escapeHtml = (str: string): string => {
-    return str
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#039;");
+  const cleanSolomonText = (text: string): string => {
+    // Strip internal markup that backend embeds (ELEMENTS_JSON, METADATA_JSON blocks)
+    let cleaned = text
+      .replace(/<!--ELEMENTS_JSON-->[\s\S]*?<!--\/ELEMENTS_JSON-->/g, "")
+      .replace(/<!--METADATA_JSON-->[\s\S]*?<!--\/METADATA_JSON-->/g, "")
+      // Also handle cases where markers appear without proper closing
+      .replace(/<!--ELEMENTS_JSON-->[\s\S]*/g, "")
+      .replace(/<!--METADATA_JSON-->[\s\S]*/g, "")
+      // Strip any remaining HTML comment blocks
+      .replace(/<!--[^>]*-->/g, "")
+      // Clean up JSON artifacts that may leak (e.g. ELEMENTS_JSON{...} patterns)
+      .replace(/ELEMENTS_JSON\{[\s\S]*?\}/g, "")
+      .replace(/METADATA_JSON\{[\s\S]*?\}/g, "")
+      // Strip standalone HTML entities that result from raw JSON in text
+      .replace(/&lt;!--[\s\S]*?--&gt;/g, "")
+      .replace(/&lt;!--[\s\S]*/g, "")
+      .trim();
+    // Remove trailing whitespace / newlines from cleanup
+    cleaned = cleaned.replace(/\n{3,}/g, "\n\n").trim();
+    return cleaned;
   };
 
   const renderMsgText = (text: string) => {
-    const escaped = escapeHtml(text);
-    return escaped.split(/(\*\*.*?\*\*)/).map((part, i) => {
+    const cleaned = cleanSolomonText(text);
+    // React auto-escapes text content, so NO manual escapeHtml needed
+    return cleaned.split(/(\*\*.*?\*\*)/).map((part, i) => {
       if (part.startsWith("**") && part.endsWith("**")) {
-        return <span key={i} className="msg-bold">{part.slice(2, -2)}</span>;
+        return <strong key={i} style={{ color: "#0f172a", fontWeight: 500 }}>{part.slice(2, -2)}</strong>;
       }
       return part;
     });
@@ -1647,19 +1688,15 @@ export default function ProjectViewPage() {
         .lock-banner .lb-icon{font-size:18px}
         .lock-banner .lb-name{font-weight:700;color:#d97706}
         .lock-banner .lb-time{font-size:11px;color:#94a3b8;margin-left:auto;font-family:'JetBrains Mono',monospace}
-        .pv-container{display:flex;flex-direction:column;height:100%;overflow:hidden;background:#f0f2f5}
+        .pv-container{display:flex;flex-direction:column;height:100%;overflow:hidden;background:#ffffff}
 
-        .pv-project-header{padding:20px 32px 0;background:#ffffff}
-        .pv-breadcrumb{font-size:13px;color:#2563eb;margin-bottom:4px;display:flex;align-items:center;gap:4px}
-        .pv-breadcrumb a{color:#2563eb;text-decoration:none;cursor:pointer;font-weight:500}
-        .pv-breadcrumb a:hover{text-decoration:underline}
-        .pv-breadcrumb .pv-bc-sep{color:#94a3b8;font-size:11px}
-        .pv-title-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
-        .pv-title{font-size:20px;font-weight:600;color:#0f172a;line-height:1.3}
-        .pv-title-actions{display:flex;align-items:center;gap:8px}
-        .pv-status-pill{display:inline-flex;align-items:center;gap:5px;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:700;letter-spacing:.3px;border:1.5px solid transparent}
-        .pv-actions-btn{display:flex;align-items:center;gap:5px;padding:7px 14px;border-radius:8px;border:1px solid rgba(226,232,240,.8);background:#ffffff;color:#64748b;font-size:13px;font-weight:600;cursor:pointer;font-family:'Inter',system-ui,sans-serif;transition:all .15s cubic-bezier(.4,0,.2,1)}
-        .pv-actions-btn:hover{border-color:#cbd5e1;color:#0f172a;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+        .pv-project-header{padding:10px 24px;background:#ffffff;display:flex;align-items:center;gap:8px;border-bottom:1px solid rgba(226,232,240,.8);flex-shrink:0;min-height:44px}
+        .pv-breadcrumb{font-size:13px;color:#64748b;display:flex;align-items:center;gap:6px}
+        .pv-breadcrumb a{color:#64748b;text-decoration:none;cursor:pointer;font-weight:400;transition:color .15s}
+        .pv-breadcrumb a:hover{color:#0f172a;text-decoration:underline}
+        .pv-breadcrumb .pv-bc-sep{color:#cbd5e1;font-size:12px}
+        .pv-title{font-size:13px;font-weight:500;color:#0f172a}
+        .pv-status-pill{display:inline-flex;align-items:center;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:.3px;border:1px solid transparent;margin-left:auto}
 
         .pv-tabs{display:flex;gap:0;border-bottom:1px solid rgba(226,232,240,.8);background:#ffffff;padding:0 32px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
         .pv-tabs::-webkit-scrollbar{display:none}
@@ -1673,10 +1710,10 @@ export default function ProjectViewPage() {
         .pv-tab-badge.red{background:rgba(248,113,113,.1);color:#dc2626}
 
         .main-content{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
-        .content-body{flex:1;overflow:hidden;min-height:0}
+        .content-body{flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0}
 
         /* Sumar */
-        .sumar-panel{padding:24px;overflow-y:auto;height:100%}
+        .sumar-panel{padding:24px;overflow-y:auto;flex:1;min-height:0}
         .sumar-progress{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px}
         .sp-card{padding:16px 20px;border-radius:12px;border:1px solid rgba(226,232,240,.8);background:#ffffff}
         .sp-card .sp-val{font-size:24px;font-weight:600;margin-bottom:2px}
@@ -1700,7 +1737,7 @@ export default function ProjectViewPage() {
         .sa-btn.primary:hover{background:#1d4ed8;box-shadow:0 2px 6px rgba(37,99,235,.4)}
 
         /* Eligibility */
-        .elig-panel{padding:24px 32px;max-width:960px;overflow-y:auto;height:100%}
+        .elig-panel{padding:24px 32px;max-width:960px;overflow-y:auto;flex:1;min-height:0}
         .elig-summary{display:flex;gap:16px;margin-bottom:24px}
         .elig-stat{padding:16px 20px;border-radius:12px;border:1px solid rgba(226,232,240,.8);background:#ffffff;flex:1;text-align:center}
         .elig-stat .number{font-size:28px;font-weight:800;font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums}
@@ -1724,7 +1761,7 @@ export default function ProjectViewPage() {
         .elig-type-badge.interpreted{background:rgba(251,191,36,.1);color:#d97706;border-color:#fed7aa}
 
         /* Ghid */
-        .ghid-layout{display:flex;flex-direction:column;height:100%}
+        .ghid-layout{display:flex;flex-direction:column;flex:1;min-height:0}
         .ghid-sub-tabs{display:flex;gap:0;border-bottom:1px solid rgba(226,232,240,.8);background:#ffffff;padding:0 24px}
         .ghid-sub-tab{padding:12px 20px;font-size:13px;font-weight:600;color:#64748b;cursor:pointer;border-bottom:2px solid transparent;transition:all .15s cubic-bezier(.4,0,.2,1);background:none;border-top:none;border-left:none;border-right:none;font-family:'Inter',system-ui,sans-serif}
         .ghid-sub-tab:hover{color:#0f172a}
@@ -1800,7 +1837,7 @@ export default function ProjectViewPage() {
         .rd-empty-desc{font-size:13px;text-align:center;max-width:280px;line-height:1.6}
 
         /* Anexe & Date panel */
-        .anexe-panel{display:grid;grid-template-columns:320px 1fr;height:100%;overflow:hidden}
+        .anexe-panel{display:grid;grid-template-columns:320px 1fr;flex:1;min-height:0;overflow:hidden}
         .anexe-list{overflow-y:auto;border-right:1px solid rgba(226,232,240,.8);padding:16px}
         .anexe-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;text-align:center;color:#64748b}
         .anexe-card{padding:12px;border:1px solid rgba(226,232,240,.8);border-radius:12px;cursor:pointer;transition:all .15s cubic-bezier(.4,0,.2,1);margin-bottom:8px;background:#ffffff}
@@ -1866,7 +1903,7 @@ export default function ProjectViewPage() {
         .pdf-page-num{position:absolute;bottom:16px;right:24px;font-size:12px;color:#94a3b8;font-family:'JetBrains Mono',monospace}
 
         /* Elemente */
-        .elemente-layout{display:flex;height:100%}
+        .elemente-layout{display:flex;flex:1;min-height:0}
         .elemente-list{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
         .completitudine-bar{padding:20px 24px;background:#ffffff;border-bottom:1px solid rgba(226,232,240,.8)}
         .completitudine-top{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px}
@@ -1934,7 +1971,7 @@ export default function ProjectViewPage() {
         .ed-btn:hover{background:rgba(52,211,153,.1)}
 
         /* Checklist */
-        .checklist-panel{padding:28px 32px;max-width:960px;overflow-y:auto;height:100%}
+        .checklist-panel{padding:28px 32px;max-width:960px;overflow-y:auto;flex:1;min-height:0}
         .check-progress{display:flex;align-items:center;gap:20px;margin-bottom:24px;padding:22px;border-radius:12px;border:1px solid rgba(226,232,240,.8);background:#ffffff}
         .check-ring{width:80px;height:80px;position:relative;flex-shrink:0}
         .check-ring svg{transform:rotate(-90deg)}
@@ -2003,8 +2040,8 @@ export default function ProjectViewPage() {
         .check-unmapped strong{font-weight:700}
 
         /* Solomon Chat */
-        .solomon-layout{display:flex;height:100%;overflow:hidden;background:#ffffff}
-        .solomon-chat{flex:1;display:flex;flex-direction:column;min-width:0;height:100%;overflow:hidden;position:relative;background:#ffffff}
+        .solomon-layout{display:flex;flex:1;overflow:hidden;background:#ffffff;min-height:0}
+        .solomon-chat{flex:1;display:flex;flex-direction:column;min-width:0;overflow:hidden;position:relative;background:#ffffff}
         .solomon-chat.drag-active{outline:2px dashed #4d8bff;outline-offset:-4px;border-radius:8px}
         .solomon-drop-overlay{position:absolute;inset:0;background:rgba(77,139,255,.08);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:20;pointer-events:none;border-radius:8px}
         .solomon-drop-icon{font-size:40px;margin-bottom:8px}
@@ -2067,7 +2104,7 @@ export default function ProjectViewPage() {
         .chat-btn.send:hover{background:#1d4ed8}
         .chat-btn.upload-btn{background:transparent;color:#94a3b8;border:none;font-size:16px}
         .chat-btn.upload-btn:hover{color:#0f172a}
-        .solomon-elements-panel{width:300px;min-width:260px;border-left:1px solid rgba(226,232,240,.8);background:#ffffff;display:flex;flex-direction:column;overflow:hidden;height:100%}
+        .solomon-elements-panel{width:300px;min-width:260px;border-left:1px solid rgba(226,232,240,.8);background:#f8fafc;display:flex;flex-direction:column;overflow:hidden}
         .sep-header{padding:16px 16px 12px;border-bottom:1px solid rgba(226,232,240,.8);display:flex;flex-direction:column;gap:8px}
         .sep-header-top{display:flex;align-items:center;justify-content:space-between}
         .sep-header-title{font-size:14px;font-weight:700;color:#0f172a}
@@ -2098,7 +2135,7 @@ export default function ProjectViewPage() {
         .refine-submit{padding:8px 14px;border-radius:8px;border:none;background:#2563eb;color:#ffffff;font-size:13px;font-weight:600;cursor:pointer;font-family:'Inter',system-ui,sans-serif}
 
         /* Neemia */
-        .neemia-layout{display:flex;height:100%}
+        .neemia-layout{display:flex;flex:1;min-height:0}
         .neemia-templates{width:260px;min-width:260px;border-right:1px solid rgba(226,232,240,.8);padding:16px;overflow-y:auto}
         .neemia-templates h3{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#94a3b8;margin-bottom:12px}
         .template-card{padding:12px 14px;border-radius:12px;border:1px solid rgba(226,232,240,.8);margin-bottom:8px;cursor:pointer;transition:all .15s cubic-bezier(.4,0,.2,1);background:#ffffff}
@@ -2237,7 +2274,7 @@ export default function ProjectViewPage() {
         .tv-download:hover{color:#059669}
 
         /* COMPOSE Preview Panel */
-        .compose-preview-panel{display:flex;flex-direction:column;height:100%;overflow:hidden}
+        .compose-preview-panel{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden}
         .compose-preview-header{display:flex;align-items:center;gap:10px;padding:12px 20px;border-bottom:1px solid rgba(226,232,240,.8);background:#ffffff}
         .compose-preview-header h3{margin:0;font-size:13px;font-weight:700;color:#0f172a}
         .compose-model-badge{font-size:10px;font-family:'JetBrains Mono',monospace;padding:2px 8px;border-radius:4px;background:rgba(167,139,250,.1);color:#7c3aed;font-weight:600}
@@ -2283,16 +2320,15 @@ export default function ProjectViewPage() {
         .neemia-empty .ne-label{font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:1px}
         .neemia-empty .ne-desc{font-size:13px;color:#64748b;text-align:center;max-width:280px}
 
-        .coming-soon{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#94a3b8;gap:12px}
+        .coming-soon{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;min-height:0;color:#94a3b8;gap:12px}
         .coming-soon .cs-icon{font-size:48px;opacity:.5}
         .coming-soon .cs-label{font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:1px}
         .coming-soon .cs-desc{font-size:13px;color:#64748b}
 
         /* ═══ RESPONSIVE ═══ */
         @media(max-width:1024px){
-          .pv-project-header{padding:16px 20px 0}
-          .pv-tabs{padding:0 20px}
-          .pv-title{font-size:18px}
+          .pv-project-header{padding:10px 16px}
+          .pv-tabs{padding:0 16px}
           .neemia-layout{flex-direction:column}
           .neemia-templates{width:100%!important;min-width:100%!important;max-height:220px;border-right:none;border-bottom:1px solid rgba(226,232,240,.8);overflow-x:auto;display:flex;flex-wrap:nowrap;gap:8px;align-items:flex-start}
           .neemia-templates h3{white-space:nowrap}
@@ -2303,10 +2339,9 @@ export default function ProjectViewPage() {
           .solomon-elements-panel{width:260px;min-width:220px}
         }
         @media(max-width:768px){
-          .pv-project-header{padding:12px 16px 0}
-          .pv-tabs{padding:0 16px;gap:0}
+          .pv-project-header{padding:8px 12px}
+          .pv-tabs{padding:0 12px;gap:0}
           .pv-tab{padding:10px 12px;font-size:13px}
-          .pv-title{font-size:16px}
           .el-grid{grid-template-columns:1fr}
           .sg-stats{flex-direction:column;gap:8px}
           .neemia-templates{max-height:180px}
@@ -2325,29 +2360,22 @@ export default function ProjectViewPage() {
       )}
 
       <div className="pv-container" style={lockError ? { height: "calc(100% - 44px)" } : undefined}>
-        {/* PROJECT HEADER + TABS */}
+        {/* PROJECT HEADER — compact single line */}
         <div className="pv-project-header">
           <div className="pv-breadcrumb">
             <a onClick={() => router.push("/projects")}>Proiecte</a>
             <span className="pv-bc-sep">/</span>
           </div>
-          <div className="pv-title-row">
-            <div className="pv-title">
-              {projectFirma}{projectName && projectName !== projectFirma ? ` \u2014 ${projectName}` : ""}
-            </div>
-            <div className="pv-title-actions">
-              <span className="pv-status-pill" style={{
-                background: (STATUS_MAP[projectStatus] || STATUS_MAP.draft).bg,
-                color: (STATUS_MAP[projectStatus] || STATUS_MAP.draft).color,
-                borderColor: (STATUS_MAP[projectStatus] || STATUS_MAP.draft).color + "40",
-              }}>
-                {(STATUS_MAP[projectStatus] || STATUS_MAP.draft).label}
-              </span>
-              <button className="pv-actions-btn" onClick={() => {}}>
-                &middot;&middot;&middot;&nbsp; Acțiuni
-              </button>
-            </div>
-          </div>
+          <span className="pv-title">
+            {projectFirma}{projectName && projectName !== projectFirma ? ` \u2014 ${projectName}` : ""}
+          </span>
+          <span className="pv-status-pill" style={{
+            background: (STATUS_MAP[projectStatus] || STATUS_MAP.draft).bg,
+            color: (STATUS_MAP[projectStatus] || STATUS_MAP.draft).color,
+            borderColor: (STATUS_MAP[projectStatus] || STATUS_MAP.draft).color + "40",
+          }}>
+            {(STATUS_MAP[projectStatus] || STATUS_MAP.draft).label}
+          </span>
         </div>
         <div className="pv-tabs">
           {([
@@ -3641,20 +3669,6 @@ export default function ProjectViewPage() {
                       <div className="solomon-drop-text">Elibereaza pentru upload document</div>
                     </div>
                   )}
-                  {/* Model controls — subtle top bar */}
-                  <div className="solomon-toolbar">
-                    <div className="solomon-toolbar-inner">
-                      <div style={{ flex: 1 }} />
-                      <div className="model-selector">
-                        <button className={`model-btn ${solomonModel === "sonnet" ? "active" : ""}`} onClick={() => handleSolomonModelChange("sonnet")}>Sonnet</button>
-                        <button className={`model-btn ${solomonModel === "opus" ? "active" : ""}`} onClick={() => handleSolomonModelChange("opus")}>Opus</button>
-                      </div>
-                      <button className={`et-toggle ${solomonET ? "on" : ""}`} onClick={() => setSolomonET(!solomonET)}>
-                        &#10024; ET
-                      </button>
-                    </div>
-                  </div>
-
                   {/* Messages */}
                   <div className="chat-messages" ref={chatRef} onScroll={handleChatScroll} onMouseUp={handleTextSelect}>
                     <div className="chat-messages-inner">
@@ -3691,8 +3705,8 @@ export default function ProjectViewPage() {
                                 return (
                                   <div key={extIdx} className={`extraction-card ${state || ""}`}>
                                     <div className="exc-top">
-                                      <span className="exc-label">{state === "confirmed" ? `\u2713 ${ext.label}` : ext.label}</span>
-                                      <span className="exc-confidence">{ext.confidence >= 90 ? "confirmat" : `conf. ${ext.confidence}%`}</span>
+                                      <span className="exc-label">{state === "confirmed" ? "\u2713 " : ""}{ext.label || ext.key || "Element"}</span>
+                                      <span className="exc-confidence">{ext.source || (ext.confidence >= 0.9 ? "confirmat automat" : ext.confidence > 0 ? `conf. ${Math.round(ext.confidence * 100)}%` : "")}</span>
                                     </div>
                                     {editingExtraction === k ? (
                                       <input
@@ -3731,7 +3745,30 @@ export default function ProjectViewPage() {
                                         style={{ width: "100%", background: "#fff", border: "1px solid #2563eb", borderRadius: 6, padding: "4px 8px", fontSize: 13, fontFamily: "var(--font-mono, monospace)" }}
                                       />
                                     ) : (
-                                      <div className="exc-value">{ext.value}</div>
+                                      <div className="exc-value">{(() => {
+                                        // Format JSON values for readability
+                                        const v = ext.value;
+                                        if (!v) return "-";
+                                        if (typeof v === "string" && v.startsWith("[")) {
+                                          try {
+                                            const arr = JSON.parse(v);
+                                            if (Array.isArray(arr)) {
+                                              return arr.map((item: any) =>
+                                                typeof item === "object"
+                                                  ? Object.entries(item).map(([k2, v2]) => `${k2}: ${v2}`).join(", ")
+                                                  : String(item)
+                                              ).join(" | ");
+                                            }
+                                          } catch { /* not JSON */ }
+                                        }
+                                        if (typeof v === "string" && v.startsWith("{")) {
+                                          try {
+                                            const obj = JSON.parse(v);
+                                            return Object.entries(obj).map(([k2, v2]) => `${k2}: ${v2}`).join(", ");
+                                          } catch { /* not JSON */ }
+                                        }
+                                        return v;
+                                      })()}</div>
                                     )}
                                     {!state ? (
                                       <div className="exc-actions">

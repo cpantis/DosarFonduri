@@ -62,6 +62,9 @@ export function Breadcrumbs() {
   const { isCollapsed, expand } = useSidebar();
   const crumbs = buildCrumbs(pathname);
 
+  // Hide breadcrumbs on project detail pages — they have their own inline header
+  if (/^\/projects\/[0-9a-f]{8}-/.test(pathname)) return null;
+
   if (crumbs.length === 0) return null;
 
   return (

@@ -1647,42 +1647,32 @@ export default function ProjectViewPage() {
         .lock-banner .lb-icon{font-size:18px}
         .lock-banner .lb-name{font-weight:700;color:#d97706}
         .lock-banner .lb-time{font-size:11px;color:#94a3b8;margin-left:auto;font-family:'JetBrains Mono',monospace}
-        .pv-container{display:flex;height:100%;overflow:hidden;background:#f0f2f5}
+        .pv-container{display:flex;flex-direction:column;height:100%;overflow:hidden;background:#f0f2f5}
 
-        .tree-sidebar{width:260px;min-width:260px;background:#ffffff;border-right:1px solid rgba(226,232,240,.8);display:flex;flex-direction:column;overflow-y:auto}
-        .tree-header{padding:20px 16px 14px;border-bottom:1px solid rgba(226,232,240,.8)}
-        .tree-header h2{font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:.12em;color:#94a3b8;margin-bottom:8px}
-        .project-name{font-size:17px;font-weight:700;color:#0f172a;margin-bottom:2px}
-        .project-meta{font-size:12px;color:#64748b;font-family:'JetBrains Mono',monospace}
-        .project-path{display:flex;flex-wrap:wrap;gap:0;margin-top:8px;font-size:11px;line-height:1.6}
-        .project-path .pp-seg{color:#94a3b8;white-space:nowrap}
-        .project-path .pp-seg:last-child{color:#2563eb;font-weight:600}
-        .project-path .pp-sep{color:#94a3b8;margin:0 4px;font-size:9px}
+        .pv-project-header{padding:20px 32px 0;background:#ffffff}
+        .pv-breadcrumb{font-size:13px;color:#2563eb;margin-bottom:4px;display:flex;align-items:center;gap:4px}
+        .pv-breadcrumb a{color:#2563eb;text-decoration:none;cursor:pointer;font-weight:500}
+        .pv-breadcrumb a:hover{text-decoration:underline}
+        .pv-breadcrumb .pv-bc-sep{color:#94a3b8;font-size:11px}
+        .pv-title-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+        .pv-title{font-size:22px;font-weight:800;color:#0f172a;line-height:1.3;letter-spacing:-.01em}
+        .pv-title-actions{display:flex;align-items:center;gap:8px}
+        .pv-status-pill{display:inline-flex;align-items:center;gap:5px;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:700;letter-spacing:.3px;border:1.5px solid transparent}
+        .pv-actions-btn{display:flex;align-items:center;gap:5px;padding:7px 14px;border-radius:8px;border:1px solid rgba(226,232,240,.8);background:#ffffff;color:#64748b;font-size:13px;font-weight:600;cursor:pointer;font-family:'Inter',system-ui,sans-serif;transition:all .15s cubic-bezier(.4,0,.2,1)}
+        .pv-actions-btn:hover{border-color:#cbd5e1;color:#0f172a;box-shadow:0 1px 3px rgba(0,0,0,.06)}
 
-        .tree-nav{padding:12px 8px;flex:1}
-        .tree-section-label{font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:.12em;color:#94a3b8;padding:12px 10px 6px;margin-top:4px}
-        .tree-branch{margin-bottom:2px}
-        .tree-branch-header{display:flex;align-items:center;gap:6px;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600;color:#64748b;transition:all .15s cubic-bezier(.4,0,.2,1);user-select:none}
-        .tree-branch-header:hover{background:#f1f5f9;color:#0f172a}
-        .tree-leaf{display:flex;align-items:center;gap:8px;padding:7px 10px 7px 34px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:500;color:#64748b;transition:all .15s cubic-bezier(.4,0,.2,1);position:relative;border-left:2px solid transparent;margin-left:6px}
-        .tree-leaf:hover{background:#f1f5f9;color:#0f172a}
-        .tree-leaf.active{color:#0f172a;border-left-color:#2563eb;background:#f8fafc}
-        .tree-leaf.active::before{display:none}
-        .leaf-badge{margin-left:auto;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;font-family:'JetBrains Mono',monospace}
-        .leaf-badge.red{background:rgba(248,113,113,.15);color:#dc2626}
-        .leaf-badge.green{background:rgba(52,211,153,.15);color:#059669}
-        .leaf-badge.blue{background:rgba(37,99,235,.15);color:#2563eb}
-        .leaf-badge.muted{background:#f8fafc;color:#94a3b8}
-
-        .tree-back{padding:12px 16px;border-top:1px solid rgba(226,232,240,.8);margin-top:auto}
-        .tree-back-btn{display:flex;align-items:center;gap:6px;font-size:13px;color:#94a3b8;cursor:pointer;padding:8px 10px;border-radius:8px;transition:all .15s cubic-bezier(.4,0,.2,1);border:none;background:none;font-family:'Inter',system-ui,sans-serif;width:100%}
-        .tree-back-btn:hover{background:#f1f5f9;color:#0f172a}
+        .pv-tabs{display:flex;gap:0;border-bottom:1px solid rgba(226,232,240,.8);background:#ffffff;padding:0 32px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+        .pv-tabs::-webkit-scrollbar{display:none}
+        .pv-tab{padding:12px 18px;font-size:14px;font-weight:600;color:#64748b;cursor:pointer;border-bottom:2.5px solid transparent;transition:all .15s cubic-bezier(.4,0,.2,1);background:none;border-top:none;border-left:none;border-right:none;font-family:'Inter',system-ui,sans-serif;white-space:nowrap;display:flex;align-items:center;gap:6px;position:relative}
+        .pv-tab:hover{color:#0f172a}
+        .pv-tab.active{color:#2563eb;border-bottom-color:#2563eb}
+        .pv-tab-badge{font-size:11px;font-weight:700;padding:1px 7px;border-radius:10px;font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums}
+        .pv-tab-badge.neutral{background:#f1f5f9;color:#94a3b8}
+        .pv-tab-badge.blue{background:rgba(37,99,235,.1);color:#2563eb}
+        .pv-tab-badge.green{background:rgba(52,211,153,.12);color:#059669}
+        .pv-tab-badge.red{background:rgba(248,113,113,.1);color:#dc2626}
 
         .main-content{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
-        .content-header{padding:20px 32px;border-bottom:1px solid rgba(226,232,240,.8);display:flex;align-items:center;justify-content:space-between;background:#ffffff;min-height:64px}
-        .content-header h1{font-size:22px;font-weight:700;display:flex;align-items:center;gap:10px;color:#0f172a}
-        .content-header .header-subtitle{font-size:13px;color:#64748b;margin-top:2px}
-        .content-header .header-actions{display:flex;gap:8px;align-items:center}
         .content-body{flex:1;overflow:hidden;min-height:0}
 
         /* Sumar */
@@ -1690,10 +1680,10 @@ export default function ProjectViewPage() {
         .sumar-status{display:flex;align-items:center;gap:12px;margin-bottom:24px}
         .status-badge{display:inline-flex;align-items:center;gap:4px;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.3px}
         .sumar-progress{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px}
-        .sp-card{padding:18px;border-radius:12px;border:1px solid rgba(226,232,240,.8);background:#ffffff;text-align:center;cursor:pointer;transition:all .15s cubic-bezier(.4,0,.2,1)}
+        .sp-card{padding:22px 20px;border-radius:12px;border:1px solid rgba(226,232,240,.8);background:#ffffff;cursor:pointer;transition:all .15s cubic-bezier(.4,0,.2,1)}
         .sp-card:hover{border-color:#cbd5e1;box-shadow:0 2px 8px rgba(0,0,0,.04);transform:translateY(-1px)}
-        .sp-card .sp-val{font-size:26px;font-weight:800;font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums}
-        .sp-card .sp-label{font-size:12px;color:#64748b;margin-top:6px;font-weight:500}
+        .sp-card .sp-val{font-size:32px;font-weight:800;font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums}
+        .sp-card .sp-label{font-size:13px;color:#64748b;margin-top:6px;font-weight:500}
         .sp-card .sp-bar{height:5px;background:#f0f2f5;border-radius:3px;margin-top:10px;overflow:hidden}
         .sp-card .sp-fill{height:100%;border-radius:3px;transition:all .15s cubic-bezier(.4,0,.2,1)}
         .sumar-info{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px}
@@ -1709,18 +1699,24 @@ export default function ProjectViewPage() {
         .sa-btn.primary:hover{background:#1d4ed8;box-shadow:0 2px 6px rgba(37,99,235,.4)}
 
         /* Eligibility */
-        .elig-panel{padding:24px;max-width:900px;overflow-y:auto;height:100%}
+        .elig-panel{padding:24px 32px;max-width:960px;overflow-y:auto;height:100%}
         .elig-summary{display:flex;gap:16px;margin-bottom:24px}
         .elig-stat{padding:16px 20px;border-radius:12px;border:1px solid rgba(226,232,240,.8);background:#ffffff;flex:1;text-align:center}
         .elig-stat .number{font-size:28px;font-weight:800;font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums}
         .elig-stat .label{font-size:12px;color:#64748b;margin-top:4px;font-weight:500}
-        .elig-rule{display:flex;align-items:flex-start;gap:12px;padding:12px 16px;border-radius:8px;border:1px solid rgba(226,232,240,.8);margin-bottom:6px;background:#ffffff;transition:all .15s cubic-bezier(.4,0,.2,1);cursor:pointer}
-        .elig-rule:hover{border-color:#cbd5e1;box-shadow:0 1px 3px rgba(0,0,0,.05)}
-        .elig-icon{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:12px;font-weight:700}
-        .elig-icon.pass{background:#ecfdf5;color:#059669;border:1.5px solid #a7f3d0}
-        .elig-icon.fail{background:#fef2f2;color:#dc2626;border:1.5px solid #fecaca}
-        .elig-icon.pending{background:#fffbeb;color:#d97706;border:1.5px solid #fde68a}
-        .elig-name{font-size:14px;font-weight:500;flex:1;color:#0f172a}
+        .elig-rule{display:flex;align-items:center;gap:12px;padding:14px 20px;border-radius:10px;margin-bottom:8px;transition:all .15s cubic-bezier(.4,0,.2,1);cursor:pointer;border:none}
+        .elig-rule.pass-bg{background:rgba(52,211,153,.08)}
+        .elig-rule.fail-bg{background:rgba(248,113,113,.08)}
+        .elig-rule.pending-bg{background:rgba(251,191,36,.08)}
+        .elig-rule:hover{box-shadow:0 1px 4px rgba(0,0,0,.06)}
+        .elig-icon{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:11px;font-weight:700}
+        .elig-icon.pass{background:transparent;color:#059669}
+        .elig-icon.fail{background:transparent;color:#dc2626}
+        .elig-icon.pending{background:transparent;color:#d97706}
+        .elig-name{font-size:14px;font-weight:500;flex:1}
+        .elig-name.pass-text{color:#059669}
+        .elig-name.fail-text{color:#dc2626}
+        .elig-name.pending-text{color:#d97706}
         .elig-detail{font-size:12px;color:#64748b;font-family:'JetBrains Mono',monospace;max-width:300px;text-align:right}
         .elig-type-badge{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:2px 8px;border-radius:4px;border:1px solid transparent;flex-shrink:0}
         .elig-type-badge.fixed{background:rgba(52,211,153,.1);color:#059669;border-color:#a7f3d0}
@@ -2012,23 +2008,30 @@ export default function ProjectViewPage() {
         .solomon-drop-overlay{position:absolute;inset:0;background:rgba(77,139,255,.08);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:20;pointer-events:none;border-radius:8px}
         .solomon-drop-icon{font-size:40px;margin-bottom:8px}
         .solomon-drop-text{font-size:14px;font-weight:600;color:#4d8bff}
-        .solomon-toolbar{padding:10px 20px;display:flex;align-items:center;gap:10px;border-bottom:1px solid rgba(226,232,240,.8);background:#ffffff}
-        .solomon-avatar{width:32px;height:32px;border-radius:50%;background:#2563eb;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;color:#ffffff;flex-shrink:0}
+        .solomon-toolbar{padding:12px 20px;display:flex;align-items:center;gap:10px;border-bottom:1px solid rgba(226,232,240,.8);background:#ffffff}
+        .solomon-avatar{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#fb923c,#f97316);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;color:#ffffff;flex-shrink:0}
         .solomon-name-block{display:flex;flex-direction:column;gap:1px}
-        .solomon-name-block .sn-name{font-size:14px;font-weight:700;color:#0f172a}
+        .solomon-name-block .sn-name{font-size:15px;font-weight:700;color:#0f172a}
         .solomon-name-block .sn-status{font-size:11px;color:#059669;display:flex;align-items:center;gap:4px}
         .sn-status-dot{width:6px;height:6px;border-radius:50%;background:#34d399;animation:statusPulse 2s ease infinite}
         @keyframes statusPulse{0%,100%{opacity:1}50%{opacity:.4}}
-        .model-selector{display:flex;gap:3px;background:#f0f2f5;padding:3px;border-radius:6px;margin-left:auto}
-        .model-btn{padding:4px 10px;font-size:11px;font-weight:600;border-radius:8px;border:none;cursor:pointer;background:transparent;color:#64748b;font-family:'JetBrains Mono',monospace;transition:all .15s cubic-bezier(.4,0,.2,1)}
+        .model-selector{display:flex;gap:3px;background:#f0f2f5;padding:3px;border-radius:8px;margin-left:auto}
+        .model-btn{padding:5px 12px;font-size:12px;font-weight:600;border-radius:6px;border:none;cursor:pointer;background:transparent;color:#64748b;font-family:'JetBrains Mono',monospace;transition:all .15s cubic-bezier(.4,0,.2,1)}
         .model-btn.active{background:#2563eb;color:#ffffff}
         .model-btn:hover:not(.active){color:#0f172a;background:#f1f5f9}
-        .et-toggle{display:flex;align-items:center;gap:5px;font-size:11px;color:#64748b;cursor:pointer;padding:4px 9px;border-radius:8px;border:1px solid rgba(226,232,240,.8);background:transparent;font-family:'Inter',system-ui,sans-serif;transition:all .15s cubic-bezier(.4,0,.2,1)}
+        .et-toggle{display:flex;align-items:center;gap:5px;font-size:11px;color:#64748b;cursor:pointer;padding:5px 10px;border-radius:8px;border:1px solid rgba(226,232,240,.8);background:transparent;font-family:'Inter',system-ui,sans-serif;transition:all .15s cubic-bezier(.4,0,.2,1)}
         .et-toggle.on{border-color:#7c3aed;color:#7c3aed;background:rgba(167,139,250,.08)}
         .chat-messages{flex:1;overflow-y:auto;overflow-x:hidden;padding:20px;display:flex;flex-direction:column;gap:16px;min-height:0}
+        .chat-msg-wrapper{display:flex;flex-direction:column;gap:4px}
+        .chat-msg-wrapper.assistant{align-items:flex-start}
+        .chat-msg-wrapper.user{align-items:flex-end}
+        .chat-msg-header{display:flex;align-items:center;gap:8px;padding:0 4px}
+        .chat-msg-header .cmh-avatar{width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#fb923c,#f97316);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:#ffffff;flex-shrink:0}
+        .chat-msg-header .cmh-name{font-size:13px;font-weight:700;color:#0f172a}
+        .chat-msg-header .cmh-time{font-size:12px;color:#94a3b8}
         .chat-msg{max-width:85%;padding:14px 18px;border-radius:16px;font-size:14px;line-height:1.6;white-space:pre-wrap;position:relative}
-        .chat-msg.assistant{background:#f8fafc;border:1px solid rgba(226,232,240,.8);align-self:flex-start;border-bottom-left-radius:4px}
-        .chat-msg.user{background:#eff6ff;border:1px solid #bfdbfe;align-self:flex-end;border-bottom-right-radius:4px;color:#2563eb}
+        .chat-msg.assistant{background:#ffffff;border:1px solid rgba(226,232,240,.8);align-self:flex-start;border-top-left-radius:4px}
+        .chat-msg.user{background:#eff6ff;border:1px solid #bfdbfe;align-self:flex-end;border-bottom-right-radius:4px;color:#1e40af}
         .chat-msg .msg-bold{font-weight:600;color:#0f172a}
         .extraction-cards{margin-top:10px;display:flex;flex-direction:column;gap:8px}
         .extraction-card{background:#f8fafc;border:1px solid rgba(226,232,240,.8);border-radius:12px;padding:10px 14px;transition:all .15s cubic-bezier(.4,0,.2,1)}
@@ -2049,18 +2052,22 @@ export default function ProjectViewPage() {
         .exc-confirmed-label{font-size:11px;font-weight:700;color:#059669;display:flex;align-items:center;gap:4px}
         .chat-timestamp{font-size:10px;color:#94a3b8;margin-top:4px}
         .chat-input-area{padding:14px 20px;border-top:1px solid rgba(226,232,240,.8);background:#ffffff}
-        .chat-input-row{display:flex;gap:8px;align-items:flex-end}
-        .chat-input{flex:1;padding:12px 16px;border-radius:8px;border:1px solid rgba(226,232,240,.8);background:#f0f2f5;color:#0f172a;font-size:14px;font-family:'Inter',system-ui,sans-serif;line-height:1.5;resize:none;outline:none;min-height:44px;max-height:160px;overflow-y:auto;transition:all .15s cubic-bezier(.4,0,.2,1)}
-        .chat-input:focus{border-color:#2563eb}
+        .chat-input-row{display:flex;gap:8px;align-items:flex-end;background:#f8fafc;border:1px solid rgba(226,232,240,.8);border-radius:12px;padding:6px 8px;transition:border-color .15s}
+        .chat-input-row:focus-within{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.08)}
+        .chat-input{flex:1;padding:8px 10px;border-radius:8px;border:none;background:transparent;color:#0f172a;font-size:14px;font-family:'Inter',system-ui,sans-serif;line-height:1.5;resize:none;outline:none;min-height:36px;max-height:160px;overflow-y:auto}
         .chat-input::placeholder{color:#94a3b8}
-        .chat-btn{width:44px;height:44px;border-radius:8px;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s cubic-bezier(.4,0,.2,1);flex-shrink:0}
-        .chat-btn.send{background:#2563eb;color:#ffffff;font-size:18px}
+        .chat-btn{width:36px;height:36px;border-radius:50%;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s cubic-bezier(.4,0,.2,1);flex-shrink:0}
+        .chat-btn.send{background:#2563eb;color:#ffffff;font-size:16px}
         .chat-btn.send:hover{background:#1d4ed8}
-        .chat-btn.upload-btn{background:#f8fafc;color:#64748b;border:1px solid rgba(226,232,240,.8);font-size:16px}
-        .chat-btn.upload-btn:hover{border-color:#cbd5e1;color:#0f172a}
-        .solomon-elements-panel{width:320px;min-width:280px;border-left:1px solid rgba(226,232,240,.8);background:#ffffff;display:flex;flex-direction:column;overflow:hidden;height:100%}
-        .sep-header{padding:14px 16px;border-bottom:1px solid rgba(226,232,240,.8);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#94a3b8;display:flex;align-items:center;gap:8px}
-        .sep-count{font-size:10px;padding:1px 6px;border-radius:8px;background:rgba(37,99,235,.12);color:#2563eb;font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums}
+        .chat-btn.upload-btn{background:transparent;color:#94a3b8;border:none;font-size:16px}
+        .chat-btn.upload-btn:hover{color:#0f172a}
+        .solomon-elements-panel{width:300px;min-width:260px;border-left:1px solid rgba(226,232,240,.8);background:#ffffff;display:flex;flex-direction:column;overflow:hidden;height:100%}
+        .sep-header{padding:16px 16px 12px;border-bottom:1px solid rgba(226,232,240,.8);display:flex;flex-direction:column;gap:8px}
+        .sep-header-top{display:flex;align-items:center;justify-content:space-between}
+        .sep-header-title{font-size:14px;font-weight:700;color:#0f172a}
+        .sep-count{font-size:13px;font-weight:700;color:#2563eb;font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums}
+        .sep-progress-bar{height:4px;background:#f0f2f5;border-radius:2px;overflow:hidden}
+        .sep-progress-fill{height:100%;background:#2563eb;border-radius:2px;transition:width .3s}
         .sep-scroll{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:8px}
         .sep-card{padding:12px 14px;border-radius:12px;border:1px solid rgba(226,232,240,.8);background:#f8fafc;transition:all .15s cubic-bezier(.4,0,.2,1)}
         .sep-card:hover{border-color:#cbd5e1;box-shadow:0 1px 2px rgba(0,0,0,.04)}
@@ -2277,14 +2284,9 @@ export default function ProjectViewPage() {
 
         /* ═══ RESPONSIVE ═══ */
         @media(max-width:1024px){
-          .pv-container{flex-direction:column}
-          .tree-sidebar{width:100%!important;min-width:100%!important;max-height:200px;border-right:none;border-bottom:1px solid rgba(226,232,240,.8);flex-direction:row;overflow-x:auto}
-          .tree-header{min-width:220px;padding:12px 16px}
-          .tree-nav{display:flex;flex-direction:row;gap:4px;padding:8px;overflow-x:auto;flex-wrap:nowrap;min-width:0}
-          .tree-branch{min-width:max-content}
-          .tree-branch-header{white-space:nowrap}
-          .tree-leaf{white-space:nowrap;min-width:max-content}
-          .tree-back{display:none}
+          .pv-project-header{padding:16px 20px 0}
+          .pv-tabs{padding:0 20px}
+          .pv-title{font-size:18px}
           .neemia-layout{flex-direction:column}
           .neemia-templates{width:100%!important;min-width:100%!important;max-height:220px;border-right:none;border-bottom:1px solid rgba(226,232,240,.8);overflow-x:auto;display:flex;flex-wrap:nowrap;gap:8px;align-items:flex-start}
           .neemia-templates h3{white-space:nowrap}
@@ -2292,14 +2294,19 @@ export default function ProjectViewPage() {
           .neemia-preview-area{flex-direction:column}
           .neemia-fields-panel{width:100%!important;max-height:300px}
           .neemia-split-handle{display:none}
+          .solomon-elements-panel{width:260px;min-width:220px}
         }
         @media(max-width:768px){
-          .tree-sidebar{max-height:160px}
-          .content-header{padding:12px 16px}
-          .content-body{padding:16px}
+          .pv-project-header{padding:12px 16px 0}
+          .pv-tabs{padding:0 16px;gap:0}
+          .pv-tab{padding:10px 12px;font-size:13px}
+          .pv-title{font-size:16px}
           .el-grid{grid-template-columns:1fr}
           .sg-stats{flex-direction:column;gap:8px}
           .neemia-templates{max-height:180px}
+          .solomon-elements-panel{display:none}
+          .sumar-panel{padding:20px 16px}
+          .elig-panel{padding:16px}
         }
       `}</style>
 
@@ -2312,123 +2319,57 @@ export default function ProjectViewPage() {
       )}
 
       <div className="pv-container" style={lockError ? { height: "calc(100% - 44px)" } : undefined}>
-        {/* SIDEBAR TREE */}
-        <div className="tree-sidebar">
-          <div className="tree-header">
-            <h2>Proiect</h2>
-            <div className="project-name">{projectName}</div>
-            <div className="project-meta">{projectFirma} &middot; {projectCui}</div>
-            <div className="project-path">
-              {projectPath.map((seg, i) => (
-                <span key={i}>
-                  {i > 0 && <span className="pp-sep">&rsaquo;</span>}
-                  <span className="pp-seg">{seg.label}</span>
-                </span>
-              ))}
+        {/* PROJECT HEADER + TABS */}
+        <div className="pv-project-header">
+          <div className="pv-breadcrumb">
+            <a onClick={() => router.push("/projects")}>Proiecte</a>
+            <span className="pv-bc-sep">/</span>
+          </div>
+          <div className="pv-title-row">
+            <div className="pv-title">
+              {projectFirma} {projectPath.length > 0 ? `\u2014 ${projectPath[projectPath.length - 1]?.label}` : projectName !== projectFirma ? `\u2014 ${projectName}` : ""}
             </div>
-            <div style={{ marginTop: 8 }}>
-              <span className="status-badge" style={{ background: (STATUS_MAP[projectStatus] || STATUS_MAP.draft).bg, color: (STATUS_MAP[projectStatus] || STATUS_MAP.draft).color }}>
+            <div className="pv-title-actions">
+              <span className="pv-status-pill" style={{
+                background: (STATUS_MAP[projectStatus] || STATUS_MAP.draft).bg,
+                color: (STATUS_MAP[projectStatus] || STATUS_MAP.draft).color,
+                borderColor: (STATUS_MAP[projectStatus] || STATUS_MAP.draft).color + "40",
+              }}>
                 {(STATUS_MAP[projectStatus] || STATUS_MAP.draft).label}
               </span>
+              <button className="pv-actions-btn" onClick={() => {}}>
+                &middot;&middot;&middot;&nbsp; Acțiuni
+              </button>
             </div>
           </div>
-
-          <div className="tree-nav">
-            {/* Sumar leaf */}
-            <div className={`tree-leaf ${activeLeaf === "sumar" ? "active" : ""}`} onClick={() => setActiveLeaf("sumar")}>
-              <span>&#128203;</span> Sumar
-            </div>
-
-            {/* Scriere proiect branch */}
-            <div className="tree-branch">
-              <div className="tree-branch-header" onClick={() => toggleBranch("scriere")}>
-                <span style={{ fontSize: 10, transition: "transform .15s cubic-bezier(.4,0,.2,1)", transform: branches.scriere ? "rotate(90deg)" : "none" }}>&#9654;</span>
-                Scriere proiect
-              </div>
-              {branches.scriere && (
-                <div>
-                  <div className={`tree-leaf ${activeLeaf === "eligibilitate" ? "active" : ""}`} onClick={() => setActiveLeaf("eligibilitate")}>
-                    <span>&#128737;</span> Eligibilitate
-                    <span className={`leaf-badge ${eligPassed === eligTotal && eligTotal > 0 ? "green" : eligPassed > 0 ? "blue" : "red"}`}>{eligPassed}/{eligTotal}</span>
-                  </div>
-                  <div className={`tree-leaf ${activeLeaf === "ghid" ? "active" : ""}`} onClick={() => setActiveLeaf("ghid")}>
-                    <span>&#128214;</span> Ghid Finanțare
-                    <span className="leaf-badge blue">{guideRules.length}</span>
-                  </div>
-                  <div className={`tree-leaf ${activeLeaf === "solomon" ? "active" : ""}`} onClick={() => setActiveLeaf("solomon")}>
-                    <span>&#129302;</span> Solomon
-                    <span className="leaf-badge muted">{solomonModel === "opus" ? "Opus" : "Sonnet"}</span>
-                  </div>
-                  <div className={`tree-leaf ${activeLeaf === "elemente" ? "active" : ""}`} onClick={() => setActiveLeaf("elemente")}>
-                    <span>&#128202;</span> Elemente
-                    <span className={`leaf-badge ${elemFilled === elemTotal && elemTotal > 0 ? "green" : "blue"}`}>{elemFilled}/{elemTotal}</span>
-                  </div>
-                  <div className={`tree-leaf ${activeLeaf === "checklist" ? "active" : ""}`} onClick={() => setActiveLeaf("checklist")}>
-                    <span>&#128203;</span> Checklist doc
-                    <span className={`leaf-badge ${checkDone === checkTotal && checkTotal > 0 ? "green" : checkDone > 0 ? "blue" : "red"}`}>{checkDone}/{checkTotal}</span>
-                  </div>
-                  <div className={`tree-leaf ${activeLeaf === "neemia" ? "active" : ""}`} onClick={() => setActiveLeaf("neemia")}>
-                    <span>&#128196;</span> Neemia
-                    <span className="leaf-badge muted">{neemiaTemplates.filter(t => t.status === "generated" || t.status === "validated").length}/{neemiaTemplates.length}</span>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Implementare branch */}
-            <div className="tree-branch">
-              <div className="tree-branch-header" onClick={() => toggleBranch("implementare")}>
-                <span style={{ fontSize: 10, transition: "transform .15s cubic-bezier(.4,0,.2,1)", transform: branches.implementare ? "rotate(90deg)" : "none" }}>&#9654;</span>
-                Implementare
-                <span className="leaf-badge muted" style={{ marginLeft: "auto" }}>TBD</span>
-              </div>
-            </div>
-
-            {/* Monitorizare branch */}
-            <div className="tree-branch">
-              <div className="tree-branch-header" onClick={() => toggleBranch("monitorizare")}>
-                <span style={{ fontSize: 10, transition: "transform .15s cubic-bezier(.4,0,.2,1)", transform: branches.monitorizare ? "rotate(90deg)" : "none" }}>&#9654;</span>
-                Monitorizare
-                <span className="leaf-badge muted" style={{ marginLeft: "auto" }}>TBD</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="tree-back">
-            <button className="tree-back-btn" onClick={() => router.push("/projects")}>
-              &larr; Toate proiectele
+        </div>
+        <div className="pv-tabs">
+          {([
+            { key: "sumar" as LeafType, label: "Sumar" },
+            { key: "eligibilitate" as LeafType, label: "Eligibilitate" },
+            { key: "ghid" as LeafType, label: "Ghid" },
+            { key: "solomon" as LeafType, label: "Solomon", badge: `${elemFilled}/${elemTotal}`, badgeClass: elemFilled === elemTotal && elemTotal > 0 ? "green" : elemFilled > 0 ? "blue" : "neutral" },
+            { key: "elemente" as LeafType, label: "Elemente" },
+            { key: "checklist" as LeafType, label: "Checklist doc" },
+            { key: "neemia" as LeafType, label: "Neemia" },
+          ]).map(tab => (
+            <button
+              key={tab.key}
+              className={`pv-tab ${activeLeaf === tab.key ? "active" : ""}`}
+              onClick={() => setActiveLeaf(tab.key)}
+            >
+              {tab.label}
+              {tab.badge && <span className={`pv-tab-badge ${tab.badgeClass || "neutral"}`}>{tab.badge}</span>}
             </button>
-          </div>
+          ))}
         </div>
 
         {/* MAIN CONTENT */}
         <div className="main-content">
-          <div className="content-header">
-            <div>
-              <h1>
-                {activeLeaf === "sumar" && <><span>&#128203;</span> Sumar proiect</>}
-                {activeLeaf === "eligibilitate" && <><span>&#128737;</span> Eligibilitate</>}
-                {activeLeaf === "ghid" && <><span>&#128214;</span> Ghid Finanțare</>}
-                {activeLeaf === "solomon" && <><span>&#129302;</span> Solomon</>}
-                {activeLeaf === "elemente" && <><span>&#128202;</span> Elemente proiect</>}
-                {activeLeaf === "checklist" && <><span>&#128203;</span> Checklist documente</>}
-                {activeLeaf === "neemia" && <><span>&#128196;</span> Neemia</>}
-                <span className="status-badge" style={{ background: (STATUS_MAP[projectStatus] || STATUS_MAP.draft).bg, color: (STATUS_MAP[projectStatus] || STATUS_MAP.draft).color, fontSize: 11, marginLeft: 4 }}>
-                  {(STATUS_MAP[projectStatus] || STATUS_MAP.draft).label}
-                </span>
-              </h1>
-              <div className="header-subtitle">{projectFirma} &middot; CUI {projectCui}{projectPath.length > 0 && <> &middot; {projectPath[projectPath.length - 1]?.label}</>}</div>
-            </div>
-          </div>
-
           <div className="content-body">
             {/* SUMAR */}
             {activeLeaf === "sumar" && (
               <div className="sumar-panel">
-                <div className="sumar-status">
-                  <span style={{ fontSize: 20, fontWeight: 800 }}>{projectName}</span>
-                </div>
-
                 <div className="sumar-progress">
                   {[
                     { label: "Eligibilitate", val: `${eligPassed}/${eligTotal}`, p: pct(eligPassed, eligTotal), color: eligPassed === eligTotal && eligTotal > 0 ? "#059669" : "#d97706", leaf: "eligibilitate" as LeafType },
@@ -2645,61 +2586,18 @@ export default function ProjectViewPage() {
                   </div>
                 </div>
 
-                <div className="rules-scroll" style={{ maxHeight: "calc(100vh - 320px)" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
                   {eligibilityRules.map(rule => (
-                    <div className="rule-card" key={rule.id}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                        <div className={`rule-type-badge ${rule.type}`}>
-                          {rule.type === "fixed" ? "FIXĂ" : "INTERPRETATĂ"}
-                        </div>
-                        {rule.category && (
-                          <>
-                            <span className="rule-cat-dot" style={{ background: eligCategoryColors[rule.category] || "#94a3b8" }} />
-                            <span className="rule-cat-label">{eligCategoryLabels[rule.category] || rule.category}</span>
-                          </>
+                    <div className={`elig-rule ${rule.status}-bg`} key={rule.id}>
+                      <div className={`elig-icon ${rule.status}`}>
+                        {eligStatusIcons[rule.status]}
+                      </div>
+                      <span className={`elig-name ${rule.status}-text`}>
+                        {rule.name}
+                        {rule.status === "pending" && rule.detail && (
+                          <span style={{ fontWeight: 400 }}> — {rule.detail}</span>
                         )}
-                        {rule.needsReview && <span className="rule-review-flag">⚠ Review</span>}
-                      </div>
-                      <div className="rule-card-top">
-                        <div className={`elig-icon ${rule.status}`} style={{ width: 20, height: 20, fontSize: 10 }}>
-                          {eligStatusIcons[rule.status]}
-                        </div>
-                        <span className="elig-status-label" style={{ fontSize: 10, fontWeight: 700, color: eligStatusColors[rule.status], letterSpacing: ".5px" }}>
-                          {eligStatusLabels[rule.status]}
-                        </span>
-                      </div>
-                      <div className="rule-text">{rule.name}</div>
-                      {rule.status === "pending" && (
-                        <div style={{ fontSize: 11, color: "#d97706", marginTop: 4, display: "flex", alignItems: "center", gap: 4 }}>
-                          <span style={{ fontSize: 12 }}>⏳</span>
-                          {rule.detail
-                            ? <span>Câmpuri necesare: {rule.detail}</span>
-                            : <span>Completează elementele lipsă pentru a evalua această regulă</span>
-                          }
-                        </div>
-                      )}
-                      {rule.status !== "pending" && rule.detail && (
-                        <div style={{ fontSize: 11, color: rule.status === "pass" ? "#059669" : "#dc2626", marginTop: 4 }}>
-                          {rule.detail}
-                        </div>
-                      )}
-                      <div className="rule-meta">
-                        {rule.page != null && <span>Pag. {rule.page}</span>}
-                        {rule.confidence != null && (
-                          <span>
-                            {Math.round(rule.confidence * 100)}%
-                            <span className="confidence-bar"><span className="confidence-fill" style={{ width: `${rule.confidence * 100}%`, background: rule.confidence > 0.9 ? "#34d399" : rule.confidence > 0.8 ? "#2563eb" : "#fbbf24" }} /></span>
-                          </span>
-                        )}
-                        {rule.sourceDocument && <span className="rule-doc-ref">{rule.sourceDocument.name}</span>}
-                      </div>
-                      {rule.hasReferenceData && rule.referenceTableNames && rule.referenceTableNames.length > 0 && (
-                        <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }}>
-                          {rule.referenceTableNames.map((name: string, ri: number) => (
-                            <span key={ri} className="ed-constraint-ref" style={{ fontSize: 9 }}>&#128202; {name}</span>
-                          ))}
-                        </div>
-                      )}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -3704,7 +3602,14 @@ export default function ProjectViewPage() {
                   {/* Messages */}
                   <div className="chat-messages" ref={chatRef} onScroll={handleChatScroll} onMouseUp={handleTextSelect}>
                     {solomonMessages.map((msg, msgIdx) => (
-                      <div key={msgIdx}>
+                      <div key={msgIdx} className={`chat-msg-wrapper ${msg.role}`}>
+                        {msg.role === "assistant" && (
+                          <div className="chat-msg-header">
+                            <div className="cmh-avatar">S</div>
+                            <span className="cmh-name">Solomon</span>
+                            <span className="cmh-time">{new Date().toLocaleTimeString("ro-RO", { hour: "2-digit", minute: "2-digit" })}</span>
+                          </div>
+                        )}
                         <div className={`chat-msg ${msg.role}`}>
                           {renderMsgText(msg.text)}
                           {msg.extractions && (() => {
@@ -3817,12 +3722,6 @@ export default function ProjectViewPage() {
                             );
                           })()}
                         </div>
-                        {msg.role === "assistant" && (
-                          <div className="chat-timestamp">
-                            <div className="solomon-avatar" style={{ width: 20, height: 20, fontSize: 10, display: "inline-flex", verticalAlign: "middle", marginRight: 6 }}>S</div>
-                            {new Date().toLocaleTimeString("ro-RO", { hour: "2-digit", minute: "2-digit" })}
-                          </div>
-                        )}
                       </div>
                     ))}
                     {solomonStreaming && solomonMessages.length > 0 && solomonMessages[solomonMessages.length - 1]?.role === "user" && (
@@ -3861,9 +3760,6 @@ export default function ProjectViewPage() {
                       <button className="chat-btn upload-btn" title="Upload document" onClick={() => solomonFileRef.current?.click()} disabled={solomonStreaming || readOnly}>
                         &#128206;
                       </button>
-                      <button className="chat-btn upload-btn" title="Paste snippet" style={{ fontSize: 12, fontWeight: 600, width: "auto", padding: "0 12px" }}>
-                        &#128203;
-                      </button>
                       <textarea
                         className="chat-input"
                         data-solomon-input
@@ -3899,30 +3795,43 @@ export default function ProjectViewPage() {
                 {/* Elements panel */}
                 <div className="solomon-elements-panel">
                   <div className="sep-header">
-                    Elemente completate
-                    <span className="sep-count">{solomonConfirmedCount}/{solomonElements.length}</span>
+                    <div className="sep-header-top">
+                      <span className="sep-header-title">Elemente completate</span>
+                      <span className="sep-count">{elemFilled} / {elemTotal}</span>
+                    </div>
+                    <div className="sep-progress-bar">
+                      <div className="sep-progress-fill" style={{ width: `${pct(elemFilled, elemTotal)}%` }} />
+                    </div>
                   </div>
                   <div className="sep-scroll">
-                    {solomonElements.map((el, i) => (
-                      <div key={`${el.key}-${i}`} className={`sep-card ${el.status === "confirmat" ? "is-confirmed" : "is-proposed"}`}>
+                    {/* Show actual project elements (confirmed + proposed) */}
+                    {elements.filter(e => e.value).map((el) => (
+                      <div key={el.id} className={`sep-card ${el.status === "confirmat" ? "is-confirmed" : "is-proposed"}`}>
+                        <div style={{ fontSize: 10, color: "#94a3b8", textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 2 }}>{el.sourceLabel || el.source || ""}</div>
+                        <div className="sep-card-label">{el.label}</div>
+                        <div className="sep-card-value">{el.value}</div>
+                        {el.status === "confirmat" && (
+                          <div className="sep-confirmed-badge">&#10003; Confirmat</div>
+                        )}
+                      </div>
+                    ))}
+                    {/* Solomon proposed elements not yet in DB */}
+                    {solomonElements.filter(se => se.status !== "confirmat" && !elements.some(e => e.key === se.key && e.value)).map((el, i) => (
+                      <div key={`sol-${el.key}-${i}`} className="sep-card is-proposed">
                         <div className="sep-card-label">{el.label}</div>
                         <div className="sep-card-value">{el.value}</div>
                         <div className="sep-card-source">
                           <span style={{ fontSize: 10 }}>&#128196;</span>
                           {el.source}
                         </div>
-                        {el.status === "confirmat" ? (
-                          <div className="sep-confirmed-badge">&#10003; Confirmat</div>
-                        ) : (
-                          <div className="sep-confirm-row">
-                            <button className="sep-confirm-btn" onClick={() => handleConfirmElement(i)}>
-                              &#10003; Confirmă
-                            </button>
-                            <button className="sep-reject-btn" onClick={() => handleRejectElement(i)}>
-                              &#10005;
-                            </button>
-                          </div>
-                        )}
+                        <div className="sep-confirm-row">
+                          <button className="sep-confirm-btn" onClick={() => handleConfirmElement(solomonElements.indexOf(el))}>
+                            &#10003; Confirmă
+                          </button>
+                          <button className="sep-reject-btn" onClick={() => handleRejectElement(solomonElements.indexOf(el))}>
+                            &#10005;
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>

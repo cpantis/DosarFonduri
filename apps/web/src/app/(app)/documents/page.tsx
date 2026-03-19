@@ -1474,7 +1474,7 @@ export default function DocumentsPage() {
   /* Detail panel removed — info is now inline in card */
 
   return (
-    <div className="animate-[fadeIn_.2s_ease-out]">
+    <div className="animate-[fadeIn_.2s_ease-out]" style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
       <style>{`
         /* ─── Animations ─── */
         @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }

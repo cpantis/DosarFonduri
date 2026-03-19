@@ -1676,16 +1676,17 @@ export default function ProjectViewPage() {
         .content-body{flex:1;overflow:hidden;min-height:0}
 
         /* Sumar */
-        .sumar-panel{padding:28px 32px;max-width:960px;overflow-y:auto;height:100%}
-        .sumar-status{display:flex;align-items:center;gap:12px;margin-bottom:24px}
-        .status-badge{display:inline-flex;align-items:center;gap:4px;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.3px}
-        .sumar-progress{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px}
-        .sp-card{padding:22px 20px;border-radius:12px;border:1px solid rgba(226,232,240,.8);background:#ffffff;cursor:pointer;transition:all .15s cubic-bezier(.4,0,.2,1)}
-        .sp-card:hover{border-color:#cbd5e1;box-shadow:0 2px 8px rgba(0,0,0,.04);transform:translateY(-1px)}
-        .sp-card .sp-val{font-size:32px;font-weight:800;font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums}
-        .sp-card .sp-label{font-size:13px;color:#64748b;margin-top:6px;font-weight:500}
-        .sp-card .sp-bar{height:5px;background:#f0f2f5;border-radius:3px;margin-top:10px;overflow:hidden}
-        .sp-card .sp-fill{height:100%;border-radius:3px;transition:all .15s cubic-bezier(.4,0,.2,1)}
+        .sumar-panel{padding:24px;overflow-y:auto;height:100%}
+        .sumar-progress{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px}
+        .sp-card{padding:16px 20px;border-radius:12px;border:1px solid rgba(226,232,240,.8);background:#ffffff}
+        .sp-card .sp-val{font-size:24px;font-weight:600;margin-bottom:2px}
+        .sp-card .sp-label{font-size:13px;color:#94a3b8}
+        .sumar-activity{padding:0}
+        .sumar-activity h3{font-size:16px;font-weight:600;margin-bottom:12px;color:#0f172a}
+        .sa-item{display:flex;align-items:center;gap:10px;padding:10px 14px;background:#f8fafc;border-radius:8px;margin-bottom:8px}
+        .sa-item-icon{font-size:16px;flex-shrink:0}
+        .sa-item-text{font-size:14px;color:#0f172a;flex:1}
+        .sa-item-time{font-size:12px;color:#94a3b8;white-space:nowrap;flex-shrink:0}
         .sumar-info{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px}
         .si-card{padding:18px;border-radius:12px;border:1px solid rgba(226,232,240,.8);background:#ffffff}
         .si-card h3{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #f0f2f5}
@@ -2368,22 +2369,73 @@ export default function ProjectViewPage() {
         <div className="main-content">
           <div className="content-body">
             {/* SUMAR */}
-            {activeLeaf === "sumar" && (
+            {activeLeaf === "sumar" && (() => {
+              const progressPct = elemTotal > 0 ? pct(elemFilled, elemTotal) : 0;
+              const generatedDocs = neemiaTemplates.filter(t => t.status === "generated" || t.status === "validated").length;
+
+              // Build activity items from real data
+              const activityItems: Array<{ icon: string; text: string; time: string; sortKey: number }> = [];
+
+              // Solomon activity — count elements with source "solomon"
+              const solomonElemCount = elements.filter(e => e.source === "solomon" || e.source === "solomon_chat").length;
+              if (solomonElemCount > 0) {
+                activityItems.push({ icon: "\uD83E\uDD16", text: `Solomon a completat ${solomonElemCount} elemente`, time: "recent", sortKey: 3 });
+              }
+
+              // Neemia activity — generated docs
+              if (generatedDocs > 0) {
+                activityItems.push({ icon: "\uD83D\uDCC4", text: `${generatedDocs} document${generatedDocs > 1 ? "e" : ""} generat${generatedDocs > 1 ? "e" : ""} de Neemia`, time: "recent", sortKey: 2 });
+              }
+
+              // Eligibility activity
+              if (eligTotal > 0) {
+                activityItems.push({
+                  icon: "\u2705",
+                  text: `Pre-eligibilitate verificată \u2014 ${eligPassed}/${eligTotal} criterii trecute`,
+                  time: "recent",
+                  sortKey: 1,
+                });
+              }
+
+              // Checklist activity
+              if (checkDone > 0) {
+                activityItems.push({ icon: "\uD83D\uDCCB", text: `${checkDone}/${checkTotal} documente din checklist bifate`, time: "recent", sortKey: 0 });
+              }
+
+              return (
               <div className="sumar-panel">
                 <div className="sumar-progress">
-                  {[
-                    { label: "Eligibilitate", val: `${eligPassed}/${eligTotal}`, p: pct(eligPassed, eligTotal), color: eligPassed === eligTotal && eligTotal > 0 ? "#059669" : "#d97706", leaf: "eligibilitate" as LeafType },
-                    { label: "Elemente", val: `${elemFilled}/${elemTotal}`, p: pct(elemFilled, elemTotal), color: elemFilled === elemTotal && elemTotal > 0 ? "#059669" : "#2563eb", leaf: "elemente" as LeafType },
-                    { label: "Checklist doc", val: `${checkDone}/${checkTotal}`, p: pct(checkDone, checkTotal), color: checkDone === checkTotal && checkTotal > 0 ? "#059669" : "#ea580c", leaf: "checklist" as LeafType },
-                    { label: "Neemia", val: `${neemiaTemplates.filter(t => t.status === "generated" || t.status === "validated").length}/${neemiaTemplates.length}`, p: neemiaTemplates.length > 0 ? pct(neemiaTemplates.filter(t => t.status === "generated" || t.status === "validated").length, neemiaTemplates.length) : 0, color: "#a78bfa", leaf: "neemia" as LeafType },
-                  ].map(item => (
-                    <div className="sp-card" key={item.label} onClick={() => setActiveLeaf(item.leaf)}>
-                      <div className="sp-val" style={{ color: item.color }}>{item.val}</div>
-                      <div className="sp-label">{item.label}</div>
-                      <div className="sp-bar"><div className="sp-fill" style={{ width: `${item.p}%`, background: item.color }} /></div>
-                    </div>
-                  ))}
+                  <div className="sp-card">
+                    <div className="sp-val" style={{ color: "#2563eb" }}>{elemFilled}</div>
+                    <div className="sp-label">Elemente completate</div>
+                  </div>
+                  <div className="sp-card">
+                    <div className="sp-val" style={{ color: "#059669" }}>{progressPct}%</div>
+                    <div className="sp-label">Progress total</div>
+                  </div>
+                  <div className="sp-card">
+                    <div className="sp-val">{eligTotal}</div>
+                    <div className="sp-label">Reguli verificate</div>
+                  </div>
+                  <div className="sp-card">
+                    <div className="sp-val">{generatedDocs}</div>
+                    <div className="sp-label">Documente generate</div>
+                  </div>
                 </div>
+
+                {/* Activitate recentă */}
+                {activityItems.length > 0 && (
+                  <div className="sumar-activity" style={{ marginBottom: 24 }}>
+                    <h3>Activitate recentă</h3>
+                    {activityItems.map((item, i) => (
+                      <div className="sa-item" key={i}>
+                        <span className="sa-item-icon">{item.icon}</span>
+                        <span className="sa-item-text">{item.text}</span>
+                        <span className="sa-item-time">{item.time}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 {/* GAP 1: Scor estimat proiect */}
                 {projectScores && projectScores.maxTotalPoints > 0 && (
@@ -2538,7 +2590,8 @@ export default function ProjectViewPage() {
                   <button className="sa-btn" onClick={() => setActiveLeaf("neemia")}>&#128196; Generează documente</button>
                 </div>
               </div>
-            )}
+              );
+            })()}
 
             {/* ELIGIBILITATE */}
             {activeLeaf === "eligibilitate" && (() => {

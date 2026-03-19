@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DosarFonduri v2 — Ghid Finanțare sM 4.1</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#fff;--bg-raised:#f8fafc;--bg-hover:#f1f5f9;--bg-active:#e2e8f0;
+  --text:#0f172a;--text-sec:#475569;--text-muted:#94a3b8;
+  --border:#e2e8f0;--border-strong:#cbd5e1;
+  --accent:#2563eb;--accent-hover:#1d4ed8;--accent-light:#eff6ff;
+  --success:#059669;--success-light:#ecfdf5;--success-border:#a7f3d0;
+  --warning:#d97706;--warning-light:#fffbeb;--warning-border:#fde68a;
+  --danger:#dc2626;--danger-light:#fef2f2;--danger-border:#fecaca;
+  --purple:#7c3aed;--purple-light:#f5f3ff;--purple-border:#ddd6fe;
+  --radius:8px;--radius-lg:12px;--radius-full:9999px;
+  --shadow-sm:0 1px 2px rgba(0,0,0,.05);--shadow-md:0 4px 12px rgba(0,0,0,.08);
+  --transition:150ms ease;
+}
+body{font-family:'Inter',-apple-system,sans-serif;background:var(--bg);color:var(--text);font-size:16px;line-height:1.6;height:100vh;overflow:hidden}
+.shell{display:flex;flex-direction:column;height:100vh;overflow:hidden}
+
+/* TOPBAR */
+.topbar{height:56px;min-height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;border-bottom:1px solid var(--border);background:var(--bg);z-index:10}
+.topbar-left{display:flex;align-items:center;gap:12px}
+.topbar-cab{font-size:14px;font-weight:500;color:var(--text-sec);display:flex;align-items:center;gap:6px;cursor:pointer;padding:6px 10px;border-radius:var(--radius);transition:background var(--transition)}
+.topbar-cab:hover{background:var(--bg-hover)}
+.topbar-right{display:flex;align-items:center;gap:8px}
+.topbar-av{width:32px;height:32px;border-radius:var(--radius-full);background:var(--accent);color:#fff;font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:center}
+
+/* MAIN */
+.main{display:flex;flex:1;overflow:hidden}
+
+/* SIDEBAR */
+.sidebar{width:240px;min-width:240px;border-right:1px solid var(--border);display:flex;flex-direction:column}
+.sb-logo{height:56px;display:flex;align-items:center;padding:0 16px;gap:10px;border-bottom:1px solid var(--border)}
+.sb-logo-i{width:28px;height:28px;border-radius:var(--radius);background:linear-gradient(135deg,#2563eb,#7c3aed);display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:700}
+.sb-logo-t{font-size:15px;font-weight:600}
+.sb-nav{flex:1;padding:12px 8px;display:flex;flex-direction:column;gap:2px}
+.sb-item{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:var(--radius);cursor:pointer;font-size:14px;font-weight:500;color:var(--text-sec);transition:all var(--transition);position:relative}
+.sb-item:hover{background:var(--bg-hover);color:var(--text)}
+.sb-item.active{background:var(--bg-hover);color:var(--text)}
+.sb-item.active::before{content:'';position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:0 2px 2px 0;background:var(--accent)}
+.sb-sep{height:1px;background:var(--border);margin:8px 12px}
+.sb-footer{padding:12px 16px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px}
+.sb-ft-av{width:32px;height:32px;border-radius:var(--radius-full);background:var(--bg-hover);color:var(--text-sec);font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:center}
+.sb-ft-name{font-size:13px;font-weight:500}.sb-ft-role{font-size:11px;color:var(--text-muted)}
+
+/* CONTENT */
+.content{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+
+/* PAGE HEADER */
+.ph{padding:16px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.ph-left{display:flex;flex-direction:column;gap:2px}
+.ph-bc{display:flex;align-items:center;gap:6px;font-size:14px;color:var(--text-muted)}
+.ph-bc a{color:var(--text-muted);text-decoration:none;cursor:pointer}.ph-bc a:hover{color:var(--accent)}
+.ph-title{font-size:20px;font-weight:600}
+.ph-right{display:flex;align-items:center;gap:8px}
+
+/* BADGES */
+.badge{display:inline-flex;align-items:center;gap:4px;padding:2px 10px;border-radius:var(--radius-full);font-size:12px;font-weight:500;border:1px solid}
+.badge-s{background:var(--success-light);color:var(--success);border-color:var(--success-border)}
+.badge-w{background:var(--warning-light);color:var(--warning);border-color:var(--warning-border)}
+.badge-d{background:var(--danger-light);color:var(--danger);border-color:var(--danger-border)}
+.badge-n{background:var(--bg-raised);color:var(--text-muted);border-color:var(--border)}
+.badge-i{background:var(--accent-light);color:var(--accent);border-color:#bfdbfe}
+.badge-p{background:var(--purple-light);color:var(--purple);border-color:var(--purple-border)}
+
+/* BUTTONS */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:7px 14px;border-radius:var(--radius);font-size:13px;font-weight:500;border:none;cursor:pointer;transition:all var(--transition);white-space:nowrap}
+.btn-pri{background:var(--text);color:#fff}.btn-pri:hover{background:#1e293b}
+.btn-sec{background:#fff;border:1px solid var(--border);color:var(--text-sec)}.btn-sec:hover{background:var(--bg-hover)}
+.btn-ghost{background:transparent;color:var(--text-sec)}.btn-ghost:hover{background:var(--bg-hover)}
+.btn-sm{padding:4px 10px;font-size:12px}
+
+/* TABS */
+.tabs{display:flex;gap:0;padding:0 24px;border-bottom:1px solid var(--border);background:#fff}
+.tab{padding:12px 16px;font-size:14px;font-weight:500;color:var(--text-muted);cursor:pointer;border-bottom:2px solid transparent;transition:all var(--transition);white-space:nowrap}
+.tab:hover{color:var(--text-sec)}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.tab-badge{font-size:11px;background:var(--bg-hover);color:var(--text-muted);padding:1px 6px;border-radius:var(--radius-full);margin-left:6px}
+.tab.active .tab-badge{background:var(--accent-light);color:var(--accent)}
+
+/* SCROLLABLE */
+.scroll{flex:1;overflow-y:auto}
+.scroll::-webkit-scrollbar{width:6px}
+.scroll::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:3px}
+
+/* GHID HEADER */
+.ghid-info{padding:20px 24px;border-bottom:1px solid var(--border);background:var(--bg-raised)}
+.ghid-info-row{display:flex;align-items:center;gap:16px;margin-bottom:12px}
+.ghid-icon{width:40px;height:40px;border-radius:var(--radius);background:var(--danger-light);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
+.ghid-name{font-size:16px;font-weight:600}
+.ghid-meta{font-size:13px;color:var(--text-muted)}
+.ghid-stats{display:flex;gap:24px;flex-wrap:wrap}
+.ghid-stat{display:flex;flex-direction:column}
+.ghid-stat-val{font-size:18px;font-weight:600}
+.ghid-stat-label{font-size:12px;color:var(--text-muted)}
+
+/* GHID SUB-TABS */
+.sub-tabs{display:flex;gap:0;padding:0 24px;border-bottom:1px solid var(--border);background:#fff}
+.sub-tab{padding:10px 14px;font-size:13px;font-weight:500;color:var(--text-muted);cursor:pointer;border-bottom:2px solid transparent;transition:all var(--transition)}
+.sub-tab:hover{color:var(--text-sec)}
+.sub-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+
+/* FILTER BAR */
+.filter-bar{display:flex;align-items:center;gap:8px;padding:12px 24px;border-bottom:1px solid var(--border);background:#fff;flex-wrap:wrap}
+.filter-btn{padding:5px 12px;border-radius:var(--radius-full);font-size:12px;font-weight:500;border:1px solid var(--border);background:#fff;color:var(--text-sec);cursor:pointer;transition:all var(--transition)}
+.filter-btn:hover{background:var(--bg-hover)}
+.filter-btn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.filter-count{font-size:11px;opacity:.7;margin-left:2px}
+.filter-sep{width:1px;height:20px;background:var(--border)}
+
+/* RULES */
+.rule-list{padding:16px 24px;display:flex;flex-direction:column;gap:8px}
+.rule-card{border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;transition:all var(--transition)}
+.rule-card:hover{border-color:var(--border-strong)}
+.rule-header{display:flex;align-items:center;gap:12px;padding:14px 16px;cursor:pointer;transition:background var(--transition)}
+.rule-header:hover{background:var(--bg-raised)}
+.rule-status{width:28px;height:28px;border-radius:var(--radius-full);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+.rule-status.pass{background:var(--success-light);color:var(--success)}
+.rule-status.fail{background:var(--danger-light);color:var(--danger)}
+.rule-status.pending{background:var(--warning-light);color:var(--warning)}
+.rule-status.na{background:var(--bg-hover);color:var(--text-muted)}
+.rule-body{flex:1;min-width:0}
+.rule-name{font-size:14px;font-weight:500;margin-bottom:2px}
+.rule-meta{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-muted);flex-wrap:wrap}
+.rule-right{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.rule-chevron{color:var(--text-muted);transition:transform var(--transition);font-size:16px}
+.rule-chevron.open{transform:rotate(180deg)}
+.rule-detail{padding:0 16px 14px 56px;display:none}
+.rule-detail.open{display:block}
+.rule-detail-text{font-size:14px;color:var(--text-sec);line-height:1.7;padding:12px 16px;background:var(--bg-raised);border-radius:var(--radius);margin-bottom:8px}
+.rule-detail-eval{display:flex;align-items:flex-start;gap:8px;padding:10px 14px;border-radius:var(--radius);font-size:13px}
+.rule-detail-eval.ai{background:var(--purple-light);border:1px solid var(--purple-border)}
+.rule-detail-eval.ai .eval-icon{color:var(--purple)}
+.rule-detail-src{font-size:12px;color:var(--text-muted);margin-top:8px}
+.confidence-bar{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:500}
+.conf-track{width:60px;height:4px;background:var(--border);border-radius:2px;overflow:hidden}
+.conf-fill{height:100%;border-radius:2px}
+
+/* SCORING */
+.scoring-section{padding:20px 24px}
+.scoring-component{margin-bottom:24px}
+.scoring-comp-header{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:var(--bg-raised);border-radius:var(--radius-lg) var(--radius-lg) 0 0;border:1px solid var(--border);border-bottom:none}
+.scoring-comp-name{font-size:14px;font-weight:600}
+.scoring-comp-pts{font-size:14px;font-weight:600;color:var(--accent)}
+.scoring-table{width:100%;border-collapse:collapse;border:1px solid var(--border);border-radius:0 0 var(--radius-lg) var(--radius-lg);overflow:hidden}
+.scoring-table th{text-align:left;padding:10px 14px;font-size:12px;font-weight:500;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em;background:var(--bg-raised);border-bottom:1px solid var(--border)}
+.scoring-table td{padding:12px 14px;font-size:14px;border-bottom:1px solid var(--border);vertical-align:top}
+.scoring-table tr:last-child td{border-bottom:none}
+.scoring-table tr:hover td{background:var(--bg-raised)}
+.scoring-pts{font-weight:600;text-align:center;min-width:60px}
+.scoring-total-row{border-top:2px solid var(--border)}
+.scoring-total-row td{font-weight:600;background:var(--bg-raised)!important}
+
+/* PRAG CALITATE */
+.prag-card{padding:16px 20px;border:1px solid var(--accent);border-left:4px solid var(--accent);border-radius:var(--radius-lg);background:var(--accent-light);margin:0 24px 20px}
+.prag-title{font-size:14px;font-weight:600;color:var(--accent);margin-bottom:8px}
+.prag-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.prag-item{text-align:center;padding:8px;border-radius:var(--radius);background:#fff}
+.prag-item-val{font-size:20px;font-weight:700;color:var(--accent)}
+.prag-item-label{font-size:11px;color:var(--text-muted);line-height:1.3;margin-top:2px}
+
+/* ELEMENTS */
+.elem-section{padding:16px 24px}
+.elem-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.elem-card{padding:12px 14px;border:1px solid var(--border);border-radius:var(--radius);display:flex;align-items:flex-start;gap:10px;transition:all var(--transition)}
+.elem-card:hover{border-color:var(--border-strong);background:var(--bg-raised)}
+.elem-type{font-size:10px;font-weight:600;padding:2px 6px;border-radius:4px;text-transform:uppercase;flex-shrink:0}
+.elem-type.text{background:#dbeafe;color:#1e40af}
+.elem-type.number{background:#fef3c7;color:#92400e}
+.elem-type.date{background:#ede9fe;color:#5b21b6}
+.elem-type.boolean{background:#d1fae5;color:#065f46}
+.elem-type.enum{background:#fce7f3;color:#9d174d}
+.elem-info{min-width:0;flex:1}
+.elem-name{font-size:13px;font-weight:500;margin-bottom:2px}
+.elem-key{font-size:11px;color:var(--text-muted);font-family:monospace}
+.elem-req{color:var(--danger);font-size:10px;margin-left:4px}
+
+/* REF TABLES */
+.ref-section{padding:16px 24px}
+.ref-card{border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;margin-bottom:16px}
+.ref-card-header{padding:14px 16px;background:var(--bg-raised);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;cursor:pointer}
+.ref-card-header:hover{background:var(--bg-hover)}
+.ref-card-title{font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px}
+.ref-table{width:100%;border-collapse:collapse}
+.ref-table th{padding:8px 12px;font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em;background:var(--bg-raised);border-bottom:1px solid var(--border);text-align:left}
+.ref-table td{padding:8px 12px;font-size:13px;border-bottom:1px solid var(--border)}
+.ref-table tr:last-child td{border-bottom:none}
+.ref-table tr:hover td{background:var(--accent-light)}
+.ref-table .highlight td{background:var(--accent-light);font-weight:500}
+
+/* SUMMARY BAR */
+.summary-bar{display:flex;align-items:center;gap:16px;padding:12px 24px;background:var(--bg-raised);border-bottom:1px solid var(--border);flex-wrap:wrap}
+.summary-item{display:flex;align-items:center;gap:4px;font-size:13px;font-weight:500}
+.summary-dot{width:8px;height:8px;border-radius:50%}
+
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.fade-in{animation:fadeIn 250ms ease forwards}
+</style>
+</head>
+<body>
+
+<div class="shell">
+  <div class="topbar">
+    <div class="topbar-left"><div class="topbar-cab">Cabinet: Consultanță Fonduri SRL <span style="opacity:.4">▾</span></div></div>
+    <div class="topbar-right"><div class="topbar-av">MP</div></div>
+  </div>
+  <div class="main">
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+      <div class="sb-logo"><div class="sb-logo-i">DF</div><div class="sb-logo-t">DosarFonduri</div></div>
+      <div class="sb-nav">
+        <div class="sb-item" style="opacity:.6">📊 Panou</div>
+        <div class="sb-item" style="opacity:.6">🏢 Firme</div>
+        <div class="sb-item active">📁 Proiecte</div>
+        <div class="sb-item" style="opacity:.6">📄 Documente</div>
+        <div class="sb-sep"></div>
+        <div class="sb-item" style="opacity:.6">⚙ Configurări</div>
+      </div>
+      <div class="sb-footer">
+        <div class="sb-ft-av">MP</div>
+        <div><div class="sb-ft-name">Mihai Pantis</div><div class="sb-ft-role">consultant</div></div>
+      </div>
+    </div>
+
+    <!-- CONTENT -->
+    <div class="content">
+      <!-- Page Header -->
+      <div class="ph">
+        <div class="ph-left">
+          <div class="ph-bc"><a>Proiecte</a> <span>/</span></div>
+          <div class="ph-title">ANDA OANA AGRO FERMA SRL — sM 4.1</div>
+        </div>
+        <div class="ph-right"><span class="badge badge-s">Activ</span><button class="btn btn-sec btn-sm">⋯ Acțiuni</button></div>
+      </div>
+
+      <!-- Project Tabs -->
+      <div class="tabs">
+        <div class="tab">Sumar</div>
+        <div class="tab">Eligibilitate</div>
+        <div class="tab active">Ghid Finanțare</div>
+        <div class="tab">Solomon <span class="tab-badge">94/120</span></div>
+        <div class="tab">Elemente</div>
+        <div class="tab">Checklist</div>
+        <div class="tab">Neemia</div>
+      </div>
+
+      <!-- Ghid Info Header -->
+      <div class="ghid-info">
+        <div class="ghid-info-row">
+          <div class="ghid-icon">📕</div>
+          <div>
+            <div class="ghid-name">Ghidul Solicitantului — Submăsura 4.1</div>
+            <div class="ghid-meta">Componenta P4.1.1 · „Achiziții simple de utilaje agricole" · 62 pagini · Procesat 18.03.2026</div>
+          </div>
+        </div>
+        <div class="ghid-stats">
+          <div class="ghid-stat"><div class="ghid-stat-val" style="color:var(--accent)">33</div><div class="ghid-stat-label">Reguli extrase</div></div>
+          <div class="ghid-stat"><div class="ghid-stat-val" style="color:var(--purple)">18</div><div class="ghid-stat-label">Criterii scoring</div></div>
+          <div class="ghid-stat"><div class="ghid-stat-val" style="color:var(--success)">47</div><div class="ghid-stat-label">Elemente definite</div></div>
+          <div class="ghid-stat"><div class="ghid-stat-val">4</div><div class="ghid-stat-label">Tabele referință</div></div>
+          <div class="ghid-stat"><div class="ghid-stat-val" style="font-size:14px">0.92</div><div class="ghid-stat-label">Trust score</div></div>
+        </div>
+      </div>
+
+      <!-- Sub-tabs -->
+      <div class="sub-tabs" id="sub-tabs">
+        <div class="sub-tab active" onclick="switchSub(this,'reguli')">🛡️ Reguli eligibilitate</div>
+        <div class="sub-tab" onclick="switchSub(this,'scoring')">📊 Criterii scoring</div>
+        <div class="sub-tab" onclick="switchSub(this,'elemente')">📋 Elemente definite</div>
+        <div class="sub-tab" onclick="switchSub(this,'tabele')">📑 Tabele referință</div>
+      </div>
+
+      <!-- ═══ SUB: REGULI ═══ -->
+      <div class="scroll" id="sub-reguli">
+        <div class="summary-bar">
+          <div class="summary-item"><div class="summary-dot" style="background:var(--success)"></div> Pass 25</div>
+          <div class="summary-item"><div class="summary-dot" style="background:var(--danger)"></div> Fail 1</div>
+          <div class="summary-item"><div class="summary-dot" style="background:var(--warning)"></div> Pending 4</div>
+          <div class="summary-item"><div class="summary-dot" style="background:var(--text-muted)"></div> N/A 3</div>
+          <div style="flex:1"></div>
+          <div class="summary-item" style="color:var(--text-muted)">Total: 33 reguli din 1 ghid</div>
+        </div>
+        <div class="filter-bar">
+          <div class="filter-btn active" onclick="filterRules('all',this)">Toate <span class="filter-count">33</span></div>
+          <div class="filter-btn" onclick="filterRules('fixed',this)">⚡ Fixe <span class="filter-count">25</span></div>
+          <div class="filter-btn" onclick="filterRules('interpreted',this)">🧠 Interpretate <span class="filter-count">8</span></div>
+          <div class="filter-sep"></div>
+          <div class="filter-btn" onclick="filterRules('pass',this)">✓ Pass</div>
+          <div class="filter-btn" onclick="filterRules('fail',this)">✗ Fail</div>
+          <div class="filter-btn" onclick="filterRules('pending',this)">⏳ Pending</div>
+        </div>
+        <div class="rule-list" id="rule-list"></div>
+      </div>
+
+      <!-- ═══ SUB: SCORING ═══ -->
+      <div class="scroll" id="sub-scoring" style="display:none">
+        <div class="prag-card">
+          <div class="prag-title">Praguri de calitate lunare — Componenta I (toate culturile, excl. sfeclă zahăr și forme asociative)</div>
+          <div class="prag-grid">
+            <div class="prag-item"><div class="prag-item-val">90</div><div class="prag-item-label">25.06 – 24.07.2024</div></div>
+            <div class="prag-item"><div class="prag-item-val">80</div><div class="prag-item-label">25.07 – 24.08.2024</div></div>
+            <div class="prag-item"><div class="prag-item-val">56</div><div class="prag-item-label">25.08 – 24.09.2024</div></div>
+          </div>
+        </div>
+        <div class="scoring-section" id="scoring-content"></div>
+      </div>
+
+      <!-- ═══ SUB: ELEMENTE ═══ -->
+      <div class="scroll" id="sub-elemente" style="display:none">
+        <div class="filter-bar">
+          <div class="filter-btn active">Toate <span class="filter-count">47</span></div>
+          <div class="filter-btn">Solicitant <span class="filter-count">12</span></div>
+          <div class="filter-btn">Financiar <span class="filter-count">10</span></div>
+          <div class="filter-btn">Proiect <span class="filter-count">9</span></div>
+          <div class="filter-btn">Exploatație <span class="filter-count">8</span></div>
+          <div class="filter-btn">Locație <span class="filter-count">5</span></div>
+          <div class="filter-btn">Alte <span class="filter-count">3</span></div>
+        </div>
+        <div class="elem-section"><div class="elem-grid" id="elem-grid"></div></div>
+      </div>
+
+      <!-- ═══ SUB: TABELE ═══ -->
+      <div class="scroll" id="sub-tabele" style="display:none">
+        <div class="ref-section" id="ref-content"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══ RULES DATA ═══
+const RULES = [
+  {id:1,name:"Solicitantul este fermier activ minim 12 luni",type:"fixed",status:"pass",category:"beneficiari",detail:"Verificare automată: data înregistrare ONRC 2019, vechime 7 ani > 12 luni.",eval:null,page:"p.7"},
+  {id:2,name:"Exploatația are dimensiune economică SO ≥ 8.000 EUR",type:"fixed",status:"pass",category:"dimensiune",detail:"Standard Output calculat din suprafață 120ha × coeficient vegetal = ~42.000 EUR SO.",eval:null,page:"p.8"},
+  {id:3,name:"Solicitantul nu este în procedură de insolvență/faliment",type:"fixed",status:"pass",category:"beneficiari",detail:"Verificare ONRC: stare firmă ACTIV, fără mențiuni insolvență.",eval:null,page:"p.9"},
+  {id:4,name:"Sediul social în zonă rurală eligibilă (UAT din lista ANC)",type:"fixed",status:"pass",category:"locatie",detail:"Zimandu Nou, jud. Arad — prezent în Lista UAT ANC (Anexa 4).",eval:null,page:"p.10"},
+  {id:5,name:"Nu are datorii restante la ANAF",type:"fixed",status:"fail",category:"beneficiari",detail:"Verificare certificate ANAF: datorii restante 2.340 RON la bugetul de stat.",eval:null,page:"p.9"},
+  {id:6,name:"Capital social minim subscris și vărsat",type:"fixed",status:"pass",category:"financiar",detail:"Capital social: 5.000 RON — depășește minimul legal.",eval:null,page:"p.10"},
+  {id:7,name:"Cod CAEN principal eligibil (agricol sector vegetal)",type:"fixed",status:"pass",category:"beneficiari",detail:"CAEN 0111 — Cultivarea cerealelor. Sector vegetal eligibil P4.1.1.",eval:null,page:"p.6"},
+  {id:8,name:"Investiția vizează echipamente/utilaje noi (nu second-hand)",type:"fixed",status:"pass",category:"investitie",detail:"Toate ofertele de preț specifică echipamente noi.",eval:null,page:"p.14"},
+  {id:9,name:"Valoarea eligibilă nu depășește plafonul maxim per proiect",type:"fixed",status:"pass",category:"financiar",detail:"Plafon maxim 500.000 EUR. Valoare proiect estimată: 285.000 EUR.",eval:null,page:"p.12"},
+  {id:10,name:"Semnătură electronică calificată pe Cererea de Finanțare",type:"fixed",status:"pending",category:"documente",detail:"Verificare la depunere — necesar certificat digital calificat.",eval:null,page:"p.34"},
+  {id:11,name:"Forma juridică eligibilă (SRL, PFA, II, IF, SA, etc.)",type:"fixed",status:"pass",category:"beneficiari",detail:"ANDA OANA AGRO FERMA SRL — Societate cu Răspundere Limitată, eligibilă.",eval:null,page:"p.6"},
+  {id:12,name:"Cofinanțare asigurată minim 30% din valoarea eligibilă",type:"fixed",status:"pending",category:"financiar",detail:"Declarație pe propria răspundere necesară la depunere.",eval:null,page:"p.13"},
+  {id:13,name:"Nu se depășește plafonul de minimis (300.000 EUR / 3 ani)",type:"fixed",status:"pass",category:"financiar",detail:"Ajutor de minimis primit anterior: 0 EUR. Disponibil integral.",eval:null,page:"p.15"},
+  {id:14,name:"Cerere de finanțare unică per sesiune per solicitant",type:"fixed",status:"pass",category:"documente",detail:"Verificare baza de date AFIR: nicio cerere depusă în sesiunea curentă.",eval:null,page:"p.35"},
+  {id:15,name:"Cheltuielile prevăd TVA nerecuperabil (dacă e cazul)",type:"fixed",status:"pass",category:"financiar",detail:"Solicitantul nu este plătitor TVA — TVA este cheltuială eligibilă.",eval:null,page:"p.16"},
+  {id:16,name:"Beneficiarul nu face obiectul dublei finanțări (PS PAC / PNDR)",type:"fixed",status:"pass",category:"beneficiari",detail:"Verificări încrucișate APIA — fără suprapunere cu PS PAC.",eval:null,page:"p.16"},
+  {id:17,name:"Documentele obligatorii sunt complete la depunere",type:"fixed",status:"pending",category:"documente",detail:"Checklist documente: 8/14 complete. Lipsă: memoriu, declarații.",eval:null,page:"p.31"},
+  {id:18,name:"Proiectul nu include cheltuieli neeligibile din cap. 8.1",type:"fixed",status:"pass",category:"investitie",detail:"Verificat: fără bunuri second-hand, fără vehicule transport persoane, fără cap tractor.",eval:null,page:"p.14-16"},
+  {id:19,name:"Investiția nu face obiectul unei duble finanțări",type:"fixed",status:"pass",category:"investitie",detail:"Niciun echipament din oferte nu a fost finanțat anterior prin fonduri europene.",eval:null,page:"p.16"},
+  {id:20,name:"Intensitatea sprijinului respectă plafoanele per tip beneficiar",type:"interpreted",status:"pass",category:"financiar",detail:"Regula complexă: intensitatea depinde de formă juridică + zonă + vârstă.",eval:{confidence:91,reasoning:"SRL în zonă normală, administrator >40 ani → intensitate maximă 50%. Proiectul solicită 50% = conform. Dacă administratorul ar fi sub 40 ani → intensitate 60% posibilă (tineri fermieri)."},page:"p.11-13"},
+  {id:21,name:"Corelația putere tractor / suprafață fermă (Anexa 3)",type:"interpreted",status:"pass",category:"investitie",detail:"Tractor 280 CP + suprafață 120 ha → verificare tabel Anexa 3.",eval:{confidence:94,reasoning:"120 ha se încadrează în intervalul 101-200 ha → putere maximă admisă 300 CP. Tractorul propus are 280 CP ≤ 300 CP → CONFORM. Dacă suprafața ar fi sub 50 ha, 280 CP ar fi neconform."},page:"p.22, Anexa 3"},
+  {id:22,name:"Calculul Standard Output (SO) conform metodologiei MADR",type:"interpreted",status:"pass",category:"dimensiune",detail:"SO se calculează pe baza suprafeței și coeficienților SO per cultură.",eval:{confidence:82,reasoning:"120 ha cereale × ~350 EUR/ha SO = ~42.000 EUR SO. Depășește pragul minim 8.000 EUR și se încadrează ca fermă de dimensiune medie (12.000-250.000 EUR SO). ATENȚIE: coeficienții SO pot varia pe tipuri de cultură — necesită confirmare consultant."},page:"p.8-9"},
+  {id:23,name:"Criterii de departajare la punctaj egal",type:"interpreted",status:"na",category:"selectie",detail:"Se aplică doar dacă există proiecte cu punctaj identic.",eval:{confidence:97,reasoning:"Departajare: 1) valoare eligibilă mai mică, 2) dimensiune SO mai mică. Nu se aplică la evaluarea individuală a proiectului — relevant doar la selecție."},page:"p.41"},
+  {id:24,name:"Eligibilitate sector vitivinicol (excludere PS PAC)",type:"interpreted",status:"na",category:"beneficiari",detail:"Excludere dacă solicitantul gestionează exploatații viticole.",eval:{confidence:96,reasoning:"ANDA OANA are CAEN 0111 (cereale), nu sector vitivinicol. Excluderea PS PAC nu se aplică."},page:"p.16"},
+  {id:25,name:"Verificare încadrare IMM conform Legii 346/2004",type:"interpreted",status:"pass",category:"beneficiari",detail:"Clasificarea IMM: cifra afaceri + nr. angajați + active.",eval:{confidence:88,reasoning:"CA 1.850.000 RON (~370.000 EUR) < 10M EUR, angajați estimat <50 → microîntreprindere/întreprindere mică. ATENȚIE: trebuie verificat dacă firma face parte dintr-un grup de întreprinderi (partenere/legate)."},page:"p.6-7"},
+  // More fixed rules
+  {id:26,name:"Certificat constatator emis de ONRC — nu mai vechi de 30 zile",type:"fixed",status:"pass",category:"documente",detail:"CC emis 05.03.2026 — în termenul de 30 zile.",eval:null,page:"p.31"},
+  {id:27,name:"Bilanț contabil depus la ANAF pentru ultimul exercițiu",type:"fixed",status:"pass",category:"documente",detail:"Bilanț 2023 disponibil în dosarul client.",eval:null,page:"p.32"},
+  {id:28,name:"Copie CI administrator/reprezentant legal",type:"fixed",status:"pass",category:"documente",detail:"CI Popescu Ion Andrei — valid.",eval:null,page:"p.31"},
+  {id:29,name:"Oferte de preț (minim 1, recomandat 3 per echipament)",type:"fixed",status:"pass",category:"documente",detail:"4 oferte: tractor, semănătoare, disc, cultivator.",eval:null,page:"p.32"},
+  {id:30,name:"Declarație pe propria răspundere privind neîncadrarea în dificultate",type:"fixed",status:"pending",category:"documente",detail:"Document de semnat la depunere.",eval:null,page:"p.33"},
+  {id:31,name:"Memoriu Justificativ completat conform model AFIR",type:"fixed",status:"pass",category:"documente",detail:"Template Memoriu procesat — generare Neemia disponibilă.",eval:null,page:"p.31"},
+  {id:32,name:"Condiții stabilitate investiție 5 ani post-finalizare",type:"interpreted",status:"pass",category:"investitie",detail:"Beneficiarul trebuie să mențină investiția funcțională 5 ani.",eval:{confidence:95,reasoning:"Condiție standard de menținere: beneficiarul nu poate înstrăina sau modifica substanțial investiția pe durata de valabilitate a contractului. ANDA OANA — nicio indicație de risc."},page:"p.45"},
+  {id:33,name:"Redepunere unică în cadrul sesiunii continue",type:"interpreted",status:"na",category:"documente",detail:"Se aplică doar dacă proiectul a fost declarat neconform anterior.",eval:{confidence:98,reasoning:"Prima depunere — criteriul nu se aplică."},page:"p.17"},
+];
+
+// ═══ SCORING DATA ═══
+const SCORING = [
+  {comp:"I",compName:"Toate culturile, exceptând sfecla de zahăr și formele asociative",total:100,criteria:[
+    {name:"P1 — Dimensiunea exploatației (familie și dimensiuni medii)",max:17,sub:[
+      {name:"1.1 Fermă de familie (≥8.000–100.000 EUR SO)",pts:17},
+      {name:"1.2 Fermă dimensiune medie (≥12.000–≤250.000 EUR SO)",pts:13},
+    ]},
+    {name:"P2 — Principiul asocierii fermierilor",max:10,sub:[
+      {name:"2.1 Membru grup/organizație producători sau cooperativă",pts:10},
+    ]},
+    {name:"P3 — Maturitatea proiectului (mediu și management risc)",max:10,sub:[
+      {name:"3.1 Utilaje no tillage / minimum tillage / strip tillage",pts:5},
+      {name:"3.2 Proiect cu studiu de fezabilitate complet",pts:5},
+    ]},
+    {name:"P4 — Principiul veniturilor din activități agricole",max:20,sub:[
+      {name:"4.1 Ponderea veniturilor agricole ≥ 50% din CA (medie)",pts:20},
+    ]},
+    {name:"P5 — Acces la finanțare (nu a beneficiat anterior sM 4.1)",max:25,sub:[
+      {name:"5.1 Nu a obținut finanțare sM 4.1/4.1a/19.2 (2014-2020)",pts:25},
+    ]},
+    {name:"P6 — Produse cu înaltă valoare adăugată",max:5,sub:[
+      {name:"6.1 Investiție destinată sistemului de cultură ecologic",pts:5},
+    ]},
+    {name:"P7 — Calificare în domeniul agricol",max:5,sub:[
+      {name:"7.1 Studii superioare absolvite în domeniu agricol",pts:5},
+      {name:"7.2 Studii medii sau formare profesională agricolă",pts:3},
+    ]},
+    {name:"P8 — Potențialul agricol al zonei",max:8,sub:[
+      {name:"8.1 Proiect în zonă cu potențial agricol ridicat (ANC montană)",pts:8},
+      {name:"8.2 Proiect în zonă defavorizată non-montană",pts:6},
+    ]},
+  ]},
+];
+
+// ═══ ELEMENTS DATA ═══
+const ELEMENTS = [
+  {key:"denumire_firma",name:"Denumire firmă",type:"text",cat:"Solicitant",req:true},
+  {key:"cui",name:"Cod Unic de Înregistrare",type:"text",cat:"Solicitant",req:true},
+  {key:"nr_reg_comert",name:"Nr. Registrul Comerțului",type:"text",cat:"Solicitant",req:true},
+  {key:"sediu_social",name:"Sediu social complet",type:"text",cat:"Solicitant",req:true},
+  {key:"administrator",name:"Administrator/Reprezentant legal",type:"text",cat:"Solicitant",req:true},
+  {key:"cnp_administrator",name:"CNP Administrator",type:"text",cat:"Solicitant",req:true},
+  {key:"forma_juridica",name:"Forma juridică",type:"enum",cat:"Solicitant",req:true},
+  {key:"cod_caen",name:"Cod CAEN principal",type:"text",cat:"Solicitant",req:true},
+  {key:"data_inregistrare",name:"Data înregistrare ONRC",type:"date",cat:"Solicitant",req:true},
+  {key:"email_contact",name:"Email contact",type:"text",cat:"Solicitant",req:false},
+  {key:"telefon_contact",name:"Telefon contact",type:"text",cat:"Solicitant",req:false},
+  {key:"nr_angajati",name:"Număr angajați",type:"number",cat:"Solicitant",req:true},
+  {key:"cifra_afaceri_2023",name:"Cifra de afaceri 2023",type:"number",cat:"Financiar",req:true},
+  {key:"cifra_afaceri_2022",name:"Cifra de afaceri 2022",type:"number",cat:"Financiar",req:false},
+  {key:"profit_net_2023",name:"Profit net 2023",type:"number",cat:"Financiar",req:true},
+  {key:"active_totale",name:"Active totale",type:"number",cat:"Financiar",req:true},
+  {key:"datorii_totale",name:"Datorii totale",type:"number",cat:"Financiar",req:true},
+  {key:"capitaluri_proprii",name:"Capitaluri proprii",type:"number",cat:"Financiar",req:true},
+  {key:"rata_indatorarii",name:"Rata îndatorării (%)",type:"number",cat:"Financiar",req:true},
+  {key:"cash_flow_operational",name:"Cash flow operațional",type:"number",cat:"Financiar",req:false},
+  {key:"pondere_venituri_agricole",name:"Pondere venituri agricole (%)",type:"number",cat:"Financiar",req:true},
+  {key:"venituri_agricole",name:"Venituri din activități agricole",type:"number",cat:"Financiar",req:true},
+  {key:"suprafata_totala_ha",name:"Suprafață totală exploatație (ha)",type:"number",cat:"Exploatație",req:true},
+  {key:"standard_output",name:"Standard Output (EUR)",type:"number",cat:"Exploatație",req:true},
+  {key:"tip_exploatatie",name:"Tip exploatație",type:"enum",cat:"Exploatație",req:true},
+  {key:"cultura_principala",name:"Cultura principală",type:"text",cat:"Exploatație",req:true},
+  {key:"sistem_cultura",name:"Sistem cultură (convențional/eco)",type:"enum",cat:"Exploatație",req:false},
+  {key:"an_infiintare_exploatatie",name:"Anul înființării exploatației",type:"number",cat:"Exploatație",req:true},
+  {key:"zona_anc",name:"Zonă ANC (montană/defavorizată)",type:"enum",cat:"Exploatație",req:false},
+  {key:"nr_parcele",name:"Număr parcele agricole",type:"number",cat:"Exploatație",req:false},
+  {key:"judet",name:"Județul implementării",type:"text",cat:"Locație",req:true},
+  {key:"localitate",name:"Localitatea implementării",type:"text",cat:"Locație",req:true},
+  {key:"uat_cod",name:"Cod UAT",type:"text",cat:"Locație",req:true},
+  {key:"zona_eligibila",name:"Zonă rurală eligibilă",type:"boolean",cat:"Locație",req:true},
+  {key:"iti_delta_dunarii",name:"ITI Delta Dunării",type:"boolean",cat:"Locație",req:false},
+  {key:"valoare_totala_investitie",name:"Valoare totală investiție (EUR)",type:"number",cat:"Proiect",req:true},
+  {key:"valoare_eligibila",name:"Valoare eligibilă (EUR)",type:"number",cat:"Proiect",req:true},
+  {key:"contributie_proprie",name:"Contribuție proprie (EUR)",type:"number",cat:"Proiect",req:true},
+  {key:"finantare_nerambursabila",name:"Finanțare nerambursabilă solicitată (EUR)",type:"number",cat:"Proiect",req:true},
+  {key:"intensitate_sprijin",name:"Intensitate sprijin (%)",type:"number",cat:"Proiect",req:true},
+  {key:"tip_investitie",name:"Tipul investiției principale",type:"enum",cat:"Proiect",req:true},
+  {key:"descriere_investitie",name:"Descriere succintă investiție",type:"text",cat:"Proiect",req:true},
+  {key:"durata_implementare",name:"Durata implementare (luni)",type:"number",cat:"Proiect",req:true},
+  {key:"punctaj_autoevaluare",name:"Punctaj autoevaluare (prescoring)",type:"number",cat:"Proiect",req:true},
+  {key:"membru_forma_asociativa",name:"Membru formă asociativă",type:"boolean",cat:"Alte",req:false},
+  {key:"beneficiat_anterior_sm41",name:"A beneficiat anterior sM 4.1",type:"boolean",cat:"Alte",req:true},
+  {key:"studii_agricole",name:"Studii în domeniul agricol",type:"enum",cat:"Alte",req:false},
+];
+
+// ═══ RENDER RULES ═══
+function renderRules(filter) {
+  const list = document.getElementById('rule-list');
+  let filtered = RULES;
+  if (filter === 'fixed') filtered = RULES.filter(r=>r.type==='fixed');
+  else if (filter === 'interpreted') filtered = RULES.filter(r=>r.type==='interpreted');
+  else if (filter === 'pass') filtered = RULES.filter(r=>r.status==='pass');
+  else if (filter === 'fail') filtered = RULES.filter(r=>r.status==='fail');
+  else if (filter === 'pending') filtered = RULES.filter(r=>r.status==='pending');
+
+  list.innerHTML = filtered.map((r,i) => {
+    const icon = r.status==='pass'?'✓':r.status==='fail'?'✗':r.status==='pending'?'⏳':'—';
+    const evalHtml = r.eval ? `
+      <div class="rule-detail-eval ai">
+        <span class="eval-icon">🧠</span>
+        <div>
+          <div class="confidence-bar">
+            <span>Confidence:</span>
+            <div class="conf-track"><div class="conf-fill" style="width:${r.eval.confidence}%;background:${r.eval.confidence>=85?'var(--success)':r.eval.confidence>=70?'var(--warning)':'var(--danger)'}"></div></div>
+            <span style="color:${r.eval.confidence>=85?'var(--success)':'var(--warning)'}">${r.eval.confidence}%</span>
+            ${r.eval.confidence<85?'<span class="badge badge-w" style="margin-left:6px;font-size:10px">Necesită confirmare</span>':''}
+          </div>
+          <div style="margin-top:6px;font-size:13px;color:var(--text-sec);line-height:1.6">${r.eval.reasoning}</div>
+        </div>
+      </div>`:'';
+    return `
+    <div class="rule-card fade-in" data-type="${r.type}" data-status="${r.status}" style="animation-delay:${i*30}ms">
+      <div class="rule-header" onclick="toggleRule(${r.id})">
+        <div class="rule-status ${r.status}">${icon}</div>
+        <div class="rule-body">
+          <div class="rule-name">${r.name}</div>
+          <div class="rule-meta">
+            <span class="badge ${r.type==='fixed'?'badge-i':'badge-p'}" style="font-size:10px">${r.type==='fixed'?'⚡ Fixă':'🧠 Interpretată'}</span>
+            <span>${r.category}</span>
+            <span>·</span>
+            <span>${r.page}</span>
+          </div>
+        </div>
+        <div class="rule-right">
+          ${r.eval?`<span class="badge ${r.eval.confidence>=85?'badge-s':'badge-w'}" style="font-size:10px">${r.eval.confidence}%</span>`:''}
+          <span class="rule-chevron" id="chev-${r.id}">▾</span>
+        </div>
+      </div>
+      <div class="rule-detail" id="detail-${r.id}">
+        <div class="rule-detail-text">${r.detail}</div>
+        ${evalHtml}
+        <div class="rule-detail-src">📄 Sursa: Ghidul Solicitantului sM 4.1, ${r.page}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleRule(id) {
+  const d = document.getElementById('detail-'+id);
+  const c = document.getElementById('chev-'+id);
+  d.classList.toggle('open');
+  c.classList.toggle('open');
+}
+
+function filterRules(filter, btn) {
+  document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  renderRules(filter);
+}
+
+// ═══ RENDER SCORING ═══
+function renderScoring() {
+  const container = document.getElementById('scoring-content');
+  container.innerHTML = SCORING.map(comp => {
+    let rows = '';
+    comp.criteria.forEach(c => {
+      rows += `<tr><td colspan="2" style="font-weight:600;background:var(--bg-raised)">${c.name}</td><td class="scoring-pts" style="background:var(--bg-raised);font-weight:600">${c.max}</td></tr>`;
+      c.sub.forEach(s => {
+        rows += `<tr><td style="padding-left:32px;width:30px">•</td><td>${s.name}</td><td class="scoring-pts">${s.pts} p</td></tr>`;
+      });
+    });
+    return `
+    <div class="scoring-component">
+      <div class="scoring-comp-header">
+        <div class="scoring-comp-name">Componenta ${comp.comp}: ${comp.compName}</div>
+        <div class="scoring-comp-pts">Total: ${comp.total} puncte</div>
+      </div>
+      <table class="scoring-table">
+        <thead><tr><th colspan="2">Criteriu de selecție</th><th style="text-align:center;width:80px">Puncte</th></tr></thead>
+        <tbody>${rows}
+          <tr class="scoring-total-row"><td colspan="2">TOTAL COMPONENTA ${comp.comp}</td><td class="scoring-pts">${comp.total} p</td></tr>
+        </tbody>
+      </table>
+    </div>`;
+  }).join('');
+}
+
+// ═══ RENDER ELEMENTS ═══
+function renderElements() {
+  document.getElementById('elem-grid').innerHTML = ELEMENTS.map(e => `
+    <div class="elem-card">
+      <span class="elem-type ${e.type}">${e.type}</span>
+      <div class="elem-info">
+        <div class="elem-name">${e.name}${e.req?'<span class="elem-req">*</span>':''}</div>
+        <div class="elem-key">${e.key}</div>
+      </div>
+      <span class="badge badge-n" style="font-size:10px;flex-shrink:0">${e.cat}</span>
+    </div>
+  `).join('');
+}
+
+// ═══ RENDER REF TABLES ═══
+function renderRefTables() {
+  document.getElementById('ref-content').innerHTML = `
+    <div class="ref-card">
+      <div class="ref-card-header" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'':'none'">
+        <div class="ref-card-title">📊 Anexa 3 — Corelarea puterii mașinii cu suprafața fermei</div>
+        <span class="badge badge-i" style="font-size:11px">Tabel lookup</span>
+      </div>
+      <div>
+        <table class="ref-table">
+          <thead><tr><th>Suprafață fermă (ha)</th><th>Putere maximă admisă (CP)</th><th>Observații</th></tr></thead>
+          <tbody>
+            <tr><td>1 – 50</td><td>100 CP</td><td>Exploatații mici</td></tr>
+            <tr><td>51 – 100</td><td>200 CP</td><td>Exploatații medii</td></tr>
+            <tr class="highlight"><td>101 – 200</td><td>300 CP</td><td>✓ ANDA OANA: 120 ha → max 300 CP, tractor 280 CP = CONFORM</td></tr>
+            <tr><td>201 – 500</td><td>400 CP</td><td>Exploatații mari</td></tr>
+            <tr><td>501 – 1000</td><td>500 CP</td><td>Exploatații foarte mari</td></tr>
+            <tr><td>> 1000</td><td>Fără limită</td><td>—</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="ref-card">
+      <div class="ref-card-header" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'':'none'">
+        <div class="ref-card-title">📊 Anexa 4 — Lista UAT Zone ANC (extras Arad)</div>
+        <span class="badge badge-i" style="font-size:11px">Tabel lookup</span>
+      </div>
+      <div>
+        <table class="ref-table">
+          <thead><tr><th>UAT</th><th>Județ</th><th>Zonă</th><th>Eligibil</th></tr></thead>
+          <tbody>
+            <tr><td>Arad</td><td>Arad</td><td>Urban</td><td><span class="badge badge-d" style="font-size:10px">NU</span></td></tr>
+            <tr class="highlight"><td>Zimandu Nou</td><td>Arad</td><td>Rural ANC</td><td><span class="badge badge-s" style="font-size:10px">DA ✓</span></td></tr>
+            <tr><td>Fântânele</td><td>Arad</td><td>Rural ANC</td><td><span class="badge badge-s" style="font-size:10px">DA</span></td></tr>
+            <tr><td>Pecica</td><td>Arad</td><td>Rural ANC</td><td><span class="badge badge-s" style="font-size:10px">DA</span></td></tr>
+            <tr><td>Sântana</td><td>Arad</td><td>Rural ANC</td><td><span class="badge badge-s" style="font-size:10px">DA</span></td></tr>
+            <tr><td>Lipova</td><td>Arad</td><td>Rural montan</td><td><span class="badge badge-s" style="font-size:10px">DA</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="ref-card">
+      <div class="ref-card-header" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'':'none'">
+        <div class="ref-card-title">📊 Praguri de calitate lunare per componentă</div>
+        <span class="badge badge-w" style="font-size:11px">Referință scoring</span>
+      </div>
+      <div>
+        <table class="ref-table">
+          <thead><tr><th>Componentă</th><th>25.06–24.07</th><th>25.07–24.08</th><th>25.08–24.09</th><th>Prag minim</th></tr></thead>
+          <tbody>
+            <tr><td>I — Toate culturile (excl. sfeclă)</td><td>90 p</td><td>80 p</td><td>56 p</td><td style="font-weight:600">56 p</td></tr>
+            <tr><td>II — Sfeclă zahăr + forme asociative</td><td>75 p</td><td>68 p</td><td>32 p</td><td style="font-weight:600">32 p</td></tr>
+            <tr><td>III — Forme asociative (non-sfeclă)</td><td>88 p</td><td>73 p</td><td>44 p</td><td style="font-weight:600">44 p</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="ref-card">
+      <div class="ref-card-header" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'':'none'">
+        <div class="ref-card-title">📊 Alocare financiară P4.1.1 — 310.515.188 EUR</div>
+        <span class="badge badge-n" style="font-size:11px">Informativ</span>
+      </div>
+      <div>
+        <table class="ref-table">
+          <thead><tr><th>Componentă</th><th>Alocare (EUR)</th><th>Descriere</th></tr></thead>
+          <tbody>
+            <tr><td>I</td><td style="font-weight:600">198.000.000</td><td>Toate culturile exceptând sfecla de zahăr și formele asociative</td></tr>
+            <tr><td>II</td><td style="font-weight:600">61.000.000</td><td>Sfeclă de zahăr inclusiv formele asociative din sector</td></tr>
+            <tr><td>III</td><td style="font-weight:600">51.515.188</td><td>Forme asociative, altele decât cele din sectorul sfeclă de zahăr</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+// ═══ SUB-TAB SWITCH ═══
+function switchSub(el, id) {
+  document.querySelectorAll('.sub-tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  ['reguli','scoring','elemente','tabele'].forEach(s => {
+    document.getElementById('sub-'+s).style.display = s===id?'':'none';
+  });
+}
+
+// ═══ INIT ═══
+renderRules('all');
+renderScoring();
+renderElements();
+renderRefTables();
+</script>
+</body>
+</html>

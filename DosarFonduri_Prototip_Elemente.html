@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DosarFonduri v2 — Elemente Proiect</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#fff;--bg-r:#f8fafc;--bg-h:#f1f5f9;--bg-a:#e2e8f0;
+  --tx:#0f172a;--tx2:#475569;--tx3:#94a3b8;
+  --bd:#e2e8f0;--bds:#cbd5e1;
+  --ac:#2563eb;--ac-h:#1d4ed8;--ac-l:#eff6ff;
+  --ok:#059669;--ok-l:#ecfdf5;--ok-b:#a7f3d0;
+  --warn:#d97706;--warn-l:#fffbeb;--warn-b:#fde68a;
+  --err:#dc2626;--err-l:#fef2f2;--err-b:#fecaca;
+  --purple:#7c3aed;--purple-l:#f5f3ff;
+  --r:8px;--rl:12px;--rf:9999px;
+  --sh:0 1px 2px rgba(0,0,0,.05);
+  --tr:150ms ease;
+}
+body{font-family:'Inter',-apple-system,sans-serif;background:var(--bg);color:var(--tx);font-size:16px;line-height:1.6;height:100vh;overflow:hidden}
+.shell{display:flex;flex-direction:column;height:100vh}
+
+/* TOPBAR */
+.topbar{height:56px;min-height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;border-bottom:1px solid var(--bd);z-index:10}
+.topbar-l{font-size:14px;font-weight:500;color:var(--tx2)}
+.topbar-av{width:32px;height:32px;border-radius:var(--rf);background:var(--ac);color:#fff;font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:center}
+
+.main{display:flex;flex:1;overflow:hidden}
+
+/* SIDEBAR */
+.sidebar{width:240px;min-width:240px;border-right:1px solid var(--bd);display:flex;flex-direction:column}
+.sb-logo{height:56px;display:flex;align-items:center;padding:0 16px;gap:10px;border-bottom:1px solid var(--bd)}
+.sb-logo-i{width:28px;height:28px;border-radius:var(--r);background:linear-gradient(135deg,#2563eb,#7c3aed);display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:700}
+.sb-logo-t{font-size:15px;font-weight:600}
+.sb-nav{flex:1;padding:12px 8px;display:flex;flex-direction:column;gap:2px}
+.sb-item{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:var(--r);cursor:pointer;font-size:14px;font-weight:500;color:var(--tx2);transition:all var(--tr);position:relative}
+.sb-item:hover{background:var(--bg-h);color:var(--tx)}
+.sb-item.active{background:var(--bg-h);color:var(--tx)}
+.sb-item.active::before{content:'';position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:0 2px 2px 0;background:var(--ac)}
+.sb-sep{height:1px;background:var(--bd);margin:8px 12px}
+.sb-footer{padding:12px 16px;border-top:1px solid var(--bd);display:flex;align-items:center;gap:10px}
+.sb-ft-av{width:32px;height:32px;border-radius:var(--rf);background:var(--bg-h);color:var(--tx2);font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:center}
+
+.content{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+
+/* PAGE HEADER */
+.ph{padding:16px 24px;border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between}
+.ph-bc{font-size:14px;color:var(--tx3);margin-bottom:2px}
+.ph-bc a{color:var(--tx3);text-decoration:none;cursor:pointer}.ph-bc a:hover{color:var(--ac)}
+.ph-title{font-size:20px;font-weight:600}
+.badge{display:inline-flex;align-items:center;gap:4px;padding:2px 10px;border-radius:var(--rf);font-size:12px;font-weight:500;border:1px solid}
+.badge-s{background:var(--ok-l);color:var(--ok);border-color:var(--ok-b)}
+
+/* TABS */
+.tabs{display:flex;padding:0 24px;border-bottom:1px solid var(--bd)}
+.tab{padding:12px 16px;font-size:14px;font-weight:500;color:var(--tx3);cursor:pointer;border-bottom:2px solid transparent;transition:all var(--tr);white-space:nowrap}
+.tab:hover{color:var(--tx2)}
+.tab.active{color:var(--ac);border-bottom-color:var(--ac)}
+.tab-badge{font-size:11px;padding:1px 6px;border-radius:var(--rf);margin-left:6px;background:var(--bg-h);color:var(--tx3)}
+.tab.active .tab-badge{background:var(--ac-l);color:var(--ac)}
+
+/* BTN */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:7px 14px;border-radius:var(--r);font-size:13px;font-weight:500;border:none;cursor:pointer;transition:all var(--tr);white-space:nowrap}
+.btn-pri{background:var(--tx);color:#fff}.btn-pri:hover{background:#1e293b}
+.btn-sec{background:#fff;border:1px solid var(--bd);color:var(--tx2)}.btn-sec:hover{background:var(--bg-h)}
+.btn-ghost{background:transparent;color:var(--tx2);padding:5px 8px}.btn-ghost:hover{background:var(--bg-h)}
+.btn-sm{padding:4px 10px;font-size:12px}
+.btn-ok{background:var(--ok);color:#fff}.btn-ok:hover{background:#047857}
+
+.scroll{flex:1;overflow-y:auto}
+.scroll::-webkit-scrollbar{width:6px}
+.scroll::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:3px}
+
+/* ELEMENTS HEADER */
+.el-header{padding:16px 24px;border-bottom:1px solid var(--bd);display:flex;flex-direction:column;gap:12px;background:var(--bg-r)}
+.el-header-top{display:flex;align-items:center;justify-content:space-between}
+.el-stats{display:flex;gap:20px}
+.el-stat{text-align:center}
+.el-stat-val{font-size:22px;font-weight:700}
+.el-stat-label{font-size:11px;color:var(--tx3);text-transform:uppercase;letter-spacing:.04em}
+.el-progress{height:6px;background:var(--bd);border-radius:3px;overflow:hidden}
+.el-progress-fill{height:100%;border-radius:3px;transition:width 600ms ease}
+.el-progress-labels{display:flex;justify-content:space-between;font-size:12px;color:var(--tx3);margin-top:4px}
+
+/* FILTER/SEARCH BAR */
+.toolbar{display:flex;align-items:center;gap:8px;padding:10px 24px;border-bottom:1px solid var(--bd);flex-wrap:wrap}
+.search-box{display:flex;align-items:center;gap:6px;border:1px solid var(--bd);border-radius:var(--r);padding:6px 10px;background:#fff;min-width:220px;transition:all var(--tr)}
+.search-box:focus-within{border-color:var(--ac);box-shadow:0 0 0 3px rgba(37,99,235,.1)}
+.search-box input{border:none;outline:none;font-size:13px;font-family:inherit;flex:1;background:transparent;color:var(--tx)}
+.search-box input::placeholder{color:var(--tx3)}
+.search-icon{color:var(--tx3);font-size:14px}
+.pill{padding:5px 12px;border-radius:var(--rf);font-size:12px;font-weight:500;border:1px solid var(--bd);background:#fff;color:var(--tx2);cursor:pointer;transition:all var(--tr)}
+.pill:hover{background:var(--bg-h)}
+.pill.active{background:var(--ac);color:#fff;border-color:var(--ac)}
+.pill-count{opacity:.7;margin-left:2px}
+.sep{width:1px;height:20px;background:var(--bd)}
+
+/* ELEMENT GROUP */
+.el-group{margin-bottom:4px}
+.el-group-header{display:flex;align-items:center;gap:8px;padding:10px 24px;background:var(--bg-r);border-bottom:1px solid var(--bd);cursor:pointer;position:sticky;top:0;z-index:2}
+.el-group-header:hover{background:var(--bg-h)}
+.el-group-icon{font-size:16px}
+.el-group-name{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--tx2)}
+.el-group-count{font-size:12px;color:var(--tx3)}
+.el-group-progress{flex:1;display:flex;align-items:center;gap:8px;justify-content:flex-end}
+.el-group-bar{width:80px;height:3px;background:var(--bd);border-radius:2px;overflow:hidden}
+.el-group-bar-fill{height:100%;border-radius:2px;background:var(--ac)}
+.el-group-pct{font-size:11px;font-weight:600;color:var(--tx3);min-width:30px;text-align:right}
+.el-group-chevron{color:var(--tx3);transition:transform var(--tr);font-size:12px}
+
+/* ELEMENT ROW */
+.el-row{display:flex;align-items:center;padding:10px 24px 10px 48px;border-bottom:1px solid var(--bd);transition:background var(--tr);gap:12px;min-height:52px}
+.el-row:hover{background:var(--bg-r)}
+.el-row:last-child{border-bottom:none}
+
+.el-status{width:22px;height:22px;border-radius:var(--rf);display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0}
+.el-status.confirmed{background:var(--ok-l);color:var(--ok)}
+.el-status.proposed{background:var(--warn-l);color:var(--warn)}
+.el-status.manual{background:var(--ac-l);color:var(--ac)}
+.el-status.empty{background:var(--bg-h);color:var(--tx3)}
+.el-status.conflict{background:var(--err-l);color:var(--err)}
+
+.el-info{flex:1;min-width:0}
+.el-label{font-size:14px;font-weight:500;display:flex;align-items:center;gap:6px}
+.el-label .req{color:var(--err);font-size:11px}
+.el-key{font-size:11px;color:var(--tx3);font-family:'SF Mono','Consolas',monospace}
+
+.el-value-area{flex:0 0 320px;min-width:0}
+.el-value{font-size:14px;font-weight:500;font-family:'SF Mono','Consolas',monospace;color:var(--tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:300px}
+.el-value.empty{color:var(--tx3);font-style:italic;font-family:inherit;font-weight:400}
+.el-value.conflict{color:var(--err);text-decoration:line-through;opacity:.6}
+
+.el-source{flex:0 0 180px;display:flex;align-items:center;gap:4px;font-size:12px;color:var(--tx3);min-width:0}
+.el-source-icon{font-size:12px}
+.el-source-text{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+.el-actions{flex:0 0 auto;display:flex;gap:4px;opacity:0;transition:opacity var(--tr)}
+.el-row:hover .el-actions{opacity:1}
+
+/* EDIT INLINE */
+.el-edit-input{width:100%;border:1px solid var(--ac);border-radius:6px;padding:4px 8px;font-size:14px;font-family:'SF Mono','Consolas',monospace;outline:none;background:var(--ac-l)}
+
+/* SOURCE BADGES */
+.src-badge{display:inline-flex;align-items:center;gap:3px;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:500}
+.src-badge.ocr{background:#dbeafe;color:#1e40af}
+.src-badge.solomon{background:var(--warn-l);color:var(--warn)}
+.src-badge.manual{background:var(--purple-l);color:var(--purple)}
+.src-badge.system{background:var(--bg-h);color:var(--tx3)}
+.src-badge.anaf{background:#d1fae5;color:#065f46}
+
+/* DETAIL PANEL */
+.detail-panel{position:fixed;right:0;top:0;bottom:0;width:400px;background:#fff;box-shadow:-4px 0 24px rgba(0,0,0,.12);z-index:50;display:flex;flex-direction:column;transform:translateX(100%);transition:transform 250ms ease}
+.detail-panel.open{transform:translateX(0)}
+.dp-header{padding:16px 20px;border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between}
+.dp-title{font-size:15px;font-weight:600}
+.dp-close{width:32px;height:32px;border:none;background:none;border-radius:var(--r);cursor:pointer;color:var(--tx3);display:flex;align-items:center;justify-content:center;font-size:18px;transition:all var(--tr)}
+.dp-close:hover{background:var(--bg-h);color:var(--tx)}
+.dp-body{flex:1;overflow-y:auto;padding:20px}
+.dp-field{margin-bottom:16px}
+.dp-field-label{font-size:12px;font-weight:500;color:var(--tx3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px}
+.dp-field-value{font-size:15px;font-weight:500}
+.dp-field-mono{font-family:'SF Mono','Consolas',monospace}
+.dp-history{border-top:1px solid var(--bd);padding-top:12px;margin-top:12px}
+.dp-history-title{font-size:13px;font-weight:600;margin-bottom:8px}
+.dp-history-item{display:flex;gap:8px;font-size:12px;color:var(--tx2);margin-bottom:8px;padding-left:12px;border-left:2px solid var(--bd)}
+.dp-history-item .time{color:var(--tx3);white-space:nowrap}
+
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.3);z-index:45;display:none}
+.overlay.open{display:block}
+
+@keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+.fade-in{animation:fadeIn 200ms ease forwards}
+</style>
+</head>
+<body>
+
+<div class="shell">
+  <div class="topbar">
+    <div class="topbar-l">Cabinet: Consultanță Fonduri SRL</div>
+    <div class="topbar-av">MP</div>
+  </div>
+  <div class="main">
+    <div class="sidebar">
+      <div class="sb-logo"><div class="sb-logo-i">DF</div><div class="sb-logo-t">DosarFonduri</div></div>
+      <div class="sb-nav">
+        <div class="sb-item" style="opacity:.6">📊 Panou</div>
+        <div class="sb-item" style="opacity:.6">🏢 Firme</div>
+        <div class="sb-item active">📁 Proiecte</div>
+        <div class="sb-item" style="opacity:.6">📄 Documente</div>
+        <div class="sb-sep"></div>
+        <div class="sb-item" style="opacity:.6">⚙ Configurări</div>
+      </div>
+      <div class="sb-footer">
+        <div class="sb-ft-av">MP</div>
+        <div><div style="font-size:13px;font-weight:500">Mihai Pantis</div><div style="font-size:11px;color:var(--tx3)">consultant</div></div>
+      </div>
+    </div>
+
+    <div class="content">
+      <div class="ph">
+        <div>
+          <div class="ph-bc"><a>Proiecte</a> / </div>
+          <div class="ph-title">ANDA OANA AGRO FERMA SRL — sM 4.1</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center"><span class="badge badge-s">Activ</span><button class="btn btn-sec btn-sm">⋯ Acțiuni</button></div>
+      </div>
+
+      <div class="tabs">
+        <div class="tab">Sumar</div>
+        <div class="tab">Eligibilitate</div>
+        <div class="tab">Ghid Finanțare</div>
+        <div class="tab">Solomon <span class="tab-badge">94/120</span></div>
+        <div class="tab active">Elemente <span class="tab-badge">94/120</span></div>
+        <div class="tab">Checklist</div>
+        <div class="tab">Neemia</div>
+      </div>
+
+      <!-- ELEMENTS HEADER -->
+      <div class="el-header">
+        <div class="el-header-top">
+          <div class="el-stats">
+            <div class="el-stat"><div class="el-stat-val" style="color:var(--ok)">72</div><div class="el-stat-label">Confirmate</div></div>
+            <div class="el-stat"><div class="el-stat-val" style="color:var(--warn)">14</div><div class="el-stat-label">Propuse</div></div>
+            <div class="el-stat"><div class="el-stat-val" style="color:var(--ac)">8</div><div class="el-stat-label">Manual</div></div>
+            <div class="el-stat"><div class="el-stat-val" style="color:var(--tx3)">26</div><div class="el-stat-label">Goale</div></div>
+            <div class="el-stat"><div class="el-stat-val" style="color:var(--err)">1</div><div class="el-stat-label">Conflict</div></div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-sec btn-sm">↓ Export CSV</button>
+            <button class="btn btn-ok btn-sm" onclick="confirmAllProposed()">✓ Confirmă toate propuse (14)</button>
+          </div>
+        </div>
+        <div>
+          <div class="el-progress"><div class="el-progress-fill" style="width:78%;background:linear-gradient(90deg,var(--ok) 76%,var(--warn) 76%,var(--warn) 88%,var(--ac) 88%)"></div></div>
+          <div class="el-progress-labels"><span>94 / 120 completate (78%)</span><span>26 rămase</span></div>
+        </div>
+      </div>
+
+      <!-- TOOLBAR -->
+      <div class="toolbar">
+        <div class="search-box">
+          <span class="search-icon">🔍</span>
+          <input type="text" placeholder="Caută element..." id="search-input" oninput="filterElements()">
+        </div>
+        <div class="sep"></div>
+        <div class="pill active" onclick="filterCat('all',this)">Toate <span class="pill-count">120</span></div>
+        <div class="pill" onclick="filterCat('Solicitant',this)">Solicitant <span class="pill-count">18</span></div>
+        <div class="pill" onclick="filterCat('Financiar',this)">Financiar <span class="pill-count">22</span></div>
+        <div class="pill" onclick="filterCat('Exploatație',this)">Exploatație <span class="pill-count">16</span></div>
+        <div class="pill" onclick="filterCat('Investiție',this)">Investiție <span class="pill-count">28</span></div>
+        <div class="pill" onclick="filterCat('Locație',this)">Locație <span class="pill-count">8</span></div>
+        <div class="pill" onclick="filterCat('Documente',this)">Documente <span class="pill-count">18</span></div>
+        <div class="pill" onclick="filterCat('Alte',this)">Alte <span class="pill-count">10</span></div>
+        <div class="sep"></div>
+        <div class="pill" onclick="filterStatus('empty',this)" style="border-color:var(--tx3)">○ Goale</div>
+        <div class="pill" onclick="filterStatus('proposed',this)" style="border-color:var(--warn)">⚠ Propuse</div>
+        <div class="pill" onclick="filterStatus('conflict',this)" style="border-color:var(--err)">⚡ Conflicte</div>
+      </div>
+
+      <!-- ELEMENTS LIST -->
+      <div class="scroll" id="elements-scroll"></div>
+    </div>
+  </div>
+</div>
+
+<!-- DETAIL PANEL -->
+<div class="overlay" id="overlay" onclick="closeDetail()"></div>
+<div class="detail-panel" id="detail-panel">
+  <div class="dp-header">
+    <div class="dp-title" id="dp-title">Element</div>
+    <button class="dp-close" onclick="closeDetail()">✕</button>
+  </div>
+  <div class="dp-body" id="dp-body"></div>
+</div>
+
+<script>
+const ELEMENTS = [
+  // ═══ SOLICITANT ═══
+  {key:"denumire_firma",label:"Denumire firmă",cat:"Solicitant",req:true,value:"ANDA OANA AGRO FERMA SRL",status:"confirmed",source:"ocr",sourceDoc:"Certificat Constatator",history:[{action:"Extras automat",time:"18.03 10:15",by:"OCR"},{action:"Confirmat",time:"18.03 10:20",by:"Consultant"}]},
+  {key:"cui",label:"CUI",cat:"Solicitant",req:true,value:"RO 38480585",status:"confirmed",source:"ocr",sourceDoc:"Certificat Constatator",history:[{action:"Extras automat",time:"18.03 10:15",by:"OCR"}]},
+  {key:"nr_reg_comert",label:"Nr. Registrul Comerțului",cat:"Solicitant",req:true,value:"J02/456/2019",status:"confirmed",source:"ocr",sourceDoc:"Certificat Constatator",history:[]},
+  {key:"sediu_social",label:"Sediu social",cat:"Solicitant",req:true,value:"Sat Zimandu Nou, Com. Zimandu Nou, Jud. Arad",status:"confirmed",source:"ocr",sourceDoc:"Certificat Constatator",history:[]},
+  {key:"administrator",label:"Administrator",cat:"Solicitant",req:true,value:"Chis Anda Oana",status:"confirmed",source:"ocr",sourceDoc:"Certificat Constatator",history:[]},
+  {key:"cnp_admin",label:"CNP Administrator",cat:"Solicitant",req:true,value:"2●●●●●●●●●●●5",status:"confirmed",source:"ocr",sourceDoc:"CI Anda Chis",history:[{action:"CNP criptat AES-256",time:"18.03 10:22",by:"Sistem"}]},
+  {key:"cod_caen",label:"Cod CAEN principal",cat:"Solicitant",req:true,value:"0111 — Cultivarea cerealelor",status:"confirmed",source:"ocr",sourceDoc:"Certificat Constatator",history:[]},
+  {key:"forma_juridica",label:"Forma juridică",cat:"Solicitant",req:true,value:"SRL",status:"confirmed",source:"system",sourceDoc:"Clasificare automată",history:[]},
+  {key:"data_inregistrare",label:"Data înregistrare ONRC",cat:"Solicitant",req:true,value:"15.03.2019",status:"confirmed",source:"ocr",sourceDoc:"Certificat Constatator",history:[]},
+  {key:"email",label:"Email contact",cat:"Solicitant",req:false,value:"",status:"empty",source:"",sourceDoc:"",history:[]},
+  {key:"telefon",label:"Telefon contact",cat:"Solicitant",req:false,value:"",status:"empty",source:"",sourceDoc:"",history:[]},
+  {key:"nr_angajati",label:"Număr angajați",cat:"Solicitant",req:true,value:"8",status:"proposed",source:"solomon",sourceDoc:"Conversație Solomon",history:[{action:"Solomon: extras din bilanț",time:"18.03 11:45",by:"Solomon AI"}]},
+  {key:"calitate_membru",label:"Calitate membru formă asociativă",cat:"Solicitant",req:false,value:"",status:"empty",source:"",sourceDoc:"",history:[]},
+  {key:"obiect_activitate",label:"Obiect de activitate principal",cat:"Solicitant",req:true,value:"Cultivarea cerealelor (exclusiv orez), plantelor leguminoase și a plantelor producătoare de semințe oleaginoase",status:"confirmed",source:"ocr",sourceDoc:"Certificat Constatator",history:[]},
+  {key:"asociati",label:"Asociați/Acționari",cat:"Solicitant",req:true,value:"Chis Anda Oana — 100%",status:"confirmed",source:"ocr",sourceDoc:"Certificat Constatator",history:[]},
+  {key:"capital_social",label:"Capital social (RON)",cat:"Solicitant",req:true,value:"5.000",status:"confirmed",source:"ocr",sourceDoc:"Certificat Constatator",history:[]},
+  {key:"stare_firma",label:"Stare firmă ONRC",cat:"Solicitant",req:true,value:"ACTIV",status:"confirmed",source:"system",sourceDoc:"Verificare ONRC",history:[]},
+  {key:"serie_ci",label:"Serie și Nr. CI administrator",cat:"Solicitant",req:true,value:"AR ●●●●●8",status:"confirmed",source:"ocr",sourceDoc:"CI Anda Chis",history:[]},
+
+  // ═══ FINANCIAR ═══
+  {key:"cifra_afaceri_2023",label:"Cifra de afaceri 2023 (RON)",cat:"Financiar",req:true,value:"1.850.000",status:"confirmed",source:"anaf",sourceDoc:"Bilanț ANAF 2023",history:[{action:"Extras din bilanț",time:"18.03 10:30",by:"OCR"},{action:"Confirmat Solomon",time:"18.03 11:50",by:"Solomon AI"}]},
+  {key:"cifra_afaceri_2022",label:"Cifra de afaceri 2022 (RON)",cat:"Financiar",req:false,value:"1.620.000",status:"confirmed",source:"anaf",sourceDoc:"Bilanț ANAF 2023",history:[]},
+  {key:"profit_net_2023",label:"Profit net 2023 (RON)",cat:"Financiar",req:true,value:"245.000",status:"confirmed",source:"anaf",sourceDoc:"Bilanț ANAF 2023",history:[]},
+  {key:"active_totale",label:"Active totale (RON)",cat:"Financiar",req:true,value:"3.120.000",status:"confirmed",source:"anaf",sourceDoc:"Bilanț ANAF 2023",history:[]},
+  {key:"datorii_totale",label:"Datorii totale (RON)",cat:"Financiar",req:true,value:"890.000",status:"confirmed",source:"anaf",sourceDoc:"Bilanț ANAF 2023",history:[]},
+  {key:"capitaluri_proprii",label:"Capitaluri proprii (RON)",cat:"Financiar",req:true,value:"2.230.000",status:"confirmed",source:"anaf",sourceDoc:"Bilanț ANAF 2023",history:[]},
+  {key:"venituri_agricole",label:"Venituri din activități agricole (RON)",cat:"Financiar",req:true,value:"1.665.000",status:"proposed",source:"solomon",sourceDoc:"Calcul Solomon",history:[{action:"Solomon: 90% din CA = venituri agricole",time:"18.03 12:10",by:"Solomon AI"}]},
+  {key:"pondere_venit_agri",label:"Pondere venituri agricole (%)",cat:"Financiar",req:true,value:"90%",status:"proposed",source:"solomon",sourceDoc:"Calcul Solomon",history:[]},
+  {key:"rata_indatorarii",label:"Rata îndatorării (%)",cat:"Financiar",req:true,value:"28.5%",status:"confirmed",source:"anaf",sourceDoc:"Calcul din bilanț",history:[{action:"Calculat: datorii/active = 890K/3.12M",time:"18.03 10:32",by:"Sistem"}]},
+  {key:"datorii_anaf",label:"Datorii restante ANAF (RON)",cat:"Financiar",req:true,value:"2.340",status:"conflict",source:"anaf",sourceDoc:"Certificat fiscal",conflictNote:"Solomon indică 0 RON, bilanțul indică 2.340 RON",history:[{action:"Conflict detectat",time:"18.03 12:30",by:"Sistem"},{action:"Valoare OCR: 2.340",time:"18.03 10:31",by:"OCR"},{action:"Solomon: firmă fără datorii",time:"18.03 12:25",by:"Solomon AI"}]},
+  {key:"ajutor_minimis",label:"Ajutor de minimis primit (EUR)",cat:"Financiar",req:true,value:"0",status:"manual",source:"manual",sourceDoc:"Completat manual",history:[{action:"Introdus manual",time:"18.03 14:00",by:"Consultant"}]},
+  {key:"platitor_tva",label:"Plătitor TVA",cat:"Financiar",req:true,value:"Nu",status:"confirmed",source:"ocr",sourceDoc:"Certificat Constatator",history:[]},
+
+  // ═══ EXPLOATAȚIE ═══
+  {key:"suprafata_totala",label:"Suprafață totală (ha)",cat:"Exploatație",req:true,value:"120",status:"confirmed",source:"solomon",sourceDoc:"Confirmat în conversație",history:[{action:"Menționat de consultant",time:"18.03 11:40",by:"Solomon AI"},{action:"Confirmat",time:"18.03 11:42",by:"Consultant"}]},
+  {key:"standard_output",label:"Standard Output (EUR)",cat:"Exploatație",req:true,value:"42.000",status:"proposed",source:"solomon",sourceDoc:"Calcul Solomon AI",history:[{action:"Solomon: 120ha × ~350 EUR/ha SO",time:"18.03 12:15",by:"Solomon AI"}]},
+  {key:"tip_exploatatie",label:"Tip exploatație",cat:"Exploatație",req:true,value:"Fermă dimensiune medie",status:"proposed",source:"solomon",sourceDoc:"Din SO calculat",history:[]},
+  {key:"cultura_principala",label:"Cultura principală",cat:"Exploatație",req:true,value:"Cereale (grâu, porumb)",status:"proposed",source:"solomon",sourceDoc:"Din CAEN + conversație",history:[]},
+  {key:"sistem_cultura",label:"Sistem cultură",cat:"Exploatație",req:false,value:"Convențional",status:"proposed",source:"solomon",sourceDoc:"Conversație Solomon",history:[]},
+  {key:"an_infiintare",label:"Anul înființării exploatației",cat:"Exploatație",req:true,value:"",status:"empty",source:"",sourceDoc:"",history:[]},
+  {key:"zona_anc",label:"Zonă ANC",cat:"Exploatație",req:false,value:"Rural ANC",status:"confirmed",source:"system",sourceDoc:"Verificare Anexa 4",history:[]},
+  {key:"nr_parcele",label:"Număr parcele agricole",cat:"Exploatație",req:false,value:"",status:"empty",source:"",sourceDoc:"",history:[]},
+
+  // ═══ INVESTIȚIE ═══
+  {key:"valoare_totala",label:"Valoare totală investiție (EUR)",cat:"Investiție",req:true,value:"285.000",status:"proposed",source:"solomon",sourceDoc:"Calculat din oferte",history:[]},
+  {key:"valoare_eligibila",label:"Valoare eligibilă (EUR)",cat:"Investiție",req:true,value:"285.000",status:"proposed",source:"solomon",sourceDoc:"= valoare totală (TVA eligibil)",history:[]},
+  {key:"contributie_proprie",label:"Contribuție proprie (EUR)",cat:"Investiție",req:true,value:"142.500",status:"proposed",source:"solomon",sourceDoc:"50% din valoare eligibilă",history:[]},
+  {key:"finantare_neramb",label:"Finanțare nerambursabilă (EUR)",cat:"Investiție",req:true,value:"142.500",status:"proposed",source:"solomon",sourceDoc:"50% intensitate sprijin",history:[]},
+  {key:"intensitate_sprijin",label:"Intensitate sprijin (%)",cat:"Investiție",req:true,value:"50%",status:"proposed",source:"solomon",sourceDoc:"SRL zonă normală, >40 ani",history:[]},
+  {key:"descriere_investitie",label:"Descriere investiție",cat:"Investiție",req:true,value:"",status:"empty",source:"",sourceDoc:"",history:[]},
+  {key:"tip_investitie",label:"Tip investiție",cat:"Investiție",req:true,value:"P4.1.1 — Achiziții simple utilaje agricole",status:"confirmed",source:"system",sourceDoc:"Din componenta selectată",history:[]},
+  {key:"durata_impl",label:"Durata implementare (luni)",cat:"Investiție",req:true,value:"",status:"empty",source:"",sourceDoc:"",history:[]},
+  {key:"art1_tractor",label:"Articol 1: Tractor",cat:"Investiție",req:false,value:"Tractor 280 CP — 125.000 EUR",status:"confirmed",source:"ocr",sourceDoc:"Ofertă preț tractor",history:[]},
+  {key:"art2_semanatoare",label:"Articol 2: Semănătoare",cat:"Investiție",req:false,value:"Semănătoare 6m — 65.000 EUR",status:"confirmed",source:"ocr",sourceDoc:"Ofertă preț semănătoare",history:[]},
+  {key:"art3_disc",label:"Articol 3: Disc",cat:"Investiție",req:false,value:"Disc agricol 4m — 52.000 EUR",status:"confirmed",source:"ocr",sourceDoc:"Ofertă preț disc",history:[]},
+  {key:"art4_cultivator",label:"Articol 4: Cultivator",cat:"Investiție",req:false,value:"Cultivator 5m — 43.000 EUR",status:"confirmed",source:"ocr",sourceDoc:"Ofertă preț cultivator",history:[]},
+  {key:"corelatie_putere",label:"Corelație putere/suprafață (Anexa 3)",cat:"Investiție",req:true,value:"CONFORM (280CP ≤ 300CP max pt. 120ha)",status:"confirmed",source:"system",sourceDoc:"Verificare automată Anexa 3",history:[]},
+
+  // ═══ LOCAȚIE ═══
+  {key:"judet",label:"Județul implementării",cat:"Locație",req:true,value:"Arad",status:"confirmed",source:"ocr",sourceDoc:"Certificat Constatator",history:[]},
+  {key:"localitate",label:"Localitatea implementării",cat:"Locație",req:true,value:"Zimandu Nou",status:"confirmed",source:"ocr",sourceDoc:"Certificat Constatator",history:[]},
+  {key:"uat_cod",label:"Cod UAT",cat:"Locație",req:true,value:"",status:"empty",source:"",sourceDoc:"",history:[]},
+  {key:"zona_eligibila",label:"Zonă rurală eligibilă",cat:"Locație",req:true,value:"Da",status:"confirmed",source:"system",sourceDoc:"Verificare Lista UAT ANC",history:[]},
+  {key:"iti_delta",label:"ITI Delta Dunării",cat:"Locație",req:false,value:"Nu",status:"confirmed",source:"system",sourceDoc:"Verificare automată",history:[]},
+
+  // ═══ DOCUMENTE ═══
+  {key:"punctaj_auto",label:"Punctaj autoevaluare (prescoring)",cat:"Documente",req:true,value:"",status:"empty",source:"",sourceDoc:"",history:[]},
+  {key:"beneficiat_sm41",label:"A beneficiat anterior sM 4.1",cat:"Documente",req:true,value:"Nu",status:"manual",source:"manual",sourceDoc:"Completat manual",history:[]},
+  {key:"studii_agricole",label:"Studii în domeniul agricol",cat:"Documente",req:false,value:"",status:"empty",source:"",sourceDoc:"",history:[]},
+  {key:"membru_asociativ",label:"Membru formă asociativă",cat:"Documente",req:false,value:"Nu",status:"manual",source:"manual",sourceDoc:"Completat manual",history:[]},
+];
+
+const CAT_CONFIG = {
+  'Solicitant':{icon:'👤',color:'#2563eb'},
+  'Financiar':{icon:'💰',color:'#059669'},
+  'Exploatație':{icon:'🌾',color:'#d97706'},
+  'Investiție':{icon:'🔧',color:'#7c3aed'},
+  'Locație':{icon:'📍',color:'#dc2626'},
+  'Documente':{icon:'📋',color:'#475569'},
+  'Alte':{icon:'📎',color:'#94a3b8'},
+};
+
+let currentFilter = 'all';
+let currentStatusFilter = null;
+let editingKey = null;
+
+function getGrouped(elems) {
+  const groups = {};
+  elems.forEach(e => {
+    if (!groups[e.cat]) groups[e.cat] = [];
+    groups[e.cat].push(e);
+  });
+  return groups;
+}
+
+function renderElements() {
+  const search = document.getElementById('search-input').value.toLowerCase();
+  let filtered = ELEMENTS;
+
+  if (currentFilter !== 'all') filtered = filtered.filter(e => e.cat === currentFilter);
+  if (currentStatusFilter) filtered = filtered.filter(e => e.status === currentStatusFilter);
+  if (search) filtered = filtered.filter(e => e.label.toLowerCase().includes(search) || e.key.toLowerCase().includes(search) || (e.value||'').toLowerCase().includes(search));
+
+  const grouped = getGrouped(filtered);
+  const container = document.getElementById('elements-scroll');
+
+  container.innerHTML = Object.keys(grouped).map(cat => {
+    const items = grouped[cat];
+    const conf = CAT_CONFIG[cat] || CAT_CONFIG['Alte'];
+    const filled = items.filter(e => e.status !== 'empty').length;
+    const pct = Math.round(filled / items.length * 100);
+
+    return `
+    <div class="el-group">
+      <div class="el-group-header" onclick="toggleGroup(this)">
+        <span class="el-group-icon">${conf.icon}</span>
+        <span class="el-group-name">${cat}</span>
+        <span class="el-group-count">${filled}/${items.length}</span>
+        <div class="el-group-progress">
+          <div class="el-group-bar"><div class="el-group-bar-fill" style="width:${pct}%;background:${conf.color}"></div></div>
+          <span class="el-group-pct">${pct}%</span>
+        </div>
+        <span class="el-group-chevron">▾</span>
+      </div>
+      <div class="el-group-items">
+        ${items.map(e => renderRow(e)).join('')}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderRow(e) {
+  const statusIcon = e.status==='confirmed'?'✓':e.status==='proposed'?'⚠':e.status==='manual'?'✎':e.status==='conflict'?'⚡':'○';
+  const srcClass = e.source==='ocr'?'ocr':e.source==='solomon'?'solomon':e.source==='manual'?'manual':e.source==='anaf'?'anaf':'system';
+
+  const valueHtml = editingKey === e.key
+    ? `<input class="el-edit-input" value="${e.value}" onblur="saveEdit('${e.key}',this.value)" onkeydown="if(event.key==='Enter')saveEdit('${e.key}',this.value);if(event.key==='Escape'){editingKey=null;renderElements()}" autofocus>`
+    : e.status==='conflict'
+      ? `<span class="el-value conflict">${e.value}</span><div style="font-size:11px;color:var(--err);margin-top:2px">⚠ ${e.conflictNote||'Conflict între surse'}</div>`
+      : e.value
+        ? `<span class="el-value">${e.value}</span>`
+        : `<span class="el-value empty">— necompletat —</span>`;
+
+  return `
+  <div class="el-row fade-in" data-status="${e.status}">
+    <div class="el-status ${e.status}">${statusIcon}</div>
+    <div class="el-info">
+      <div class="el-label">${e.label}${e.req?'<span class="req">*</span>':''}</div>
+      <div class="el-key">${e.key}</div>
+    </div>
+    <div class="el-value-area">${valueHtml}</div>
+    <div class="el-source">
+      ${e.source?`<span class="src-badge ${srcClass}">${e.source==='ocr'?'📄 OCR':e.source==='solomon'?'🤖 Solomon':e.source==='manual'?'✏️ Manual':e.source==='anaf'?'🏛 ANAF':e.source==='system'?'⚙ Sistem':''}</span>`:''}
+    </div>
+    <div class="el-actions">
+      ${e.status==='proposed'?`<button class="btn btn-ok btn-sm" onclick="confirmElement('${e.key}')">✓</button>`:''}
+      <button class="btn btn-ghost btn-sm" onclick="startEdit('${e.key}')">✎</button>
+      <button class="btn btn-ghost btn-sm" onclick="openDetail('${e.key}')">⋯</button>
+    </div>
+  </div>`;
+}
+
+function toggleGroup(header) {
+  const items = header.nextElementSibling;
+  const chev = header.querySelector('.el-group-chevron');
+  if (items.style.display === 'none') {
+    items.style.display = '';
+    chev.style.transform = '';
+  } else {
+    items.style.display = 'none';
+    chev.style.transform = 'rotate(-90deg)';
+  }
+}
+
+function filterCat(cat, btn) {
+  document.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  currentFilter = cat;
+  currentStatusFilter = null;
+  renderElements();
+}
+
+function filterStatus(status, btn) {
+  if (currentStatusFilter === status) {
+    currentStatusFilter = null;
+    btn.classList.remove('active');
+  } else {
+    document.querySelectorAll('.pill[style]').forEach(p => p.classList.remove('active'));
+    currentStatusFilter = status;
+    btn.classList.add('active');
+  }
+  renderElements();
+}
+
+function filterElements() { renderElements(); }
+
+function confirmElement(key) {
+  const el = ELEMENTS.find(e => e.key === key);
+  if (el) { el.status = 'confirmed'; el.history.unshift({action:'Confirmat de consultant',time:'acum',by:'Consultant'}); }
+  renderElements();
+}
+
+function confirmAllProposed() {
+  ELEMENTS.forEach(e => { if (e.status === 'proposed') { e.status = 'confirmed'; e.history.unshift({action:'Confirmat bulk',time:'acum',by:'Consultant'}); }});
+  renderElements();
+}
+
+function startEdit(key) {
+  editingKey = key;
+  renderElements();
+  setTimeout(() => { const inp = document.querySelector('.el-edit-input'); if (inp) inp.focus(); }, 50);
+}
+
+function saveEdit(key, val) {
+  const el = ELEMENTS.find(e => e.key === key);
+  if (el) { el.value = val; el.status = val ? 'manual' : 'empty'; el.source = val ? 'manual' : ''; el.sourceDoc = val ? 'Editat manual' : ''; el.history.unshift({action:`Editat: "${val}"`,time:'acum',by:'Consultant'}); }
+  editingKey = null;
+  renderElements();
+}
+
+function openDetail(key) {
+  const el = ELEMENTS.find(e => e.key === key);
+  if (!el) return;
+  document.getElementById('dp-title').textContent = el.label;
+  document.getElementById('dp-body').innerHTML = `
+    <div class="dp-field"><div class="dp-field-label">Cheie tehnică</div><div class="dp-field-value dp-field-mono">${el.key}</div></div>
+    <div class="dp-field"><div class="dp-field-label">Valoare curentă</div><div class="dp-field-value dp-field-mono">${el.value || '— necompletat —'}</div></div>
+    <div class="dp-field"><div class="dp-field-label">Status</div><div class="dp-field-value"><span class="badge ${el.status==='confirmed'?'badge-s':el.status==='proposed'?'badge-w':el.status==='conflict'?'badge-d':'badge-n'}" style="font-size:12px">${el.status}</span></div></div>
+    <div class="dp-field"><div class="dp-field-label">Sursă</div><div class="dp-field-value">${el.source?`<span class="src-badge ${el.source}">${el.source}</span> ${el.sourceDoc}`:'—'}</div></div>
+    <div class="dp-field"><div class="dp-field-label">Obligatoriu</div><div class="dp-field-value">${el.req?'Da ✱':'Nu'}</div></div>
+    <div class="dp-field"><div class="dp-field-label">Categorie</div><div class="dp-field-value">${el.cat}</div></div>
+    ${el.conflictNote?`<div class="dp-field"><div class="dp-field-label" style="color:var(--err)">⚠ Conflict</div><div class="dp-field-value" style="color:var(--err);font-size:14px">${el.conflictNote}</div></div>`:''}
+    <div class="dp-history">
+      <div class="dp-history-title">Istoric modificări</div>
+      ${el.history.length ? el.history.map(h => `<div class="dp-history-item"><span class="time">${h.time}</span><span>${h.action} — <em>${h.by}</em></span></div>`).join('') : '<div style="font-size:13px;color:var(--tx3)">Nicio modificare înregistrată</div>'}
+    </div>
+  `;
+  document.getElementById('detail-panel').classList.add('open');
+  document.getElementById('overlay').classList.add('open');
+}
+
+function closeDetail() {
+  document.getElementById('detail-panel').classList.remove('open');
+  document.getElementById('overlay').classList.remove('open');
+}
+
+renderElements();
+</script>
+</body>
+</html>

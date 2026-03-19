@@ -1,0 +1,1106 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DosarFonduri v2 — Prototip Proiecte</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #ffffff;
+    --bg-raised: #f8fafc;
+    --bg-hover: #f1f5f9;
+    --bg-active: #e2e8f0;
+    --text-primary: #0f172a;
+    --text-secondary: #475569;
+    --text-muted: #94a3b8;
+    --text-placeholder: #94a3b8;
+    --border: #e2e8f0;
+    --border-strong: #cbd5e1;
+    --accent: #2563eb;
+    --accent-hover: #1d4ed8;
+    --accent-light: #eff6ff;
+    --success: #059669;
+    --success-light: #ecfdf5;
+    --success-border: #a7f3d0;
+    --warning: #d97706;
+    --warning-light: #fffbeb;
+    --warning-border: #fde68a;
+    --danger: #dc2626;
+    --danger-light: #fef2f2;
+    --sidebar-w: 240px;
+    --topbar-h: 56px;
+    --radius: 8px;
+    --radius-lg: 12px;
+    --radius-full: 9999px;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+    --shadow-lg: 0 8px 24px rgba(0,0,0,0.12);
+    --transition: 150ms ease;
+  }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--bg);
+    color: var(--text-primary);
+    font-size: 16px;
+    line-height: 1.6;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  /* ═══ SHELL ═══ */
+  .shell { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+  /* ═══ TOPBAR ═══ */
+  .topbar {
+    height: var(--topbar-h); min-height: var(--topbar-h);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 24px; border-bottom: 1px solid var(--border);
+    background: var(--bg); z-index: 10;
+  }
+  .topbar-left { display: flex; align-items: center; gap: 12px; }
+  .topbar-cabinet {
+    font-size: 14px; font-weight: 500; color: var(--text-secondary);
+    display: flex; align-items: center; gap: 6px; cursor: pointer;
+    padding: 6px 10px; border-radius: var(--radius); transition: background var(--transition);
+  }
+  .topbar-cabinet:hover { background: var(--bg-hover); }
+  .topbar-cabinet svg { opacity: 0.5; }
+  .topbar-right { display: flex; align-items: center; gap: 8px; }
+  .topbar-icon {
+    width: 36px; height: 36px; border-radius: var(--radius);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-muted); cursor: pointer; transition: all var(--transition);
+  }
+  .topbar-icon:hover { background: var(--bg-hover); color: var(--text-secondary); }
+  .topbar-avatar {
+    width: 32px; height: 32px; border-radius: var(--radius-full);
+    background: var(--accent); color: white; font-size: 13px; font-weight: 600;
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+  }
+
+  /* ═══ MAIN AREA ═══ */
+  .main-area { display: flex; flex: 1; overflow: hidden; }
+
+  /* ═══ SIDEBAR ═══ */
+  .sidebar {
+    width: var(--sidebar-w); min-width: var(--sidebar-w);
+    border-right: 1px solid var(--border); background: var(--bg);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .sidebar-logo {
+    height: var(--topbar-h); display: flex; align-items: center;
+    padding: 0 16px; gap: 10px; border-bottom: 1px solid var(--border);
+  }
+  .sidebar-logo-icon {
+    width: 28px; height: 28px; border-radius: var(--radius);
+    background: linear-gradient(135deg, #2563eb, #7c3aed);
+    display: flex; align-items: center; justify-content: center;
+    color: white; font-size: 12px; font-weight: 700;
+  }
+  .sidebar-logo-text { font-size: 15px; font-weight: 600; color: var(--text-primary); }
+
+  .sidebar-nav { flex: 1; padding: 12px 8px; display: flex; flex-direction: column; gap: 2px; }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 12px; border-radius: var(--radius); cursor: pointer;
+    font-size: 14px; font-weight: 500; color: var(--text-secondary);
+    transition: all var(--transition); position: relative;
+  }
+  .nav-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+  .nav-item.active {
+    background: var(--bg-hover); color: var(--text-primary);
+  }
+  .nav-item.active::before {
+    content: ''; position: absolute; left: 0; top: 8px; bottom: 8px;
+    width: 3px; border-radius: 0 2px 2px 0; background: var(--accent);
+  }
+  .nav-item svg { width: 20px; height: 20px; opacity: 0.6; }
+  .nav-item.active svg { opacity: 1; }
+
+  .sidebar-sep { height: 1px; background: var(--border); margin: 8px 12px; }
+
+  .sidebar-footer {
+    padding: 12px 16px; border-top: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .sidebar-footer-avatar {
+    width: 32px; height: 32px; border-radius: var(--radius-full);
+    background: var(--bg-hover); color: var(--text-secondary);
+    font-size: 12px; font-weight: 600;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .sidebar-footer-info { flex: 1; min-width: 0; }
+  .sidebar-footer-name { font-size: 13px; font-weight: 500; color: var(--text-primary); }
+  .sidebar-footer-role { font-size: 11px; color: var(--text-muted); }
+
+  /* ═══ CONTENT ═══ */
+  .content { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+
+  /* ═══ PAGE HEADER ═══ */
+  .page-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 20px 24px; border-bottom: 1px solid var(--border);
+    min-height: 64px;
+  }
+  .page-header-left { display: flex; flex-direction: column; gap: 2px; }
+  .page-title { font-size: 20px; font-weight: 600; }
+  .page-subtitle { font-size: 14px; color: var(--text-muted); }
+  .page-header-right { display: flex; align-items: center; gap: 8px; }
+
+  .breadcrumb {
+    display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--text-muted); margin-bottom: 2px;
+  }
+  .breadcrumb a { color: var(--text-muted); text-decoration: none; cursor: pointer; }
+  .breadcrumb a:hover { color: var(--accent); }
+  .breadcrumb-sep { font-size: 12px; }
+
+  /* ═══ BUTTONS ═══ */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 8px 16px; border-radius: var(--radius); font-size: 14px; font-weight: 500;
+    border: none; cursor: pointer; transition: all var(--transition);
+    white-space: nowrap; line-height: 1.4;
+  }
+  .btn-primary { background: var(--text-primary); color: white; }
+  .btn-primary:hover { background: #1e293b; }
+  .btn-accent { background: var(--accent); color: white; }
+  .btn-accent:hover { background: var(--accent-hover); }
+  .btn-secondary { background: white; border: 1px solid var(--border); color: var(--text-secondary); }
+  .btn-secondary:hover { background: var(--bg-hover); }
+  .btn-ghost { background: transparent; color: var(--text-secondary); }
+  .btn-ghost:hover { background: var(--bg-hover); }
+  .btn-danger { background: #dc2626; color: white; }
+  .btn-success { background: var(--success); color: white; }
+  .btn-success:hover { background: #047857; }
+  .btn-sm { padding: 5px 12px; font-size: 13px; }
+  .btn-icon { width: 36px; height: 36px; padding: 0; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* ═══ BADGES ═══ */
+  .badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 10px; border-radius: var(--radius-full);
+    font-size: 12px; font-weight: 500; border: 1px solid;
+  }
+  .badge-success { background: var(--success-light); color: var(--success); border-color: var(--success-border); }
+  .badge-warning { background: var(--warning-light); color: var(--warning); border-color: var(--warning-border); }
+  .badge-neutral { background: var(--bg-raised); color: var(--text-muted); border-color: var(--border); }
+  .badge-info { background: var(--accent-light); color: var(--accent); border-color: #bfdbfe; }
+
+  /* ═══ SCROLLABLE ═══ */
+  .scrollable { flex: 1; overflow-y: auto; }
+  .scrollable::-webkit-scrollbar { width: 6px; }
+  .scrollable::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+  .scrollable::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+  /* ═══ PAGE: PROJECTS LIST ═══ */
+  .projects-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;
+    padding: 24px;
+  }
+  .project-card {
+    border: 1px solid var(--border); border-radius: var(--radius-lg);
+    padding: 20px; cursor: pointer; transition: all var(--transition);
+    background: white;
+  }
+  .project-card:hover { border-color: var(--border-strong); box-shadow: var(--shadow-sm); }
+  .project-card-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 12px; }
+  .project-card-name { font-size: 15px; font-weight: 600; margin-bottom: 2px; }
+  .project-card-sub { font-size: 13px; color: var(--text-muted); }
+  .project-card-progress { margin: 16px 0 8px; }
+  .progress-bar { height: 4px; background: var(--bg-active); border-radius: 2px; overflow: hidden; }
+  .progress-fill { height: 100%; border-radius: 2px; background: var(--accent); transition: width 500ms ease; }
+  .progress-text { display: flex; justify-content: space-between; font-size: 13px; color: var(--text-muted); margin-top: 6px; }
+  .project-card-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+  .project-card-time { font-size: 12px; color: var(--text-muted); }
+
+  /* ═══ VIEW TOGGLE ═══ */
+  .view-toggle {
+    display: flex; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden;
+  }
+  .view-toggle-btn {
+    padding: 6px 10px; background: white; border: none; cursor: pointer;
+    color: var(--text-muted); transition: all var(--transition); display: flex; align-items: center;
+  }
+  .view-toggle-btn.active { background: var(--bg-hover); color: var(--text-primary); }
+  .view-toggle-btn + .view-toggle-btn { border-left: 1px solid var(--border); }
+
+  /* ═══ MODAL / WIZARD ═══ */
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 50;
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; pointer-events: none; transition: opacity 200ms ease;
+  }
+  .modal-overlay.open { opacity: 1; pointer-events: all; }
+  .modal {
+    background: white; border-radius: var(--radius-lg); width: 580px; max-height: 90vh;
+    box-shadow: var(--shadow-lg); display: flex; flex-direction: column;
+    transform: scale(0.96); transition: transform 200ms ease;
+  }
+  .modal-overlay.open .modal { transform: scale(1); }
+  .modal-header {
+    padding: 20px 24px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .modal-title { font-size: 17px; font-weight: 600; }
+  .modal-close {
+    width: 32px; height: 32px; border: none; background: none;
+    border-radius: var(--radius); cursor: pointer; color: var(--text-muted);
+    display: flex; align-items: center; justify-content: center;
+    transition: all var(--transition);
+  }
+  .modal-close:hover { background: var(--bg-hover); color: var(--text-primary); }
+  .modal-body { padding: 24px; overflow-y: auto; flex: 1; }
+  .modal-footer {
+    padding: 16px 24px; border-top: 1px solid var(--border);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+
+  /* ═══ WIZARD STEPS ═══ */
+  .wizard-steps { display: flex; align-items: center; gap: 0; margin-bottom: 28px; }
+  .wizard-step {
+    display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500;
+    color: var(--text-muted);
+  }
+  .wizard-step.active { color: var(--accent); }
+  .wizard-step.done { color: var(--success); }
+  .wizard-step-num {
+    width: 28px; height: 28px; border-radius: var(--radius-full);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 600; border: 2px solid var(--border);
+    color: var(--text-muted); transition: all var(--transition);
+  }
+  .wizard-step.active .wizard-step-num { border-color: var(--accent); background: var(--accent); color: white; }
+  .wizard-step.done .wizard-step-num { border-color: var(--success); background: var(--success); color: white; }
+  .wizard-line { flex: 1; height: 2px; background: var(--border); margin: 0 12px; }
+  .wizard-line.done { background: var(--success); }
+
+  /* ═══ FORM ═══ */
+  .form-group { margin-bottom: 16px; }
+  .form-label {
+    display: block; font-size: 14px; font-weight: 500; color: var(--text-secondary);
+    margin-bottom: 6px;
+  }
+  .form-label .req { color: #dc2626; margin-left: 2px; }
+  .form-input, .form-select {
+    width: 100%; height: 44px; border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 0 12px; font-size: 16px; font-family: inherit; color: var(--text-primary);
+    background: white; transition: all var(--transition); outline: none;
+  }
+  .form-input:focus, .form-select:focus {
+    border-color: var(--accent); box-shadow: 0 0 0 3px rgba(37,99,235,0.12);
+  }
+  .form-input::placeholder { color: var(--text-placeholder); }
+  .form-hint { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+
+  .upload-zone {
+    border: 2px dashed var(--border); border-radius: var(--radius-lg);
+    padding: 32px; text-align: center; cursor: pointer;
+    transition: all var(--transition);
+  }
+  .upload-zone:hover { border-color: var(--accent); background: var(--accent-light); }
+  .upload-zone-icon { font-size: 32px; color: var(--text-muted); margin-bottom: 8px; }
+  .upload-zone-text { font-size: 15px; color: var(--text-secondary); }
+  .upload-zone-hint { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+
+  .upload-done {
+    border: 1px solid var(--success-border); background: var(--success-light);
+    border-radius: var(--radius); padding: 12px 16px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .upload-done-icon { color: var(--success); font-size: 20px; }
+  .upload-done-name { font-size: 14px; font-weight: 500; }
+  .upload-done-size { font-size: 12px; color: var(--text-muted); }
+
+  /* ═══ ELIGIBILITY ═══ */
+  .elig-list { display: flex; flex-direction: column; gap: 8px; }
+  .elig-item {
+    display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+    border-radius: var(--radius); font-size: 14px;
+  }
+  .elig-pass { background: var(--success-light); color: #065f46; }
+  .elig-warn { background: var(--warning-light); color: #92400e; }
+  .elig-fail { background: var(--danger-light); color: #991b1b; }
+  .elig-icon { font-size: 16px; flex-shrink: 0; }
+
+  /* ═══ PROJECT DETAIL ═══ */
+  .project-detail { display: flex; flex-direction: column; height: 100%; }
+  .project-tabs {
+    display: flex; gap: 0; padding: 0 24px; border-bottom: 1px solid var(--border);
+    background: white;
+  }
+  .project-tab {
+    padding: 12px 16px; font-size: 14px; font-weight: 500; color: var(--text-muted);
+    cursor: pointer; border-bottom: 2px solid transparent; transition: all var(--transition);
+    white-space: nowrap;
+  }
+  .project-tab:hover { color: var(--text-secondary); }
+  .project-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .project-tab-badge {
+    font-size: 11px; background: var(--bg-hover); color: var(--text-muted);
+    padding: 1px 6px; border-radius: var(--radius-full); margin-left: 6px;
+  }
+  .project-tab.active .project-tab-badge { background: var(--accent-light); color: var(--accent); }
+
+  .tab-content { flex: 1; overflow: hidden; }
+
+  /* ═══ TAB: SUMAR ═══ */
+  .sumar-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;
+    padding: 24px; padding-bottom: 16px;
+  }
+  .stat-card {
+    padding: 16px 20px; border: 1px solid var(--border); border-radius: var(--radius-lg);
+  }
+  .stat-value { font-size: 24px; font-weight: 600; margin-bottom: 2px; }
+  .stat-label { font-size: 13px; color: var(--text-muted); }
+
+  /* ═══ SOLOMON ═══ */
+  .solomon { display: flex; height: 100%; }
+  .solomon-chat { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .solomon-messages { flex: 1; overflow-y: auto; }
+  .solomon-messages-inner { max-width: 720px; margin: 0 auto; padding: 24px 20px; }
+  .solomon-msg { display: flex; gap: 12px; margin-bottom: 24px; }
+  .solomon-msg-avatar {
+    width: 30px; height: 30px; border-radius: var(--radius-full);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700; flex-shrink: 0;
+  }
+  .solomon-msg-avatar.ai {
+    background: linear-gradient(135deg, #f59e0b, #ea580c);
+    color: white;
+  }
+  .solomon-msg-avatar.user { background: var(--bg-active); color: var(--text-secondary); }
+  .solomon-msg-body { flex: 1; min-width: 0; }
+  .solomon-msg-name { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+  .solomon-msg-name span { font-weight: 400; color: var(--text-muted); margin-left: 8px; font-size: 12px; }
+  .solomon-msg-text { font-size: 16px; line-height: 1.65; color: var(--text-secondary); }
+  .solomon-msg-text strong { color: var(--text-primary); font-weight: 500; }
+
+  /* Solomon extractions */
+  .extraction-cards { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+  .extraction-card {
+    border: 1px solid #bfdbfe; background: #f0f7ff; border-radius: var(--radius);
+    padding: 12px 14px;
+  }
+  .extraction-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .extraction-label { font-size: 12px; font-weight: 500; color: var(--text-muted); }
+  .extraction-source { font-size: 11px; color: var(--text-muted); }
+  .extraction-value { font-size: 15px; font-weight: 500; font-family: 'SF Mono', 'Consolas', monospace; color: var(--text-primary); }
+  .extraction-actions { display: flex; gap: 6px; margin-top: 8px; }
+
+  .extraction-card.confirmed {
+    border-color: var(--success-border); background: var(--success-light);
+  }
+  .extraction-card.confirmed .extraction-value { color: var(--success); }
+  .confirm-all-bar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 12px; background: var(--accent-light); border-radius: var(--radius);
+    margin-top: 12px; margin-bottom: 4px;
+  }
+  .confirm-all-bar span { font-size: 13px; color: var(--accent); font-weight: 500; }
+
+  /* Solomon typing */
+  .typing-indicator { display: flex; align-items: center; gap: 4px; padding: 8px 0; }
+  .typing-dot {
+    width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted);
+    animation: bounce 1.4s infinite ease-in-out;
+  }
+  .typing-dot:nth-child(2) { animation-delay: 0.16s; }
+  .typing-dot:nth-child(3) { animation-delay: 0.32s; }
+  @keyframes bounce {
+    0%, 80%, 100% { transform: translateY(0); }
+    40% { transform: translateY(-6px); }
+  }
+
+  /* Solomon input */
+  .solomon-input-area {
+    border-top: 1px solid var(--border); padding: 16px 20px; background: white;
+  }
+  .solomon-input-inner { max-width: 720px; margin: 0 auto; position: relative; }
+  .solomon-input-box {
+    display: flex; align-items: flex-end; gap: 8px;
+    border: 1px solid var(--border); border-radius: 20px;
+    padding: 10px 12px 10px 16px; transition: all var(--transition);
+    background: white;
+  }
+  .solomon-input-box:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+  .solomon-textarea {
+    flex: 1; border: none; outline: none; font-size: 16px; font-family: inherit;
+    resize: none; line-height: 1.5; max-height: 120px; min-height: 24px;
+    color: var(--text-primary); background: transparent;
+  }
+  .solomon-textarea::placeholder { color: var(--text-placeholder); }
+  .solomon-input-btn {
+    width: 32px; height: 32px; border-radius: var(--radius-full);
+    border: none; cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: all var(--transition); flex-shrink: 0;
+  }
+  .solomon-send { background: var(--text-primary); color: white; }
+  .solomon-send:hover { background: #1e293b; }
+  .solomon-send.disabled { background: var(--bg-active); color: var(--text-muted); cursor: not-allowed; }
+  .solomon-send.stop { background: #dc2626; }
+  .solomon-attach { background: transparent; color: var(--text-muted); }
+  .solomon-attach:hover { background: var(--bg-hover); color: var(--text-secondary); }
+
+  /* Solomon elements panel */
+  .solomon-elements {
+    width: 320px; min-width: 320px; border-left: 1px solid var(--border);
+    display: flex; flex-direction: column; background: var(--bg-raised);
+  }
+  .se-header {
+    padding: 14px 16px; border-bottom: 1px solid var(--border);
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .se-header-row { display: flex; align-items: center; justify-content: space-between; }
+  .se-header-title { font-size: 14px; font-weight: 600; }
+  .se-header-count { font-size: 13px; color: var(--text-muted); }
+  .se-progress { height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
+  .se-progress-fill { height: 100%; background: var(--accent); border-radius: 2px; }
+  .se-list { flex: 1; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 4px; }
+  .se-group-title {
+    font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;
+    letter-spacing: 0.05em; padding: 12px 8px 4px;
+  }
+  .se-item {
+    display: flex; align-items: flex-start; gap: 8px;
+    padding: 8px 10px; border-radius: var(--radius); font-size: 13px;
+  }
+  .se-item-icon { flex-shrink: 0; margin-top: 1px; font-size: 14px; }
+  .se-item-content { flex: 1; min-width: 0; }
+  .se-item-label { color: var(--text-muted); font-size: 12px; }
+  .se-item-value { font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .se-item.confirmed { background: var(--success-light); }
+  .se-item.confirmed .se-item-icon { color: var(--success); }
+  .se-item.proposed { background: var(--warning-light); }
+  .se-item.proposed .se-item-icon { color: var(--warning); }
+  .se-item.empty .se-item-label { color: var(--text-muted); }
+  .se-item.empty .se-item-icon { color: var(--border-strong); }
+
+  /* ═══ HIDDEN VIEWS ═══ */
+  .view { display: none; flex-direction: column; height: 100%; }
+  .view.active { display: flex; }
+
+  /* ═══ ANIMATIONS ═══ */
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  .fade-in { animation: fadeIn 300ms ease forwards; }
+  .fade-in-delay-1 { animation-delay: 50ms; opacity: 0; }
+  .fade-in-delay-2 { animation-delay: 100ms; opacity: 0; }
+  .fade-in-delay-3 { animation-delay: 150ms; opacity: 0; }
+
+  /* ═══ FILTER BAR ═══ */
+  .filter-bar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 24px 0;
+  }
+  .filter-left { display: flex; align-items: center; gap: 8px; }
+
+  /* ═══ NEW MSG INDICATOR ═══ */
+  .new-msg-indicator {
+    position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%);
+    padding: 6px 14px; border-radius: var(--radius-full);
+    background: var(--text-primary); color: white; font-size: 12px; font-weight: 500;
+    box-shadow: var(--shadow-md); cursor: pointer; z-index: 5;
+    display: none;
+  }
+</style>
+</head>
+<body>
+
+<div class="shell">
+  <!-- TOPBAR -->
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="topbar-cabinet">
+        Cabinet: Consultanță Fonduri SRL
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <div class="topbar-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+      </div>
+      <div class="topbar-avatar">MP</div>
+    </div>
+  </div>
+
+  <div class="main-area">
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+      <div class="sidebar-logo">
+        <div class="sidebar-logo-icon">DF</div>
+        <div class="sidebar-logo-text">DosarFonduri</div>
+      </div>
+      <div class="sidebar-nav">
+        <div class="nav-item" onclick="showView('dashboard')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+          Panou
+        </div>
+        <div class="nav-item" onclick="showView('companies')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/></svg>
+          Firme
+        </div>
+        <div class="nav-item active" onclick="showView('projects')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          Proiecte
+        </div>
+        <div class="nav-item" onclick="showView('documents')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14,2 14,8 20,8"/></svg>
+          Documente
+        </div>
+        <div class="sidebar-sep"></div>
+        <div class="nav-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+          Configurări
+        </div>
+      </div>
+      <div class="sidebar-footer">
+        <div class="sidebar-footer-avatar">MP</div>
+        <div class="sidebar-footer-info">
+          <div class="sidebar-footer-name">Mihai Pantis</div>
+          <div class="sidebar-footer-role">consultant</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CONTENT -->
+    <div class="content">
+
+      <!-- ═══ VIEW: PROJECTS LIST ═══ -->
+      <div class="view active" id="view-projects">
+        <div class="page-header">
+          <div class="page-header-left">
+            <div class="page-title">Proiecte</div>
+            <div class="page-subtitle">3 proiecte active</div>
+          </div>
+          <div class="page-header-right">
+            <div class="view-toggle">
+              <button class="view-toggle-btn active">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+              </button>
+              <button class="view-toggle-btn">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+              </button>
+            </div>
+            <button class="btn btn-primary" onclick="openWizard()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Proiect Nou
+            </button>
+          </div>
+        </div>
+        <div class="scrollable">
+          <div class="projects-grid">
+            <div class="project-card fade-in" onclick="showView('project-detail')">
+              <div class="project-card-header">
+                <div>
+                  <div class="project-card-name">ANDA OANA AGRO FERMA SRL</div>
+                  <div class="project-card-sub">sM 4.1 · Componenta 4.1.1</div>
+                </div>
+                <span class="badge badge-success">Activ</span>
+              </div>
+              <div class="project-card-progress">
+                <div class="progress-bar"><div class="progress-fill" style="width:78%"></div></div>
+                <div class="progress-text"><span>94 / 120 elemente</span><span>78%</span></div>
+              </div>
+              <div class="project-card-footer">
+                <div class="project-card-time">Ultima activitate: acum 2h</div>
+              </div>
+            </div>
+
+            <div class="project-card fade-in fade-in-delay-1" onclick="showView('project-detail')">
+              <div class="project-card-header">
+                <div>
+                  <div class="project-card-name">AGRO CONSTRUCT SRL</div>
+                  <div class="project-card-sub">sM 4.1 · Componenta 4.1.1</div>
+                </div>
+                <span class="badge badge-warning">Draft</span>
+              </div>
+              <div class="project-card-progress">
+                <div class="progress-bar"><div class="progress-fill" style="width:35%"></div></div>
+                <div class="progress-text"><span>42 / 120 elemente</span><span>35%</span></div>
+              </div>
+              <div class="project-card-footer">
+                <div class="project-card-time">Ultima activitate: acum 3 zile</div>
+              </div>
+            </div>
+
+            <div class="project-card fade-in fade-in-delay-2" onclick="showView('project-detail')">
+              <div class="project-card-header">
+                <div>
+                  <div class="project-card-name">BIO FARM VERDE SRL</div>
+                  <div class="project-card-sub">sM 4.1 · Componenta 4.1.1</div>
+                </div>
+                <span class="badge badge-neutral">Nou</span>
+              </div>
+              <div class="project-card-progress">
+                <div class="progress-bar"><div class="progress-fill" style="width:5%"></div></div>
+                <div class="progress-text"><span>6 / 120 elemente</span><span>5%</span></div>
+              </div>
+              <div class="project-card-footer">
+                <div class="project-card-time">Creat acum 1h</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ VIEW: PROJECT DETAIL ═══ -->
+      <div class="view" id="view-project-detail">
+        <div class="page-header">
+          <div class="page-header-left">
+            <div class="breadcrumb">
+              <a onclick="showView('projects')">Proiecte</a>
+              <span class="breadcrumb-sep">/</span>
+            </div>
+            <div class="page-title">ANDA OANA AGRO FERMA SRL — sM 4.1</div>
+          </div>
+          <div class="page-header-right">
+            <span class="badge badge-success">Activ</span>
+            <button class="btn btn-secondary btn-sm">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+              Acțiuni
+            </button>
+          </div>
+        </div>
+        <div class="project-tabs" id="project-tabs">
+          <div class="project-tab active" onclick="switchTab(this, 'tab-sumar')">Sumar</div>
+          <div class="project-tab" onclick="switchTab(this, 'tab-eligibilitate')">Eligibilitate</div>
+          <div class="project-tab" onclick="switchTab(this, 'tab-ghid')">Ghid</div>
+          <div class="project-tab" onclick="switchTab(this, 'tab-solomon')">Solomon<span class="project-tab-badge">94/120</span></div>
+          <div class="project-tab" onclick="switchTab(this, 'tab-elemente')">Elemente</div>
+          <div class="project-tab" onclick="switchTab(this, 'tab-neemia')">Neemia</div>
+          <div class="project-tab" onclick="switchTab(this, 'tab-docfinale')">Documente Finale</div>
+        </div>
+
+        <!-- Tab: Sumar -->
+        <div class="tab-content scrollable" id="tab-sumar">
+          <div class="sumar-grid">
+            <div class="stat-card"><div class="stat-value" style="color:var(--accent)">94</div><div class="stat-label">Elemente completate</div></div>
+            <div class="stat-card"><div class="stat-value" style="color:var(--success)">78%</div><div class="stat-label">Progress total</div></div>
+            <div class="stat-card"><div class="stat-value">45</div><div class="stat-label">Reguli verificate</div></div>
+            <div class="stat-card"><div class="stat-value">3</div><div class="stat-label">Documente generate</div></div>
+          </div>
+          <div style="padding: 0 24px 24px;">
+            <h3 style="font-size:16px; font-weight:600; margin-bottom:12px;">Activitate recentă</h3>
+            <div style="display:flex;flex-direction:column;gap:8px;">
+              <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg-raised);border-radius:var(--radius);">
+                <span style="font-size:16px;">🤖</span>
+                <span style="font-size:14px;">Solomon a completat 12 elemente noi</span>
+                <span style="margin-left:auto;font-size:12px;color:var(--text-muted);">acum 2h</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg-raised);border-radius:var(--radius);">
+                <span style="font-size:16px;">📄</span>
+                <span style="font-size:14px;">Memoriu Justificativ generat de Neemia</span>
+                <span style="margin-left:auto;font-size:12px;color:var(--text-muted);">acum 1 zi</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg-raised);border-radius:var(--radius);">
+                <span style="font-size:16px;">✅</span>
+                <span style="font-size:14px;">Pre-eligibilitate verificată — 45/45 criterii trecute</span>
+                <span style="margin-left:auto;font-size:12px;color:var(--text-muted);">acum 3 zile</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab: Solomon -->
+        <div class="tab-content" id="tab-solomon" style="display:none;">
+          <div class="solomon">
+            <div class="solomon-chat">
+              <div class="solomon-messages scrollable">
+                <div class="solomon-messages-inner">
+                  <!-- Welcome -->
+                  <div class="solomon-msg">
+                    <div class="solomon-msg-avatar ai">S</div>
+                    <div class="solomon-msg-body">
+                      <div class="solomon-msg-name">Solomon <span>10:30</span></div>
+                      <div class="solomon-msg-text">
+                        Bună! Sunt Solomon, agentul tău de colectare date. Am acces la ghidul sM 4.1 și la documentele firmei <strong>ANDA OANA AGRO FERMA SRL</strong>.<br><br>
+                        Am extras deja datele din Certificatul Constatator. Poți confirma sau corecta mai jos. Ce alte documente ai disponibile?
+                      </div>
+                      <div class="extraction-cards">
+                        <div class="confirm-all-bar">
+                          <span>5 extracții de confirmat</span>
+                          <button class="btn btn-success btn-sm" onclick="confirmAllExtractions()">✓ Confirmă toate</button>
+                        </div>
+                        <div class="extraction-card" id="ext-1">
+                          <div class="extraction-header">
+                            <span class="extraction-label">Denumire firmă</span>
+                            <span class="extraction-source">din Certificat Constatator</span>
+                          </div>
+                          <div class="extraction-value">ANDA OANA AGRO FERMA SRL</div>
+                          <div class="extraction-actions">
+                            <button class="btn btn-success btn-sm" onclick="confirmExt('ext-1')">Confirmă</button>
+                            <button class="btn btn-ghost btn-sm">Editează</button>
+                            <button class="btn btn-ghost btn-sm" style="color:var(--danger)">Respinge</button>
+                          </div>
+                        </div>
+                        <div class="extraction-card" id="ext-2">
+                          <div class="extraction-header">
+                            <span class="extraction-label">CUI</span>
+                            <span class="extraction-source">din Certificat Constatator</span>
+                          </div>
+                          <div class="extraction-value">RO 12345678</div>
+                          <div class="extraction-actions">
+                            <button class="btn btn-success btn-sm" onclick="confirmExt('ext-2')">Confirmă</button>
+                            <button class="btn btn-ghost btn-sm">Editează</button>
+                            <button class="btn btn-ghost btn-sm" style="color:var(--danger)">Respinge</button>
+                          </div>
+                        </div>
+                        <div class="extraction-card" id="ext-3">
+                          <div class="extraction-header">
+                            <span class="extraction-label">Nr. Registrul Comerțului</span>
+                            <span class="extraction-source">din Certificat Constatator</span>
+                          </div>
+                          <div class="extraction-value">J02/456/2019</div>
+                          <div class="extraction-actions">
+                            <button class="btn btn-success btn-sm" onclick="confirmExt('ext-3')">Confirmă</button>
+                            <button class="btn btn-ghost btn-sm">Editează</button>
+                            <button class="btn btn-ghost btn-sm" style="color:var(--danger)">Respinge</button>
+                          </div>
+                        </div>
+                        <div class="extraction-card" id="ext-4">
+                          <div class="extraction-header">
+                            <span class="extraction-label">Sediu social</span>
+                            <span class="extraction-source">din Certificat Constatator</span>
+                          </div>
+                          <div class="extraction-value">Sat Zimandu Nou, Com. Zimandu Nou, Jud. Arad</div>
+                          <div class="extraction-actions">
+                            <button class="btn btn-success btn-sm" onclick="confirmExt('ext-4')">Confirmă</button>
+                            <button class="btn btn-ghost btn-sm">Editează</button>
+                            <button class="btn btn-ghost btn-sm" style="color:var(--danger)">Respinge</button>
+                          </div>
+                        </div>
+                        <div class="extraction-card" id="ext-5">
+                          <div class="extraction-header">
+                            <span class="extraction-label">Administrator</span>
+                            <span class="extraction-source">din Certificat Constatator</span>
+                          </div>
+                          <div class="extraction-value">Popescu Ion Andrei</div>
+                          <div class="extraction-actions">
+                            <button class="btn btn-success btn-sm" onclick="confirmExt('ext-5')">Confirmă</button>
+                            <button class="btn btn-ghost btn-sm">Editează</button>
+                            <button class="btn btn-ghost btn-sm" style="color:var(--danger)">Respinge</button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- User message -->
+                  <div class="solomon-msg">
+                    <div class="solomon-msg-avatar user">MP</div>
+                    <div class="solomon-msg-body">
+                      <div class="solomon-msg-name">Mihai Pantis <span>10:32</span></div>
+                      <div class="solomon-msg-text">Am și declarația D101 din 2023. Cifra de afaceri a fost 1.850.000 RON. Suprafața fermei e de 120 hectare.</div>
+                    </div>
+                  </div>
+
+                  <!-- Solomon response -->
+                  <div class="solomon-msg">
+                    <div class="solomon-msg-avatar ai">S</div>
+                    <div class="solomon-msg-body">
+                      <div class="solomon-msg-name">Solomon <span>10:32</span></div>
+                      <div class="solomon-msg-text">
+                        Excelent! Am înregistrat datele financiare și de exploatație. Acestea sunt esențiale pentru calculul SO (Standard Output) și pentru punctajul de eligibilitate.
+                      </div>
+                      <div class="extraction-cards">
+                        <div class="extraction-card confirmed">
+                          <div class="extraction-header">
+                            <span class="extraction-label">✓ Cifra de afaceri 2023</span>
+                            <span class="extraction-source">confirmat manual</span>
+                          </div>
+                          <div class="extraction-value">1.850.000 RON</div>
+                        </div>
+                        <div class="extraction-card confirmed">
+                          <div class="extraction-header">
+                            <span class="extraction-label">✓ Suprafața exploatație</span>
+                            <span class="extraction-source">confirmat manual</span>
+                          </div>
+                          <div class="extraction-value">120 ha</div>
+                        </div>
+                      </div>
+                      <div class="solomon-msg-text" style="margin-top:12px;">
+                        Mai am nevoie de câteva date pentru a continua:
+                        <br>• <strong>Cod CAEN principal</strong> al activității agricole
+                        <br>• <strong>Număr angajați</strong> la data depunerii
+                        <br>• <strong>Anul înființării</strong> exploatației agricole
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Typing indicator -->
+                  <div class="solomon-msg" id="typing-indicator" style="display:none;">
+                    <div class="solomon-msg-avatar ai">S</div>
+                    <div class="solomon-msg-body">
+                      <div class="typing-indicator">
+                        <div class="typing-dot"></div>
+                        <div class="typing-dot"></div>
+                        <div class="typing-dot"></div>
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+
+              <div class="solomon-input-area">
+                <div class="solomon-input-inner">
+                  <div class="solomon-input-box">
+                    <button class="solomon-input-btn solomon-attach" title="Atașează document">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                    </button>
+                    <textarea class="solomon-textarea" rows="1" placeholder="Scrie detalii despre proiect, lipește date, sau întreabă..." id="solomon-input"
+                      oninput="this.style.height='auto'; this.style.height=Math.min(this.scrollHeight,120)+'px'; toggleSend();"
+                      onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessage();}"></textarea>
+                    <button class="solomon-input-btn solomon-send disabled" id="solomon-send-btn" onclick="sendMessage()">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Elements Panel -->
+            <div class="solomon-elements">
+              <div class="se-header">
+                <div class="se-header-row">
+                  <span class="se-header-title">Elemente completate</span>
+                  <span class="se-header-count">94 / 120</span>
+                </div>
+                <div class="se-progress"><div class="se-progress-fill" style="width:78%"></div></div>
+              </div>
+              <div class="se-list scrollable">
+                <div class="se-group-title">Date firmă</div>
+                <div class="se-item confirmed"><span class="se-item-icon">✓</span><div class="se-item-content"><div class="se-item-label">Denumire</div><div class="se-item-value">ANDA OANA AGRO FERMA SRL</div></div></div>
+                <div class="se-item confirmed"><span class="se-item-icon">✓</span><div class="se-item-content"><div class="se-item-label">CUI</div><div class="se-item-value">RO 12345678</div></div></div>
+                <div class="se-item confirmed"><span class="se-item-icon">✓</span><div class="se-item-content"><div class="se-item-label">Nr. Reg. Comerț</div><div class="se-item-value">J02/456/2019</div></div></div>
+                <div class="se-item confirmed"><span class="se-item-icon">✓</span><div class="se-item-content"><div class="se-item-label">Sediu social</div><div class="se-item-value">Zimandu Nou, Arad</div></div></div>
+                <div class="se-item confirmed"><span class="se-item-icon">✓</span><div class="se-item-content"><div class="se-item-label">Administrator</div><div class="se-item-value">Popescu Ion Andrei</div></div></div>
+
+                <div class="se-group-title">Date financiare</div>
+                <div class="se-item confirmed"><span class="se-item-icon">✓</span><div class="se-item-content"><div class="se-item-label">Cifra afaceri 2023</div><div class="se-item-value">1.850.000 RON</div></div></div>
+
+                <div class="se-group-title">Date exploatație</div>
+                <div class="se-item confirmed"><span class="se-item-icon">✓</span><div class="se-item-content"><div class="se-item-label">Suprafață</div><div class="se-item-value">120 ha</div></div></div>
+                <div class="se-item proposed"><span class="se-item-icon">⚠</span><div class="se-item-content"><div class="se-item-label">Cod CAEN principal</div><div class="se-item-value" style="color:var(--warning)">De completat</div></div></div>
+                <div class="se-item empty"><span class="se-item-icon">○</span><div class="se-item-content"><div class="se-item-label">Număr angajați</div></div></div>
+                <div class="se-item empty"><span class="se-item-icon">○</span><div class="se-item-content"><div class="se-item-label">Anul înființării exploatației</div></div></div>
+                <div class="se-item empty"><span class="se-item-icon">○</span><div class="se-item-content"><div class="se-item-label">Tip exploatație</div></div></div>
+                <div class="se-item empty"><span class="se-item-icon">○</span><div class="se-item-content"><div class="se-item-label">Standard Output (SO)</div></div></div>
+
+                <div class="se-group-title">Investiție</div>
+                <div class="se-item empty"><span class="se-item-icon">○</span><div class="se-item-content"><div class="se-item-label">Valoare totală investiție</div></div></div>
+                <div class="se-item empty"><span class="se-item-icon">○</span><div class="se-item-content"><div class="se-item-label">Contribuție proprie</div></div></div>
+                <div class="se-item empty"><span class="se-item-icon">○</span><div class="se-item-content"><div class="se-item-label">Finanțare nerambursabilă</div></div></div>
+                <div class="se-item empty"><span class="se-item-icon">○</span><div class="se-item-content"><div class="se-item-label">Descriere investiție</div></div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Placeholder tabs -->
+        <div class="tab-content" id="tab-eligibilitate" style="display:none;padding:24px;">
+          <div class="elig-list">
+            <div class="elig-item elig-pass"><span class="elig-icon">✓</span> Fermier activ minimum 12 luni</div>
+            <div class="elig-item elig-pass"><span class="elig-icon">✓</span> Exploatație cu SO ≥ 8.000 euro</div>
+            <div class="elig-item elig-pass"><span class="elig-icon">✓</span> Sediul social în zona rurală eligibilă</div>
+            <div class="elig-item elig-pass"><span class="elig-icon">✓</span> Nu e în procedură de insolvență</div>
+            <div class="elig-item elig-warn"><span class="elig-icon">⚠</span> Vârsta administratorului sub 40 ani — de verificat</div>
+          </div>
+        </div>
+        <div class="tab-content" id="tab-ghid" style="display:none;padding:24px;"><p style="color:var(--text-muted)">Regulile extrase din ghidul sM 4.1...</p></div>
+        <div class="tab-content" id="tab-elemente" style="display:none;padding:24px;"><p style="color:var(--text-muted)">Lista completă a celor 120 de elemente...</p></div>
+        <div class="tab-content" id="tab-neemia" style="display:none;padding:24px;"><p style="color:var(--text-muted)">Generare documente cu Neemia...</p></div>
+        <div class="tab-content" id="tab-docfinale" style="display:none;padding:24px;"><p style="color:var(--text-muted)">Documente finale pentru depunere...</p></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ═══ WIZARD MODAL ═══ -->
+<div class="modal-overlay" id="wizard-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Proiect Nou</div>
+      <button class="modal-close" onclick="closeWizard()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <!-- Step indicator -->
+      <div class="wizard-steps">
+        <div class="wizard-step active" id="ws-1"><div class="wizard-step-num">1</div> Firma</div>
+        <div class="wizard-line" id="wl-1"></div>
+        <div class="wizard-step" id="ws-2"><div class="wizard-step-num">2</div> Ghid</div>
+        <div class="wizard-line" id="wl-2"></div>
+        <div class="wizard-step" id="ws-3"><div class="wizard-step-num">3</div> Eligibilitate</div>
+      </div>
+
+      <!-- Step 1: Select Company -->
+      <div id="wizard-step-1">
+        <div class="form-group">
+          <label class="form-label">Selectează firma <span class="req">*</span></label>
+          <select class="form-select" id="wizard-company">
+            <option value="">— Alege firma —</option>
+            <option value="anda">ANDA OANA AGRO FERMA SRL (RO 12345678)</option>
+            <option value="agro">AGRO CONSTRUCT SRL (RO 87654321)</option>
+            <option value="bio">BIO FARM VERDE SRL (RO 11223344)</option>
+          </select>
+          <div class="form-hint">Firma trebuie adăugată înainte din secțiunea Firme.</div>
+        </div>
+      </div>
+
+      <!-- Step 2: Select Guide -->
+      <div id="wizard-step-2" style="display:none;">
+        <div class="form-group">
+          <label class="form-label">Selectează ghidul de finanțare <span class="req">*</span></label>
+          <select class="form-select" id="wizard-guide">
+            <option value="">— Alege ghidul —</option>
+            <option value="sm41">Ghid sM 4.1 — Componenta 4.1.1 (procesat ✓)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Componenta</label>
+          <select class="form-select">
+            <option value="411">Componenta 4.1.1 — Investiții în exploatații agricole</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Step 3: Eligibility -->
+      <div id="wizard-step-3" style="display:none;">
+        <div style="text-align:center; padding: 8px 0 20px;">
+          <div style="font-size:40px; margin-bottom:8px;">✅</div>
+          <div style="font-size:17px; font-weight:600; color:var(--success); margin-bottom:4px;">Eligibil</div>
+          <div style="font-size:14px; color:var(--text-muted);">Firma îndeplinește criteriile de pre-eligibilitate</div>
+        </div>
+        <div class="elig-list">
+          <div class="elig-item elig-pass"><span class="elig-icon">✓</span> Fermier activ minimum 12 luni</div>
+          <div class="elig-item elig-pass"><span class="elig-icon">✓</span> Exploatație cu SO ≥ 8.000 euro</div>
+          <div class="elig-item elig-pass"><span class="elig-icon">✓</span> Sediu în zona rurală eligibilă (UAT ANC)</div>
+          <div class="elig-item elig-pass"><span class="elig-icon">✓</span> Nu e în procedură de insolvență</div>
+          <div class="elig-item elig-warn"><span class="elig-icon">⚠</span> Vârsta administratorului — de verificat manual</div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="wizard-back" onclick="wizardBack()" style="visibility:hidden;">← Înapoi</button>
+      <button class="btn btn-primary" id="wizard-next" onclick="wizardNext()">Continuă →</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  let currentStep = 1;
+  let currentView = 'projects';
+
+  function showView(id) {
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    document.getElementById('view-' + id)?.classList.add('active');
+
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    if (id === 'projects' || id === 'project-detail') {
+      document.querySelectorAll('.nav-item')[2].classList.add('active');
+    }
+    currentView = id;
+  }
+
+  function openWizard() { document.getElementById('wizard-overlay').classList.add('open'); currentStep = 1; showWizardStep(1); }
+  function closeWizard() { document.getElementById('wizard-overlay').classList.remove('open'); }
+
+  function showWizardStep(step) {
+    for (let i = 1; i <= 3; i++) {
+      document.getElementById('wizard-step-' + i).style.display = i === step ? 'block' : 'none';
+      const ws = document.getElementById('ws-' + i);
+      ws.className = 'wizard-step' + (i < step ? ' done' : i === step ? ' active' : '');
+      if (i < 3) {
+        document.getElementById('wl-' + i).className = 'wizard-line' + (i < step ? ' done' : '');
+      }
+    }
+    document.getElementById('wizard-back').style.visibility = step > 1 ? 'visible' : 'hidden';
+    document.getElementById('wizard-next').textContent = step === 3 ? 'Creează Proiect' : 'Continuă →';
+  }
+
+  function wizardNext() {
+    if (currentStep < 3) { currentStep++; showWizardStep(currentStep); }
+    else { closeWizard(); showView('project-detail'); switchTab(document.querySelectorAll('.project-tab')[3], 'tab-solomon'); }
+  }
+  function wizardBack() { if (currentStep > 1) { currentStep--; showWizardStep(currentStep); } }
+
+  function switchTab(el, tabId) {
+    document.querySelectorAll('.project-tab').forEach(t => t.classList.remove('active'));
+    el.classList.add('active');
+    document.querySelectorAll('.tab-content').forEach(t => t.style.display = 'none');
+    document.getElementById(tabId).style.display = tabId === 'tab-solomon' ? 'flex' : tabId === 'tab-sumar' ? 'block' : 'block';
+    if (tabId === 'tab-solomon') { document.getElementById(tabId).style.display = ''; document.getElementById(tabId).style.cssText = ''; }
+  }
+
+  function toggleSend() {
+    const inp = document.getElementById('solomon-input');
+    const btn = document.getElementById('solomon-send-btn');
+    btn.classList.toggle('disabled', !inp.value.trim());
+  }
+
+  function confirmExt(id) {
+    const card = document.getElementById(id);
+    card.classList.add('confirmed');
+    card.querySelector('.extraction-actions').style.display = 'none';
+    const label = card.querySelector('.extraction-label');
+    label.textContent = '✓ ' + label.textContent;
+  }
+
+  function confirmAllExtractions() {
+    ['ext-1','ext-2','ext-3','ext-4','ext-5'].forEach(id => confirmExt(id));
+    document.querySelector('.confirm-all-bar').style.display = 'none';
+  }
+
+  function sendMessage() {
+    const inp = document.getElementById('solomon-input');
+    const text = inp.value.trim();
+    if (!text) return;
+
+    const container = document.querySelector('.solomon-messages-inner');
+    const typing = document.getElementById('typing-indicator');
+
+    // Add user message
+    const msgDiv = document.createElement('div');
+    msgDiv.className = 'solomon-msg fade-in';
+    msgDiv.innerHTML = `
+      <div class="solomon-msg-avatar user">MP</div>
+      <div class="solomon-msg-body">
+        <div class="solomon-msg-name">Mihai Pantis <span>${new Date().toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'})}</span></div>
+        <div class="solomon-msg-text">${text.replace(/</g,'&lt;')}</div>
+      </div>`;
+    container.insertBefore(msgDiv, typing);
+
+    inp.value = ''; inp.style.height = 'auto'; toggleSend();
+
+    // Show typing
+    typing.style.display = 'flex';
+    container.parentElement.scrollTop = container.parentElement.scrollHeight;
+
+    // Simulate response
+    setTimeout(() => {
+      typing.style.display = 'none';
+      const respDiv = document.createElement('div');
+      respDiv.className = 'solomon-msg fade-in';
+      respDiv.innerHTML = `
+        <div class="solomon-msg-avatar ai">S</div>
+        <div class="solomon-msg-body">
+          <div class="solomon-msg-name">Solomon <span>${new Date().toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'})}</span></div>
+          <div class="solomon-msg-text">Am înregistrat informația. Voi actualiza elementele proiectului. Mai ai și alte date de adăugat?</div>
+        </div>`;
+      container.insertBefore(respDiv, typing);
+      container.parentElement.scrollTop = container.parentElement.scrollHeight;
+      inp.focus();
+    }, 2000);
+  }
+</script>
+
+</body>
+</html>

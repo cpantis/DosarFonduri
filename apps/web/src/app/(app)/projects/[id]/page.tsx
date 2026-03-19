@@ -1649,17 +1649,13 @@ export default function ProjectViewPage() {
         .lock-banner .lb-time{font-size:11px;color:#94a3b8;margin-left:auto;font-family:'JetBrains Mono',monospace}
         .pv-container{display:flex;flex-direction:column;height:100%;overflow:hidden;background:#ffffff}
 
-        .pv-project-header{padding:20px 32px 0;background:#ffffff}
-        .pv-breadcrumb{font-size:13px;color:#2563eb;margin-bottom:4px;display:flex;align-items:center;gap:4px}
-        .pv-breadcrumb a{color:#2563eb;text-decoration:none;cursor:pointer;font-weight:500}
-        .pv-breadcrumb a:hover{text-decoration:underline}
-        .pv-breadcrumb .pv-bc-sep{color:#94a3b8;font-size:11px}
-        .pv-title-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
-        .pv-title{font-size:20px;font-weight:600;color:#0f172a;line-height:1.3}
-        .pv-title-actions{display:flex;align-items:center;gap:8px}
-        .pv-status-pill{display:inline-flex;align-items:center;gap:5px;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:700;letter-spacing:.3px;border:1.5px solid transparent}
-        .pv-actions-btn{display:flex;align-items:center;gap:5px;padding:7px 14px;border-radius:8px;border:1px solid rgba(226,232,240,.8);background:#ffffff;color:#64748b;font-size:13px;font-weight:600;cursor:pointer;font-family:'Inter',system-ui,sans-serif;transition:all .15s cubic-bezier(.4,0,.2,1)}
-        .pv-actions-btn:hover{border-color:#cbd5e1;color:#0f172a;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+        .pv-project-header{padding:10px 24px;background:#ffffff;display:flex;align-items:center;gap:8px;border-bottom:1px solid rgba(226,232,240,.8);flex-shrink:0;min-height:44px}
+        .pv-breadcrumb{font-size:13px;color:#64748b;display:flex;align-items:center;gap:6px}
+        .pv-breadcrumb a{color:#64748b;text-decoration:none;cursor:pointer;font-weight:400;transition:color .15s}
+        .pv-breadcrumb a:hover{color:#0f172a;text-decoration:underline}
+        .pv-breadcrumb .pv-bc-sep{color:#cbd5e1;font-size:12px}
+        .pv-title{font-size:13px;font-weight:500;color:#0f172a}
+        .pv-status-pill{display:inline-flex;align-items:center;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:.3px;border:1px solid transparent;margin-left:auto}
 
         .pv-tabs{display:flex;gap:0;border-bottom:1px solid rgba(226,232,240,.8);background:#ffffff;padding:0 32px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
         .pv-tabs::-webkit-scrollbar{display:none}
@@ -2290,9 +2286,8 @@ export default function ProjectViewPage() {
 
         /* ═══ RESPONSIVE ═══ */
         @media(max-width:1024px){
-          .pv-project-header{padding:16px 20px 0}
-          .pv-tabs{padding:0 20px}
-          .pv-title{font-size:18px}
+          .pv-project-header{padding:10px 16px}
+          .pv-tabs{padding:0 16px}
           .neemia-layout{flex-direction:column}
           .neemia-templates{width:100%!important;min-width:100%!important;max-height:220px;border-right:none;border-bottom:1px solid rgba(226,232,240,.8);overflow-x:auto;display:flex;flex-wrap:nowrap;gap:8px;align-items:flex-start}
           .neemia-templates h3{white-space:nowrap}
@@ -2303,10 +2298,9 @@ export default function ProjectViewPage() {
           .solomon-elements-panel{width:260px;min-width:220px}
         }
         @media(max-width:768px){
-          .pv-project-header{padding:12px 16px 0}
-          .pv-tabs{padding:0 16px;gap:0}
+          .pv-project-header{padding:8px 12px}
+          .pv-tabs{padding:0 12px;gap:0}
           .pv-tab{padding:10px 12px;font-size:13px}
-          .pv-title{font-size:16px}
           .el-grid{grid-template-columns:1fr}
           .sg-stats{flex-direction:column;gap:8px}
           .neemia-templates{max-height:180px}
@@ -2325,29 +2319,22 @@ export default function ProjectViewPage() {
       )}
 
       <div className="pv-container" style={lockError ? { height: "calc(100% - 44px)" } : undefined}>
-        {/* PROJECT HEADER + TABS */}
+        {/* PROJECT HEADER — compact single line */}
         <div className="pv-project-header">
           <div className="pv-breadcrumb">
             <a onClick={() => router.push("/projects")}>Proiecte</a>
             <span className="pv-bc-sep">/</span>
           </div>
-          <div className="pv-title-row">
-            <div className="pv-title">
-              {projectFirma}{projectName && projectName !== projectFirma ? ` \u2014 ${projectName}` : ""}
-            </div>
-            <div className="pv-title-actions">
-              <span className="pv-status-pill" style={{
-                background: (STATUS_MAP[projectStatus] || STATUS_MAP.draft).bg,
-                color: (STATUS_MAP[projectStatus] || STATUS_MAP.draft).color,
-                borderColor: (STATUS_MAP[projectStatus] || STATUS_MAP.draft).color + "40",
-              }}>
-                {(STATUS_MAP[projectStatus] || STATUS_MAP.draft).label}
-              </span>
-              <button className="pv-actions-btn" onClick={() => {}}>
-                &middot;&middot;&middot;&nbsp; Acțiuni
-              </button>
-            </div>
-          </div>
+          <span className="pv-title">
+            {projectFirma}{projectName && projectName !== projectFirma ? ` \u2014 ${projectName}` : ""}
+          </span>
+          <span className="pv-status-pill" style={{
+            background: (STATUS_MAP[projectStatus] || STATUS_MAP.draft).bg,
+            color: (STATUS_MAP[projectStatus] || STATUS_MAP.draft).color,
+            borderColor: (STATUS_MAP[projectStatus] || STATUS_MAP.draft).color + "40",
+          }}>
+            {(STATUS_MAP[projectStatus] || STATUS_MAP.draft).label}
+          </span>
         </div>
         <div className="pv-tabs">
           {([

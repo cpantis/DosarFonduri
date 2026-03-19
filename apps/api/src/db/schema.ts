@@ -575,6 +575,24 @@ export const projectChecklist = pgTable("project_checklist", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// === SESSION CHECKLIST (document requirements at session level, pre-project) ===
+export const sessionChecklist = pgTable("session_checklist", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  folderId: uuid("folder_id").references(() => documentFolders.id, { onDelete: "cascade" }).notNull(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  name: varchar("name", { length: 500 }).notNull(),
+  category: varchar("category", { length: 100 }).notNull().default("General"),
+  source: varchar("source", { length: 20 }).notNull().default("manual"), // "ghid" or "manual"
+  sourceRuleId: uuid("source_rule_id").references(() => rules.id, { onDelete: "set null" }),
+  templateId: uuid("template_id").references(() => documents.id, { onDelete: "set null" }),
+  notes: text("notes"),
+  sortOrder: integer("sort_order").default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  folderIdx: index("session_checklist_folder_idx").on(table.folderId),
+  orgIdx: index("session_checklist_org_idx").on(table.organizationId),
+}));
+
 // === ELEMENT AUDIT LOG ===
 export const elementAuditLog = pgTable("element_audit_log", {
   id: uuid("id").defaultRandom().primaryKey(),

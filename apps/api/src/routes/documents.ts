@@ -4,8 +4,8 @@ import { z } from "zod";
 import { createHash } from "crypto";
 import { updateDocElementSchema, validatePageSchema, createDocElementSchema } from "@dosarfonduri/shared";
 import { db } from "../db";
-import { documentFolders, documents, files, templateElements, rules, scoringCriteria, elementDefinitions, templatePlaceholderMapping, users } from "../db/schema";
-import { eq, and, isNull, sql } from "drizzle-orm";
+import { documentFolders, documents, files, templateElements, rules, scoringCriteria, elementDefinitions, templatePlaceholderMapping, users, guideReferenceTables, elementRuleLinks, ruleReferenceLinks, sessionChecklist } from "../db/schema";
+import { eq, and, isNull, sql, inArray } from "drizzle-orm";
 import { uploadFile, getFileUrl, deleteFile, createPresignedUploadUrl, verifyFileUploaded, isLocalStorage } from "../services/storage";
 import { AuthContext } from "../middleware/auth";
 import { processGuideQueue, processTemplateQueue, processReferenceDataQueue, processClientDocQueue, JOB_PRIORITY } from "../lib/queue";
@@ -1026,6 +1026,322 @@ documentRoutes.get("/documents/:docId/template-elements", async (c) => {
     unmapped: enriched.length - mapped,
     validated,
   });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// SESSION LIBRARY — Aggregated view of all data extracted from guides
+// ═══════════════════════════════════════════════════════════════════
+
+documentRoutes.get("/session/:folderId/library", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  if (!auth.organizationId) return c.json({ error: "No organization" }, 403);
+  const { folderId } = c.req.param();
+
+  // Verify folder belongs to org and is a sesiune
+  const folder = await db.query.documentFolders.findFirst({
+    where: and(eq(documentFolders.id, folderId), eq(documentFolders.organizationId, auth.organizationId)),
+  });
+  if (!folder) return c.json({ error: "Folder not found" }, 404);
+
+  // Get ALL guide folders under this session
+  const guideFolders = await db.query.documentFolders.findMany({
+    where: and(eq(documentFolders.parentId, folderId), eq(documentFolders.type, "ghiduri")),
+  });
+
+  // Get ALL template folders under this session
+  const templateFolders = await db.query.documentFolders.findMany({
+    where: and(eq(documentFolders.parentId, folderId), eq(documentFolders.type, "templateuri")),
+  });
+
+  // Collect all guide and template documents
+  const guideFolderIds = guideFolders.map(f => f.id);
+  const templateFolderIds = templateFolders.map(f => f.id);
+
+  const guideDocs = guideFolderIds.length > 0
+    ? await db.query.documents.findMany({
+        where: and(inArray(documents.folderId, guideFolderIds), eq(documents.organizationId, auth.organizationId)),
+      })
+    : [];
+
+  const templateDocs = templateFolderIds.length > 0
+    ? await db.query.documents.findMany({
+        where: and(inArray(documents.folderId, templateFolderIds), eq(documents.organizationId, auth.organizationId)),
+      })
+    : [];
+
+  const guideDocIds = guideDocs.map(d => d.id);
+  const templateDocIds = templateDocs.map(d => d.id);
+  const allDocIds = [...guideDocIds, ...templateDocIds];
+
+  // === 1. RULES ===
+  const allRules = guideDocIds.length > 0
+    ? await db.query.rules.findMany({
+        where: and(inArray(rules.documentId, guideDocIds), eq(rules.organizationId, auth.organizationId)),
+        orderBy: (r, { asc: a }) => [a(r.sourcePage), a(r.createdAt)],
+      })
+    : [];
+
+  // Enrich rules with source document name
+  const docNameMap = new Map([...guideDocs, ...templateDocs].map(d => [d.id, { name: d.name, fileType: d.fileType }]));
+  const enrichedRules = allRules.map(r => ({
+    ...r,
+    sourceDocument: docNameMap.get(r.documentId) || null,
+  }));
+
+  // === 2. SCORING CRITERIA ===
+  const allScoring = guideDocIds.length > 0
+    ? await db.query.scoringCriteria.findMany({
+        where: and(inArray(scoringCriteria.documentId, guideDocIds), eq(scoringCriteria.organizationId, auth.organizationId)),
+        orderBy: (s, { asc: a }) => [a(s.sortOrder)],
+      })
+    : [];
+
+  const enrichedScoring = allScoring.map(s => ({
+    ...s,
+    sourceDocument: docNameMap.get(s.documentId) || null,
+  }));
+
+  // === 3. ELEMENT DEFINITIONS ===
+  const allElementDefs = guideDocIds.length > 0
+    ? await db.query.elementDefinitions.findMany({
+        where: and(
+          sql`${elementDefinitions.guideDocumentId} IN (${sql.join(guideDocIds.map(id => sql`${id}`), sql`, `)})`,
+          eq(elementDefinitions.organizationId, auth.organizationId),
+        ),
+        orderBy: (e, { asc: a }) => [a(e.category), a(e.collectionOrder)],
+      })
+    : [];
+
+  // Also get manually-created elementDefs (guideDocumentId is null but org matches)
+  const manualElementDefs = await db.query.elementDefinitions.findMany({
+    where: and(
+      isNull(elementDefinitions.guideDocumentId),
+      eq(elementDefinitions.organizationId, auth.organizationId),
+    ),
+  });
+
+  const combinedElementDefs = [...allElementDefs, ...manualElementDefs];
+
+  // Get mapping counts per elementDef (how many template placeholders map to it)
+  const allMappings = templateDocIds.length > 0
+    ? await db.query.templatePlaceholderMapping.findMany({
+        where: inArray(templatePlaceholderMapping.templateDocumentId, templateDocIds),
+      })
+    : [];
+
+  const mappingCountByDefId = new Map<string, { count: number; templates: string[] }>();
+  for (const m of allMappings) {
+    const existing = mappingCountByDefId.get(m.elementDefId) || { count: 0, templates: [] };
+    existing.count++;
+    const tmplName = docNameMap.get(m.templateDocumentId)?.name;
+    if (tmplName && !existing.templates.includes(tmplName)) existing.templates.push(tmplName);
+    mappingCountByDefId.set(m.elementDefId, existing);
+  }
+
+  const enrichedElements = combinedElementDefs.map(ed => ({
+    ...ed,
+    sourceDocument: ed.guideDocumentId ? docNameMap.get(ed.guideDocumentId) : null,
+    mappingCount: mappingCountByDefId.get(ed.id)?.count || 0,
+    mappedTemplates: mappingCountByDefId.get(ed.id)?.templates || [],
+  }));
+
+  // === 4. REFERENCE TABLES ===
+  const allTables = guideDocIds.length > 0
+    ? await db.query.guideReferenceTables.findMany({
+        where: and(inArray(guideReferenceTables.documentId, guideDocIds), eq(guideReferenceTables.organizationId, auth.organizationId)),
+      })
+    : [];
+
+  const enrichedTables = allTables.map(t => ({
+    ...t,
+    sourceDocument: docNameMap.get(t.documentId) || null,
+    rowCount: Array.isArray(t.data) ? t.data.length : 0,
+    columnCount: Array.isArray(t.schema) ? t.schema.length : 0,
+  }));
+
+  // === 5. SESSION CHECKLIST ===
+  const checklistItems = await db.query.sessionChecklist.findMany({
+    where: and(eq(sessionChecklist.folderId, folderId), eq(sessionChecklist.organizationId, auth.organizationId)),
+    orderBy: (c, { asc: a }) => [a(c.category), a(c.sortOrder)],
+  });
+
+  // Enrich checklist with template names
+  const enrichedChecklist = checklistItems.map(item => ({
+    ...item,
+    templateName: item.templateId ? docNameMap.get(item.templateId)?.name || null : null,
+  }));
+
+  // === Build category counts for rules ===
+  const ruleCategoryCounts: Record<string, number> = {};
+  for (const r of allRules) {
+    const cat = r.category || "other";
+    ruleCategoryCounts[cat] = (ruleCategoryCounts[cat] || 0) + 1;
+  }
+
+  return c.json({
+    sessionName: folder.name,
+    rules: {
+      items: enrichedRules,
+      total: enrichedRules.length,
+      fixed: enrichedRules.filter(r => r.type === "fixed").length,
+      interpreted: enrichedRules.filter(r => r.type === "interpreted").length,
+      categories: ruleCategoryCounts,
+    },
+    scoring: {
+      items: enrichedScoring,
+      total: enrichedScoring.length,
+    },
+    elements: {
+      items: enrichedElements,
+      total: enrichedElements.length,
+      mapped: enrichedElements.filter(e => (mappingCountByDefId.get(e.id)?.count || 0) > 0).length,
+      unmapped: enrichedElements.filter(e => (mappingCountByDefId.get(e.id)?.count || 0) === 0).length,
+    },
+    tables: {
+      items: enrichedTables,
+      total: enrichedTables.length,
+    },
+    checklist: {
+      items: enrichedChecklist,
+      total: enrichedChecklist.length,
+      categories: Object.fromEntries(
+        [...new Set(enrichedChecklist.map(c => c.category))].map(cat => [cat, enrichedChecklist.filter(c => c.category === cat).length])
+      ),
+    },
+  });
+});
+
+// --- SESSION CHECKLIST CRUD ---
+
+const createSessionChecklistSchema = z.object({
+  name: z.string().min(1),
+  category: z.string().optional().default("General"),
+  notes: z.string().optional(),
+});
+
+documentRoutes.post("/session/:folderId/checklist", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  if (!auth.organizationId) return c.json({ error: "No organization" }, 403);
+  const { folderId } = c.req.param();
+  const body = createSessionChecklistSchema.parse(await c.req.json());
+
+  const [item] = await db.insert(sessionChecklist).values({
+    folderId,
+    organizationId: auth.organizationId,
+    name: body.name,
+    category: body.category || "General",
+    source: "manual",
+    notes: body.notes || null,
+  }).returning();
+
+  return c.json(item, 201);
+});
+
+const updateSessionChecklistSchema = z.object({
+  name: z.string().min(1).optional(),
+  category: z.string().optional(),
+  templateId: z.string().uuid().nullable().optional(),
+  notes: z.string().nullable().optional(),
+  sortOrder: z.number().optional(),
+});
+
+documentRoutes.put("/session/:folderId/checklist/:itemId", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  if (!auth.organizationId) return c.json({ error: "No organization" }, 403);
+  const { itemId } = c.req.param();
+  const body = updateSessionChecklistSchema.parse(await c.req.json());
+
+  const updateData: Record<string, any> = {};
+  if (body.name !== undefined) updateData.name = body.name;
+  if (body.category !== undefined) updateData.category = body.category;
+  if (body.templateId !== undefined) updateData.templateId = body.templateId;
+  if (body.notes !== undefined) updateData.notes = body.notes;
+  if (body.sortOrder !== undefined) updateData.sortOrder = body.sortOrder;
+
+  const [updated] = await db.update(sessionChecklist).set(updateData)
+    .where(and(eq(sessionChecklist.id, itemId), eq(sessionChecklist.organizationId, auth.organizationId)))
+    .returning();
+
+  return c.json(updated);
+});
+
+documentRoutes.delete("/session/:folderId/checklist/:itemId", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  if (!auth.organizationId) return c.json({ error: "No organization" }, 403);
+  const { itemId } = c.req.param();
+
+  await db.delete(sessionChecklist)
+    .where(and(eq(sessionChecklist.id, itemId), eq(sessionChecklist.organizationId, auth.organizationId)));
+
+  return c.json({ ok: true });
+});
+
+// --- Auto-populate session checklist from guide rules ---
+documentRoutes.post("/session/:folderId/checklist/auto-populate", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  if (!auth.organizationId) return c.json({ error: "No organization" }, 403);
+  const { folderId } = c.req.param();
+
+  // Get guide docs in this session
+  const guideFolders = await db.query.documentFolders.findMany({
+    where: and(eq(documentFolders.parentId, folderId), eq(documentFolders.type, "ghiduri")),
+  });
+
+  const allRules: any[] = [];
+  for (const gf of guideFolders) {
+    const docs = await db.query.documents.findMany({
+      where: eq(documents.folderId, gf.id),
+    });
+    for (const doc of docs) {
+      const docRules = await db.query.rules.findMany({
+        where: eq(rules.documentId, doc.id),
+      });
+      allRules.push(...docRules);
+    }
+  }
+
+  // Filter for document-related rules
+  const docRules = allRules.filter(r =>
+    r.category === "documente" || r.category === "documentare" || r.category === "documente_necesare"
+    || r.description?.toLowerCase().includes("document")
+    || r.description?.toLowerCase().includes("acte necesare")
+    || r.description?.toLowerCase().includes("anexe")
+  );
+
+  // Check existing items to avoid duplicates
+  const existing = await db.query.sessionChecklist.findMany({
+    where: and(eq(sessionChecklist.folderId, folderId), eq(sessionChecklist.organizationId, auth.organizationId)),
+  });
+  const existingRuleIds = new Set(existing.filter(e => e.sourceRuleId).map(e => e.sourceRuleId));
+
+  const newItems = docRules
+    .filter(r => !existingRuleIds.has(r.id))
+    .map((r, idx) => {
+      const desc = (r.description || "").toLowerCase();
+      let category = "Documente juridice";
+      if (desc.includes("bilanț") || desc.includes("financiar") || desc.includes("buget") || desc.includes("contabil")) {
+        category = "Documente financiare";
+      } else if (desc.includes("tehnic") || desc.includes("fezabilitate") || desc.includes("memoriu")) {
+        category = "Documente tehnice";
+      } else if (desc.includes("declarați") || desc.includes("angajament") || desc.includes("acord")) {
+        category = "Declarații & Angajamente";
+      }
+      return {
+        folderId,
+        organizationId: auth.organizationId!,
+        name: r.description,
+        category,
+        source: "ghid" as const,
+        sourceRuleId: r.id,
+        sortOrder: existing.length + idx,
+      };
+    });
+
+  if (newItems.length > 0) {
+    await db.insert(sessionChecklist).values(newItems);
+  }
+
+  return c.json({ added: newItems.length, total: existing.length + newItems.length });
 });
 
 // --- VALIDATE / CORRECT TEMPLATE PLACEHOLDER MAPPING ---

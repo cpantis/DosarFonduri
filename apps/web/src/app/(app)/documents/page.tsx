@@ -15,7 +15,7 @@ import { useToast } from "@/components/shared/Toast";
 interface TreeNode {
   id: string;
   label: string;
-  type: "program" | "masura" | "sesiune" | "ghiduri" | "templateuri" | "clienti_prospecti" | "clienti_finali" | "folder";
+  type: "program" | "masura" | "sesiune" | "ghiduri" | "templateuri" | "clienti_prospecti" | "clienti_finali" | "folder" | "biblioteca";
   children?: TreeNode[];
 }
 
@@ -142,6 +142,7 @@ const NODE_ICONS: Record<string, string> = {
   templateuri: "\u{1F4DD}",
   clienti_prospecti: "\u{1F50D}",
   clienti_finali: "\u2705",
+  biblioteca: "\u{1F4DA}",
 };
 
 const NODE_DOTS: Record<string, { size: number; color: string }> = {
@@ -196,11 +197,28 @@ function mapApiDocToLocal(doc: ApiDocument): DocItem {
 }
 
 function mapApiFolderToTreeNode(folder: ApiFolderNode): TreeNode {
+  const children = folder.children?.length ? folder.children.map(mapApiFolderToTreeNode) : undefined;
+
+  // Inject "Biblioteca Sesiune" virtual node as first child of sesiune folders
+  if (folder.type === "sesiune" && children) {
+    const bibliotecaNode: TreeNode = {
+      id: `biblioteca_${folder.id}`,
+      label: "Biblioteca Sesiune",
+      type: "biblioteca",
+    };
+    return {
+      id: folder.id,
+      label: folder.name,
+      type: "sesiune",
+      children: [bibliotecaNode, ...children],
+    };
+  }
+
   return {
     id: folder.id,
     label: folder.name,
     type: (folder.type || "folder") as TreeNode["type"],
-    children: folder.children?.length ? folder.children.map(mapApiFolderToTreeNode) : undefined,
+    children,
   };
 }
 

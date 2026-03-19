@@ -7,6 +7,7 @@ import {
   projects, projectElements, projectEligibility, projectDocuments,
   projectChecklist, templateElements, elementDefinitions, rules, companies, companyFinancials,
   documentFolders, documents, auditLog, orgConfig, users, elementAuditLog, scoringCriteria,
+  templatePlaceholderMapping, companyAssociates, companyAdministrators,
 } from "../db/schema";
 import { eq, and, count, asc, desc, sql, inArray, sum } from "drizzle-orm";
 import { AuthContext } from "../middleware/auth";
@@ -230,23 +231,76 @@ projectRoutes.post("/", async (c) => {
         consultantId: auth.userId,
       }).returning();
 
-      // Copy template elements as project elements
+      // Step 1: Copy template elements as project elements, linking elementDefId via mapping
       const templateDocs = await getProjectTemplates(body.folderId, orgId);
+      const seededElementDefIds = new Set<string>();
+
       for (const doc of templateDocs) {
         const elements = await db.query.templateElements.findMany({
           where: eq(templateElements.documentId, doc.id),
         });
 
         if (elements.length > 0) {
+          // Get placeholder mappings for this template to resolve elementDefId
+          const mappings = await db.query.templatePlaceholderMapping.findMany({
+            where: eq(templatePlaceholderMapping.templateDocumentId, doc.id),
+          });
+          const mappingByKey = new Map(mappings.map(m => [m.placeholderKey, m.elementDefId]));
+
           await tx.insert(projectElements).values(
-            elements.map(el => ({
-              projectId: proj.id,
-              templateElementId: el.id,
-              value: null,
-              source: "manual" as const,
-              confirmed: false,
-            }))
+            elements.map(el => {
+              const elementDefId = mappingByKey.get(el.key) || null;
+              if (elementDefId) seededElementDefIds.add(elementDefId);
+              return {
+                projectId: proj.id,
+                templateElementId: el.id,
+                elementDefId,
+                value: null,
+                source: "manual" as const,
+                confirmed: false,
+              };
+            })
           );
+        }
+      }
+
+      // Step 2: Seed remaining elementDefinitions from guide that aren't already covered by templates
+      const guideFolders = await db.query.documentFolders.findMany({
+        where: and(
+          eq(documentFolders.parentId, body.folderId),
+          eq(documentFolders.type, "ghiduri"),
+        ),
+      });
+
+      for (const folder of guideFolders) {
+        const guideDocs = await db.query.documents.findMany({
+          where: and(eq(documents.folderId, folder.id), eq(documents.processingType, "ghid")),
+        });
+
+        for (const guideDoc of guideDocs) {
+          const elemDefs = await db.query.elementDefinitions.findMany({
+            where: and(
+              eq(elementDefinitions.guideDocumentId, guideDoc.id),
+              eq(elementDefinitions.organizationId, orgId),
+            ),
+          });
+
+          const newDefs = elemDefs.filter(ed => !seededElementDefIds.has(ed.id));
+          if (newDefs.length > 0) {
+            await tx.insert(projectElements).values(
+              newDefs.map(ed => {
+                seededElementDefIds.add(ed.id);
+                return {
+                  projectId: proj.id,
+                  elementDefId: ed.id,
+                  templateElementId: null,
+                  value: null,
+                  source: "ghid" as const,
+                  confirmed: false,
+                };
+              })
+            );
+          }
         }
       }
 
@@ -277,41 +331,242 @@ projectRoutes.post("/", async (c) => {
   return c.json(project, 201);
 });
 
-// Pre-fill fields from ONRC
+// Pre-fill fields from ONRC + financials + associates + administrators
 async function prefillFromCompany(projectId: string, company: any) {
   const elements = await db.query.projectElements.findMany({
     where: eq(projectElements.projectId, projectId),
   });
 
-  // Get template element keys for each project element
+  // Build a map: elementKey → projectElement (using both elementDef and templateElement keys)
+  const keyToElements = new Map<string, typeof elements[number]>();
+  const elemDefIds = elements.map(e => e.elementDefId).filter(Boolean) as string[];
+  const tmplElIds = elements.map(e => e.templateElementId).filter(Boolean) as string[];
+
+  // Batch-load elementDefinitions and templateElements
+  const elemDefs = elemDefIds.length > 0
+    ? await db.query.elementDefinitions.findMany({ where: inArray(elementDefinitions.id, elemDefIds) })
+    : [];
+  const elemDefMap = new Map(elemDefs.map(ed => [ed.id, ed]));
+
+  const tmplEls = tmplElIds.length > 0
+    ? await db.query.templateElements.findMany({ where: inArray(templateElements.id, tmplElIds) })
+    : [];
+  const tmplElMap = new Map(tmplEls.map(te => [te.id, te]));
+
   for (const el of elements) {
-    if (!el.templateElementId) continue;
-    const templateEl = await db.query.templateElements.findFirst({
-      where: eq(templateElements.id, el.templateElementId),
-    });
-    if (!templateEl) continue;
+    const elemDef = el.elementDefId ? elemDefMap.get(el.elementDefId) : null;
+    const tmplEl = el.templateElementId ? tmplElMap.get(el.templateElementId) : null;
+    const key = elemDef?.elementKey || tmplEl?.key;
+    if (key) keyToElements.set(key.toLowerCase(), el);
+  }
 
-    const onrcMapping: Record<string, string> = {
-      denumire_firma: company.denumire,
-      cui: company.cui,
-      nr_reg_comert: company.regCom,
-      adresa_sediu: company.adresa,
-      cod_caen: company.caen || "",
-      telefon: company.telefon,
-      email: company.email,
-      website: company.website,
-      forma_juridica: company.formaJuridica,
-      an_infiintare: company.anInfiintare?.toString(),
-    };
+  // === Build comprehensive value map ===
+  const values: Record<string, { value: string; source: "onrc" | "onrc_auto" | "anaf_auto" | "calculated" }> = {};
 
-    const key = templateEl.key;
-    if (key && onrcMapping[key]) {
-      await db.update(projectElements).set({
-        value: onrcMapping[key],
-        source: "onrc",
-      }).where(eq(projectElements.id, el.id));
+  // --- Company base fields ---
+  const companyFields: Array<[string[], string | undefined | null]> = [
+    [["denumire_firma", "denumire", "nume_firma", "nume_solicitant", "beneficiar"], company.denumire],
+    [["cui", "cod_unic", "cod_fiscal", "cif"], company.cui],
+    [["nr_reg_comert", "nr_inregistrare", "reg_com", "j_nr"], company.regCom],
+    [["adresa_sediu", "adresa", "sediu_social", "adresa_sediu_social"], company.adresa],
+    [["localitate", "localitate_sediu", "oras"], company.localitate],
+    [["judet", "judet_sediu"], company.judet],
+    [["cod_postal"], company.codPostal],
+    [["telefon", "telefon_firma", "nr_telefon"], company.telefon],
+    [["email", "email_firma", "adresa_email"], company.email],
+    [["website", "site_web", "pagina_web"], company.website],
+    [["forma_juridica", "tip_firma", "tip_entitate"], company.formaJuridica],
+    [["an_infiintare", "an_constituire", "data_infiintare"], company.anInfiintare?.toString()],
+    [["capital_social", "capital_social_subscris"], company.capitalSocial?.toString()],
+    [["moneda", "moneda_capital"], company.moneda],
+    [["parti_sociale", "nr_parti_sociale"], company.partiSociale?.toString()],
+    [["actiuni", "nr_actiuni", "numar_actiuni"], company.actiuni?.toString()],
+    [["valoare_parte_sociala", "valoare_parte"], company.valoareParte?.toString()],
+    [["valoare_actiune"], company.valoareActiune?.toString()],
+    [["stare_firma", "stare", "status_firma"], company.stare],
+    [["durata_societate", "durata"], company.durata],
+    [["cod_caen", "caen", "caen_principal", "cod_caen_principal"], company.caen],
+    [["euid"], company.euid],
+    [["reprezentant_if", "reprezentant"], company.reprezentantIF],
+  ];
+
+  for (const [keys, val] of companyFields) {
+    if (!val) continue;
+    for (const key of keys) {
+      values[key] = { value: String(val), source: "onrc" };
     }
   }
+
+  // --- Calculated fields ---
+  if (company.anInfiintare) {
+    const vechime = new Date().getFullYear() - company.anInfiintare;
+    values["vechime_firma"] = { value: String(vechime), source: "calculated" };
+    values["vechime_ani"] = { value: String(vechime), source: "calculated" };
+  }
+
+  // --- Associates ---
+  const associates = await db.query.companyAssociates.findMany({
+    where: eq(companyAssociates.companyId, company.id),
+  });
+
+  if (associates.length > 0) {
+    values["numar_asociati"] = { value: String(associates.length), source: "onrc_auto" };
+
+    // Sort by percentage descending to find majority
+    const sorted = [...associates].sort((a, b) =>
+      parseFloat(b.pctBenefits?.toString() || "0") - parseFloat(a.pctBenefits?.toString() || "0")
+    );
+
+    // Majority associate
+    if (sorted[0]) {
+      values["asociat_majoritar_nume"] = { value: sorted[0].name, source: "onrc_auto" };
+      values["asociat_majoritar"] = { value: sorted[0].name, source: "onrc_auto" };
+      if (sorted[0].pctBenefits) {
+        values["procent_asociat_majoritar"] = { value: sorted[0].pctBenefits.toString(), source: "onrc_auto" };
+      }
+    }
+
+    // Individual associates (up to 5)
+    sorted.slice(0, 5).forEach((assoc, idx) => {
+      const i = idx + 1;
+      values[`asociat_${i}_nume`] = { value: assoc.name, source: "onrc_auto" };
+      if (assoc.pctBenefits) values[`asociat_${i}_procent`] = { value: assoc.pctBenefits.toString(), source: "onrc_auto" };
+      if (assoc.contribution) values[`asociat_${i}_aport`] = { value: assoc.contribution.toString(), source: "onrc_auto" };
+      if (assoc.type) values[`asociat_${i}_tip`] = { value: assoc.type, source: "onrc_auto" };
+    });
+
+    // Total capital from contributions
+    const totalContribution = associates.reduce((sum, a) => sum + parseFloat(a.contribution?.toString() || "0"), 0);
+    if (totalContribution > 0) {
+      values["total_aport_asociati"] = { value: totalContribution.toFixed(2), source: "onrc_auto" };
+    }
+  }
+
+  // --- Administrators ---
+  const admins = await db.query.companyAdministrators.findMany({
+    where: eq(companyAdministrators.companyId, company.id),
+  });
+
+  if (admins.length > 0) {
+    values["numar_administratori"] = { value: String(admins.length), source: "onrc_auto" };
+
+    admins.slice(0, 3).forEach((admin, idx) => {
+      const i = idx + 1;
+      values[`administrator_${i}_nume`] = { value: admin.name, source: "onrc_auto" };
+      if (admin.role) values[`administrator_${i}_functie`] = { value: admin.role, source: "onrc_auto" };
+      if (admin.powers) values[`administrator_${i}_puteri`] = { value: admin.powers, source: "onrc_auto" };
+      if (admin.mandateDuration) values[`administrator_${i}_durata_mandat`] = { value: admin.mandateDuration, source: "onrc_auto" };
+    });
+
+    // First admin is usually the legal representative
+    if (admins[0]) {
+      values["reprezentant_legal"] = { value: admins[0].name, source: "onrc_auto" };
+      values["administrator"] = { value: admins[0].name, source: "onrc_auto" };
+      if (admins[0].role) values["functie_reprezentant"] = { value: admins[0].role, source: "onrc_auto" };
+    }
+  }
+
+  // --- Financials (last 3 years) ---
+  const financials = await db.query.companyFinancials.findMany({
+    where: eq(companyFinancials.companyId, company.id),
+    orderBy: (f, { desc: d }) => [d(f.year)],
+    limit: 3,
+  });
+
+  for (const fin of financials) {
+    const y = fin.year;
+    const f20 = (fin.f20 || {}) as Record<string, any>;
+    const f10 = (fin.f10 || {}) as Record<string, any>;
+    const f30 = (fin.f30 || {}) as Record<string, any>;
+
+    const finFields: Array<[string[], any]> = [
+      [[`cifra_afaceri_${y}`, `ca_${y}`, `cifra_afaceri_neta_${y}`], f20.cifraAfaceriNeta],
+      [[`profit_brut_${y}`], f20.profitBrut],
+      [[`profit_net_${y}`], f20.profitNet],
+      [[`venituri_totale_${y}`], f20.venituriTotale],
+      [[`cheltuieli_totale_${y}`], f20.cheltuieliTotale],
+      [[`numar_salariati_${y}`, `angajati_${y}`, `nr_salariati_${y}`], f30.numarMediuSalariati],
+      [[`capitaluri_proprii_${y}`, `capital_propriu_${y}`], f10.capitaluriProprii],
+      [[`active_imobilizate_${y}`], f10.activeImobilizate?.total],
+      [[`active_circulante_${y}`], f10.activeCirculante?.total],
+      [[`datorii_totale_${y}`], f10.datoriiTotal],
+      [[`datorii_sub_1an_${y}`], f10.datoriiSub1An],
+      [[`datorii_peste_1an_${y}`], f10.datoriiPeste1An],
+    ];
+
+    for (const [keys, val] of finFields) {
+      if (val === undefined || val === null) continue;
+      for (const key of keys) {
+        values[key] = { value: String(val), source: "anaf_auto" };
+      }
+    }
+  }
+
+  // Latest year as "current" aliases (e.g. cifra_afaceri without year suffix)
+  if (financials.length > 0) {
+    const latest = financials[0];
+    const f20 = (latest.f20 || {}) as Record<string, any>;
+    const f10 = (latest.f10 || {}) as Record<string, any>;
+    const f30 = (latest.f30 || {}) as Record<string, any>;
+
+    const latestAliases: Array<[string[], any]> = [
+      [["cifra_afaceri", "cifra_afaceri_neta", "ca_neta"], f20.cifraAfaceriNeta],
+      [["profit_net"], f20.profitNet],
+      [["profit_brut"], f20.profitBrut],
+      [["numar_salariati", "angajati", "nr_salariati", "numar_mediu_salariati"], f30.numarMediuSalariati],
+      [["capitaluri_proprii", "capital_propriu"], f10.capitaluriProprii],
+      [["active_totale"], f10.activeTotale],
+    ];
+
+    for (const [keys, val] of latestAliases) {
+      if (val === undefined || val === null) continue;
+      for (const key of keys) {
+        values[key] = { value: String(val), source: "anaf_auto" };
+      }
+    }
+
+    // Calculated ratios
+    const ca = parseFloat(f20.cifraAfaceriNeta || "0");
+    const profitNet = parseFloat(f20.profitNet || "0");
+    const capProprii = parseFloat(f10.capitaluriProprii || "0");
+
+    if (ca > 0 && profitNet) {
+      values["rata_profit_net"] = { value: ((profitNet / ca) * 100).toFixed(2), source: "calculated" };
+    }
+    if (capProprii !== 0 && profitNet) {
+      values["roe"] = { value: ((profitNet / capProprii) * 100).toFixed(2), source: "calculated" };
+    }
+  }
+
+  // Average over 3 years
+  if (financials.length >= 2) {
+    const caValues = financials.map(f => parseFloat(((f.f20 as any)?.cifraAfaceriNeta) || "0")).filter(v => v > 0);
+    if (caValues.length > 0) {
+      values["cifra_afaceri_medie_3ani"] = { value: (caValues.reduce((a, b) => a + b, 0) / caValues.length).toFixed(2), source: "calculated" };
+    }
+    const profitValues = financials.map(f => parseFloat(((f.f20 as any)?.profitNet) || "0"));
+    const validProfits = profitValues.filter(v => !isNaN(v));
+    if (validProfits.length > 0) {
+      values["profit_mediu_3ani"] = { value: (validProfits.reduce((a, b) => a + b, 0) / validProfits.length).toFixed(2), source: "calculated" };
+    }
+  }
+
+  // === Apply values to matching project elements ===
+  let updatedCount = 0;
+  for (const [key, { value, source }] of Object.entries(values)) {
+    const el = keyToElements.get(key.toLowerCase());
+    if (!el) continue;
+    // Don't overwrite if already has a value
+    if (el.value && el.value.trim()) continue;
+
+    await db.update(projectElements).set({
+      value,
+      source,
+    }).where(eq(projectElements.id, el.id));
+    updatedCount++;
+  }
+
+  console.log(`[prefill] Proiect ${projectId}: ${updatedCount} elemente pre-completate din ${Object.keys(values).length} valori disponibile`);
 }
 
 // Auto-populate checklist from guide rules

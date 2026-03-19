@@ -394,6 +394,9 @@ export const templatePlaceholderMapping = pgTable("template_placeholder_mapping"
   elementDefId: uuid("element_def_id").references(() => elementDefinitions.id, { onDelete: "cascade" }).notNull(),
   mappedBy: placeholderMappedByEnum("mapped_by").notNull().default("auto"),
   confidence: decimal("confidence", { precision: 3, scale: 2 }),
+  validated: boolean("validated").notNull().default(false),
+  validatedBy: uuid("validated_by").references(() => users.id),
+  validatedAt: timestamp("validated_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
   templateIdx: index("tpl_map_template_idx").on(table.templateDocumentId),

@@ -1655,7 +1655,7 @@ export default function ProjectViewPage() {
         .pv-breadcrumb a:hover{text-decoration:underline}
         .pv-breadcrumb .pv-bc-sep{color:#94a3b8;font-size:11px}
         .pv-title-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
-        .pv-title{font-size:22px;font-weight:800;color:#0f172a;line-height:1.3;letter-spacing:-.01em}
+        .pv-title{font-size:20px;font-weight:600;color:#0f172a;line-height:1.3}
         .pv-title-actions{display:flex;align-items:center;gap:8px}
         .pv-status-pill{display:inline-flex;align-items:center;gap:5px;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:700;letter-spacing:.3px;border:1.5px solid transparent}
         .pv-actions-btn{display:flex;align-items:center;gap:5px;padding:7px 14px;border-radius:8px;border:1px solid rgba(226,232,240,.8);background:#ffffff;color:#64748b;font-size:13px;font-weight:600;cursor:pointer;font-family:'Inter',system-ui,sans-serif;transition:all .15s cubic-bezier(.4,0,.2,1)}
@@ -2003,58 +2003,63 @@ export default function ProjectViewPage() {
         .check-unmapped strong{font-weight:700}
 
         /* Solomon Chat */
-        .solomon-layout{display:flex;height:100%;overflow:hidden}
-        .solomon-chat{flex:1;display:flex;flex-direction:column;min-width:0;height:100%;overflow:hidden;position:relative}
+        .solomon-layout{display:flex;height:100%;overflow:hidden;background:#ffffff}
+        .solomon-chat{flex:1;display:flex;flex-direction:column;min-width:0;height:100%;overflow:hidden;position:relative;background:#ffffff}
         .solomon-chat.drag-active{outline:2px dashed #4d8bff;outline-offset:-4px;border-radius:8px}
         .solomon-drop-overlay{position:absolute;inset:0;background:rgba(77,139,255,.08);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:20;pointer-events:none;border-radius:8px}
         .solomon-drop-icon{font-size:40px;margin-bottom:8px}
         .solomon-drop-text{font-size:14px;font-weight:600;color:#4d8bff}
-        .solomon-toolbar{padding:12px 20px;display:flex;align-items:center;gap:10px;border-bottom:1px solid rgba(226,232,240,.8);background:#ffffff}
-        .solomon-avatar{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#fb923c,#f97316);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;color:#ffffff;flex-shrink:0}
+        .solomon-toolbar{padding:8px 20px;display:flex;align-items:center;gap:10px;background:#ffffff;border-bottom:none}
+        .solomon-toolbar-inner{max-width:720px;margin:0 auto;width:100%;display:flex;align-items:center;gap:10px}
+        .solomon-avatar{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#f59e0b,#ea580c);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#ffffff;flex-shrink:0}
         .solomon-name-block{display:flex;flex-direction:column;gap:1px}
         .solomon-name-block .sn-name{font-size:15px;font-weight:700;color:#0f172a}
         .solomon-name-block .sn-status{font-size:11px;color:#059669;display:flex;align-items:center;gap:4px}
         .sn-status-dot{width:6px;height:6px;border-radius:50%;background:#34d399;animation:statusPulse 2s ease infinite}
         @keyframes statusPulse{0%,100%{opacity:1}50%{opacity:.4}}
+        @keyframes bounce{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-6px)}}
         .model-selector{display:flex;gap:3px;background:#f0f2f5;padding:3px;border-radius:8px;margin-left:auto}
         .model-btn{padding:5px 12px;font-size:12px;font-weight:600;border-radius:6px;border:none;cursor:pointer;background:transparent;color:#64748b;font-family:'JetBrains Mono',monospace;transition:all .15s cubic-bezier(.4,0,.2,1)}
         .model-btn.active{background:#2563eb;color:#ffffff}
         .model-btn:hover:not(.active){color:#0f172a;background:#f1f5f9}
         .et-toggle{display:flex;align-items:center;gap:5px;font-size:11px;color:#64748b;cursor:pointer;padding:5px 10px;border-radius:8px;border:1px solid rgba(226,232,240,.8);background:transparent;font-family:'Inter',system-ui,sans-serif;transition:all .15s cubic-bezier(.4,0,.2,1)}
         .et-toggle.on{border-color:#7c3aed;color:#7c3aed;background:rgba(167,139,250,.08)}
-        .chat-messages{flex:1;overflow-y:auto;overflow-x:hidden;padding:20px;display:flex;flex-direction:column;gap:16px;min-height:0}
-        .chat-msg-wrapper{display:flex;flex-direction:column;gap:4px}
-        .chat-msg-wrapper.assistant{align-items:flex-start}
-        .chat-msg-wrapper.user{align-items:flex-end}
-        .chat-msg-header{display:flex;align-items:center;gap:8px;padding:0 4px}
-        .chat-msg-header .cmh-avatar{width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#fb923c,#f97316);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:#ffffff;flex-shrink:0}
-        .chat-msg-header .cmh-name{font-size:13px;font-weight:700;color:#0f172a}
-        .chat-msg-header .cmh-time{font-size:12px;color:#94a3b8}
-        .chat-msg{max-width:85%;padding:14px 18px;border-radius:16px;font-size:14px;line-height:1.6;white-space:pre-wrap;position:relative}
-        .chat-msg.assistant{background:#ffffff;border:1px solid rgba(226,232,240,.8);align-self:flex-start;border-top-left-radius:4px}
-        .chat-msg.user{background:#eff6ff;border:1px solid #bfdbfe;align-self:flex-end;border-bottom-right-radius:4px;color:#1e40af}
+        .chat-messages{flex:1;overflow-y:auto;overflow-x:hidden;padding:24px 20px;min-height:0}
+        .chat-messages-inner{max-width:720px;margin:0 auto;width:100%;display:flex;flex-direction:column;gap:24px}
+        .solomon-msg{display:flex;gap:12px}
+        .solomon-msg-avatar{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0}
+        .solomon-msg-avatar.ai{background:linear-gradient(135deg,#f59e0b,#ea580c);color:#ffffff}
+        .solomon-msg-avatar.user{background:#e2e8f0;color:#475569}
+        .solomon-msg-body{flex:1;min-width:0}
+        .solomon-msg-name{font-size:13px;font-weight:600;color:#0f172a;margin-bottom:4px}
+        .solomon-msg-name span{font-weight:400;color:#94a3b8;margin-left:8px;font-size:12px}
+        .solomon-msg-text{font-size:16px;line-height:1.65;color:#475569}
+        .solomon-msg-text strong{color:#0f172a;font-weight:500}
         .chat-msg .msg-bold{font-weight:600;color:#0f172a}
-        .extraction-cards{margin-top:10px;display:flex;flex-direction:column;gap:8px}
-        .extraction-card{background:#f8fafc;border:1px solid rgba(226,232,240,.8);border-radius:12px;padding:10px 14px;transition:all .15s cubic-bezier(.4,0,.2,1)}
-        .extraction-card.confirmed{border-color:#059669;background:#ecfdf5}
+        .extraction-cards{margin-top:12px;display:flex;flex-direction:column;gap:8px}
+        .extraction-card{background:#f0f7ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px 14px;transition:all .15s cubic-bezier(.4,0,.2,1)}
+        .extraction-card.confirmed{border-color:#a7f3d0;background:#ecfdf5}
         .extraction-card.rejected{border-color:#dc2626;opacity:.5;text-decoration:line-through}
-        .exc-top{display:flex;align-items:center;gap:6px;margin-bottom:4px}
-        .exc-label{font-size:12px;color:#94a3b8;flex:1}
-        .exc-confidence{font-size:11px;font-family:'JetBrains Mono',monospace;font-weight:600;color:#64748b}
-        .exc-value{font-size:14px;font-weight:600;color:#2563eb;font-family:'JetBrains Mono',monospace;margin-bottom:8px}
-        .exc-actions{display:flex;gap:6px}
-        .exc-btn{padding:4px 12px;border-radius:8px;border:1px solid rgba(226,232,240,.8);font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',system-ui,sans-serif;display:flex;align-items:center;gap:4px;transition:all .15s cubic-bezier(.4,0,.2,1);background:transparent}
-        .exc-btn.confirm-btn{border-color:#059669;color:#059669}
-        .exc-btn.confirm-btn:hover{background:rgba(52,211,153,.1)}
-        .exc-btn.edit-btn{color:#64748b}
-        .exc-btn.edit-btn:hover{color:#d97706;border-color:#d97706}
-        .exc-btn.reject-btn{color:#94a3b8}
-        .exc-btn.reject-btn:hover{color:#dc2626;border-color:#dc2626}
-        .exc-confirmed-label{font-size:11px;font-weight:700;color:#059669;display:flex;align-items:center;gap:4px}
+        .exc-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+        .exc-label{font-size:12px;font-weight:500;color:#94a3b8}
+        .exc-confidence{font-size:11px;color:#94a3b8}
+        .exc-value{font-size:15px;font-weight:500;color:#0f172a;font-family:'SF Mono','Consolas','JetBrains Mono',monospace;margin-bottom:8px}
+        .exc-actions{display:flex;gap:6px;margin-top:8px}
+        .exc-btn{padding:5px 12px;border-radius:8px;border:none;font-size:13px;font-weight:500;cursor:pointer;font-family:'Inter',system-ui,sans-serif;display:flex;align-items:center;gap:4px;transition:all .15s cubic-bezier(.4,0,.2,1);background:transparent}
+        .exc-btn.confirm-btn{background:#059669;color:#ffffff;border-radius:8px}
+        .exc-btn.confirm-btn:hover{background:#047857}
+        .exc-btn.edit-btn{color:#475569;background:transparent}
+        .exc-btn.edit-btn:hover{background:#f1f5f9}
+        .exc-btn.reject-btn{color:#dc2626;background:transparent}
+        .exc-btn.reject-btn:hover{background:#fef2f2}
+        .exc-confirmed-label{font-size:12px;font-weight:500;color:#059669;display:flex;align-items:center;gap:4px}
+        .confirm-all-bar{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#eff6ff;border-radius:8px;margin-bottom:4px}
+        .confirm-all-bar span{font-size:13px;color:#2563eb;font-weight:500}
         .chat-timestamp{font-size:10px;color:#94a3b8;margin-top:4px}
-        .chat-input-area{padding:14px 20px;border-top:1px solid rgba(226,232,240,.8);background:#ffffff}
-        .chat-input-row{display:flex;gap:8px;align-items:flex-end;background:#f8fafc;border:1px solid rgba(226,232,240,.8);border-radius:12px;padding:6px 8px;transition:border-color .15s}
-        .chat-input-row:focus-within{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.08)}
+        .chat-input-area{padding:16px 20px;border-top:1px solid rgba(226,232,240,.8);background:#ffffff}
+        .chat-input-inner{max-width:720px;margin:0 auto}
+        .chat-input-row{display:flex;gap:8px;align-items:flex-end;background:#ffffff;border:1px solid rgba(226,232,240,.8);border-radius:20px;padding:10px 12px 10px 16px;transition:border-color .15s}
+        .chat-input-row:focus-within{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.1)}
         .chat-input{flex:1;padding:8px 10px;border-radius:8px;border:none;background:transparent;color:#0f172a;font-size:14px;font-family:'Inter',system-ui,sans-serif;line-height:1.5;resize:none;outline:none;min-height:36px;max-height:160px;overflow-y:auto}
         .chat-input::placeholder{color:#94a3b8}
         .chat-btn{width:36px;height:36px;border-radius:50%;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s cubic-bezier(.4,0,.2,1);flex-shrink:0}
@@ -2328,7 +2333,7 @@ export default function ProjectViewPage() {
           </div>
           <div className="pv-title-row">
             <div className="pv-title">
-              {projectFirma} {projectPath.length > 0 ? `\u2014 ${projectPath[projectPath.length - 1]?.label}` : projectName !== projectFirma ? `\u2014 ${projectName}` : ""}
+              {projectFirma}{projectName && projectName !== projectFirma ? ` \u2014 ${projectName}` : ""}
             </div>
             <div className="pv-title-actions">
               <span className="pv-status-pill" style={{
@@ -3636,46 +3641,49 @@ export default function ProjectViewPage() {
                       <div className="solomon-drop-text">Elibereaza pentru upload document</div>
                     </div>
                   )}
-                  {/* Toolbar */}
+                  {/* Model controls — subtle top bar */}
                   <div className="solomon-toolbar">
-                    <div className="solomon-avatar">S</div>
-                    <div className="solomon-name-block">
-                      <div className="sn-name">Solomon</div>
-                      <div className="sn-status"><span className="sn-status-dot" /> Activ &middot; Expert fonduri europene</div>
+                    <div className="solomon-toolbar-inner">
+                      <div style={{ flex: 1 }} />
+                      <div className="model-selector">
+                        <button className={`model-btn ${solomonModel === "sonnet" ? "active" : ""}`} onClick={() => handleSolomonModelChange("sonnet")}>Sonnet</button>
+                        <button className={`model-btn ${solomonModel === "opus" ? "active" : ""}`} onClick={() => handleSolomonModelChange("opus")}>Opus</button>
+                      </div>
+                      <button className={`et-toggle ${solomonET ? "on" : ""}`} onClick={() => setSolomonET(!solomonET)}>
+                        &#10024; ET
+                      </button>
                     </div>
-                    <div className="model-selector">
-                      <button className={`model-btn ${solomonModel === "sonnet" ? "active" : ""}`} onClick={() => handleSolomonModelChange("sonnet")}>Sonnet</button>
-                      <button className={`model-btn ${solomonModel === "opus" ? "active" : ""}`} onClick={() => handleSolomonModelChange("opus")}>Opus</button>
-                    </div>
-                    <button className={`et-toggle ${solomonET ? "on" : ""}`} onClick={() => setSolomonET(!solomonET)}>
-                      &#10024; ET
-                    </button>
                   </div>
 
                   {/* Messages */}
                   <div className="chat-messages" ref={chatRef} onScroll={handleChatScroll} onMouseUp={handleTextSelect}>
+                    <div className="chat-messages-inner">
                     {solomonMessages.map((msg, msgIdx) => (
-                      <div key={msgIdx} className={`chat-msg-wrapper ${msg.role}`}>
-                        {msg.role === "assistant" && (
-                          <div className="chat-msg-header">
-                            <div className="cmh-avatar">S</div>
-                            <span className="cmh-name">Solomon</span>
-                            <span className="cmh-time">{new Date().toLocaleTimeString("ro-RO", { hour: "2-digit", minute: "2-digit" })}</span>
+                      <div key={msgIdx} className="solomon-msg">
+                        <div className={`solomon-msg-avatar ${msg.role === "assistant" ? "ai" : "user"}`}>
+                          {msg.role === "assistant" ? "S" : (typeof window !== "undefined" && localStorage.getItem("df-user-initials")) || "U"}
+                        </div>
+                        <div className="solomon-msg-body">
+                          <div className="solomon-msg-name">
+                            {msg.role === "assistant" ? "Solomon" : "Tu"}
+                            <span>{new Date().toLocaleTimeString("ro-RO", { hour: "2-digit", minute: "2-digit" })}</span>
                           </div>
-                        )}
-                        <div className={`chat-msg ${msg.role}`}>
+                          <div className="solomon-msg-text">
                           {renderMsgText(msg.text)}
                           {msg.extractions && (() => {
                             const pendingIndices = msg.extractions.map((_: any, i: number) => i).filter((i: number) => !extractionStates[`${msgIdx}-${i}`]);
                             return (
                             <div className="extraction-cards">
                               {pendingIndices.length > 1 && (
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); pendingIndices.forEach((i: number) => handleConfirmExtraction(msgIdx, i)); }}
-                                  style={{ alignSelf: "flex-start", padding: "4px 12px", fontSize: 12, fontWeight: 600, borderRadius: 8, background: "#059669", color: "#fff", border: "none", cursor: "pointer", marginBottom: 4 }}
-                                >
-                                  &#10003; Confirmă toate ({pendingIndices.length})
-                                </button>
+                                <div className="confirm-all-bar">
+                                  <span>{pendingIndices.length} extracții de confirmat</span>
+                                  <button
+                                    className="exc-btn confirm-btn"
+                                    onClick={(e) => { e.stopPropagation(); pendingIndices.forEach((i: number) => handleConfirmExtraction(msgIdx, i)); }}
+                                  >
+                                    &#10003; Confirmă toate
+                                  </button>
+                                </div>
                               )}
                               {msg.extractions.map((ext: any, extIdx: number) => {
                                 const k = `${msgIdx}-${extIdx}`;
@@ -3683,8 +3691,8 @@ export default function ProjectViewPage() {
                                 return (
                                   <div key={extIdx} className={`extraction-card ${state || ""}`}>
                                     <div className="exc-top">
-                                      <span className="exc-label">{ext.label}</span>
-                                      <span className="exc-confidence">{ext.confidence}%</span>
+                                      <span className="exc-label">{state === "confirmed" ? `\u2713 ${ext.label}` : ext.label}</span>
+                                      <span className="exc-confidence">{ext.confidence >= 90 ? "confirmat" : `conf. ${ext.confidence}%`}</span>
                                     </div>
                                     {editingExtraction === k ? (
                                       <input
@@ -3774,18 +3782,24 @@ export default function ProjectViewPage() {
                             </div>
                             );
                           })()}
+                          </div>
                         </div>
                       </div>
                     ))}
                     {solomonStreaming && solomonMessages.length > 0 && solomonMessages[solomonMessages.length - 1]?.role === "user" && (
-                      <div className="flex items-center gap-1 py-3 px-4">
-                        <div className="solomon-avatar" style={{ width: 24, height: 24, fontSize: 11, marginRight: 8 }}>S</div>
-                        <span className="inline-block w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" />
-                        <span className="inline-block w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                        <span className="inline-block w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                      <div className="solomon-msg">
+                        <div className="solomon-msg-avatar ai">S</div>
+                        <div className="solomon-msg-body">
+                          <div style={{ display: "flex", gap: 4, padding: "8px 0" }}>
+                            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#94a3b8", animation: "bounce 1.4s infinite ease-in-out" }} />
+                            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#94a3b8", animation: "bounce 1.4s infinite ease-in-out 0.16s" }} />
+                            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#94a3b8", animation: "bounce 1.4s infinite ease-in-out 0.32s" }} />
+                          </div>
+                        </div>
                       </div>
                     )}
                     <div ref={chatBottomRef} />
+                    </div>
                   </div>
 
                   {/* F6.1: Timeout warning */}
@@ -3798,49 +3812,51 @@ export default function ProjectViewPage() {
 
                   {/* Input area */}
                   <div className="chat-input-area">
-                    <div className="chat-input-row">
-                      <input
-                        ref={solomonFileRef}
-                        type="file"
-                        accept=".pdf,.docx,.xlsx,.doc,.png,.jpg,.jpeg"
-                        style={{ display: "none" }}
-                        onChange={e => {
-                          const file = e.target.files?.[0];
-                          if (file) handleSolomonUpload(file);
-                          e.target.value = "";
-                        }}
-                      />
-                      <button className="chat-btn upload-btn" title="Upload document" onClick={() => solomonFileRef.current?.click()} disabled={solomonStreaming || readOnly}>
-                        &#128206;
-                      </button>
-                      <textarea
-                        className="chat-input"
-                        data-solomon-input
-                        placeholder="Scrie detalii despre proiect, lipește date, sau întreabă..."
-                        value={solomonInput}
-                        rows={1}
-                        onChange={e => {
-                          setSolomonInput(e.target.value);
-                          e.target.style.height = "auto";
-                          e.target.style.height = Math.min(e.target.scrollHeight, 160) + "px";
-                        }}
-                        onKeyDown={e => {
-                          if (e.key === "Enter" && !e.shiftKey) {
-                            e.preventDefault();
-                            handleSolomonSend();
-                            (e.target as HTMLTextAreaElement).style.height = "auto";
-                          }
-                        }}
-                      />
-                      {solomonStreaming ? (
-                        <button className="chat-btn send" onClick={handleSolomonStop} title="Oprește generarea" style={{ background: "#dc2626" }}>
-                          &#9632;
+                    <div className="chat-input-inner">
+                      <div className="chat-input-row">
+                        <input
+                          ref={solomonFileRef}
+                          type="file"
+                          accept=".pdf,.docx,.xlsx,.doc,.png,.jpg,.jpeg"
+                          style={{ display: "none" }}
+                          onChange={e => {
+                            const file = e.target.files?.[0];
+                            if (file) handleSolomonUpload(file);
+                            e.target.value = "";
+                          }}
+                        />
+                        <button className="chat-btn upload-btn" title="Upload document" onClick={() => solomonFileRef.current?.click()} disabled={solomonStreaming || readOnly}>
+                          &#128206;
                         </button>
-                      ) : (
-                        <button className="chat-btn send" onClick={handleSolomonSend}>
-                          &#10148;
-                        </button>
-                      )}
+                        <textarea
+                          className="chat-input"
+                          data-solomon-input
+                          placeholder="Scrie detalii despre proiect, lipește date, sau întreabă..."
+                          value={solomonInput}
+                          rows={1}
+                          onChange={e => {
+                            setSolomonInput(e.target.value);
+                            e.target.style.height = "auto";
+                            e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
+                          }}
+                          onKeyDown={e => {
+                            if (e.key === "Enter" && !e.shiftKey) {
+                              e.preventDefault();
+                              handleSolomonSend();
+                              (e.target as HTMLTextAreaElement).style.height = "auto";
+                            }
+                          }}
+                        />
+                        {solomonStreaming ? (
+                          <button className="chat-btn send" onClick={handleSolomonStop} title="Oprește generarea" style={{ background: "#dc2626" }}>
+                            &#9632;
+                          </button>
+                        ) : (
+                          <button className="chat-btn send" onClick={handleSolomonSend}>
+                            &#10148;
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>

@@ -972,13 +972,13 @@ documentRoutes.get("/documents/:docId/template-elements", async (c) => {
 
   // Get element definitions for mapped elements
   const mappedDefIds = mappings.map(m => m.elementDefId).filter(Boolean);
-  let defMap = new Map<string, { category: string; sourcePriority: string[] | null }>();
+  let defMap = new Map<string, { category: string; sourcePriority: string[] | null; displayName: string }>();
   if (mappedDefIds.length > 0) {
     const defs = await db.query.elementDefinitions.findMany({
       where: sql`${elementDefinitions.id} IN (${sql.join(mappedDefIds.map(id => sql`${id}`), sql`, `)})`,
-      columns: { id: true, category: true, sourcePriority: true },
+      columns: { id: true, category: true, sourcePriority: true, displayName: true },
     });
-    for (const d of defs) defMap.set(d.id, { category: d.category, sourcePriority: d.sourcePriority });
+    for (const d of defs) defMap.set(d.id, { category: d.category, sourcePriority: d.sourcePriority, displayName: d.displayName });
   }
 
   // Derive source badge from element category
@@ -1007,6 +1007,10 @@ documentRoutes.get("/documents/:docId/template-elements", async (c) => {
       fieldType: el.fieldType,
       group: el.group,
       mapped: !!mapping,
+      mappingId: mapping?.id || null,
+      mappingValidated: mapping?.validated ?? false,
+      elementDefId: mapping?.elementDefId || null,
+      elementDefName: def?.displayName || null,
       confidence: mapping?.confidence ? parseFloat(mapping.confidence) : null,
       category: def?.category || null,
       source,
@@ -1014,12 +1018,114 @@ documentRoutes.get("/documents/:docId/template-elements", async (c) => {
   });
 
   const mapped = enriched.filter(e => e.mapped).length;
+  const validated = enriched.filter(e => e.mappingValidated).length;
   return c.json({
     elements: enriched,
     total: enriched.length,
     mapped,
     unmapped: enriched.length - mapped,
+    validated,
   });
+});
+
+// --- VALIDATE / CORRECT TEMPLATE PLACEHOLDER MAPPING ---
+const validateMappingSchema = z.object({
+  elementDefId: z.string().uuid().optional(),  // if provided, changes the mapped elementDef
+  validated: z.boolean(),
+});
+
+documentRoutes.put("/documents/:docId/mappings/:mappingId", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  if (!auth.organizationId) return c.json({ error: "No organization" }, 403);
+  const { docId, mappingId } = c.req.param();
+
+  const body = validateMappingSchema.parse(await c.req.json());
+
+  // Verify document belongs to org
+  const doc = await db.query.documents.findFirst({
+    where: and(eq(documents.id, docId), eq(documents.organizationId, auth.organizationId)),
+  });
+  if (!doc) return c.json({ error: "Document not found" }, 404);
+
+  // Get existing mapping
+  const mapping = await db.query.templatePlaceholderMapping.findFirst({
+    where: and(
+      eq(templatePlaceholderMapping.id, mappingId),
+      eq(templatePlaceholderMapping.templateDocumentId, docId),
+    ),
+  });
+  if (!mapping) return c.json({ error: "Mapping not found" }, 404);
+
+  const updateData: Record<string, any> = {
+    validated: body.validated,
+    validatedBy: body.validated ? auth.userId : null,
+    validatedAt: body.validated ? new Date() : null,
+  };
+
+  // If correcting the mapped elementDef
+  if (body.elementDefId && body.elementDefId !== mapping.elementDefId) {
+    // Verify elementDef exists and belongs to org
+    const elemDef = await db.query.elementDefinitions.findFirst({
+      where: and(
+        eq(elementDefinitions.id, body.elementDefId),
+        eq(elementDefinitions.organizationId, auth.organizationId),
+      ),
+    });
+    if (!elemDef) return c.json({ error: "Element definition not found" }, 404);
+
+    updateData.elementDefId = body.elementDefId;
+    updateData.mappedBy = "manual";
+    updateData.confidence = "1.00";
+  }
+
+  const [updated] = await db.update(templatePlaceholderMapping)
+    .set(updateData)
+    .where(eq(templatePlaceholderMapping.id, mappingId))
+    .returning();
+
+  return c.json(updated);
+});
+
+// --- CREATE TEMPLATE PLACEHOLDER MAPPING (for unmapped placeholders) ---
+const createMappingSchema = z.object({
+  placeholderKey: z.string().min(1),
+  elementDefId: z.string().uuid(),
+});
+
+documentRoutes.post("/documents/:docId/mappings", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  if (!auth.organizationId) return c.json({ error: "No organization" }, 403);
+  const { docId } = c.req.param();
+
+  const body = createMappingSchema.parse(await c.req.json());
+
+  // Verify document belongs to org
+  const doc = await db.query.documents.findFirst({
+    where: and(eq(documents.id, docId), eq(documents.organizationId, auth.organizationId)),
+  });
+  if (!doc) return c.json({ error: "Document not found" }, 404);
+
+  // Verify elementDef belongs to org
+  const elemDef = await db.query.elementDefinitions.findFirst({
+    where: and(
+      eq(elementDefinitions.id, body.elementDefId),
+      eq(elementDefinitions.organizationId, auth.organizationId),
+    ),
+  });
+  if (!elemDef) return c.json({ error: "Element definition not found" }, 404);
+
+  const [created] = await db.insert(templatePlaceholderMapping).values({
+    templateDocumentId: docId,
+    placeholderKey: body.placeholderKey,
+    elementDefId: body.elementDefId,
+    mappedBy: "manual",
+    confidence: "1.00",
+    validated: true,
+    validatedBy: auth.userId,
+    validatedAt: new Date(),
+  }).returning();
+
+  return c.json(created, 201);
 });
 
 // --- SSE: subscribe to upload events for organization ---

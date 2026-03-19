@@ -212,14 +212,17 @@ async function buildSystemPrompt(projectId: string, organizationId: string): Pro
   const filledElements: string[] = [];
   const coveredKeys = new Set<string>();
 
-  // First pass: project_elements that have elementDefId
+  // First pass: project_elements — build prompt lines for each element
   for (const el of elements) {
     const ed = el.elementDefId ? elemDefMap.get(el.elementDefId) : null;
     const te = el.templateElementId ? tmplMap.get(el.templateElementId) : null;
-    const label = ed?.displayName || te?.label || "?";
-    const key = ed?.elementKey || te?.key || "?";
+    const key = ed?.elementKey || te?.key || null;
+    const label = ed?.displayName || te?.label || key;
     const category = ed?.category || "other";
     const dataType = ed?.dataType || te?.fieldType || "text";
+
+    // Skip elements with no identifiable key (orphaned, cannot be referenced by AI)
+    if (!key) continue;
 
     if (ed) coveredKeys.add(ed.elementKey);
 
@@ -1524,25 +1527,23 @@ export async function processSolomonMessage(params: {
             // Auto-create elementDefinition for known client doc fields
             if (!elemDef && !tmplEl && CLIENT_DOC_FIELD_DEFS[el.key]) {
               const guideDocId = await getGuideDocId();
-              if (guideDocId) {
-                try {
-                  const knownDef = CLIENT_DOC_FIELD_DEFS[el.key];
-                  const created = await upsertElementDefinition({
-                    guideDocumentId: guideDocId,
-                    organizationId,
-                    elementKey: el.key,
-                    displayName: knownDef.displayName,
-                    category: knownDef.category,
-                    dataType: knownDef.dataType,
-                    required: knownDef.required ?? false,
-                    sourcePriority: ["document_extracted", "solomon_chat", "consultant_manual"],
-                  });
-                  elemDef = created;
-                  keyToElemDef.set(el.key, created);
-                  console.log(`[solomon] Auto-created elementDefinition for "${el.key}" → ${created.id}`);
-                } catch (err) {
-                  console.warn(`[solomon] Failed to auto-create elementDef for "${el.key}":`, err);
-                }
+              try {
+                const knownDef = CLIENT_DOC_FIELD_DEFS[el.key];
+                const created = await upsertElementDefinition({
+                  guideDocumentId: guideDocId,
+                  organizationId,
+                  elementKey: el.key,
+                  displayName: knownDef.displayName,
+                  category: knownDef.category,
+                  dataType: knownDef.dataType,
+                  required: knownDef.required ?? false,
+                  sourcePriority: ["document_extracted", "solomon_chat", "consultant_manual"],
+                });
+                elemDef = created;
+                keyToElemDef.set(el.key, created);
+                console.log(`[solomon] Auto-created elementDefinition for "${el.key}" → ${created.id}`);
+              } catch (err) {
+                console.warn(`[solomon] Failed to auto-create elementDef for "${el.key}":`, err);
               }
             }
 

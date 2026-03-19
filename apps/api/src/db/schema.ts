@@ -316,7 +316,7 @@ export const rules = pgTable("rules", {
 // Templates map placeholders to these via template_placeholder_mapping.
 export const elementDefinitions = pgTable("element_definitions", {
   id: uuid("id").defaultRandom().primaryKey(),
-  guideDocumentId: uuid("guide_document_id").references(() => documents.id, { onDelete: "cascade" }).notNull(),
+  guideDocumentId: uuid("guide_document_id").references(() => documents.id, { onDelete: "cascade" }),
   organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
   elementKey: varchar("element_key", { length: 255 }).notNull(),
   displayName: varchar("display_name", { length: 500 }).notNull(),
@@ -394,6 +394,9 @@ export const templatePlaceholderMapping = pgTable("template_placeholder_mapping"
   elementDefId: uuid("element_def_id").references(() => elementDefinitions.id, { onDelete: "cascade" }).notNull(),
   mappedBy: placeholderMappedByEnum("mapped_by").notNull().default("auto"),
   confidence: decimal("confidence", { precision: 3, scale: 2 }),
+  validated: boolean("validated").notNull().default(false),
+  validatedBy: uuid("validated_by").references(() => users.id),
+  validatedAt: timestamp("validated_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
   templateIdx: index("tpl_map_template_idx").on(table.templateDocumentId),

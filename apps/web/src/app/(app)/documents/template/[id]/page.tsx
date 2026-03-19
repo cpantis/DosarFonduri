@@ -20,6 +20,17 @@ interface TemplateElement {
   validated: boolean;
 }
 
+interface MappingInfo {
+  mapped: boolean;
+  mappingId: string | null;
+  mappingValidated: boolean;
+  elementDefId: string | null;
+  elementDefName: string | null;
+  confidence: number | null;
+  category: string | null;
+  source: string;
+}
+
 interface TemplatePage {
   num: number;
   elements: TemplateElement[];
@@ -68,6 +79,10 @@ export default function TemplateViewerPage() {
   const [composeSaving, setComposeSaving] = useState(false);
   const [composeDetecting, setComposeDetecting] = useState(false);
 
+  // Mapping review data
+  const [mappingData, setMappingData] = useState<Record<string, MappingInfo>>({});
+  const [mappingSummary, setMappingSummary] = useState({ total: 0, mapped: 0, unmapped: 0, validated: 0 });
+
   // Rule links + scoring per element (GAP 20 & 21)
   const [elementRuleLinks, setElementRuleLinks] = useState<Record<string, Array<{ rule?: { description: string; sourcePage: number | null; category: string } }>>>({});
   const [elementScoring, setElementScoring] = useState<Record<string, Array<{ criterionName: string; maxPoints: number }>>>({});
@@ -92,6 +107,20 @@ export default function TemplateViewerPage() {
         }
         return prev;
       });
+      // Load mapping data (enriched template elements with confidence info)
+      try {
+        const mapData = await apiGet<{
+          elements: Array<MappingInfo & { key: string }>;
+          total: number; mapped: number; unmapped: number; validated: number;
+        }>(`/api/documents/documents/${docId}/template-elements`);
+        const mapByKey: Record<string, MappingInfo> = {};
+        for (const el of mapData.elements) {
+          mapByKey[el.key] = el;
+        }
+        setMappingData(mapByKey);
+        setMappingSummary({ total: mapData.total, mapped: mapData.mapped, unmapped: mapData.unmapped, validated: mapData.validated });
+      } catch {}
+
       // Load compose config
       try {
         const cfg = await apiGet<any>(`/api/neemia/templates/${docId}/compose-config`);
@@ -237,6 +266,25 @@ export default function TemplateViewerPage() {
         elRefs.current[id]?.scrollIntoView({ behavior: "smooth", block: "center" });
       }, 100);
     }
+  };
+
+  // ─── MAPPING REVIEW HANDLERS ───
+  const handleValidateMapping = async (key: string) => {
+    const info = mappingData[key];
+    if (!info?.mappingId) return;
+    try {
+      await apiPut(`/api/documents/documents/${docId}/mappings/${info.mappingId}`, {
+        validated: !info.mappingValidated,
+      });
+      setMappingData(prev => ({
+        ...prev,
+        [key]: { ...prev[key], mappingValidated: !info.mappingValidated },
+      }));
+      setMappingSummary(prev => ({
+        ...prev,
+        validated: prev.validated + (info.mappingValidated ? -1 : 1),
+      }));
+    } catch {}
   };
 
   // ─── COMPOSE CONFIG HANDLERS ───
@@ -453,6 +501,17 @@ export default function TemplateViewerPage() {
           >
             {showComposeConfig ? "Ascunde config" : "Config generare"}
           </button>
+          {mappingSummary.total > 0 && (
+            <div className="flex items-center gap-1.5 px-2 py-1 rounded-md border border-slate-200 bg-slate-50">
+              <span className="text-[10px] font-semibold text-slate-400">Mapping:</span>
+              <span className="text-[11px] font-bold font-mono" style={{ color: mappingSummary.validated === mappingSummary.mapped ? "#059669" : "#d97706" }}>
+                {mappingSummary.validated}/{mappingSummary.mapped}
+              </span>
+              {mappingSummary.unmapped > 0 && (
+                <span className="text-[10px] text-red-400">({mappingSummary.unmapped} nemapate)</span>
+              )}
+            </div>
+          )}
           <div className="tv-progress">
             <span className="text-xs text-slate-400">{validatedEls}/{totalEls} validate</span>
             <div className="tv-pbar"><div className={`tv-pfill ${progressBg}`} style={{ width: `${pct}%` }} /></div>
@@ -610,6 +669,54 @@ export default function TemplateViewerPage() {
                               {el.validated ? "Invalidare" : "Valideaza"}
                             </button>
                           </div>
+                          {/* Mapping review indicator */}
+                          {(() => {
+                            const mInfo = mappingData[el.key];
+                            if (!mInfo) return null;
+                            const conf = mInfo.confidence;
+                            const confColor = !mInfo.mapped ? "#ef4444" : mInfo.mappingValidated ? "#059669" : conf && conf >= 0.9 ? "#059669" : conf && conf >= 0.7 ? "#d97706" : "#ef4444";
+                            const confBg = !mInfo.mapped ? "rgba(239,68,68,.08)" : mInfo.mappingValidated ? "rgba(5,150,105,.08)" : conf && conf >= 0.9 ? "rgba(5,150,105,.06)" : conf && conf >= 0.7 ? "rgba(217,119,6,.08)" : "rgba(239,68,68,.08)";
+                            return (
+                              <div style={{ marginTop: 4, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                                {mInfo.mapped ? (
+                                  <>
+                                    <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 4, background: confBg, color: confColor, fontWeight: 600 }}>
+                                      {mInfo.mappingValidated ? "\u2713" : "\u25CB"} {mInfo.elementDefName || mInfo.elementDefId?.slice(0, 8)}
+                                      {conf != null && <span style={{ fontFamily: "'JetBrains Mono', monospace", marginLeft: 4, opacity: 0.8 }}>{Math.round(conf * 100)}%</span>}
+                                    </span>
+                                    {mInfo.mapped && !mInfo.mappingValidated && (
+                                      <button
+                                        onClick={(ev) => { ev.stopPropagation(); handleValidateMapping(el.key); }}
+                                        style={{
+                                          fontSize: 10, fontWeight: 700, padding: "1px 8px", borderRadius: 6,
+                                          border: "1px solid #059669", background: "transparent", color: "#059669",
+                                          cursor: "pointer", fontFamily: "'Inter', system-ui, sans-serif",
+                                        }}
+                                      >
+                                        Confirma
+                                      </button>
+                                    )}
+                                    {mInfo.mappingValidated && (
+                                      <button
+                                        onClick={(ev) => { ev.stopPropagation(); handleValidateMapping(el.key); }}
+                                        style={{
+                                          fontSize: 10, fontWeight: 600, padding: "1px 6px", borderRadius: 6,
+                                          border: "1px solid #cbd5e1", background: "transparent", color: "#94a3b8",
+                                          cursor: "pointer", fontFamily: "'Inter', system-ui, sans-serif",
+                                        }}
+                                      >
+                                        Anuleaza
+                                      </button>
+                                    )}
+                                  </>
+                                ) : (
+                                  <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 4, background: confBg, color: confColor, fontWeight: 600 }}>
+                                    Nemapat
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })()}
                           {/* GAP 20: Rule link (shown when selected) */}
                           {isActive && elementRuleLinks[el.id] && elementRuleLinks[el.id].length > 0 && (
                             <div style={{ marginTop: 4, display: "flex", flexDirection: "column", gap: 3 }}>

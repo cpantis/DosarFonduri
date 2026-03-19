@@ -1,5 +1,5 @@
 "use client";
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api";
 import { getCaenDescription } from "@/lib/caen";
@@ -88,12 +88,16 @@ type ElementItem = {
   key: string;
   label: string;
   value: string | null;
-  status: "confirmat" | "propus_ai" | "gol";
+  status: "confirmat" | "propus_ai" | "gol" | "conflict";
   confidence: number;
   source: string | null;
   sourceLabel: string | null;
+  sourceDocName: string | null;
   templates: string[];
   category: string;
+  required: boolean;
+  validationStatus: string | null;
+  validationDetails: any;
 };
 
 type ChecklistItem = {
@@ -202,28 +206,42 @@ function mapGuideRules(grouped: any[]): GuideRule[] {
   return rules;
 }
 
+const SOURCE_MAP: Record<string, string> = {
+  onrc: "ONRC",
+  onrc_auto: "ONRC",
+  anaf_auto: "ANAF",
+  manual: "Manual",
+  consultant_manual: "Manual",
+  solomon: "Solomon",
+  solomon_chat: "Solomon",
+  document: "OCR",
+  document_extracted: "OCR",
+  calculated: "Sistem",
+  derived: "Sistem",
+  ghid: "Ghid",
+};
+
+const CAT_CONFIG: Record<string, { label: string; icon: string; color: string }> = {
+  beneficiary: { label: "Solicitant", icon: "\uD83D\uDC64", color: "#2563eb" },
+  financial: { label: "Financiar", icon: "\uD83D\uDCB0", color: "#059669" },
+  farm: { label: "Exploatație", icon: "\uD83C\uDF3E", color: "#d97706" },
+  investment: { label: "Investiție", icon: "\uD83D\uDD27", color: "#7c3aed" },
+  location: { label: "Locație", icon: "\uD83D\uDCCD", color: "#dc2626" },
+  legal: { label: "Documente", icon: "\uD83D\uDCCB", color: "#475569" },
+  technical: { label: "Tehnic", icon: "\u2699\uFE0F", color: "#0891b2" },
+  other: { label: "Alte", icon: "\uD83D\uDCCE", color: "#94a3b8" },
+};
+
 function mapElements(elements: any[]): ElementItem[] {
   return elements.map(el => {
     const confirmed = el.confirmed;
     const hasValue = !!el.value;
-    let status: "confirmat" | "propus_ai" | "gol" = "gol";
-    if (confirmed) status = "confirmat";
+    // Detect conflict: validationStatus=invalid with validationDetails containing conflict info
+    const isConflict = el.validationStatus === "invalid" && el.validationDetails?.conflict;
+    let status: "confirmat" | "propus_ai" | "gol" | "conflict" = "gol";
+    if (isConflict) status = "conflict";
+    else if (confirmed) status = "confirmat";
     else if (hasValue) status = "propus_ai";
-
-    const sourceMap: Record<string, string> = {
-      onrc: "Date ONRC",
-      onrc_auto: "ONRC (auto)",
-      anaf_auto: "ANAF (auto)",
-      manual: "Completare manuală",
-      consultant_manual: "Consultant",
-      solomon: "Solomon",
-      solomon_chat: "Solomon Chat",
-      document: "Document uploadat",
-      document_extracted: "Extras din document",
-      calculated: "Calculat automat",
-      derived: "Derivat",
-      ghid: "Ghid finanțare",
-    };
 
     // Resolve key/label: prefer elementDefinition (new anchor), fallback to templateElement
     const elemDef = el.elementDefinition;
@@ -259,9 +277,13 @@ function mapElements(elements: any[]): ElementItem[] {
       status,
       confidence: confirmed ? 100 : hasValue ? 85 : 0,
       source: el.source,
-      sourceLabel: sourceMap[el.source] || el.source || null,
+      sourceLabel: SOURCE_MAP[el.source] || el.source || null,
+      sourceDocName: el.sourceDocument?.name || null,
       templates: [],
       category: elemDef?.category || tmplEl?.category || "other",
+      required: elemDef?.required ?? false,
+      validationStatus: el.validationStatus || null,
+      validationDetails: el.validationDetails || null,
     };
   });
 }
@@ -333,6 +355,15 @@ export default function ProjectViewPage() {
   const [elemSearch, setElemSearch] = useState("");
   const [editingElementId, setEditingElementId] = useState<string | null>(null);
   const [editingElementValue, setEditingElementValue] = useState("");
+  const [addingElement, setAddingElement] = useState(false);
+  const [newElementKey, setNewElementKey] = useState("");
+  const [newElementLabel, setNewElementLabel] = useState("");
+  const [newElementValue, setNewElementValue] = useState("");
+  const [elemCatFilter, setElemCatFilter] = useState("all");
+  const [elemStatusFilter, setElemStatusFilter] = useState<string | null>(null);
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+  const [detailPanelId, setDetailPanelId] = useState<string | null>(null);
+  const [detailHistory, setDetailHistory] = useState<any[]>([]);
   const [ghidTab, setGhidTab] = useState<"reguli" | "ghid" | "anexe">("reguli");
   const [referenceTables, setReferenceTables] = useState<any[]>([]);
   const [selectedRefTable, setSelectedRefTable] = useState<string | null>(null);
@@ -963,10 +994,9 @@ export default function ProjectViewPage() {
             source: "solomon",
             confirmed: true,
           });
-          setElements(prev => prev.map(e => e.id === matchingEl!.id
-            ? { ...e, value: ext.value, source: "solomon", sourceLabel: "Solomon", status: "confirmat" as const, confidence: 100 }
-            : e
-          ));
+          // Re-fetch full project to get updated validation, status, etc.
+          const proj = await apiGet<any>(`/api/projects/${projectId}`);
+          setElements(mapElements(proj.elements || []));
 
           // Cross-validate against reference tables
           apiPost("/api/reference/validate-element", {
@@ -1012,10 +1042,9 @@ export default function ProjectViewPage() {
           source: "solomon",
           confirmed: true,
         });
-        setElements(prev => prev.map(e => e.id === matchingEl!.id
-          ? { ...e, value: el.value, source: "solomon", sourceLabel: "Solomon", status: "confirmat" as const, confidence: 100 }
-          : e
-        ));
+        // Re-fetch to get full updated state (validation, etc.)
+        const proj = await apiGet<any>(`/api/projects/${projectId}`);
+        setElements(mapElements(proj.elements || []));
       } catch (err) {
         console.error("Failed to persist Solomon element confirmation:", err);
         toast("error", "Eroare la confirmarea elementului");
@@ -1025,6 +1054,31 @@ export default function ProjectViewPage() {
 
   const handleRejectElement = (idx: number) => {
     setSolomonElements(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const handleAddElement = async () => {
+    if (!newElementKey.trim() || !newElementLabel.trim()) {
+      toast("error", "Cheia și eticheta sunt obligatorii");
+      return;
+    }
+    try {
+      await apiPost(`/api/projects/${projectId}/elements`, {
+        key: newElementKey.trim().toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, ""),
+        label: newElementLabel.trim(),
+        value: newElementValue.trim() || null,
+      });
+      // Refresh elements from API
+      const proj = await apiGet<any>(`/api/projects/${projectId}`);
+      setElements(mapElements(proj.elements || []));
+      setAddingElement(false);
+      setNewElementKey("");
+      setNewElementLabel("");
+      setNewElementValue("");
+      toast("success", `Element „${newElementLabel.trim()}" adăugat`);
+    } catch (err: any) {
+      const msg = err?.message || err?.error || "Eroare la adăugare";
+      toast("error", typeof msg === "string" ? msg : "Eroare la adăugare");
+    }
   };
 
   const handleTextSelect = useCallback(() => {
@@ -1517,7 +1571,9 @@ export default function ProjectViewPage() {
         value: el?.value || undefined,
         confirmed: true,
       });
-      setElements(prev => prev.map(e => e.id === elId ? { ...e, status: "confirmat" as const, confidence: 100 } : e));
+      // Re-fetch to get full updated state (validation cascade, etc.)
+      const proj = await apiGet<any>(`/api/projects/${projectId}`);
+      setElements(mapElements(proj.elements || []));
     } catch (err) {
       console.error("Confirm element failed:", err);
       toast("error", "Eroare la confirmarea elementului");
@@ -1529,11 +1585,11 @@ export default function ProjectViewPage() {
     try {
       await apiPut(`/api/projects/${projectId}/elements/${elId}`, {
         value: editingElementValue,
-        source: "manual",
+        source: "consultant_manual",
       });
-      setElements(prev => prev.map(e =>
-        e.id === elId ? { ...e, value: editingElementValue, source: "manual", sourceLabel: "Completare manuală", status: "propus_ai" as const } : e,
-      ));
+      // Re-fetch to get full updated state (validation cascade updates status correctly)
+      const proj = await apiGet<any>(`/api/projects/${projectId}`);
+      setElements(mapElements(proj.elements || []));
       setEditingElementId(null);
       setEditingElementValue("");
     } catch (err) {
@@ -1544,13 +1600,14 @@ export default function ProjectViewPage() {
 
   const [bulkConfirming, setBulkConfirming] = useState(false);
 
-  // Fetch element constraints when an element is selected
+  // Fetch element constraints when an element is selected (via detail panel)
   useEffect(() => {
-    if (!selectedElement) { setElementConstraints([]); return; }
-    apiGet<any[]>(`/api/reference/elements/${selectedElement}/rule-links`)
+    const activeId = detailPanelId || selectedElement;
+    if (!activeId) { setElementConstraints([]); return; }
+    apiGet<any[]>(`/api/reference/elements/${activeId}/rule-links`)
       .then(links => setElementConstraints(links || []))
       .catch(() => setElementConstraints([]));
-  }, [selectedElement]);
+  }, [detailPanelId, selectedElement]);
 
   const handleNeemiaTemplateClick = async (idx: number) => {
     setNeemiaActiveTemplate(idx);
@@ -1612,19 +1669,93 @@ export default function ProjectViewPage() {
   const checkTotal = checklistItems.length;
 
   const filteredElements = elements.filter(e => {
+    // Category filter
+    if (elemCatFilter !== "all" && e.category !== elemCatFilter) return false;
+    // Status filter
+    if (elemStatusFilter === "empty" && e.status !== "gol") return false;
+    if (elemStatusFilter === "proposed" && e.status !== "propus_ai") return false;
+    if (elemStatusFilter === "conflict" && e.status !== "conflict") return false;
+    // Legacy status filters (kept for backward compat with old filter bar)
     if (elemFilter === "gol" && e.status !== "gol") return false;
     if (elemFilter === "propus_ai" && e.status !== "propus_ai") return false;
     if (elemFilter === "confirmat" && e.status !== "confirmat") return false;
     if (elemFilter === "de_confirmat" && (e.status !== "propus_ai")) return false;
-    if (elemFilter === "src_solomon" && !(e.status === "propus_ai" && e.source === "solomon")) return false;
+    if (elemFilter === "src_solomon" && !(e.status === "propus_ai" && (e.source === "solomon" || e.source === "solomon_chat"))) return false;
     if (elemFilter === "src_calculated" && !(e.status === "propus_ai" && e.source === "calculated")) return false;
-    if (elemFilter === "src_manual" && !(e.status === "propus_ai" && e.source !== "solomon" && e.source !== "calculated")) return false;
+    if (elemFilter === "src_manual" && !(e.status === "propus_ai" && e.source !== "solomon" && e.source !== "solomon_chat" && e.source !== "calculated")) return false;
     if (elemSearch) {
       const q = elemSearch.toLowerCase();
       return e.label.toLowerCase().includes(q) || e.key.toLowerCase().includes(q) || (e.value || "").toLowerCase().includes(q);
     }
     return true;
   });
+
+  // Group elements by category for grouped display
+  const groupedElements = useMemo(() => {
+    const groups: Record<string, ElementItem[]> = {};
+    for (const el of filteredElements) {
+      const cat = el.category || "other";
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push(el);
+    }
+    // Sort categories in a logical order
+    const catOrder = ["beneficiary", "financial", "farm", "investment", "location", "legal", "technical", "other"];
+    const sorted: [string, ElementItem[]][] = [];
+    for (const cat of catOrder) {
+      if (groups[cat]) sorted.push([cat, groups[cat]]);
+    }
+    // Add any unknown categories at the end
+    for (const cat of Object.keys(groups)) {
+      if (!catOrder.includes(cat)) sorted.push([cat, groups[cat]]);
+    }
+    return sorted;
+  }, [filteredElements]);
+
+  // Element stats
+  const elemStats = useMemo(() => {
+    const confirmed = elements.filter(e => e.status === "confirmat").length;
+    const proposed = elements.filter(e => e.status === "propus_ai").length;
+    const manual = elements.filter(e => e.source === "consultant_manual" || e.source === "manual").length;
+    const empty = elements.filter(e => e.status === "gol").length;
+    const conflict = elements.filter(e => e.status === "conflict").length;
+    return { confirmed, proposed, manual, empty, conflict, total: elements.length };
+  }, [elements]);
+
+  // Category counts for filter pills
+  const catCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const e of elements) {
+      const cat = e.category || "other";
+      counts[cat] = (counts[cat] || 0) + 1;
+    }
+    return counts;
+  }, [elements]);
+
+  // Export CSV
+  const handleExportCSV = useCallback(() => {
+    const header = "Cheie,Etichetă,Categorie,Valoare,Status,Sursă,Obligatoriu";
+    const rows = elements.map(e =>
+      [e.key, e.label, CAT_CONFIG[e.category]?.label || e.category, (e.value || "").replace(/,/g, ";"), e.status, e.sourceLabel || "", e.required ? "Da" : "Nu"].map(v => `"${v}"`).join(",")
+    );
+    const csv = [header, ...rows].join("\n");
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `elemente_proiect_${projectId}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [elements, projectId]);
+
+  // Open detail panel + load history
+  const openDetailPanel = useCallback(async (elementId: string) => {
+    setDetailPanelId(elementId);
+    setDetailHistory([]);
+    try {
+      const logs = await apiGet<any[]>(`/api/projects/${projectId}/elements/${elementId}/history`);
+      setDetailHistory(logs || []);
+    } catch { /* ignore */ }
+  }, [projectId]);
 
   const handleBulkConfirm = async () => {
     if (readOnly || bulkConfirming) return;
@@ -1635,11 +1766,9 @@ export default function ProjectViewPage() {
       await apiPut(`/api/projects/${projectId}/elements-bulk/confirm`, {
         elementIds: toConfirm.map(e => e.id),
       });
-      setElements(prev => prev.map(e =>
-        toConfirm.some(tc => tc.id === e.id)
-          ? { ...e, status: "confirmat" as const, confidence: 100 }
-          : e
-      ));
+      // Re-fetch full state
+      const proj = await apiGet<any>(`/api/projects/${projectId}`);
+      setElements(mapElements(proj.elements || []));
     } catch (err) {
       console.error("Bulk confirm failed:", err);
     } finally {
@@ -1922,73 +2051,103 @@ export default function ProjectViewPage() {
         .pdf-text-line{height:10px;background:#cbd5e1;border-radius:2px;margin:8px 0}
         .pdf-page-num{position:absolute;bottom:16px;right:24px;font-size:12px;color:#94a3b8;font-family:'JetBrains Mono',monospace}
 
-        /* Elemente */
-        .elemente-layout{display:flex;flex:1;min-height:0}
-        .elemente-list{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
-        .completitudine-bar{padding:20px 24px;background:#ffffff;border-bottom:1px solid rgba(226,232,240,.8)}
-        .completitudine-top{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px}
-        .cl-label{font-size:15px;font-weight:700;color:#0f172a}
-        .cl-pct{font-size:28px;font-weight:800;font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums}
-        .progress-track{height:10px;background:#f0f2f5;border-radius:5px;overflow:hidden;display:flex;gap:2px;margin-bottom:10px}
-        .progress-seg{height:100%;border-radius:4px;transition:all .15s cubic-bezier(.4,0,.2,1)}
-        .completitudine-legend{display:flex;gap:20px;font-size:12px;color:#64748b}
-        .legend-item{display:flex;align-items:center;gap:6px}
-        .legend-dot{width:8px;height:8px;border-radius:50%}
-        .li-num{font-weight:700;font-family:'JetBrains Mono',monospace;color:#0f172a;font-variant-numeric:tabular-nums}
-        .elemente-filter-bar{padding:12px 24px;display:flex;align-items:center;gap:8px;border-bottom:1px solid rgba(226,232,240,.8);background:#ffffff}
-        .elem-search{padding:7px 14px;border-radius:8px;border:1px solid rgba(226,232,240,.8);background:#f0f2f5;color:#0f172a;font-size:13px;font-family:'Inter',system-ui,sans-serif;outline:none;width:180px;transition:all .15s cubic-bezier(.4,0,.2,1)}
-        .elem-search:focus{border-color:#2563eb}.elem-search::placeholder{color:#94a3b8}
-        .fp-group{display:flex;background:#f0f2f5;border-radius:10px;padding:3px;gap:2px}
-        .fp{padding:5px 14px;border-radius:8px;font-size:12px;font-weight:600;border:none;cursor:pointer;background:transparent;color:#64748b;font-family:'Inter',system-ui,sans-serif;transition:all .15s cubic-bezier(.4,0,.2,1);white-space:nowrap}
-        .fp:hover{color:#0f172a}.fp.on{background:#2563eb;color:#ffffff;box-shadow:0 1px 3px rgba(37,99,235,.3)}
-        .fp.on-green{background:#34d399;color:#ffffff}
-        .fp.on-yellow{background:#fbbf24;color:#ffffff}
-        .fp.on-red{background:#f87171;color:#ffffff}
-        .fp.on-orange{background:#fb923c;color:#ffffff}
-        .fp-count{font-size:10px;opacity:.7;margin-left:2px}
-        .fp-sub-group{display:flex;align-items:center;gap:4px;margin-left:4px;padding-left:8px;border-left:1px solid rgba(226,232,240,.8)}
-        .fp-sub-label{font-size:11px;color:#94a3b8;font-weight:600;white-space:nowrap}
-        .fp-sub{padding:3px 10px;border-radius:8px;font-size:11px;font-weight:600;border:1px solid rgba(226,232,240,.8);cursor:pointer;background:transparent;color:#64748b;font-family:'Inter',system-ui,sans-serif;transition:all .15s cubic-bezier(.4,0,.2,1);white-space:nowrap}
-        .fp-sub:hover{border-color:#ea580c;color:#ea580c}
-        .fp-sub.active{background:rgba(251,146,60,.12);border-color:#ea580c;color:#ea580c}
-        .elemente-filter-bar{flex-wrap:wrap}
-        .bulk-confirm-bar{display:flex;align-items:center;justify-content:space-between;padding:8px 24px;background:rgba(251,146,60,.06);border-bottom:1px solid rgba(251,146,60,.2)}
-        .bc-text{font-size:12px;color:#ea580c;font-weight:600}
-        .bc-btn{padding:5px 16px;border-radius:8px;border:1px solid #34d399;background:rgba(52,211,153,.08);color:#059669;font-size:12px;font-weight:700;cursor:pointer;font-family:'Inter',system-ui,sans-serif;transition:all .15s}
-        .bc-btn:hover:not(:disabled){background:rgba(52,211,153,.18)}
-        .bc-btn:disabled{opacity:.5;cursor:not-allowed}
-        .elemente-scroll{flex:1;overflow-y:auto;padding:16px 24px;display:flex;flex-direction:column;gap:10px}
-        .elem-card{background:#ffffff;border:1px solid rgba(226,232,240,.8);border-radius:12px;padding:14px 18px;cursor:pointer;transition:all .15s cubic-bezier(.4,0,.2,1)}
-        .elem-card:hover{border-color:#cbd5e1;box-shadow:0 1px 3px rgba(0,0,0,.06)}
-        .elem-card.active{border-color:#bfdbfe;background:rgba(37,99,235,.02);box-shadow:0 4px 12px rgba(37,99,235,.1)}
-        .elem-card.warning{border-color:#fde68a;background:rgba(245,158,11,.03)}
-        .elem-card.pending{border:1px dashed #cbd5e1;background:transparent}
-        .ec-top{display:flex;align-items:center;gap:8px;margin-bottom:6px}
-        .ec-key{font-size:11px;font-family:'JetBrains Mono',monospace;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em;font-weight:500}
-        .ec-status{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px}
-        .ec-status.confirmat{background:rgba(16,185,129,.12);color:#059669}
-        .ec-status.propus_ai{background:rgba(245,158,11,.12);color:#d97706}
-        .ec-status.gol{background:rgba(239,68,68,.08);color:#dc2626}
-        .ec-label{font-size:15px;font-weight:600;color:#0f172a;margin-bottom:4px}
-        .ec-value{font-size:13px;font-family:'JetBrains Mono',monospace;color:#2563eb}
-        .ec-value.missing{color:#94a3b8;font-style:italic;font-family:'Inter',system-ui,sans-serif;font-size:13px}
-        .ec-source{font-size:11px;color:#94a3b8;margin-top:6px;display:flex;align-items:center;gap:4px}
-        .source-dot{width:6px;height:6px;border-radius:50%;display:inline-block}
-        .source-dot.company_data{background:#34d399}
-        .source-dot.onrc{background:#34d399}
-        .source-dot.solomon_chat{background:#2563eb}
-        .source-dot.solomon{background:#2563eb}
-        .source-dot.manual{background:#a78bfa}
-        .source-dot.calculated{background:#a78bfa;box-shadow:0 0 4px rgba(167,139,250,.4)}
-        .source-dot.document{background:#fb923c}
-
-        .elem-detail{width:350px;min-width:350px;border-left:1px solid rgba(226,232,240,.8);background:#f8fafc;overflow-y:auto;padding:20px}
-        .ed-header{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#94a3b8;margin-bottom:16px}
-        .ed-field{margin-bottom:16px}
-        .ed-label{font-size:12px;color:#94a3b8;margin-bottom:4px}
-        .ed-val{font-size:15px;font-weight:600;color:#0f172a;padding:10px 14px;border-radius:8px;border:1px solid rgba(226,232,240,.8);background:#f8fafc}
-        .ed-btn{padding:8px 16px;border-radius:8px;border:1px solid #34d399;background:transparent;color:#059669;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',system-ui,sans-serif;transition:all .15s cubic-bezier(.4,0,.2,1);display:flex;align-items:center;gap:4px}
-        .ed-btn:hover{background:rgba(52,211,153,.1)}
+        /* Elemente — redesigned to match prototype */
+        .el-shell{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden}
+        .el-header{padding:16px 24px;border-bottom:1px solid #e2e8f0;display:flex;flex-direction:column;gap:12px;background:#f8fafc}
+        .el-header-top{display:flex;align-items:center;justify-content:space-between}
+        .el-stats{display:flex;gap:20px}
+        .el-stat{text-align:center}
+        .el-stat-val{font-size:22px;font-weight:700;font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums}
+        .el-stat-lbl{font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em}
+        .el-progress-wrap{}
+        .el-progress{height:6px;background:#e2e8f0;border-radius:3px;overflow:hidden}
+        .el-progress-fill{height:100%;border-radius:3px;transition:width 600ms ease}
+        .el-progress-labels{display:flex;justify-content:space-between;font-size:12px;color:#94a3b8;margin-top:4px}
+        .el-toolbar{display:flex;align-items:center;gap:8px;padding:10px 24px;border-bottom:1px solid #e2e8f0;flex-wrap:wrap}
+        .el-search-box{display:flex;align-items:center;gap:6px;border:1px solid #e2e8f0;border-radius:8px;padding:6px 10px;background:#fff;min-width:200px;transition:all 150ms ease}
+        .el-search-box:focus-within{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.1)}
+        .el-search-box input{border:none;outline:none;font-size:13px;font-family:inherit;flex:1;background:transparent;color:#0f172a}
+        .el-search-box input::placeholder{color:#94a3b8}
+        .el-search-icon{color:#94a3b8;font-size:14px}
+        .el-pill{padding:5px 12px;border-radius:9999px;font-size:12px;font-weight:500;border:1px solid #e2e8f0;background:#fff;color:#475569;cursor:pointer;transition:all 150ms ease;white-space:nowrap;user-select:none}
+        .el-pill:hover{background:#f1f5f9}
+        .el-pill.active{background:#2563eb;color:#fff;border-color:#2563eb}
+        .el-pill-count{opacity:.7;margin-left:2px}
+        .el-pill-status{}.el-pill-status.active{background:transparent;color:#0f172a;font-weight:600;border-width:2px}
+        .el-sep{width:1px;height:20px;background:#e2e8f0}
+        .el-scroll{flex:1;overflow-y:auto}
+        .el-scroll::-webkit-scrollbar{width:6px}.el-scroll::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:3px}
+        .el-group{margin-bottom:0}
+        .el-group-header{display:flex;align-items:center;gap:8px;padding:10px 24px;background:#f8fafc;border-bottom:1px solid #e2e8f0;cursor:pointer;position:sticky;top:0;z-index:2;transition:background 150ms}
+        .el-group-header:hover{background:#f1f5f9}
+        .el-group-icon{font-size:16px}
+        .el-group-name{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:#475569}
+        .el-group-count{font-size:12px;color:#94a3b8}
+        .el-group-progress{flex:1;display:flex;align-items:center;gap:8px;justify-content:flex-end}
+        .el-group-bar{width:80px;height:3px;background:#e2e8f0;border-radius:2px;overflow:hidden}
+        .el-group-bar-fill{height:100%;border-radius:2px;transition:width 400ms ease}
+        .el-group-pct{font-size:11px;font-weight:600;color:#94a3b8;min-width:30px;text-align:right}
+        .el-group-chevron{color:#94a3b8;transition:transform 150ms ease;font-size:12px}
+        .el-group-items{}
+        .el-row{display:flex;align-items:center;padding:10px 24px 10px 48px;border-bottom:1px solid #f1f5f9;transition:background 150ms ease;gap:12px;min-height:52px}
+        .el-row:hover{background:#f8fafc}
+        .el-row:last-child{border-bottom:none}
+        .el-row.editing{background:#eff6ff}
+        .el-status-icon{width:22px;height:22px;border-radius:9999px;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0}
+        .el-status-icon.confirmat{background:#ecfdf5;color:#059669}
+        .el-status-icon.propus_ai{background:#fffbeb;color:#d97706}
+        .el-status-icon.gol{background:#f1f5f9;color:#94a3b8}
+        .el-status-icon.conflict{background:#fef2f2;color:#dc2626}
+        .el-info{flex:1;min-width:0}
+        .el-label{font-size:14px;font-weight:500;display:flex;align-items:center;gap:4px;color:#0f172a}
+        .el-req{color:#dc2626;font-size:11px}
+        .el-key-text{font-size:11px;color:#94a3b8;font-family:'JetBrains Mono',monospace}
+        .el-value-area{flex:0 0 300px;min-width:0}
+        .el-val{font-size:14px;font-weight:500;font-family:'JetBrains Mono',monospace;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;max-width:290px}
+        .el-val.empty{color:#94a3b8;font-style:italic;font-family:inherit;font-weight:400}
+        .el-val.conflict{color:#dc2626;text-decoration:line-through;opacity:.6}
+        .el-source-area{flex:0 0 140px;min-width:0}
+        .el-src-badge{display:inline-flex;align-items:center;gap:3px;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:500;white-space:nowrap}
+        .el-src-badge.ocr{background:#dbeafe;color:#1e40af}
+        .el-src-badge.solomon{background:#fffbeb;color:#d97706}
+        .el-src-badge.manual{background:#f5f3ff;color:#7c3aed}
+        .el-src-badge.system{background:#f1f5f9;color:#94a3b8}
+        .el-src-badge.anaf{background:#d1fae5;color:#065f46}
+        .el-actions{flex:0 0 auto;display:flex;gap:4px;opacity:0;transition:opacity 150ms ease}
+        .el-row:hover .el-actions{opacity:1}
+        .el-edit-input{width:100%;border:1px solid #2563eb;border-radius:6px;padding:4px 8px;font-size:14px;font-family:'JetBrains Mono',monospace;outline:none;background:#eff6ff;color:#0f172a}
+        .el-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:7px 14px;border-radius:8px;font-size:13px;font-weight:500;border:none;cursor:pointer;transition:all 150ms ease;white-space:nowrap;font-family:inherit}
+        .el-btn-pri{background:#0f172a;color:#fff}.el-btn-pri:hover{background:#1e293b}
+        .el-btn-sec{background:#fff;border:1px solid #e2e8f0;color:#475569}.el-btn-sec:hover{background:#f1f5f9}
+        .el-btn-ok{background:#059669;color:#fff}.el-btn-ok:hover{background:#047857}
+        .el-btn-ghost{background:transparent;color:#475569;padding:5px 8px}.el-btn-ghost:hover{background:#f1f5f9}
+        .el-btn-sm{padding:4px 10px;font-size:12px}
+        .el-btn:disabled{opacity:.5;cursor:not-allowed}
+        .el-input{padding:6px 10px;font-size:12px;border-radius:6px;border:1px solid #e2e8f0;background:#fff;color:#0f172a;outline:none;font-family:inherit}
+        .el-input:focus{border-color:#2563eb;box-shadow:0 0 0 2px rgba(37,99,235,.1)}
+        .el-add-form{padding:12px 16px;background:rgba(37,99,235,.03);border:1px solid rgba(37,99,235,.12);border-radius:8px;margin-bottom:8px}
+        .el-status-badge{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:500;padding:2px 10px;border-radius:9999px;border:1px solid}
+        .el-status-badge.confirmat{background:#ecfdf5;color:#059669;border-color:#a7f3d0}
+        .el-status-badge.propus_ai{background:#fffbeb;color:#d97706;border-color:#fde68a}
+        .el-status-badge.gol{background:#f1f5f9;color:#94a3b8;border-color:#e2e8f0}
+        .el-status-badge.conflict{background:#fef2f2;color:#dc2626;border-color:#fecaca}
+        /* Detail slide-out panel */
+        .el-overlay{position:fixed;inset:0;background:rgba(0,0,0,.25);z-index:45}
+        .el-detail-panel{position:fixed;right:0;top:0;bottom:0;width:400px;background:#fff;box-shadow:-4px 0 24px rgba(0,0,0,.12);z-index:50;display:flex;flex-direction:column;transform:translateX(100%);transition:transform 250ms ease}
+        .el-detail-panel.open{transform:translateX(0)}
+        .dp-header{padding:16px 20px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between}
+        .dp-title{font-size:15px;font-weight:600;color:#0f172a}
+        .dp-close{width:32px;height:32px;border:none;background:none;border-radius:8px;cursor:pointer;color:#94a3b8;display:flex;align-items:center;justify-content:center;font-size:18px;transition:all 150ms}
+        .dp-close:hover{background:#f1f5f9;color:#0f172a}
+        .dp-body{flex:1;overflow-y:auto;padding:20px}
+        .dp-field{margin-bottom:16px}
+        .dp-field-label{font-size:12px;font-weight:500;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px}
+        .dp-field-value{font-size:15px;font-weight:500;color:#0f172a}
+        .dp-mono{font-family:'JetBrains Mono',monospace;font-size:13px}
+        .dp-history{border-top:1px solid #e2e8f0;padding-top:12px;margin-top:12px}
+        .dp-history-title{font-size:13px;font-weight:600;margin-bottom:8px;color:#0f172a}
+        .dp-history-item{display:flex;gap:8px;font-size:12px;color:#475569;margin-bottom:8px;padding-left:12px;border-left:2px solid #e2e8f0}
+        .dp-history-time{color:#94a3b8;white-space:nowrap;min-width:70px}
 
         /* Checklist */
         .checklist-panel{padding:28px 32px;max-width:960px;overflow-y:auto;flex:1;min-height:0}
@@ -2142,6 +2301,7 @@ export default function ProjectViewPage() {
         .sep-row-icon{font-size:12px;flex-shrink:0;width:16px;text-align:center;margin-top:1px}
         .sep-row-icon.confirmat{color:#059669}
         .sep-row-icon.propus_ai,.sep-row-icon.proposed{color:#d97706}
+        .sep-row-icon.conflict{color:#dc2626}
         .sep-row-icon.gol{color:#cbd5e1;font-size:10px}
         .sep-row-info{flex:1;min-width:0}
         .sep-row-label{font-size:12px;color:#64748b;line-height:1.3}
@@ -3267,56 +3427,50 @@ export default function ProjectViewPage() {
             })()}
 
             {/* ELEMENTE */}
-            {activeLeaf === "elemente" && elements.length === 0 && (
+            {activeLeaf === "elemente" && elements.length === 0 && !addingElement && (
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 200, color: "#8892a8", padding: 24 }}>
                 <div style={{ fontSize: 32, marginBottom: 8 }}>&#128202;</div>
                 <div style={{ fontSize: 14, fontWeight: 600 }}>Niciun element extras</div>
                 <div style={{ fontSize: 12, marginTop: 4 }}>Uploadează documente client sau folosește Solomon pentru a extrage date</div>
+                {!readOnly && (
+                  <button onClick={() => setAddingElement(true)} className="el-btn el-btn-pri" style={{ marginTop: 12 }}>+ Adaugă element manual</button>
+                )}
+              </div>
+            )}
+            {activeLeaf === "elemente" && elements.length === 0 && addingElement && (
+              <div style={{ padding: 24 }}>
+                <div className="el-add-form">
+                  <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8, color: "#0f172a" }}>Element nou</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
+                    <input placeholder="Cheie (ex: nr_angajati)" value={newElementKey} onChange={e => setNewElementKey(e.target.value)} className="el-input" />
+                    <input placeholder="Etichetă (ex: Număr angajați)" value={newElementLabel} onChange={e => setNewElementLabel(e.target.value)} className="el-input" />
+                  </div>
+                  <input placeholder="Valoare (opțional)" value={newElementValue} onChange={e => setNewElementValue(e.target.value)} onKeyDown={e => { if (e.key === "Enter") handleAddElement(); if (e.key === "Escape") setAddingElement(false); }} className="el-input" style={{ width: "100%", marginBottom: 8 }} />
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button onClick={handleAddElement} className="el-btn el-btn-pri">Salvează</button>
+                    <button onClick={() => { setAddingElement(false); setNewElementKey(""); setNewElementLabel(""); setNewElementValue(""); }} className="el-btn el-btn-sec">Anulează</button>
+                  </div>
+                </div>
               </div>
             )}
             {activeLeaf === "elemente" && elements.length > 0 && (
-              <div className="elemente-layout">
-                <div className="elemente-list">
-                  <div className="completitudine-bar">
-                    <div className="completitudine-top">
-                      <span className="cl-label">Completitudine elemente</span>
-                      <span className="cl-pct" style={{ color: pct(elemFilled, elemTotal) === 100 ? "#059669" : "#2563eb" }}>
-                        {pct(elemFilled, elemTotal)}%
-                      </span>
+              <div className="el-shell">
+                {/* STATS HEADER */}
+                <div className="el-header">
+                  <div className="el-header-top">
+                    <div className="el-stats">
+                      <div className="el-stat"><div className="el-stat-val" style={{ color: "#059669" }}>{elemStats.confirmed}</div><div className="el-stat-lbl">Confirmate</div></div>
+                      <div className="el-stat"><div className="el-stat-val" style={{ color: "#d97706" }}>{elemStats.proposed}</div><div className="el-stat-lbl">Propuse</div></div>
+                      <div className="el-stat"><div className="el-stat-val" style={{ color: "#2563eb" }}>{elemStats.manual}</div><div className="el-stat-lbl">Manual</div></div>
+                      <div className="el-stat"><div className="el-stat-val" style={{ color: "#94a3b8" }}>{elemStats.empty}</div><div className="el-stat-lbl">Goale</div></div>
+                      {elemStats.conflict > 0 && (
+                        <div className="el-stat"><div className="el-stat-val" style={{ color: "#dc2626" }}>{elemStats.conflict}</div><div className="el-stat-lbl">Conflict</div></div>
+                      )}
                     </div>
-                    <div className="progress-track">
-                      <div className="progress-seg bg-emerald-500" style={{ width: `${pct(elements.filter(e => e.status === "confirmat").length, elemTotal) * 100 / 100}%` }} />
-                      <div className="progress-seg bg-amber-500" style={{ width: `${pct(elements.filter(e => e.status === "propus_ai").length, elemTotal) * 100 / 100}%` }} />
-                      <div className="progress-seg bg-red-500 opacity-40" style={{ width: `${pct(elements.filter(e => e.status === "gol").length, elemTotal) * 100 / 100}%` }} />
-                    </div>
-                    <div className="completitudine-legend">
-                      <div className="legend-item"><span className="legend-dot bg-emerald-500" /><span className="li-num">{elements.filter(e => e.status === "confirmat").length}</span> Confirmate</div>
-                      <div className="legend-item"><span className="legend-dot bg-amber-500" /><span className="li-num">{elements.filter(e => e.status === "propus_ai").length}</span> Propuse AI</div>
-                      <div className="legend-item"><span className="legend-dot bg-red-500" /><span className="li-num">{elements.filter(e => e.status === "gol").length}</span> Goale</div>
-                    </div>
-                  </div>
-
-                  {/* GAP 9: Validate-all + Bulk confirm */}
-                  <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-                    <button
-                      style={{ flex: 1, padding: "6px 10px", fontSize: 11, fontWeight: 600, borderRadius: 6, border: "1px solid rgba(0,0,0,.08)", background: "#fff", cursor: "pointer" }}
-                      onClick={async () => {
-                        if (!confirm("Validezi toate elementele cu AI? Poate dura câteva secunde.")) return;
-                        try {
-                          const res = await apiPost<any>(`/api/projects/${projectId}/validate-all`, {});
-                          toast("success", `Validate: ${res.validatedCount} ok, ${res.failedCount} eșuate, ${res.pendingCount} pending`);
-                          const proj = await apiGet<any>(`/api/projects/${projectId}`);
-                          setElements(mapElements(proj.elements || []));
-                        } catch { toast("error", "Eroare la validare"); }
-                      }}
-                      disabled={readOnly}
-                    >
-                      {"\u2713"} Validează toate
-                    </button>
-                    {elements.filter(e => e.status === "propus_ai").length > 0 && (
-                      <button
-                        style={{ flex: 1, padding: "6px 10px", fontSize: 11, fontWeight: 600, borderRadius: 6, border: "1px solid rgba(52,211,153,.3)", background: "rgba(52,211,153,.06)", color: "#059669", cursor: "pointer" }}
-                        onClick={async () => {
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button className="el-btn el-btn-sec" onClick={handleExportCSV}>{"\u2193"} Export CSV</button>
+                      {elemStats.proposed > 0 && (
+                        <button className="el-btn el-btn-ok" onClick={async () => {
                           const proposed = elements.filter(e => e.status === "propus_ai");
                           if (!confirm(`Confirmi ${proposed.length} elemente propuse de AI?`)) return;
                           try {
@@ -3325,204 +3479,239 @@ export default function ProjectViewPage() {
                             const proj = await apiGet<any>(`/api/projects/${projectId}`);
                             setElements(mapElements(proj.elements || []));
                           } catch { toast("error", "Eroare la confirmare"); }
-                        }}
-                        disabled={readOnly}
-                      >
-                        {"\u2713\u2713"} Confirmă toate propuse ({elements.filter(e => e.status === "propus_ai").length})
-                      </button>
-                    )}
-                  </div>
-
-                  <div className="elemente-filter-bar">
-                    <input className="elem-search" placeholder="Caută element..." value={elemSearch} onChange={e => setElemSearch(e.target.value)} />
-                    <div className="fp-group">
-                      <button className={`fp ${elemFilter === "all" ? "on" : ""}`} onClick={() => setElemFilter("all")}>
-                        Toate <span className="fp-count">{elements.length}</span>
-                      </button>
-                      <button className={`fp ${elemFilter === "de_confirmat" ? "on-orange" : ""}`} onClick={() => setElemFilter("de_confirmat")}>
-                        De confirmat <span className="fp-count">{elements.filter(e => e.status === "propus_ai").length}</span>
-                      </button>
-                      <button className={`fp ${elemFilter === "confirmat" ? "on-green" : ""}`} onClick={() => setElemFilter("confirmat")}>
-                        Confirmate <span className="fp-count">{elements.filter(e => e.status === "confirmat").length}</span>
-                      </button>
-                      <button className={`fp ${elemFilter === "gol" ? "on-red" : ""}`} onClick={() => setElemFilter("gol")}>
-                        Goale <span className="fp-count">{elements.filter(e => e.status === "gol").length}</span>
-                      </button>
-                    </div>
-                    {(elemFilter === "de_confirmat" || elemFilter === "src_solomon" || elemFilter === "src_calculated" || elemFilter === "src_manual") && (
-                      <div className="fp-sub-group">
-                        <span className="fp-sub-label">Sursă:</span>
-                        <button className={`fp-sub ${elemFilter === "de_confirmat" ? "active" : ""}`} onClick={() => setElemFilter("de_confirmat")}>
-                          Toate ({elements.filter(e => e.status === "propus_ai").length})
+                        }} disabled={readOnly}>
+                          {"\u2713"} Confirmă toate propuse ({elemStats.proposed})
                         </button>
-                        {elements.some(e => e.status === "propus_ai" && e.source === "solomon") && (
-                          <button className={`fp-sub ${elemFilter === "src_solomon" ? "active" : ""}`} onClick={() => setElemFilter("src_solomon")}>
-                            Solomon ({elements.filter(e => e.status === "propus_ai" && e.source === "solomon").length})
-                          </button>
-                        )}
-                        {elements.some(e => e.status === "propus_ai" && e.source === "calculated") && (
-                          <button className={`fp-sub ${elemFilter === "src_calculated" ? "active" : ""}`} onClick={() => setElemFilter("src_calculated")}>
-                            Calculate ({elements.filter(e => e.status === "propus_ai" && e.source === "calculated").length})
-                          </button>
-                        )}
-                        {elements.some(e => e.status === "propus_ai" && e.source !== "solomon" && e.source !== "calculated") && (
-                          <button className={`fp-sub ${elemFilter === "src_manual" ? "active" : ""}`} onClick={() => setElemFilter("src_manual")}>
-                            Alte surse ({elements.filter(e => e.status === "propus_ai" && e.source !== "solomon" && e.source !== "calculated").length})
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  {(elemFilter === "de_confirmat" || elemFilter === "src_solomon" || elemFilter === "src_calculated" || elemFilter === "src_manual") && filteredElements.some(e => e.status === "propus_ai") && (
-                    <div className="bulk-confirm-bar">
-                      <span className="bc-text">{filteredElements.filter(e => e.status === "propus_ai").length} elemente de confirmat</span>
-                      <button className="bc-btn" onClick={handleBulkConfirm} disabled={bulkConfirming || readOnly}>
-                        {bulkConfirming ? "Se confirmă..." : `✓ Confirmă toate (${filteredElements.filter(e => e.status === "propus_ai").length})`}
-                      </button>
+                      )}
                     </div>
-                  )}
-
-                  <div className="elemente-scroll">
-                    {filteredElements.map(el => (
-                      <div className={`elem-card ${selectedElement === el.id ? "active" : el.status === "propus_ai" ? "warning" : el.status === "gol" ? "pending" : ""}`} key={el.id} onClick={() => setSelectedElement(el.id)}>
-                        <div className="ec-top">
-                          <span className="ec-key">{el.key}</span>
-                          <span className={`ec-status ${el.status}`}>
-                            {el.status === "confirmat" ? "✓ Confirmat" : el.status === "propus_ai" ? "AI Propus" : "Gol"}
-                          </span>
-                          {el.source === "calculated" && el.status !== "confirmat" && (
-                            <span className="text-[9px] font-bold text-violet-500 bg-violet-500/10 px-1.5 py-px rounded-lg">CALC</span>
-                          )}
-                        </div>
-                        <div className="ec-label">{el.label}</div>
-                        <div className={`ec-value ${!el.value ? "missing" : ""}`}>
-                          {el.value || "Necompletat \u2014 Solomon va solicita"}
-                        </div>
-                        {el.sourceLabel && (
-                          <div className="ec-source">
-                            <span className={`source-dot ${el.source}`} />
-                            {el.sourceLabel}
-                          </div>
-                        )}
-                      </div>
-                    ))}
+                  </div>
+                  <div className="el-progress-wrap">
+                    <div className="el-progress">
+                      <div className="el-progress-fill" style={{
+                        width: `${pct(elemStats.confirmed + elemStats.proposed + elemStats.manual, elemStats.total)}%`,
+                        background: `linear-gradient(90deg, #059669 ${pct(elemStats.confirmed, elemStats.total)}%, #d97706 ${pct(elemStats.confirmed, elemStats.total)}%, #d97706 ${pct(elemStats.confirmed + elemStats.proposed, elemStats.total)}%, #2563eb ${pct(elemStats.confirmed + elemStats.proposed, elemStats.total)}%)`,
+                      }} />
+                    </div>
+                    <div className="el-progress-labels">
+                      <span>{elemStats.confirmed + elemStats.proposed + elemStats.manual} / {elemStats.total} completate ({pct(elemStats.confirmed + elemStats.proposed + elemStats.manual, elemStats.total)}%)</span>
+                      <span>{elemStats.empty} rămase</span>
+                    </div>
                   </div>
                 </div>
 
-                {selectedElement && (() => {
-                  const el = elements.find(e => e.id === selectedElement);
-                  if (!el) return null;
-                  return (
-                    <div className="elem-detail">
-                      <div className="ed-header">Detalii element</div>
-                      <div className="ed-field">
-                        <div className="ed-label">Key</div>
-                        <div className="font-mono text-[13px] text-[#94a3b8]">{el.key}</div>
-                      </div>
-                      <div className="ed-field">
-                        <div className="ed-label">Label</div>
-                        <div style={{ fontSize: 15, fontWeight: 600 }}>{el.label}</div>
-                      </div>
-                      <div className="ed-field">
-                        <div className="ed-label">Status</div>
-                        <span className={`ec-status ${el.status}`}>
-                          {el.status === "confirmat" ? "✓ Confirmat" : el.status === "propus_ai" ? "AI Propus" : "Gol"}
-                        </span>
-                      </div>
-                      <div className="ed-field">
-                        <div className="ed-label">Valoare curentă</div>
-                        <div className="ed-val">{el.value || "—"}</div>
-                      </div>
-                      {el.sourceLabel && (
-                        <div className="ed-field">
-                          <div className="ed-label">Sursă</div>
-                          <div className="ec-source" style={{ fontSize: 13 }}>
-                            <span className={`source-dot ${el.source}`} />
-                            {el.sourceLabel}
+                {/* TOOLBAR: search + category pills + status filters */}
+                <div className="el-toolbar">
+                  <div className="el-search-box">
+                    <span className="el-search-icon">{"\uD83D\uDD0D"}</span>
+                    <input type="text" placeholder="Caută element..." value={elemSearch} onChange={e => setElemSearch(e.target.value)} />
+                  </div>
+                  <div className="el-sep" />
+                  <div className={`el-pill ${elemCatFilter === "all" ? "active" : ""}`} onClick={() => setElemCatFilter("all")}>Toate <span className="el-pill-count">{elements.length}</span></div>
+                  {Object.entries(CAT_CONFIG).map(([catKey, cfg]) => catCounts[catKey] ? (
+                    <div key={catKey} className={`el-pill ${elemCatFilter === catKey ? "active" : ""}`} onClick={() => setElemCatFilter(elemCatFilter === catKey ? "all" : catKey)}>
+                      {cfg.label} <span className="el-pill-count">{catCounts[catKey]}</span>
+                    </div>
+                  ) : null)}
+                  <div className="el-sep" />
+                  <div className={`el-pill el-pill-status ${elemStatusFilter === "empty" ? "active" : ""}`} onClick={() => setElemStatusFilter(elemStatusFilter === "empty" ? null : "empty")} style={{ borderColor: "#94a3b8" }}>
+                    {"\u25CB"} Goale
+                  </div>
+                  <div className={`el-pill el-pill-status ${elemStatusFilter === "proposed" ? "active" : ""}`} onClick={() => setElemStatusFilter(elemStatusFilter === "proposed" ? null : "proposed")} style={{ borderColor: "#d97706" }}>
+                    {"\u26A0"} Propuse
+                  </div>
+                  {elemStats.conflict > 0 && (
+                    <div className={`el-pill el-pill-status ${elemStatusFilter === "conflict" ? "active" : ""}`} onClick={() => setElemStatusFilter(elemStatusFilter === "conflict" ? null : "conflict")} style={{ borderColor: "#dc2626" }}>
+                      {"\u26A1"} Conflicte
+                    </div>
+                  )}
+                  {!readOnly && (
+                    <>
+                      <div className="el-sep" />
+                      <button className="el-btn el-btn-pri el-btn-sm" onClick={() => setAddingElement(true)}>+ Adaugă</button>
+                    </>
+                  )}
+                </div>
+
+                {/* ADD ELEMENT FORM */}
+                {addingElement && (
+                  <div className="el-add-form" style={{ margin: "0 24px 0" }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8, color: "#0f172a" }}>Element nou</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
+                      <input placeholder="Cheie (ex: nr_angajati)" value={newElementKey} onChange={e => setNewElementKey(e.target.value)} className="el-input" />
+                      <input placeholder="Etichetă (ex: Număr angajați)" value={newElementLabel} onChange={e => setNewElementLabel(e.target.value)} className="el-input" />
+                    </div>
+                    <input placeholder="Valoare (opțional)" value={newElementValue} onChange={e => setNewElementValue(e.target.value)} onKeyDown={e => { if (e.key === "Enter") handleAddElement(); if (e.key === "Escape") setAddingElement(false); }} className="el-input" style={{ width: "100%", marginBottom: 8 }} />
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button onClick={handleAddElement} className="el-btn el-btn-pri">Salvează</button>
+                      <button onClick={() => { setAddingElement(false); setNewElementKey(""); setNewElementLabel(""); setNewElementValue(""); }} className="el-btn el-btn-sec">Anulează</button>
+                    </div>
+                  </div>
+                )}
+
+                {/* GROUPED ELEMENT ROWS */}
+                <div className="el-scroll">
+                  {groupedElements.map(([cat, items]) => {
+                    const cfg = CAT_CONFIG[cat] || CAT_CONFIG.other;
+                    const filled = items.filter(e => e.status !== "gol").length;
+                    const groupPct = items.length > 0 ? Math.round(filled / items.length * 100) : 0;
+                    const isCollapsed = collapsedGroups[cat];
+                    return (
+                      <div className="el-group" key={cat}>
+                        <div className="el-group-header" onClick={() => setCollapsedGroups(prev => ({ ...prev, [cat]: !prev[cat] }))}>
+                          <span className="el-group-icon">{cfg.icon}</span>
+                          <span className="el-group-name">{cfg.label}</span>
+                          <span className="el-group-count">{filled}/{items.length}</span>
+                          <div className="el-group-progress">
+                            <div className="el-group-bar"><div className="el-group-bar-fill" style={{ width: `${groupPct}%`, background: cfg.color }} /></div>
+                            <span className="el-group-pct">{groupPct}%</span>
                           </div>
+                          <span className="el-group-chevron" style={{ transform: isCollapsed ? "rotate(-90deg)" : undefined }}>{"\u25BE"}</span>
                         </div>
-                      )}
-                      {el.templates.length > 0 && (
-                        <div className="ed-field">
-                          <div className="ed-label">Folosit în template-uri</div>
-                          <div className="text-xs text-[#64748b]">
-                            {el.templates.join(", ")}
+                        {!isCollapsed && (
+                          <div className="el-group-items">
+                            {items.map(el => (
+                              <div className={`el-row ${editingElementId === el.id ? "editing" : ""}`} key={el.id}>
+                                <div className={`el-status-icon ${el.status}`}>
+                                  {el.status === "confirmat" ? "\u2713" : el.status === "propus_ai" ? "\u26A0" : el.status === "conflict" ? "\u26A1" : "\u25CB"}
+                                </div>
+                                <div className="el-info">
+                                  <div className="el-label">{el.label}{el.required && <span className="el-req">*</span>}</div>
+                                  <div className="el-key-text">{el.key}</div>
+                                </div>
+                                <div className="el-value-area">
+                                  {editingElementId === el.id ? (
+                                    <input className="el-edit-input" value={editingElementValue} onChange={e => setEditingElementValue(e.target.value)}
+                                      onBlur={() => handleSaveElementEdit(el.id)}
+                                      onKeyDown={e => { if (e.key === "Enter") handleSaveElementEdit(el.id); if (e.key === "Escape") { setEditingElementId(null); setEditingElementValue(""); } }}
+                                      autoFocus />
+                                  ) : el.status === "conflict" ? (
+                                    <div>
+                                      <span className="el-val conflict">{el.value}</span>
+                                      {el.validationDetails?.conflict && <div style={{ fontSize: 11, color: "#dc2626", marginTop: 2 }}>{"\u26A0"} {el.validationDetails.conflict}</div>}
+                                    </div>
+                                  ) : el.value ? (
+                                    <span className="el-val">{el.value}</span>
+                                  ) : (
+                                    <span className="el-val empty">{"\u2014"} necompletat {"\u2014"}</span>
+                                  )}
+                                </div>
+                                <div className="el-source-area">
+                                  {el.sourceLabel && (
+                                    <span className={`el-src-badge ${el.source === "document_extracted" ? "ocr" : el.source === "solomon" || el.source === "solomon_chat" ? "solomon" : el.source === "manual" || el.source === "consultant_manual" ? "manual" : el.source === "anaf_auto" ? "anaf" : "system"}`}>
+                                      {el.source === "document_extracted" ? "\uD83D\uDCC4" : el.source === "solomon" || el.source === "solomon_chat" ? "\uD83E\uDD16" : el.source === "manual" || el.source === "consultant_manual" ? "\u270F\uFE0F" : el.source === "anaf_auto" ? "\uD83C\uDFDB" : "\u2699"}{" "}{el.sourceLabel}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="el-actions">
+                                  {el.status === "propus_ai" && !readOnly && (
+                                    <button className="el-btn el-btn-ok el-btn-sm" onClick={(ev) => { ev.stopPropagation(); handleConfirmElementApi(el.id); }}>{"\u2713"}</button>
+                                  )}
+                                  {!readOnly && (
+                                    <button className="el-btn el-btn-ghost el-btn-sm" onClick={(ev) => { ev.stopPropagation(); setEditingElementId(el.id); setEditingElementValue(el.value || ""); }}>{"\u270E"}</button>
+                                  )}
+                                  <button className="el-btn el-btn-ghost el-btn-sm" onClick={(ev) => { ev.stopPropagation(); openDetailPanel(el.id); }}>{"\u22EF"}</button>
+                                </div>
+                              </div>
+                            ))}
                           </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* DETAIL SLIDE-OUT PANEL */}
+                {detailPanelId && <div className="el-overlay" onClick={() => setDetailPanelId(null)} />}
+                <div className={`el-detail-panel ${detailPanelId ? "open" : ""}`}>
+                  {(() => {
+                    const el = elements.find(e => e.id === detailPanelId);
+                    if (!el) return null;
+                    return (
+                      <>
+                        <div className="dp-header">
+                          <div className="dp-title">{el.label}</div>
+                          <button className="dp-close" onClick={() => setDetailPanelId(null)}>{"\u2715"}</button>
                         </div>
-                      )}
-                      {/* Constraints from rules & reference tables */}
-                      {elementConstraints.length > 0 && (
-                        <div className="ed-constraints">
-                          <div className="ed-constraints-title">&#128279; Constrângeri ({elementConstraints.length})</div>
-                          {elementConstraints.map((c: any, ci: number) => (
-                            <div className="ed-constraint-card" key={ci}>
-                              <div className="ed-constraint-top">
-                                <span className={`ed-constraint-role ${c.role}`}>
-                                  {c.role === "input" ? "INPUT" : c.role === "output" ? "OUTPUT" : "CONSTRÂNGERE"}
+                        <div className="dp-body">
+                          <div className="dp-field"><div className="dp-field-label">Cheie tehnică</div><div className="dp-field-value dp-mono">{el.key}</div></div>
+                          <div className="dp-field"><div className="dp-field-label">Valoare curentă</div><div className="dp-field-value dp-mono">{el.value || "\u2014 necompletat \u2014"}</div></div>
+                          <div className="dp-field"><div className="dp-field-label">Status</div><div className="dp-field-value">
+                            <span className={`el-status-badge ${el.status}`}>
+                              {el.status === "confirmat" ? "Confirmat" : el.status === "propus_ai" ? "Propus AI" : el.status === "conflict" ? "Conflict" : "Gol"}
+                            </span>
+                          </div></div>
+                          <div className="dp-field"><div className="dp-field-label">Sursă</div><div className="dp-field-value">
+                            {el.sourceLabel ? (
+                              <span className={`el-src-badge ${el.source === "document_extracted" ? "ocr" : el.source === "solomon" || el.source === "solomon_chat" ? "solomon" : el.source === "manual" || el.source === "consultant_manual" ? "manual" : el.source === "anaf_auto" ? "anaf" : "system"}`}>
+                                {el.sourceLabel}
+                              </span>
+                            ) : "\u2014"}
+                            {el.sourceDocName && <span style={{ marginLeft: 6, fontSize: 12, color: "#64748b" }}>{el.sourceDocName}</span>}
+                          </div></div>
+                          <div className="dp-field"><div className="dp-field-label">Obligatoriu</div><div className="dp-field-value">{el.required ? "Da \u2731" : "Nu"}</div></div>
+                          <div className="dp-field"><div className="dp-field-label">Categorie</div><div className="dp-field-value">{CAT_CONFIG[el.category]?.icon} {CAT_CONFIG[el.category]?.label || el.category}</div></div>
+                          {el.validationStatus && (
+                            <div className="dp-field"><div className="dp-field-label">Validare</div><div className="dp-field-value">
+                              <span className={`el-status-badge ${el.validationStatus === "valid" ? "confirmat" : el.validationStatus === "invalid" ? "conflict" : "propus_ai"}`}>
+                                {el.validationStatus === "valid" ? "Valid" : el.validationStatus === "invalid" ? "Invalid" : el.validationStatus === "warning" ? "Atenție" : "Pending"}
+                              </span>
+                            </div></div>
+                          )}
+                          {el.status === "conflict" && el.validationDetails?.conflict && (
+                            <div className="dp-field"><div className="dp-field-label" style={{ color: "#dc2626" }}>{"\u26A0"} Conflict</div><div className="dp-field-value" style={{ color: "#dc2626", fontSize: 14 }}>{el.validationDetails.conflict}</div></div>
+                          )}
+                          {/* Constraints from rules & reference tables */}
+                          {elementConstraints.length > 0 && (
+                            <div className="dp-field">
+                              <div className="dp-field-label">Constrângeri ({elementConstraints.length})</div>
+                              {elementConstraints.map((c: any, ci: number) => (
+                                <div key={ci} style={{ fontSize: 12, color: "#475569", padding: "4px 0", borderBottom: ci < elementConstraints.length - 1 ? "1px solid #f1f5f9" : undefined }}>
+                                  <span style={{ fontSize: 10, fontWeight: 600, padding: "1px 5px", borderRadius: 3, background: c.role === "input" ? "#dbeafe" : c.role === "output" ? "#d1fae5" : "#f1f5f9", color: c.role === "input" ? "#1e40af" : c.role === "output" ? "#065f46" : "#475569", marginRight: 6 }}>
+                                    {c.role === "input" ? "INPUT" : c.role === "output" ? "OUTPUT" : "REF"}
+                                  </span>
+                                  {c.rule?.ruleText || c.rule?.description || c.description || ""}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {/* Edit actions */}
+                          {!readOnly && el.status === "propus_ai" && editingElementId !== el.id && (
+                            <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+                              <button className="el-btn el-btn-ok" onClick={() => handleConfirmElementApi(el.id)}>{"\u2713"} Confirmă</button>
+                              <button className="el-btn el-btn-sec" onClick={() => { setEditingElementId(el.id); setEditingElementValue(el.value || ""); }}>{"\u270E"} Editează</button>
+                            </div>
+                          )}
+                          {editingElementId === el.id && (
+                            <div style={{ marginTop: 16 }}>
+                              <input className="el-edit-input" value={editingElementValue} onChange={e => setEditingElementValue(e.target.value)}
+                                onKeyDown={e => { if (e.key === "Enter") handleSaveElementEdit(el.id); if (e.key === "Escape") { setEditingElementId(null); setEditingElementValue(""); } }}
+                                autoFocus style={{ width: "100%" }} />
+                              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                                <button className="el-btn el-btn-pri" onClick={() => handleSaveElementEdit(el.id)}>{"\u2713"} Salvează</button>
+                                <button className="el-btn el-btn-sec" onClick={() => { setEditingElementId(null); setEditingElementValue(""); }}>{"\u2715"} Anulează</button>
+                              </div>
+                            </div>
+                          )}
+                          {/* History */}
+                          <div className="dp-history">
+                            <div className="dp-history-title">Istoric modificări</div>
+                            {detailHistory.length > 0 ? detailHistory.map((h: any, hi: number) => (
+                              <div className="dp-history-item" key={hi}>
+                                <span className="dp-history-time">{h.changedAt ? new Date(h.changedAt).toLocaleString("ro-RO", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : ""}</span>
+                                <span>
+                                  {h.oldValue && h.newValue ? `${h.oldValue.slice(0, 40)} → ${h.newValue.slice(0, 40)}` : h.newValue ? `Setat: "${h.newValue.slice(0, 60)}"` : "Modificare"}
+                                  {h.changeSource && <em> — {SOURCE_MAP[h.changeSource] || h.changeSource}</em>}
                                 </span>
                               </div>
-                              {c.rule && <div className="ed-constraint-rule">{c.rule.ruleText || c.rule.description}</div>}
-                              {c.description && <div className="text-[11px] text-[#94a3b8] mt-1">{c.description}</div>}
-                              {c.referenceTables && c.referenceTables.length > 0 && (
-                                <div className="ed-constraint-refs">
-                                  {c.referenceTables.map((rt: any, rti: number) => (
-                                    <span key={rti} className="ed-constraint-ref">
-                                      &#128202; {rt.table?.name || "Tabelă referință"}
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                      {el.source === "calculated" && (
-                        <div className="ed-field">
-                          <div className="ed-label">Formula</div>
-                          <div className="text-xs font-mono text-violet-500 bg-violet-500/[0.08] px-2.5 py-1.5 rounded-md border border-violet-500/20">
-                            {el.key === "cofinantare_proprie" && "valoare_totala - ajutor_nerambursabil"}
-                            {el.key === "intensitate_ajutor" && "(ajutor_nerambursabil / valoare_totala) × 100%"}
-                            {el.key === "tva_total" && "valoare_cu_tva - valoare_fara_tva"}
-                            {el.key === "durata_sustenabilitate_end" && "data_finalizare + 3 ani (IMM)"}
-                          </div>
-                          <div className="text-[11px] text-amber-500 mt-1.5 flex items-center gap-1">
-                            ⚠ Verifică valoarea înainte de confirmare
+                            )) : (
+                              <div style={{ fontSize: 13, color: "#94a3b8" }}>Nicio modificare înregistrată</div>
+                            )}
                           </div>
                         </div>
-                      )}
-                      {el.status === "propus_ai" && editingElementId !== el.id && (
-                        <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
-                          <button className="ed-btn" onClick={() => handleConfirmElementApi(el.id)}>✓ Confirmă</button>
-                          <button className="ed-btn border-amber-500 text-amber-500" onClick={() => {
-                            setEditingElementId(el.id);
-                            setEditingElementValue(el.value || "");
-                          }}>&#9998; Editează</button>
-                        </div>
-                      )}
-                      {editingElementId === el.id && (
-                        <div style={{ marginTop: 12 }}>
-                          <input
-                            type="text"
-                            value={editingElementValue}
-                            onChange={(e) => setEditingElementValue(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") handleSaveElementEdit(el.id);
-                              if (e.key === "Escape") { setEditingElementId(null); setEditingElementValue(""); }
-                            }}
-                            autoFocus
-                            className="w-full px-3 py-2 rounded-md border text-sm"
-                            style={{ background: "var(--bg-elevated)", borderColor: "var(--border-active)", color: "var(--text-primary)" }}
-                          />
-                          <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
-                            <button className="ed-btn" onClick={() => handleSaveElementEdit(el.id)}>✓ Salvează</button>
-                            <button className="ed-btn border-red-500 text-red-500" onClick={() => { setEditingElementId(null); setEditingElementValue(""); }}>✕ Anulează</button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
+                      </>
+                    );
+                  })()}
+                </div>
               </div>
             )}
 
@@ -4003,7 +4192,7 @@ export default function ProjectViewPage() {
                             <div key={el.id} className={`sep-row ${el.status}`}>
                               <div className="sep-row-left">
                                 <span className={`sep-row-icon ${el.status}`}>
-                                  {el.status === "confirmat" ? "\u2713" : el.status === "propus_ai" ? "\u26A0" : "\u25CB"}
+                                  {el.status === "confirmat" ? "\u2713" : el.status === "propus_ai" ? "\u26A0" : el.status === "conflict" ? "\u26A1" : "\u25CB"}
                                 </span>
                                 <div className="sep-row-info">
                                   <div className="sep-row-label">{el.label}</div>

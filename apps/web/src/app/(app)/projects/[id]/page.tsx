@@ -1679,7 +1679,7 @@ export default function ProjectViewPage() {
   }
 
   return (
-    <div className="animate-[fadeIn_.2s_ease-out]">
+    <div className="animate-[fadeIn_.2s_ease-out]" style={{ height: "100%" }}>
       <style>{`
         @keyframes fadeIn{from{opacity:0}to{opacity:1}}
         @keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}

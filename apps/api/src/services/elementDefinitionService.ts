@@ -22,7 +22,7 @@ const validationRulesSchema = z.object({
 // ─── TYPES ───
 
 export interface ElementDefInput {
-  guideDocumentId: string;
+  guideDocumentId: string | null;
   organizationId: string;
   elementKey: string;
   displayName: string;
@@ -42,12 +42,21 @@ export interface ElementDefInput {
 // ─── CRUD ───
 
 export async function upsertElementDefinition(input: ElementDefInput) {
-  const existing = await db.query.elementDefinitions.findFirst({
-    where: and(
-      eq(elementDefinitions.elementKey, input.elementKey),
-      eq(elementDefinitions.guideDocumentId, input.guideDocumentId),
-    ),
-  });
+  // Find existing: by (elementKey, guideDocumentId) when guide exists,
+  // or by (elementKey, organizationId) for manual elements without guide
+  const existing = input.guideDocumentId
+    ? await db.query.elementDefinitions.findFirst({
+        where: and(
+          eq(elementDefinitions.elementKey, input.elementKey),
+          eq(elementDefinitions.guideDocumentId, input.guideDocumentId),
+        ),
+      })
+    : await db.query.elementDefinitions.findFirst({
+        where: and(
+          eq(elementDefinitions.elementKey, input.elementKey),
+          eq(elementDefinitions.organizationId, input.organizationId),
+        ),
+      });
 
   if (existing) {
     const [updated] = await db.update(elementDefinitions).set({

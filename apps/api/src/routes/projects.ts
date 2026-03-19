@@ -539,7 +539,7 @@ projectRoutes.post("/:id/elements", async (c) => {
   });
   if (existingByTmpl) return c.json({ error: `Elementul cu cheia „${body.key}" există deja în proiect` }, 409);
 
-  // Try to find or create an elementDefinition for this key
+  // Find or create an elementDefinition for this key (always — so Solomon can reference it)
   let elementDefId: string | null = null;
   const existingDef = await db.query.elementDefinitions.findFirst({
     where: and(
@@ -550,7 +550,7 @@ projectRoutes.post("/:id/elements", async (c) => {
   if (existingDef) {
     elementDefId = existingDef.id;
   } else {
-    // Auto-create elementDefinition so the field is anchored
+    // Find guide document if available (for anchoring)
     const ghiduriFolder = await db.query.documentFolders.findFirst({
       where: and(
         eq(documentFolders.parentId, project.folderId),
@@ -565,20 +565,19 @@ projectRoutes.post("/:id/elements", async (c) => {
       });
       guideDocId = guide?.id ?? null;
     }
-    if (guideDocId) {
-      const [created] = await db.insert(elementDefinitions).values({
-        guideDocumentId: guideDocId,
-        organizationId: auth.organizationId!,
-        elementKey: body.key,
-        displayName: body.label,
-        category: "other",
-        dataType: body.fieldType === "number" ? "number" : body.fieldType === "date" ? "date" : "text",
-        required: false,
-        sourcePriority: ["consultant_manual", "solomon_chat", "document_extracted"],
-        helpText: "[manual] Adăugat manual de consultant.",
-      }).returning();
-      elementDefId = created.id;
-    }
+    // Always create elementDefinition (guideDocId can be null for manual elements)
+    const [created] = await db.insert(elementDefinitions).values({
+      guideDocumentId: guideDocId,
+      organizationId: auth.organizationId!,
+      elementKey: body.key,
+      displayName: body.label,
+      category: "other",
+      dataType: body.fieldType === "number" ? "number" : body.fieldType === "date" ? "date" : "text",
+      required: false,
+      sourcePriority: ["consultant_manual", "solomon_chat", "document_extracted"],
+      helpText: "[manual] Adăugat manual de consultant.",
+    }).returning();
+    elementDefId = created.id;
   }
 
   // Create the project element

@@ -316,7 +316,7 @@ export const rules = pgTable("rules", {
 // Templates map placeholders to these via template_placeholder_mapping.
 export const elementDefinitions = pgTable("element_definitions", {
   id: uuid("id").defaultRandom().primaryKey(),
-  guideDocumentId: uuid("guide_document_id").references(() => documents.id, { onDelete: "cascade" }).notNull(),
+  guideDocumentId: uuid("guide_document_id").references(() => documents.id, { onDelete: "cascade" }),
   organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
   elementKey: varchar("element_key", { length: 255 }).notNull(),
   displayName: varchar("display_name", { length: 500 }).notNull(),

@@ -1676,7 +1676,7 @@ export default function ProjectViewPage() {
         .content-body{flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0}
 
         /* Sumar */
-        .sumar-panel{padding:24px;overflow-y:auto;height:100%}
+        .sumar-panel{padding:24px;overflow-y:auto;flex:1;min-height:0}
         .sumar-progress{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px}
         .sp-card{padding:16px 20px;border-radius:12px;border:1px solid rgba(226,232,240,.8);background:#ffffff}
         .sp-card .sp-val{font-size:24px;font-weight:600;margin-bottom:2px}
@@ -1700,7 +1700,7 @@ export default function ProjectViewPage() {
         .sa-btn.primary:hover{background:#1d4ed8;box-shadow:0 2px 6px rgba(37,99,235,.4)}
 
         /* Eligibility */
-        .elig-panel{padding:24px 32px;max-width:960px;overflow-y:auto;height:100%}
+        .elig-panel{padding:24px 32px;max-width:960px;overflow-y:auto;flex:1;min-height:0}
         .elig-summary{display:flex;gap:16px;margin-bottom:24px}
         .elig-stat{padding:16px 20px;border-radius:12px;border:1px solid rgba(226,232,240,.8);background:#ffffff;flex:1;text-align:center}
         .elig-stat .number{font-size:28px;font-weight:800;font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums}
@@ -1800,7 +1800,7 @@ export default function ProjectViewPage() {
         .rd-empty-desc{font-size:13px;text-align:center;max-width:280px;line-height:1.6}
 
         /* Anexe & Date panel */
-        .anexe-panel{display:grid;grid-template-columns:320px 1fr;height:100%;overflow:hidden}
+        .anexe-panel{display:grid;grid-template-columns:320px 1fr;flex:1;min-height:0;overflow:hidden}
         .anexe-list{overflow-y:auto;border-right:1px solid rgba(226,232,240,.8);padding:16px}
         .anexe-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;text-align:center;color:#64748b}
         .anexe-card{padding:12px;border:1px solid rgba(226,232,240,.8);border-radius:12px;cursor:pointer;transition:all .15s cubic-bezier(.4,0,.2,1);margin-bottom:8px;background:#ffffff}
@@ -1934,7 +1934,7 @@ export default function ProjectViewPage() {
         .ed-btn:hover{background:rgba(52,211,153,.1)}
 
         /* Checklist */
-        .checklist-panel{padding:28px 32px;max-width:960px;overflow-y:auto;height:100%}
+        .checklist-panel{padding:28px 32px;max-width:960px;overflow-y:auto;flex:1;min-height:0}
         .check-progress{display:flex;align-items:center;gap:20px;margin-bottom:24px;padding:22px;border-radius:12px;border:1px solid rgba(226,232,240,.8);background:#ffffff}
         .check-ring{width:80px;height:80px;position:relative;flex-shrink:0}
         .check-ring svg{transform:rotate(-90deg)}
@@ -2237,7 +2237,7 @@ export default function ProjectViewPage() {
         .tv-download:hover{color:#059669}
 
         /* COMPOSE Preview Panel */
-        .compose-preview-panel{display:flex;flex-direction:column;height:100%;overflow:hidden}
+        .compose-preview-panel{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden}
         .compose-preview-header{display:flex;align-items:center;gap:10px;padding:12px 20px;border-bottom:1px solid rgba(226,232,240,.8);background:#ffffff}
         .compose-preview-header h3{margin:0;font-size:13px;font-weight:700;color:#0f172a}
         .compose-model-badge{font-size:10px;font-family:'JetBrains Mono',monospace;padding:2px 8px;border-radius:4px;background:rgba(167,139,250,.1);color:#7c3aed;font-weight:600}
@@ -2283,7 +2283,7 @@ export default function ProjectViewPage() {
         .neemia-empty .ne-label{font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:1px}
         .neemia-empty .ne-desc{font-size:13px;color:#64748b;text-align:center;max-width:280px}
 
-        .coming-soon{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#94a3b8;gap:12px}
+        .coming-soon{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;min-height:0;color:#94a3b8;gap:12px}
         .coming-soon .cs-icon{font-size:48px;opacity:.5}
         .coming-soon .cs-label{font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:1px}
         .coming-soon .cs-desc{font-size:13px;color:#64748b}

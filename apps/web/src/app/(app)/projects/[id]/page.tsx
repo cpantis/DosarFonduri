@@ -831,7 +831,7 @@ export default function ProjectViewPage() {
 
   const handleSolomonUpload = async (file: File) => {
     if (readOnly || !solomonConvId || solomonStreaming) return;
-    setSolomonMessages(prev => [...prev, { role: "user", text: `📎 ${file.name}`, extractions: null }]);
+    setSolomonMessages(prev => [...prev, { role: "user", text: file.name, extractions: null }]);
     setSolomonStreaming(true);
 
     try {
@@ -1679,7 +1679,7 @@ export default function ProjectViewPage() {
   }
 
   return (
-    <div className="animate-[fadeIn_.2s_ease-out]" style={{ height: "100%" }}>
+    <div className="animate-[fadeIn_.2s_ease-out]">
       <style>{`
         @keyframes fadeIn{from{opacity:0}to{opacity:1}}
         @keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
@@ -1688,7 +1688,7 @@ export default function ProjectViewPage() {
         .lock-banner .lb-icon{font-size:18px}
         .lock-banner .lb-name{font-weight:700;color:#d97706}
         .lock-banner .lb-time{font-size:11px;color:#94a3b8;margin-left:auto;font-family:'JetBrains Mono',monospace}
-        .pv-container{display:flex;flex-direction:column;height:100%;overflow:hidden;background:#ffffff}
+        .pv-container{display:flex;flex-direction:column;height:100vh;overflow:hidden;background:#ffffff}
 
         .pv-project-header{padding:10px 24px;background:#ffffff;display:flex;align-items:center;gap:8px;border-bottom:1px solid rgba(226,232,240,.8);flex-shrink:0;min-height:44px}
         .pv-breadcrumb{font-size:13px;color:#64748b;display:flex;align-items:center;gap:6px}
@@ -1709,7 +1709,7 @@ export default function ProjectViewPage() {
         .pv-tab-badge.green{background:rgba(52,211,153,.12);color:#059669}
         .pv-tab-badge.red{background:rgba(248,113,113,.1);color:#dc2626}
 
-        .main-content{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+        .main-content{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;min-height:0}
         .content-body{flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0}
 
         /* Sumar */
@@ -2041,7 +2041,7 @@ export default function ProjectViewPage() {
 
         /* Solomon Chat */
         .solomon-layout{display:flex;flex:1;overflow:hidden;background:#ffffff;min-height:0}
-        .solomon-chat{flex:1;display:flex;flex-direction:column;min-width:0;overflow:hidden;position:relative;background:#ffffff}
+        .solomon-chat{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden;position:relative;background:#ffffff}
         .solomon-chat.drag-active{outline:2px dashed #4d8bff;outline-offset:-4px;border-radius:8px}
         .solomon-drop-overlay{position:absolute;inset:0;background:rgba(77,139,255,.08);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:20;pointer-events:none;border-radius:8px}
         .solomon-drop-icon{font-size:40px;margin-bottom:8px}
@@ -3868,7 +3868,7 @@ export default function ProjectViewPage() {
                         <textarea
                           className="chat-input"
                           data-solomon-input
-                          placeholder="Scrie detalii despre proiect, lipește date, sau întreabă..."
+                          placeholder="Scrie detalii despre proiect, lipește date sau poze, sau întreabă..."
                           value={solomonInput}
                           rows={1}
                           onChange={e => {
@@ -3881,6 +3881,22 @@ export default function ProjectViewPage() {
                               e.preventDefault();
                               handleSolomonSend();
                               (e.target as HTMLTextAreaElement).style.height = "auto";
+                            }
+                          }}
+                          onPaste={e => {
+                            const items = e.clipboardData?.items;
+                            if (!items) return;
+                            for (let i = 0; i < items.length; i++) {
+                              if (items[i].type.startsWith("image/")) {
+                                e.preventDefault();
+                                const blob = items[i].getAsFile();
+                                if (blob) {
+                                  const ext = blob.type === "image/png" ? "png" : "jpg";
+                                  const file = new File([blob], `clipboard_${Date.now()}.${ext}`, { type: blob.type });
+                                  handleSolomonUpload(file);
+                                }
+                                return;
+                              }
                             }
                           }}
                         />

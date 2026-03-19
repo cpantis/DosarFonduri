@@ -994,10 +994,9 @@ export default function ProjectViewPage() {
             source: "solomon",
             confirmed: true,
           });
-          setElements(prev => prev.map(e => e.id === matchingEl!.id
-            ? { ...e, value: ext.value, source: "solomon", sourceLabel: "Solomon", status: "confirmat" as const, confidence: 100 }
-            : e
-          ));
+          // Re-fetch full project to get updated validation, status, etc.
+          const proj = await apiGet<any>(`/api/projects/${projectId}`);
+          setElements(mapElements(proj.elements || []));
 
           // Cross-validate against reference tables
           apiPost("/api/reference/validate-element", {
@@ -1043,10 +1042,9 @@ export default function ProjectViewPage() {
           source: "solomon",
           confirmed: true,
         });
-        setElements(prev => prev.map(e => e.id === matchingEl!.id
-          ? { ...e, value: el.value, source: "solomon", sourceLabel: "Solomon", status: "confirmat" as const, confidence: 100 }
-          : e
-        ));
+        // Re-fetch to get full updated state (validation, etc.)
+        const proj = await apiGet<any>(`/api/projects/${projectId}`);
+        setElements(mapElements(proj.elements || []));
       } catch (err) {
         console.error("Failed to persist Solomon element confirmation:", err);
         toast("error", "Eroare la confirmarea elementului");
@@ -1573,7 +1571,9 @@ export default function ProjectViewPage() {
         value: el?.value || undefined,
         confirmed: true,
       });
-      setElements(prev => prev.map(e => e.id === elId ? { ...e, status: "confirmat" as const, confidence: 100 } : e));
+      // Re-fetch to get full updated state (validation cascade, etc.)
+      const proj = await apiGet<any>(`/api/projects/${projectId}`);
+      setElements(mapElements(proj.elements || []));
     } catch (err) {
       console.error("Confirm element failed:", err);
       toast("error", "Eroare la confirmarea elementului");
@@ -1585,11 +1585,11 @@ export default function ProjectViewPage() {
     try {
       await apiPut(`/api/projects/${projectId}/elements/${elId}`, {
         value: editingElementValue,
-        source: "manual",
+        source: "consultant_manual",
       });
-      setElements(prev => prev.map(e =>
-        e.id === elId ? { ...e, value: editingElementValue, source: "manual", sourceLabel: "Completare manuală", status: "propus_ai" as const } : e,
-      ));
+      // Re-fetch to get full updated state (validation cascade updates status correctly)
+      const proj = await apiGet<any>(`/api/projects/${projectId}`);
+      setElements(mapElements(proj.elements || []));
       setEditingElementId(null);
       setEditingElementValue("");
     } catch (err) {
@@ -1766,11 +1766,9 @@ export default function ProjectViewPage() {
       await apiPut(`/api/projects/${projectId}/elements-bulk/confirm`, {
         elementIds: toConfirm.map(e => e.id),
       });
-      setElements(prev => prev.map(e =>
-        toConfirm.some(tc => tc.id === e.id)
-          ? { ...e, status: "confirmat" as const, confidence: 100 }
-          : e
-      ));
+      // Re-fetch full state
+      const proj = await apiGet<any>(`/api/projects/${projectId}`);
+      setElements(mapElements(proj.elements || []));
     } catch (err) {
       console.error("Bulk confirm failed:", err);
     } finally {
@@ -2303,6 +2301,7 @@ export default function ProjectViewPage() {
         .sep-row-icon{font-size:12px;flex-shrink:0;width:16px;text-align:center;margin-top:1px}
         .sep-row-icon.confirmat{color:#059669}
         .sep-row-icon.propus_ai,.sep-row-icon.proposed{color:#d97706}
+        .sep-row-icon.conflict{color:#dc2626}
         .sep-row-icon.gol{color:#cbd5e1;font-size:10px}
         .sep-row-info{flex:1;min-width:0}
         .sep-row-label{font-size:12px;color:#64748b;line-height:1.3}
@@ -4193,7 +4192,7 @@ export default function ProjectViewPage() {
                             <div key={el.id} className={`sep-row ${el.status}`}>
                               <div className="sep-row-left">
                                 <span className={`sep-row-icon ${el.status}`}>
-                                  {el.status === "confirmat" ? "\u2713" : el.status === "propus_ai" ? "\u26A0" : "\u25CB"}
+                                  {el.status === "confirmat" ? "\u2713" : el.status === "propus_ai" ? "\u26A0" : el.status === "conflict" ? "\u26A1" : "\u25CB"}
                                 </span>
                                 <div className="sep-row-info">
                                   <div className="sep-row-label">{el.label}</div>

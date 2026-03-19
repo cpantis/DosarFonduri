@@ -1679,7 +1679,7 @@ export default function ProjectViewPage() {
   }
 
   return (
-    <div className="animate-[fadeIn_.2s_ease-out]">
+    <div className="animate-[fadeIn_.2s_ease-out]" style={{ height: "100%" }}>
       <style>{`
         @keyframes fadeIn{from{opacity:0}to{opacity:1}}
         @keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
@@ -2102,8 +2102,8 @@ export default function ProjectViewPage() {
         .chat-btn{width:36px;height:36px;border-radius:50%;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s cubic-bezier(.4,0,.2,1);flex-shrink:0}
         .chat-btn.send{background:#2563eb;color:#ffffff;font-size:16px}
         .chat-btn.send:hover{background:#1d4ed8}
-        .chat-btn.upload-btn{background:transparent;color:#94a3b8;border:none;font-size:16px}
-        .chat-btn.upload-btn:hover{color:#0f172a}
+        .chat-btn.upload-btn{background:transparent;color:#cbd5e1;border:none;width:32px;height:32px}
+        .chat-btn.upload-btn:hover{color:#64748b}
         .solomon-elements-panel{width:300px;min-width:260px;border-left:1px solid rgba(226,232,240,.8);background:#f8fafc;display:flex;flex-direction:column;overflow:hidden}
         .sep-header{padding:16px 16px 12px;border-bottom:1px solid rgba(226,232,240,.8);display:flex;flex-direction:column;gap:8px}
         .sep-header-top{display:flex;align-items:center;justify-content:space-between}
@@ -3863,7 +3863,7 @@ export default function ProjectViewPage() {
                           }}
                         />
                         <button className="chat-btn upload-btn" title="Upload document" onClick={() => solomonFileRef.current?.click()} disabled={solomonStreaming || readOnly}>
-                          &#128206;
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
                         </button>
                         <textarea
                           className="chat-input"
@@ -3885,8 +3885,8 @@ export default function ProjectViewPage() {
                           }}
                         />
                         {solomonStreaming ? (
-                          <button className="chat-btn send" onClick={handleSolomonStop} title="Oprește generarea" style={{ background: "#dc2626" }}>
-                            &#9632;
+                          <button className="chat-btn send" onClick={handleSolomonStop} title="Oprește generarea" style={{ background: "#64748b" }}>
+                            <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="1" y="1" width="12" height="12" rx="2.5"/></svg>
                           </button>
                         ) : (
                           <button className="chat-btn send" onClick={handleSolomonSend}>

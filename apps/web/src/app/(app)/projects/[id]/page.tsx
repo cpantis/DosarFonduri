@@ -1079,20 +1079,34 @@ export default function ProjectViewPage() {
     }
   };
 
-  const escapeHtml = (str: string): string => {
-    return str
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#039;");
+  const cleanSolomonText = (text: string): string => {
+    // Strip internal markup that backend embeds (ELEMENTS_JSON, METADATA_JSON blocks)
+    let cleaned = text
+      .replace(/<!--ELEMENTS_JSON-->[\s\S]*?<!--\/ELEMENTS_JSON-->/g, "")
+      .replace(/<!--METADATA_JSON-->[\s\S]*?<!--\/METADATA_JSON-->/g, "")
+      // Also handle cases where markers appear without proper closing
+      .replace(/<!--ELEMENTS_JSON-->[\s\S]*/g, "")
+      .replace(/<!--METADATA_JSON-->[\s\S]*/g, "")
+      // Strip any remaining HTML comment blocks
+      .replace(/<!--[^>]*-->/g, "")
+      // Clean up JSON artifacts that may leak (e.g. ELEMENTS_JSON{...} patterns)
+      .replace(/ELEMENTS_JSON\{[\s\S]*?\}/g, "")
+      .replace(/METADATA_JSON\{[\s\S]*?\}/g, "")
+      // Strip standalone HTML entities that result from raw JSON in text
+      .replace(/&lt;!--[\s\S]*?--&gt;/g, "")
+      .replace(/&lt;!--[\s\S]*/g, "")
+      .trim();
+    // Remove trailing whitespace / newlines from cleanup
+    cleaned = cleaned.replace(/\n{3,}/g, "\n\n").trim();
+    return cleaned;
   };
 
   const renderMsgText = (text: string) => {
-    const escaped = escapeHtml(text);
-    return escaped.split(/(\*\*.*?\*\*)/).map((part, i) => {
+    const cleaned = cleanSolomonText(text);
+    // React auto-escapes text content, so NO manual escapeHtml needed
+    return cleaned.split(/(\*\*.*?\*\*)/).map((part, i) => {
       if (part.startsWith("**") && part.endsWith("**")) {
-        return <span key={i} className="msg-bold">{part.slice(2, -2)}</span>;
+        return <strong key={i} style={{ color: "#0f172a", fontWeight: 500 }}>{part.slice(2, -2)}</strong>;
       }
       return part;
     });
@@ -3691,8 +3705,8 @@ export default function ProjectViewPage() {
                                 return (
                                   <div key={extIdx} className={`extraction-card ${state || ""}`}>
                                     <div className="exc-top">
-                                      <span className="exc-label">{state === "confirmed" ? `\u2713 ${ext.label}` : ext.label}</span>
-                                      <span className="exc-confidence">{ext.confidence >= 90 ? "confirmat" : `conf. ${ext.confidence}%`}</span>
+                                      <span className="exc-label">{state === "confirmed" ? "\u2713 " : ""}{ext.label || ext.key || "Element"}</span>
+                                      <span className="exc-confidence">{ext.source || (ext.confidence >= 0.9 ? "confirmat automat" : ext.confidence > 0 ? `conf. ${Math.round(ext.confidence * 100)}%` : "")}</span>
                                     </div>
                                     {editingExtraction === k ? (
                                       <input
@@ -3731,7 +3745,30 @@ export default function ProjectViewPage() {
                                         style={{ width: "100%", background: "#fff", border: "1px solid #2563eb", borderRadius: 6, padding: "4px 8px", fontSize: 13, fontFamily: "var(--font-mono, monospace)" }}
                                       />
                                     ) : (
-                                      <div className="exc-value">{ext.value}</div>
+                                      <div className="exc-value">{(() => {
+                                        // Format JSON values for readability
+                                        const v = ext.value;
+                                        if (!v) return "-";
+                                        if (typeof v === "string" && v.startsWith("[")) {
+                                          try {
+                                            const arr = JSON.parse(v);
+                                            if (Array.isArray(arr)) {
+                                              return arr.map((item: any) =>
+                                                typeof item === "object"
+                                                  ? Object.entries(item).map(([k2, v2]) => `${k2}: ${v2}`).join(", ")
+                                                  : String(item)
+                                              ).join(" | ");
+                                            }
+                                          } catch { /* not JSON */ }
+                                        }
+                                        if (typeof v === "string" && v.startsWith("{")) {
+                                          try {
+                                            const obj = JSON.parse(v);
+                                            return Object.entries(obj).map(([k2, v2]) => `${k2}: ${v2}`).join(", ");
+                                          } catch { /* not JSON */ }
+                                        }
+                                        return v;
+                                      })()}</div>
                                     )}
                                     {!state ? (
                                       <div className="exc-actions">

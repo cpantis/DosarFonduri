@@ -2094,16 +2094,18 @@ export default function ProjectViewPage() {
         .confirm-all-bar span{font-size:13px;color:#2563eb;font-weight:500}
         .chat-timestamp{font-size:10px;color:#94a3b8;margin-top:4px}
         .chat-input-area{padding:16px 20px;border-top:1px solid rgba(226,232,240,.8);background:#ffffff}
-        .chat-input-inner{max-width:720px;margin:0 auto}
-        .chat-input-row{display:flex;gap:8px;align-items:flex-end;background:#ffffff;border:1px solid rgba(226,232,240,.8);border-radius:20px;padding:10px 12px 10px 16px;transition:border-color .15s}
+        .chat-input-inner{max-width:760px;margin:0 auto}
+        .chat-input-wrapper{display:flex;gap:10px;align-items:flex-end;max-width:720px;margin:0 auto;width:100%}
+        .chat-attach-btn{width:36px;height:36px;border-radius:50%;border:1px solid rgba(226,232,240,.8);background:#ffffff;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#94a3b8;transition:all .15s cubic-bezier(.4,0,.2,1);flex-shrink:0}
+        .chat-attach-btn:hover{color:#475569;border-color:#cbd5e1;background:#f8fafc}
+        .chat-attach-btn:disabled{opacity:.4;cursor:not-allowed}
+        .chat-input-row{display:flex;gap:8px;align-items:flex-end;background:#ffffff;border:1px solid rgba(226,232,240,.8);border-radius:20px;padding:10px 12px 10px 16px;transition:border-color .15s;flex:1;min-width:0}
         .chat-input-row:focus-within{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.1)}
         .chat-input{flex:1;padding:8px 10px;border-radius:8px;border:none;background:transparent;color:#0f172a;font-size:14px;font-family:'Inter',system-ui,sans-serif;line-height:1.5;resize:none;outline:none;min-height:36px;max-height:160px;overflow-y:auto}
         .chat-input::placeholder{color:#94a3b8}
         .chat-btn{width:36px;height:36px;border-radius:50%;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s cubic-bezier(.4,0,.2,1);flex-shrink:0}
         .chat-btn.send{background:#2563eb;color:#ffffff;font-size:16px}
         .chat-btn.send:hover{background:#1d4ed8}
-        .chat-btn.upload-btn{background:transparent;color:#cbd5e1;border:none;width:32px;height:32px}
-        .chat-btn.upload-btn:hover{color:#64748b}
         .solomon-elements-panel{width:300px;min-width:260px;border-left:1px solid rgba(226,232,240,.8);background:#f8fafc;display:flex;flex-direction:column;overflow:hidden}
         .sep-header{padding:16px 16px 12px;border-bottom:1px solid rgba(226,232,240,.8);display:flex;flex-direction:column;gap:8px}
         .sep-header-top{display:flex;align-items:center;justify-content:space-between}
@@ -3850,65 +3852,67 @@ export default function ProjectViewPage() {
                   {/* Input area */}
                   <div className="chat-input-area">
                     <div className="chat-input-inner">
-                      <div className="chat-input-row">
-                        <input
-                          ref={solomonFileRef}
-                          type="file"
-                          accept=".pdf,.docx,.xlsx,.doc,.png,.jpg,.jpeg"
-                          style={{ display: "none" }}
-                          onChange={e => {
-                            const file = e.target.files?.[0];
-                            if (file) handleSolomonUpload(file);
-                            e.target.value = "";
-                          }}
-                        />
-                        <button className="chat-btn upload-btn" title="Upload document" onClick={() => solomonFileRef.current?.click()} disabled={solomonStreaming || readOnly}>
-                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+                      <input
+                        ref={solomonFileRef}
+                        type="file"
+                        accept=".pdf,.docx,.xlsx,.doc,.png,.jpg,.jpeg"
+                        style={{ display: "none" }}
+                        onChange={e => {
+                          const file = e.target.files?.[0];
+                          if (file) handleSolomonUpload(file);
+                          e.target.value = "";
+                        }}
+                      />
+                      <div className="chat-input-wrapper">
+                        <button className="chat-attach-btn" title="Atașează document sau imagine" onClick={() => solomonFileRef.current?.click()} disabled={solomonStreaming || readOnly}>
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
                         </button>
-                        <textarea
-                          className="chat-input"
-                          data-solomon-input
-                          placeholder="Scrie detalii despre proiect, lipește date sau poze, sau întreabă..."
-                          value={solomonInput}
-                          rows={1}
-                          onChange={e => {
-                            setSolomonInput(e.target.value);
-                            e.target.style.height = "auto";
-                            e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
-                          }}
-                          onKeyDown={e => {
-                            if (e.key === "Enter" && !e.shiftKey) {
-                              e.preventDefault();
-                              handleSolomonSend();
-                              (e.target as HTMLTextAreaElement).style.height = "auto";
-                            }
-                          }}
-                          onPaste={e => {
-                            const items = e.clipboardData?.items;
-                            if (!items) return;
-                            for (let i = 0; i < items.length; i++) {
-                              if (items[i].type.startsWith("image/")) {
+                        <div className="chat-input-row">
+                          <textarea
+                            className="chat-input"
+                            data-solomon-input
+                            placeholder="Scrie detalii despre proiect, lipește date sau poze, sau întreabă..."
+                            value={solomonInput}
+                            rows={1}
+                            onChange={e => {
+                              setSolomonInput(e.target.value);
+                              e.target.style.height = "auto";
+                              e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
+                            }}
+                            onKeyDown={e => {
+                              if (e.key === "Enter" && !e.shiftKey) {
                                 e.preventDefault();
-                                const blob = items[i].getAsFile();
-                                if (blob) {
-                                  const ext = blob.type === "image/png" ? "png" : "jpg";
-                                  const file = new File([blob], `clipboard_${Date.now()}.${ext}`, { type: blob.type });
-                                  handleSolomonUpload(file);
-                                }
-                                return;
+                                handleSolomonSend();
+                                (e.target as HTMLTextAreaElement).style.height = "auto";
                               }
-                            }
-                          }}
-                        />
-                        {solomonStreaming ? (
-                          <button className="chat-btn send" onClick={handleSolomonStop} title="Oprește generarea" style={{ background: "#64748b" }}>
-                            <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="1" y="1" width="12" height="12" rx="2.5"/></svg>
-                          </button>
-                        ) : (
-                          <button className="chat-btn send" onClick={handleSolomonSend}>
-                            &#10148;
-                          </button>
-                        )}
+                            }}
+                            onPaste={e => {
+                              const items = e.clipboardData?.items;
+                              if (!items) return;
+                              for (let i = 0; i < items.length; i++) {
+                                if (items[i].type.startsWith("image/")) {
+                                  e.preventDefault();
+                                  const blob = items[i].getAsFile();
+                                  if (blob) {
+                                    const ext = blob.type === "image/png" ? "png" : "jpg";
+                                    const file = new File([blob], `clipboard_${Date.now()}.${ext}`, { type: blob.type });
+                                    handleSolomonUpload(file);
+                                  }
+                                  return;
+                                }
+                              }
+                            }}
+                          />
+                          {solomonStreaming ? (
+                            <button className="chat-btn send" onClick={handleSolomonStop} title="Oprește generarea" style={{ background: "#64748b" }}>
+                              <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="1" y="1" width="12" height="12" rx="2.5"/></svg>
+                            </button>
+                          ) : (
+                            <button className="chat-btn send" onClick={handleSolomonSend}>
+                              &#10148;
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>

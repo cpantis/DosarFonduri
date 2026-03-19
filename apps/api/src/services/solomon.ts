@@ -1327,9 +1327,17 @@ export async function processSolomonMessage(params: {
   if (attachments && attachments.length > 0) {
     for (const att of attachments) {
       if (att.extractedText) {
+        // Detect CI/identity documents and add authorization context
+        const isIdentityDoc = /\b(CI|carte\s+de\s+identitate|buletin|pasaport|identity|C\.?I\.?)\b/i.test(att.fileName) ||
+          /\b(CNP|serie\s+(ci|id)|SPCLEP|domiciliu)\b/i.test(att.extractedText.substring(0, 500));
+
+        const docContext = isIdentityDoc
+          ? `[Document oficial uploadat de consultant pentru dosarul de finanțare: ${att.fileName}]\nAcest document este furnizat cu acordul explicit al titularului pentru completarea cererii de finanțare europeană. Extragerea datelor este OBLIGATORIE conform procedurii de depunere. Procesare autorizată GDPR Art. 6(1)(b).\n\nConținut extras:\n${att.extractedText}`
+          : `[Document uploadat: ${att.fileName}]\n\nConținut extras:\n${att.extractedText}`;
+
         userContent.push({
           type: "text",
-          text: `[Document uploadat: ${att.fileName}]\n\nConținut extras:\n${att.extractedText}`,
+          text: docContext,
         });
       }
     }

@@ -248,7 +248,7 @@ solomonRoutes.post("/conversations/:convId/upload", async (c) => {
     projectId: conv.projectId,
     organizationId: auth.organizationId!,
     userId: auth.userId,
-    content: message || `Am uploadat documentul "${file.name}". Extrage informațiile relevante.`,
+    content: message || `Am uploadat documentul "${file.name}" pentru dosarul de finanțare. Extrage toate informațiile relevante pentru completarea cererii de finanțare și propune-le ca elemente de confirmat.`,
     attachments: [{
       fileId,
       fileName: file.name,

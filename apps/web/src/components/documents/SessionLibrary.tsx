@@ -1,0 +1,667 @@
+"use client";
+
+import { useState, useEffect, useCallback } from "react";
+import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api";
+import { Tabs } from "@/components/ui/Tabs";
+
+/* ══════════════════════════════════════════
+   TYPES (matching GET /api/documents/session/:folderId/library)
+   ══════════════════════════════════════════ */
+
+interface SourceDoc {
+  name: string;
+  fileType: string;
+}
+
+interface LibRule {
+  id: string;
+  type: "fixed" | "interpreted";
+  ruleKey: string | null;
+  category: string | null;
+  description: string;
+  condition: any;
+  sourcePage: number | null;
+  sourceText: string | null;
+  confidence: string | null;
+  needsReview: boolean;
+  validated: boolean;
+  sourceDocument: SourceDoc | null;
+}
+
+interface LibScoring {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  maxPoints: string;
+  evaluationLogic: {
+    type: "lookup" | "range" | "boolean" | "formula";
+    elementKey?: string;
+    referenceTableId?: string;
+    lookupColumn?: string;
+    ranges?: Array<{ min?: number; max?: number; points: number }>;
+    formula?: string;
+  } | null;
+  category: string | null;
+  sortOrder: number | null;
+  sourceDocument: SourceDoc | null;
+}
+
+interface LibElement {
+  id: string;
+  elementKey: string;
+  displayName: string;
+  category: string;
+  dataType: string;
+  unit: string | null;
+  required: boolean;
+  helpText: string | null;
+  mappingCount: number;
+  mappedTemplates: string[];
+  sourceDocument: SourceDoc | null;
+}
+
+interface LibTable {
+  id: string;
+  name: string;
+  description: string | null;
+  tableType: string;
+  schema: Array<{ key: string; label: string; type: string }> | null;
+  data: Array<Record<string, any>> | null;
+  rowCount: number;
+  columnCount: number;
+  sourcePage: number | null;
+  validated: boolean;
+  sourceDocument: SourceDoc | null;
+}
+
+interface LibChecklist {
+  id: string;
+  name: string;
+  category: string;
+  source: string;
+  sourceRuleId: string | null;
+  templateId: string | null;
+  templateName: string | null;
+  notes: string | null;
+  sortOrder: number | null;
+}
+
+interface LibraryData {
+  sessionName: string;
+  rules: { items: LibRule[]; total: number; fixed: number; interpreted: number; categories: Record<string, number> };
+  scoring: { items: LibScoring[]; total: number };
+  elements: { items: LibElement[]; total: number; mapped: number; unmapped: number };
+  tables: { items: LibTable[]; total: number };
+  checklist: { items: LibChecklist[]; total: number; categories: Record<string, number> };
+}
+
+/* ══════════════════════════════════════════
+   COMPONENT
+   ══════════════════════════════════════════ */
+
+export function SessionLibrary({ folderId }: { folderId: string }) {
+  const [data, setData] = useState<LibraryData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState("rules");
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await apiGet<LibraryData>(`/api/documents/session/${folderId}/library`);
+      setData(result);
+    } catch (e: any) {
+      setError(e.message || "Eroare la incarcarea bibliotecii");
+    } finally {
+      setLoading(false);
+    }
+  }, [folderId]);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  if (loading) return <LibrarySkeleton />;
+  if (error) return (
+    <div className="flex flex-col items-center justify-center flex-1 gap-3 p-8 text-center">
+      <span style={{ fontSize: 36, opacity: 0.4 }}>{"\u26A0\uFE0F"}</span>
+      <div className="text-sm font-semibold text-slate-900">{error}</div>
+      <button onClick={fetchData} className="text-xs font-semibold text-blue-600 hover:text-blue-700">Reincearca</button>
+    </div>
+  );
+  if (!data) return null;
+
+  const tabs = [
+    { key: "rules", label: "Reguli", icon: "\u{1F6E1}", count: data.rules.total },
+    { key: "scoring", label: "Scoring", icon: "\u{1F3AF}", count: data.scoring.total },
+    { key: "elements", label: "Elemente", icon: "\u{1F9E9}", count: data.elements.total },
+    { key: "tables", label: "Tabele", icon: "\u{1F4CA}", count: data.tables.total },
+    { key: "checklist", label: "Checklist", icon: "\u2705", count: data.checklist.total },
+  ];
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden" style={{ background: "#f8fafc" }}>
+      {/* Header */}
+      <div className="px-5 pt-4 pb-2 flex-shrink-0">
+        <div className="flex items-center gap-2 mb-1">
+          <span style={{ fontSize: 18 }}>{"\u{1F4DA}"}</span>
+          <h2 className="text-[15px] font-extrabold text-slate-900">Biblioteca Sesiune</h2>
+        </div>
+        <p className="text-[11px] text-slate-500">{data.sessionName} — date agregate din toate ghidurile si template-urile</p>
+      </div>
+
+      {/* Tabs */}
+      <div className="px-5 flex-shrink-0">
+        <Tabs tabs={tabs} active={activeTab} onChange={setActiveTab} />
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto px-5 py-3" style={{ scrollbarWidth: "thin" }}>
+        {activeTab === "rules" && <RulesTab rules={data.rules} />}
+        {activeTab === "scoring" && <ScoringTab scoring={data.scoring} />}
+        {activeTab === "elements" && <ElementsTab elements={data.elements} />}
+        {activeTab === "tables" && <TablesTab tables={data.tables} />}
+        {activeTab === "checklist" && <ChecklistTab checklist={data.checklist} folderId={folderId} onRefresh={fetchData} />}
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════
+   TAB: REGULI
+   ══════════════════════════════════════════ */
+
+function RulesTab({ rules }: { rules: LibraryData["rules"] }) {
+  const [filter, setFilter] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  const categories = Object.entries(rules.categories).sort((a, b) => b[1] - a[1]);
+  const filtered = filter ? rules.items.filter(r => (r.category || "other") === filter) : rules.items;
+
+  const toggle = (id: string) => {
+    setExpanded(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  return (
+    <div className="flex flex-col gap-3">
+      {/* Summary pills */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <Pill active={!filter} onClick={() => setFilter(null)} label="Toate" count={rules.total} />
+        <Pill active={filter === "_fixed"} onClick={() => setFilter(filter === "_fixed" ? null : "_fixed")} label="Fixe" count={rules.fixed} color="#34d399" />
+        <Pill active={filter === "_interpreted"} onClick={() => setFilter(filter === "_interpreted" ? null : "_interpreted")} label="Interpretate" count={rules.interpreted} color="#fbbf24" />
+        <span className="w-px h-4 bg-slate-200 mx-1" />
+        {categories.map(([cat, count]) => (
+          <Pill key={cat} active={filter === cat} onClick={() => setFilter(filter === cat ? null : cat)} label={cat} count={count} />
+        ))}
+      </div>
+
+      {/* Cards */}
+      {(filter === "_fixed" ? rules.items.filter(r => r.type === "fixed")
+        : filter === "_interpreted" ? rules.items.filter(r => r.type === "interpreted")
+        : filtered
+      ).map(rule => (
+        <div key={rule.id} className="rounded-xl border border-slate-200 bg-white transition-all hover:border-slate-300" style={{ animation: "docSlideIn .25s ease both" }}>
+          <button className="w-full text-left px-4 py-3 flex items-start gap-3" onClick={() => toggle(rule.id)}>
+            <span className="text-[10px] text-slate-400 mt-1 flex-shrink-0 transition-transform" style={{ transform: expanded.has(rule.id) ? "rotate(90deg)" : "none" }}>{"\u25B6"}</span>
+            <div className="flex-1 min-w-0">
+              <div className="text-[13px] font-semibold text-slate-900 leading-snug">{rule.description}</div>
+              <div className="flex items-center gap-2 mt-1 flex-wrap">
+                <TypeBadge type={rule.type} />
+                {rule.category && <span className="text-[10px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">{rule.category}</span>}
+                {rule.sourcePage != null && <span className="text-[10px] font-mono text-slate-400">p.{rule.sourcePage}</span>}
+                {rule.confidence && <ConfidenceBar value={parseFloat(rule.confidence)} />}
+              </div>
+            </div>
+          </button>
+          {expanded.has(rule.id) && (
+            <div className="px-4 pb-3 pt-0 border-t border-slate-100 mt-0">
+              <div className="grid grid-cols-2 gap-2 mt-2">
+                {rule.sourceDocument && (
+                  <DetailCell label="Sursa" value={rule.sourceDocument.name} />
+                )}
+                {rule.sourceText && (
+                  <div className="col-span-2">
+                    <DetailCell label="Text sursa" value={rule.sourceText} mono />
+                  </div>
+                )}
+                {rule.condition && (
+                  <div className="col-span-2">
+                    <DetailCell label="Conditie" value={JSON.stringify(rule.condition, null, 2)} mono />
+                  </div>
+                )}
+              </div>
+              <div className="flex items-center gap-2 mt-2">
+                {rule.validated && <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">{"\u2713"} Validata</span>}
+                {rule.needsReview && <span className="text-[10px] font-semibold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">Necesita revizuire</span>}
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
+
+      {filtered.length === 0 && <EmptyTab icon="\u{1F6E1}" message="Nicio regula extrasa inca" />}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════
+   TAB: SCORING
+   ══════════════════════════════════════════ */
+
+function ScoringTab({ scoring }: { scoring: LibraryData["scoring"] }) {
+  if (scoring.items.length === 0) return <EmptyTab icon="\u{1F3AF}" message="Niciun criteriu de scoring extras" />;
+
+  const totalMax = scoring.items.reduce((s, c) => s + parseFloat(c.maxPoints), 0);
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center gap-3 px-1">
+        <span className="text-[11px] text-slate-500">Total punctaj maxim:</span>
+        <span className="text-sm font-bold font-mono text-blue-600">{totalMax}</span>
+      </div>
+
+      {scoring.items.map(cr => (
+        <div key={cr.id} className="rounded-xl border border-slate-200 bg-white p-4 hover:border-slate-300 transition-all">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-[11px] font-bold font-mono text-blue-600 bg-blue-50 px-2 py-0.5 rounded">{cr.code}</span>
+                <span className="text-[13px] font-semibold text-slate-900">{cr.name}</span>
+              </div>
+              {cr.description && <p className="text-[12px] text-slate-500 leading-relaxed">{cr.description}</p>}
+            </div>
+            <div className="flex flex-col items-end flex-shrink-0">
+              <span className="text-lg font-extrabold font-mono text-slate-900">{cr.maxPoints}</span>
+              <span className="text-[10px] text-slate-400">puncte max</span>
+            </div>
+          </div>
+
+          {cr.evaluationLogic && (
+            <div className="mt-3 pt-3 border-t border-slate-100">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Logica evaluare</span>
+              <div className="mt-1.5 flex flex-wrap gap-2">
+                <span className="text-[10px] font-medium bg-purple-50 text-purple-600 px-2 py-0.5 rounded-full">{cr.evaluationLogic.type}</span>
+                {cr.evaluationLogic.elementKey && <span className="text-[10px] font-mono text-slate-500 bg-slate-50 px-2 py-0.5 rounded">{cr.evaluationLogic.elementKey}</span>}
+                {cr.evaluationLogic.ranges?.map((r, i) => (
+                  <span key={i} className="text-[10px] font-mono text-slate-500 bg-slate-50 px-2 py-0.5 rounded">
+                    {r.min != null ? r.min : "..."}-{r.max != null ? r.max : "..."} = {r.points}p
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {cr.sourceDocument && (
+            <div className="text-[10px] text-slate-400 mt-2">Din: {cr.sourceDocument.name}</div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════
+   TAB: ELEMENTE
+   ══════════════════════════════════════════ */
+
+function ElementsTab({ elements }: { elements: LibraryData["elements"] }) {
+  const [catFilter, setCatFilter] = useState<string | null>(null);
+
+  const grouped = new Map<string, LibElement[]>();
+  for (const el of elements.items) {
+    const cat = el.category || "other";
+    if (!grouped.has(cat)) grouped.set(cat, []);
+    grouped.get(cat)!.push(el);
+  }
+
+  const categories = [...grouped.keys()].sort();
+  const displayItems = catFilter ? (grouped.get(catFilter) || []) : elements.items;
+
+  if (elements.items.length === 0) return <EmptyTab icon="\u{1F9E9}" message="Nicio definitie de element inca" />;
+
+  return (
+    <div className="flex flex-col gap-3">
+      {/* Stats row */}
+      <div className="flex items-center gap-4 px-1 flex-wrap">
+        <StatChip label="Total" value={elements.total} />
+        <StatChip label="Mapate" value={elements.mapped} color="#34d399" />
+        <StatChip label="Nemapate" value={elements.unmapped} color="#f87171" />
+      </div>
+
+      {/* Category pills */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <Pill active={!catFilter} onClick={() => setCatFilter(null)} label="Toate" count={elements.total} />
+        {categories.map(cat => (
+          <Pill key={cat} active={catFilter === cat} onClick={() => setCatFilter(catFilter === cat ? null : cat)} label={cat} count={grouped.get(cat)?.length || 0} />
+        ))}
+      </div>
+
+      {/* Element rows */}
+      {displayItems.map(el => (
+        <div key={el.id} className="rounded-xl border border-slate-200 bg-white p-3.5 hover:border-slate-300 transition-all">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-0.5">
+                <span className="text-[13px] font-semibold text-slate-900">{el.displayName}</span>
+                {el.required && <span className="text-[9px] font-bold text-red-500">OBLIGATORIU</span>}
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[10px] font-mono text-slate-400">{el.elementKey}</span>
+                <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-medium">{el.dataType}</span>
+                {el.unit && <span className="text-[10px] text-slate-400">({el.unit})</span>}
+                <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-medium">{el.category}</span>
+              </div>
+            </div>
+            <div className="flex-shrink-0">
+              {el.mappingCount > 0 ? (
+                <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full flex items-center gap-1">
+                  {"\u2713"} {el.mappingCount} template{el.mappingCount > 1 ? "-uri" : ""}
+                </span>
+              ) : (
+                <span className="text-[10px] font-semibold text-slate-400 bg-slate-50 px-2 py-1 rounded-full">Nemapat</span>
+              )}
+            </div>
+          </div>
+          {el.mappedTemplates.length > 0 && (
+            <div className="flex gap-1.5 mt-2 flex-wrap">
+              {el.mappedTemplates.map(t => (
+                <span key={t} className="text-[10px] text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">{t}</span>
+              ))}
+            </div>
+          )}
+          {el.helpText && <p className="text-[11px] text-slate-400 mt-1.5 leading-relaxed">{el.helpText}</p>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════
+   TAB: TABELE
+   ══════════════════════════════════════════ */
+
+function TablesTab({ tables }: { tables: LibraryData["tables"] }) {
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  if (tables.items.length === 0) return <EmptyTab icon="\u{1F4CA}" message="Niciun tabel de referinta extras" />;
+
+  const toggle = (id: string) => {
+    setExpanded(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  return (
+    <div className="flex flex-col gap-3">
+      {tables.items.map(tbl => (
+        <div key={tbl.id} className="rounded-xl border border-slate-200 bg-white transition-all hover:border-slate-300">
+          <button className="w-full text-left px-4 py-3 flex items-start gap-3" onClick={() => toggle(tbl.id)}>
+            <span className="text-[10px] text-slate-400 mt-1 flex-shrink-0 transition-transform" style={{ transform: expanded.has(tbl.id) ? "rotate(90deg)" : "none" }}>{"\u25B6"}</span>
+            <div className="flex-1 min-w-0">
+              <div className="text-[13px] font-semibold text-slate-900">{tbl.name}</div>
+              <div className="flex items-center gap-2 mt-1 flex-wrap">
+                <span className="text-[10px] bg-purple-50 text-purple-600 px-2 py-0.5 rounded-full font-medium">{tbl.tableType}</span>
+                <span className="text-[10px] font-mono text-slate-400">{tbl.rowCount} randuri</span>
+                <span className="text-[10px] font-mono text-slate-400">{tbl.columnCount} coloane</span>
+                {tbl.validated && <span className="text-[10px] text-emerald-600">{"\u2713"} Validat</span>}
+              </div>
+            </div>
+          </button>
+
+          {expanded.has(tbl.id) && (
+            <div className="px-4 pb-3 border-t border-slate-100">
+              {tbl.description && <p className="text-[11px] text-slate-500 mt-2 mb-2">{tbl.description}</p>}
+
+              {tbl.schema && tbl.data && tbl.data.length > 0 && (
+                <div className="overflow-x-auto mt-2 rounded-lg border border-slate-200">
+                  <table className="w-full text-[11px]">
+                    <thead>
+                      <tr className="bg-slate-50">
+                        {tbl.schema.map(col => (
+                          <th key={col.key} className="px-3 py-2 text-left font-semibold text-slate-600 border-b border-slate-200 whitespace-nowrap">{col.label}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {tbl.data.slice(0, 10).map((row, ri) => (
+                        <tr key={ri} className="hover:bg-slate-50 transition-colors">
+                          {tbl.schema!.map(col => (
+                            <td key={col.key} className="px-3 py-1.5 border-b border-slate-100 text-slate-700 whitespace-nowrap">{String(row[col.key] ?? "")}</td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {tbl.data.length > 10 && (
+                    <div className="text-center py-2 text-[10px] text-slate-400 bg-slate-50">...si inca {tbl.data.length - 10} randuri</div>
+                  )}
+                </div>
+              )}
+
+              {tbl.sourceDocument && (
+                <div className="text-[10px] text-slate-400 mt-2">Din: {tbl.sourceDocument.name}{tbl.sourcePage != null ? `, p.${tbl.sourcePage}` : ""}</div>
+              )}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════
+   TAB: CHECKLIST
+   ══════════════════════════════════════════ */
+
+function ChecklistTab({ checklist, folderId, onRefresh }: { checklist: LibraryData["checklist"]; folderId: string; onRefresh: () => void }) {
+  const [adding, setAdding] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newCategory, setNewCategory] = useState("General");
+  const [populating, setPopulating] = useState(false);
+
+  const categories = Object.entries(checklist.categories).sort((a, b) => a[0].localeCompare(b[0]));
+
+  const handleAdd = async () => {
+    if (!newName.trim()) return;
+    try {
+      await apiPost(`/api/documents/session/${folderId}/checklist`, { name: newName.trim(), category: newCategory });
+      setNewName("");
+      setAdding(false);
+      onRefresh();
+    } catch { /* ignore */ }
+  };
+
+  const handleDelete = async (itemId: string) => {
+    try {
+      await apiDelete(`/api/documents/session/${folderId}/checklist/${itemId}`);
+      onRefresh();
+    } catch { /* ignore */ }
+  };
+
+  const handleAutoPopulate = async () => {
+    setPopulating(true);
+    try {
+      await apiPost(`/api/documents/session/${folderId}/checklist/auto-populate`, {});
+      onRefresh();
+    } catch { /* ignore */ }
+    setPopulating(false);
+  };
+
+  return (
+    <div className="flex flex-col gap-3">
+      {/* Actions */}
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => setAdding(!adding)}
+          className="text-[12px] font-semibold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-all flex items-center gap-1"
+        >
+          + Adauga manual
+        </button>
+        <button
+          onClick={handleAutoPopulate}
+          disabled={populating}
+          className="text-[12px] font-semibold text-purple-600 hover:text-purple-700 bg-purple-50 hover:bg-purple-100 px-3 py-1.5 rounded-lg transition-all flex items-center gap-1 disabled:opacity-50"
+        >
+          {populating ? "\u23F3" : "\u{1F916}"} Auto-populate din ghid
+        </button>
+      </div>
+
+      {/* Add form */}
+      {adding && (
+        <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-3 flex flex-col gap-2">
+          <input
+            className="px-3 py-2 rounded-lg border border-slate-200 bg-white text-[13px] text-slate-900 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+            placeholder="Nume document necesar..."
+            value={newName}
+            onChange={e => setNewName(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && handleAdd()}
+            autoFocus
+          />
+          <div className="flex items-center gap-2">
+            <select
+              className="px-2 py-1.5 rounded-lg border border-slate-200 bg-white text-[12px] text-slate-700 outline-none"
+              value={newCategory}
+              onChange={e => setNewCategory(e.target.value)}
+            >
+              <option>General</option>
+              <option>Documente juridice</option>
+              <option>Documente financiare</option>
+              <option>Documente tehnice</option>
+              <option>Declaratii & Angajamente</option>
+            </select>
+            <button onClick={handleAdd} className="text-[12px] font-semibold text-white bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded-lg transition-all">Adauga</button>
+            <button onClick={() => { setAdding(false); setNewName(""); }} className="text-[12px] text-slate-500 hover:text-slate-700 px-2 py-1.5">Anuleaza</button>
+          </div>
+        </div>
+      )}
+
+      {/* Grouped items */}
+      {categories.length === 0 && !adding && <EmptyTab icon="\u2705" message="Niciun item in checklist" sub="Adauga manual sau auto-populeaza din regulile ghidului" />}
+
+      {categories.map(([cat, count]) => (
+        <div key={cat}>
+          <div className="flex items-center gap-2 mb-2 mt-1">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{cat}</span>
+            <span className="text-[10px] font-mono text-slate-400">{count}</span>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            {checklist.items.filter(i => i.category === cat).map(item => (
+              <div key={item.id} className="flex items-start gap-2.5 px-3 py-2.5 rounded-lg border border-slate-200 bg-white hover:border-slate-300 transition-all group">
+                <span className="text-[12px] mt-0.5 flex-shrink-0">{item.source === "ghid" ? "\u{1F4D6}" : "\u270D\uFE0F"}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[12px] font-medium text-slate-800 leading-snug">{item.name}</div>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    {item.templateName && <span className="text-[10px] text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">{item.templateName}</span>}
+                    {item.notes && <span className="text-[10px] text-slate-400 italic">{item.notes}</span>}
+                  </div>
+                </div>
+                <button
+                  onClick={() => handleDelete(item.id)}
+                  className="text-[12px] text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0"
+                  title="Sterge"
+                >
+                  {"\u2715"}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════
+   SHARED SMALL COMPONENTS
+   ══════════════════════════════════════════ */
+
+function Pill({ active, onClick, label, count, color }: { active: boolean; onClick: () => void; label: string; count: number; color?: string }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`text-[11px] font-medium px-2.5 py-1 rounded-full border transition-all flex items-center gap-1.5 ${
+        active
+          ? "border-blue-300 bg-blue-50 text-blue-700"
+          : "border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-700"
+      }`}
+    >
+      {label}
+      <span className="font-mono font-semibold text-[10px]" style={color ? { color } : undefined}>{count}</span>
+    </button>
+  );
+}
+
+function TypeBadge({ type }: { type: "fixed" | "interpreted" }) {
+  const isFixed = type === "fixed";
+  return (
+    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${isFixed ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600"}`}>
+      {isFixed ? "Fixa" : "Interpretata"}
+    </span>
+  );
+}
+
+function ConfidenceBar({ value }: { value: number }) {
+  const pct = Math.round(value * 100);
+  const color = pct >= 80 ? "#34d399" : pct >= 50 ? "#fbbf24" : "#f87171";
+  return (
+    <div className="flex items-center gap-1.5">
+      <div className="w-12 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+        <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: color }} />
+      </div>
+      <span className="text-[10px] font-mono text-slate-400">{pct}%</span>
+    </div>
+  );
+}
+
+function StatChip({ label, value, color }: { label: string; value: number; color?: string }) {
+  return (
+    <div className="flex items-center gap-1.5 text-[11px] text-slate-500">
+      {label}: <span className="font-mono font-bold" style={color ? { color } : undefined}>{value}</span>
+    </div>
+  );
+}
+
+function DetailCell({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-0.5">{label}</div>
+      <div className={`text-[12px] text-slate-700 leading-relaxed ${mono ? "font-mono text-[11px] whitespace-pre-wrap break-all" : ""}`}>{value}</div>
+    </div>
+  );
+}
+
+function EmptyTab({ icon, message, sub }: { icon: string; message: string; sub?: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-16 text-center">
+      <span style={{ fontSize: 36, opacity: 0.25 }}>{icon}</span>
+      <div className="text-[13px] font-semibold text-slate-400 mt-3">{message}</div>
+      {sub && <div className="text-[11px] text-slate-400 mt-1">{sub}</div>}
+    </div>
+  );
+}
+
+function LibrarySkeleton() {
+  return (
+    <div className="flex flex-col gap-4 p-5" style={{ animation: "docFadeIn .4s ease" }}>
+      <div className="flex items-center gap-2">
+        <div className="w-5 h-5 rounded bg-slate-200" style={{ animation: "shimmer 1.5s ease-in-out infinite", backgroundSize: "200% 100%", backgroundImage: "linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%)" }} />
+        <div className="w-40 h-5 rounded bg-slate-200" style={{ animation: "shimmer 1.5s ease-in-out infinite", backgroundSize: "200% 100%", backgroundImage: "linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%)" }} />
+      </div>
+      <div className="w-64 h-3 rounded bg-slate-100" />
+      <div className="flex gap-2">
+        {[80, 60, 70, 55, 65].map((w, i) => (
+          <div key={i} className="h-8 rounded-full bg-slate-100" style={{ width: w }} />
+        ))}
+      </div>
+      {[1, 2, 3].map(i => (
+        <div key={i} className="h-20 rounded-xl border border-slate-200 bg-white" style={{ animation: "shimmer 1.5s ease-in-out infinite", backgroundSize: "200% 100%", backgroundImage: "linear-gradient(90deg, #fff 25%, #f8fafc 50%, #fff 75%)" }} />
+      ))}
+    </div>
+  );
+}

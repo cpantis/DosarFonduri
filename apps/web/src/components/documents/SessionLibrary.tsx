@@ -55,6 +55,8 @@ interface LibElement {
   dataType: string;
   unit: string | null;
   required: boolean;
+  minCount: number;
+  maxCount: number | null;
   helpText: string | null;
   mappingCount: number;
   mappedTemplates: string[];
@@ -330,6 +332,9 @@ function ElementsTab({ elements }: { elements: LibraryData["elements"] }) {
         <StatChip label="Total" value={elements.total} />
         <StatChip label="Mapate" value={elements.mapped} color="#34d399" />
         <StatChip label="Nemapate" value={elements.unmapped} color="#f87171" />
+        {elements.items.filter(e => e.minCount > 1).length > 0 && (
+          <StatChip label="Multi-instanta" value={elements.items.filter(e => e.minCount > 1).length} color="#fb923c" />
+        )}
       </div>
 
       {/* Category pills */}
@@ -348,6 +353,16 @@ function ElementsTab({ elements }: { elements: LibraryData["elements"] }) {
               <div className="flex items-center gap-2 mb-0.5">
                 <span className="text-[13px] font-semibold text-slate-900">{el.displayName}</span>
                 {el.required && <span className="text-[9px] font-bold text-red-500">OBLIGATORIU</span>}
+                {el.minCount > 1 && (
+                  <span className="text-[10px] font-semibold text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded-full">
+                    min {el.minCount}{el.maxCount ? ` / max ${el.maxCount}` : ""}
+                  </span>
+                )}
+                {el.minCount === 1 && el.maxCount && el.maxCount > 1 && (
+                  <span className="text-[10px] font-medium text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded-full">
+                    max {el.maxCount}
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-[10px] font-mono text-slate-400">{el.elementKey}</span>

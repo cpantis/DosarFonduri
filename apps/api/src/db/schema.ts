@@ -339,6 +339,8 @@ export const elementDefinitions = pgTable("element_definitions", {
   lookupTableId: uuid("lookup_table_id"),
   collectionOrder: integer("collection_order").default(0),
   required: boolean("required").notNull().default(false),
+  minCount: integer("min_count").notNull().default(1),
+  maxCount: integer("max_count"),
   helpText: text("help_text"),
   isDerived: boolean("is_derived").notNull().default(false),
   derivationFormula: text("derivation_formula"),

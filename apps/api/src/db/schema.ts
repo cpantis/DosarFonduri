@@ -194,6 +194,21 @@ export const companyIfMembers = pgTable("company_if_members", {
   birthDate: varchar("birth_date", { length: 20 }),
 });
 
+// === COMPANY ELEMENTS (materialized key/value from ONRC + financials) ===
+export const companyElements = pgTable("company_elements", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  companyId: uuid("company_id").references(() => companies.id, { onDelete: "cascade" }).notNull(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  elementKey: varchar("element_key", { length: 255 }).notNull(),
+  value: text("value"),
+  source: elementSourceEnum("source").notNull().default("onrc"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull().$onUpdate(() => new Date()),
+}, (table) => ({
+  companyIdx: index("comp_el_company_idx").on(table.companyId),
+  orgIdx: index("comp_el_org_idx").on(table.organizationId),
+  keyCompanyIdx: uniqueIndex("comp_el_key_company_idx").on(table.elementKey, table.companyId),
+}));
+
 // === DOCUMENT FOLDERS (tree) ===
 export const documentFolders = pgTable("document_folders", {
   id: uuid("id").defaultRandom().primaryKey(),

@@ -34,7 +34,7 @@ export function getCompanyTabs(forma: string): string[] {
   if (isSOC(forma)) tabs.push("Administrare");
   tabs.push("Activitati");
   if (isSOC(forma)) tabs.push("Sedii");
-  tabs.push("Fin. ONRC", "Fin. ANAF", "Juridic");
+  tabs.push("Fin. ONRC", "Fin. ANAF", "Juridic", "Pre-eligibilitate");
   return tabs;
 }
 

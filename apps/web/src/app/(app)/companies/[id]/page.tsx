@@ -102,6 +102,14 @@ export default function CompanyDetailPage() {
   const bilantFileRef = useRef<HTMLInputElement>(null);
   const [selectedBilantYear, setSelectedBilantYear] = useState<number | null>(null);
 
+  // Pre-eligibility
+  const [sessions, setSessions] = useState<any[]>([]);
+  const [selectedSession, setSelectedSession] = useState<string>("");
+  const [preEligResult, setPreEligResult] = useState<any>(null);
+  const [preEligLoading, setPreEligLoading] = useState(false);
+  const [preEligError, setPreEligError] = useState<string | null>(null);
+  const [includeInterpreted, setIncludeInterpreted] = useState(false);
+
   const fetchDetail = useCallback(async () => {
     try {
       setLoading(true);
@@ -193,6 +201,33 @@ export default function CompanyDetailPage() {
       alert("Eroare la upload ONRC: " + (err.message || "Eroare necunoscuta"));
     } finally {
       setOnrcUploading(false);
+    }
+  };
+
+  // Fetch available sessions when tab activates
+  useEffect(() => {
+    if (activeTab === "Pre-eligibilitate" && sessions.length === 0) {
+      apiGet("/api/companies/sessions/list")
+        .then((data: any[]) => setSessions(data))
+        .catch(() => setSessions([]));
+    }
+  }, [activeTab, sessions.length]);
+
+  const handlePreEligibility = async () => {
+    if (!selectedSession) return;
+    setPreEligLoading(true);
+    setPreEligError(null);
+    setPreEligResult(null);
+    try {
+      const result = await apiPost(`/api/companies/${id}/pre-eligibility`, {
+        sessionFolderId: selectedSession,
+        includeInterpreted,
+      });
+      setPreEligResult(result);
+    } catch (err: any) {
+      setPreEligError(err.message || "Eroare la verificare");
+    } finally {
+      setPreEligLoading(false);
     }
   };
 
@@ -924,6 +959,155 @@ export default function CompanyDetailPage() {
               <div className="cd-info-label">Ultima mentiune</div>
               <div style={{ fontSize: 13, lineHeight: 1.6, color: "#64748b" }}>{sel.ultimaMentiune}</div>
             </div>
+          </>)}
+
+          {/* PRE-ELIGIBILITATE */}
+          {activeTab === "Pre-eligibilitate" && (<>
+            <SectionTitle>Pre-eligibilitate</SectionTitle>
+            <p style={{ fontSize: 13, color: "#64748b", marginBottom: 20, lineHeight: 1.6 }}>
+              Verifica rapid daca firma indeplineste criteriile de eligibilitate pentru o sesiune de finantare, fara a crea un proiect.
+            </p>
+
+            {/* Session picker + options */}
+            <div className="cd-card" style={{ marginBottom: 20 }}>
+              <div style={{ display: "flex", gap: 16, alignItems: "flex-end", flexWrap: "wrap" }}>
+                <div style={{ flex: "1 1 320px", minWidth: 200 }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".06em", color: "#94a3b8", marginBottom: 6 }}>Sesiune de finantare</div>
+                  <select
+                    value={selectedSession}
+                    onChange={e => { setSelectedSession(e.target.value); setPreEligResult(null); }}
+                    className="cd-select"
+                    style={{ width: "100%" }}
+                  >
+                    <option value="">— Selecteaza sesiunea —</option>
+                    {sessions.map((s: any) => (
+                      <option key={s.id} value={s.id}>
+                        {s.fullPath} ({s.rulesCount} reguli)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#475569", cursor: "pointer", paddingBottom: 2 }}>
+                  <input
+                    type="checkbox"
+                    checked={includeInterpreted}
+                    onChange={e => setIncludeInterpreted(e.target.checked)}
+                    style={{ width: 16, height: 16, accentColor: "#4d8bff" }}
+                  />
+                  Include reguli interpretate (AI)
+                </label>
+                <BtnPrimary
+                  onClick={handlePreEligibility}
+                  disabled={!selectedSession || preEligLoading}
+                >
+                  {preEligLoading ? "Se verifica..." : "Verifica eligibilitate"}
+                </BtnPrimary>
+              </div>
+            </div>
+
+            {/* Error */}
+            {preEligError && (
+              <div style={{ padding: 14, borderRadius: 10, background: "rgba(239,68,68,.06)", border: "1px solid rgba(239,68,68,.2)", marginBottom: 20, fontSize: 13, color: "#dc2626" }}>
+                {preEligError}
+              </div>
+            )}
+
+            {/* Results */}
+            {preEligResult && (<>
+              {/* Summary cards */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
+                <div className="cd-info" style={{ textAlign: "center" }}>
+                  <div style={{ fontSize: 28, fontWeight: 700, color: "#0f172a" }}>{preEligResult.summary.total}</div>
+                  <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".06em", color: "#94a3b8" }}>Total reguli</div>
+                </div>
+                <div className="cd-info" style={{ textAlign: "center", borderColor: "rgba(5,150,105,.2)" }}>
+                  <div style={{ fontSize: 28, fontWeight: 700, color: "#059669" }}>{preEligResult.summary.passed}</div>
+                  <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".06em", color: "#059669" }}>Indeplinite</div>
+                </div>
+                <div className="cd-info" style={{ textAlign: "center", borderColor: "rgba(239,68,68,.2)" }}>
+                  <div style={{ fontSize: 28, fontWeight: 700, color: "#dc2626" }}>{preEligResult.summary.failed}</div>
+                  <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".06em", color: "#dc2626" }}>Neindeplinite</div>
+                </div>
+                <div className="cd-info" style={{ textAlign: "center", borderColor: "rgba(245,158,11,.2)" }}>
+                  <div style={{ fontSize: 28, fontWeight: 700, color: "#d97706" }}>{preEligResult.summary.pending}</div>
+                  <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".06em", color: "#d97706" }}>In asteptare</div>
+                </div>
+              </div>
+
+              {/* Progress bar */}
+              {preEligResult.summary.total > 0 && (
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{ display: "flex", height: 8, borderRadius: 4, overflow: "hidden", background: "#f1f5f9" }}>
+                    <div style={{ width: `${(preEligResult.summary.passed / preEligResult.summary.total) * 100}%`, background: "#059669", transition: "width .3s" }} />
+                    <div style={{ width: `${(preEligResult.summary.failed / preEligResult.summary.total) * 100}%`, background: "#dc2626", transition: "width .3s" }} />
+                    <div style={{ width: `${(preEligResult.summary.pending / preEligResult.summary.total) * 100}%`, background: "#d97706", transition: "width .3s" }} />
+                  </div>
+                </div>
+              )}
+
+              {/* Rules table */}
+              <div className="cd-card" style={{ padding: 0, overflow: "hidden" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
+                      <th style={{ padding: "10px 16px", textAlign: "left", fontWeight: 600, color: "#475569", fontSize: 11, textTransform: "uppercase", letterSpacing: ".05em" }}>Status</th>
+                      <th style={{ padding: "10px 16px", textAlign: "left", fontWeight: 600, color: "#475569", fontSize: 11, textTransform: "uppercase", letterSpacing: ".05em" }}>Regula</th>
+                      <th style={{ padding: "10px 16px", textAlign: "left", fontWeight: 600, color: "#475569", fontSize: 11, textTransform: "uppercase", letterSpacing: ".05em" }}>Tip</th>
+                      <th style={{ padding: "10px 16px", textAlign: "left", fontWeight: 600, color: "#475569", fontSize: 11, textTransform: "uppercase", letterSpacing: ".05em" }}>Detalii</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {preEligResult.rules.map((rule: any, i: number) => {
+                      const statusColors: Record<string, { bg: string; text: string; dot: string }> = {
+                        passed: { bg: "rgba(5,150,105,.06)", text: "#059669", dot: "#059669" },
+                        failed: { bg: "rgba(239,68,68,.06)", text: "#dc2626", dot: "#dc2626" },
+                        pending: { bg: "rgba(245,158,11,.06)", text: "#d97706", dot: "#d97706" },
+                        not_applicable: { bg: "rgba(148,163,184,.06)", text: "#94a3b8", dot: "#94a3b8" },
+                      };
+                      const statusLabels: Record<string, string> = { passed: "Indeplinit", failed: "Neindeplinit", pending: "In asteptare", not_applicable: "N/A" };
+                      const sc = statusColors[rule.status] || statusColors.pending;
+                      return (
+                        <tr key={rule.id || i} style={{ borderBottom: "1px solid #f1f5f9", background: i % 2 === 0 ? "#ffffff" : "#fafbfc" }}>
+                          <td style={{ padding: "10px 16px", whiteSpace: "nowrap" }}>
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 20, background: sc.bg, color: sc.text }}>
+                              <span style={{ width: 6, height: 6, borderRadius: "50%", background: sc.dot }} />
+                              {statusLabels[rule.status] || rule.status}
+                            </span>
+                          </td>
+                          <td style={{ padding: "10px 16px", color: "#0f172a", lineHeight: 1.5, maxWidth: 400 }}>
+                            {rule.description}
+                          </td>
+                          <td style={{ padding: "10px 16px", whiteSpace: "nowrap" }}>
+                            <span style={{ fontSize: 11, fontWeight: 500, padding: "2px 8px", borderRadius: 6, background: rule.type === "fixed" ? "#eff6ff" : "#faf5ff", color: rule.type === "fixed" ? "#2563eb" : "#7c3aed" }}>
+                              {rule.type === "fixed" ? "Automat" : "AI"}
+                            </span>
+                          </td>
+                          <td style={{ padding: "10px 16px", color: "#64748b", fontSize: 12, maxWidth: 300 }}>
+                            {rule.notes || "\u2014"}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Sub-summary: fixed vs interpreted */}
+              <div style={{ display: "flex", gap: 16, marginTop: 16, fontSize: 12, color: "#64748b" }}>
+                <span>Reguli fixe: {preEligResult.summary.fixed.passed}/{preEligResult.summary.fixed.total} indeplinite</span>
+                <span>|</span>
+                <span>Reguli interpretate: {preEligResult.summary.interpreted.passed}/{preEligResult.summary.interpreted.total} indeplinite</span>
+              </div>
+            </>)}
+
+            {/* Empty state when no check done yet */}
+            {!preEligResult && !preEligLoading && !preEligError && (
+              <EmptyState
+                icon="\ud83d\udee1\ufe0f"
+                title="Selecteaza o sesiune de finantare"
+                description="Alege o sesiune pentru a verifica rapid eligibilitatea firmei contra regulilor din ghidul de finantare."
+              />
+            )}
           </>)}
 
           </div>

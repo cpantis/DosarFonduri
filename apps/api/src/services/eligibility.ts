@@ -7,50 +7,19 @@ import { eq, and } from "drizzle-orm";
 import { anthropic, withAILimit } from "../lib/anthropic";
 import { logAIUsage } from "./aiUsage";
 
-export async function checkEligibility(projectId: string, organizationId: string) {
-  const project = await db.query.projects.findFirst({
-    where: eq(projects.id, projectId),
-  });
-  if (!project) return;
+// ============================================================
+// SHARED UTILITIES (used by both project eligibility and pre-eligibility)
+// ============================================================
 
-  const company = await db.query.companies.findFirst({
-    where: eq(companies.id, project.companyId),
-  });
-  if (!company) return;
-
-  // Find ALL guide folders in this project's session
-  const sessionFolders = await db.query.documentFolders.findMany({
-    where: and(
-      eq(documentFolders.parentId, project.folderId),
-      eq(documentFolders.type, "ghiduri"),
-    ),
-  });
-
-  // Collect ALL rules (fixed + interpreted) from ALL guides
-  const allRules: Array<typeof rules.$inferSelect & { documentName: string; documentFileType: string }> = [];
-  for (const folder of sessionFolders) {
-    const docs = await db.query.documents.findMany({
-      where: eq(documents.folderId, folder.id),
-    });
-    for (const doc of docs) {
-      const docRules = await db.query.rules.findMany({
-        where: eq(rules.documentId, doc.id),
-      });
-      allRules.push(...docRules.map(r => ({
-        ...r,
-        documentName: doc.name,
-        documentFileType: doc.fileType,
-      })));
-    }
-  }
-
-  // Get company financials
-  const latestFinancial = await db.query.companyFinancials.findFirst({
-    where: eq(companyFinancials.companyId, company.id),
-    orderBy: (f, { desc }) => [desc(f.year)],
-  });
-
-  // Data for automatic verification (fixed rules)
+/**
+ * Build a flat companyData map from company fields + financials.
+ * Optionally overlay with projectElements (Solomon-collected data takes precedence).
+ */
+export function buildCompanyData(
+  company: any,
+  latestFinancial: any | null,
+  allFinancials?: any[],
+): Record<string, any> {
   const companyData: Record<string, any> = {
     forma_juridica: company.formaJuridica,
     cui: company.cui,
@@ -67,150 +36,159 @@ export async function checkEligibility(projectId: string, organizationId: string
     localitate: company.localitate,
   };
 
-  // Overlay projectElements values (Solomon-collected data takes precedence)
+  // Add per-year financials if available
+  if (allFinancials) {
+    for (const fin of allFinancials) {
+      const yr = fin.year;
+      const f20 = (fin.f20 || {}) as any;
+      const f10 = (fin.f10 || {}) as any;
+      const f30 = (fin.f30 || {}) as any;
+      companyData[`cifra_afaceri_${yr}`] = f20.cifraAfaceriNeta;
+      companyData[`profit_net_${yr}`] = f20.profitNet;
+      companyData[`angajati_${yr}`] = f30.numarMediuSalariati;
+      companyData[`capitaluri_proprii_${yr}`] = f10.capitaluriProprii;
+    }
+  }
+
+  return companyData;
+}
+
+/**
+ * Overlay companyData with projectElements values.
+ * Solomon-collected data takes precedence over ONRC/financials.
+ */
+export async function overlayProjectElements(
+  companyData: Record<string, any>,
+  projectId: string,
+  organizationId: string,
+): Promise<void> {
   const projEls = await db.query.projectElements.findMany({
     where: eq(projectElements.projectId, projectId),
   });
-  if (projEls.length > 0) {
-    const elemDefs = await db.query.elementDefinitions.findMany({
-      where: eq(elementDefinitions.organizationId, organizationId),
-    });
-    const elemDefMap = new Map(elemDefs.map(ed => [ed.id, ed]));
-    for (const pe of projEls) {
-      if (!pe.value || !pe.value.trim()) continue;
-      const ed = pe.elementDefId ? elemDefMap.get(pe.elementDefId) : null;
-      if (ed) companyData[ed.elementKey] = pe.value;
-    }
-  }
+  if (projEls.length === 0) return;
 
-  // Get all financials for interpreted rules
-  const allFinancials = await db.query.companyFinancials.findMany({
-    where: eq(companyFinancials.companyId, company.id),
-    orderBy: (f, { desc }) => [desc(f.year)],
+  const elemDefs = await db.query.elementDefinitions.findMany({
+    where: eq(elementDefinitions.organizationId, organizationId),
   });
-
-  // Preserve manual overrides before re-evaluating
-  const existingResults = await db.query.projectEligibility.findMany({
-    where: eq(projectEligibility.projectId, projectId),
-  });
-  const overrides = new Map(
-    existingResults
-      .filter(r => r.overrideResult !== null)
-      .map(r => [r.ruleId, { overrideResult: r.overrideResult, overrideBy: r.overrideBy, notes: r.notes }])
-  );
-
-  // === STEP 1: FIXED RULES (automatic, no AI) ===
-  const results: Array<{
-    ruleId: string;
-    status: "passed" | "failed" | "pending" | "not_applicable";
-    autoResult: boolean | null;
-    notes: string | null;
-  }> = [];
-
-  const fixedRules = allRules.filter(r => r.type === "fixed");
-  const interpretedRules = allRules.filter(r => r.type === "interpreted");
-
-  for (const rule of fixedRules) {
-    const condition = rule.condition as any;
-    if (!condition || !condition.field) {
-      results.push({ ruleId: rule.id, status: "not_applicable", autoResult: null, notes: null });
-      continue;
-    }
-
-    const fieldValue = companyData[condition.field];
-    if (fieldValue === undefined || fieldValue === null) {
-      results.push({ ruleId: rule.id, status: "pending", autoResult: null, notes: "Date lipsă: " + condition.field });
-      continue;
-    }
-
-    let passed = false;
-    // Normalize both sides to numbers when possible to avoid string comparison bugs
-    const condNum = parseFloat(condition.value);
-    const fieldNum = typeof fieldValue === "number" ? fieldValue : parseFloat(String(fieldValue));
-    const bothNumeric = !isNaN(condNum) && !isNaN(fieldNum);
-
-    switch (condition.operator) {
-      case "eq": passed = String(fieldValue).toLowerCase() === String(condition.value).toLowerCase(); break;
-      case "neq": passed = String(fieldValue).toLowerCase() !== String(condition.value).toLowerCase(); break;
-      case "gt": passed = bothNumeric ? fieldNum > condNum : String(fieldValue) > String(condition.value); break;
-      case "gte": passed = bothNumeric ? fieldNum >= condNum : String(fieldValue) >= String(condition.value); break;
-      case "lt": passed = bothNumeric ? fieldNum < condNum : String(fieldValue) < String(condition.value); break;
-      case "lte": passed = bothNumeric ? fieldNum <= condNum : String(fieldValue) <= String(condition.value); break;
-      case "in": {
-        const inValues = Array.isArray(condition.value) ? condition.value : condition.value.split(",").map((v: string) => v.trim());
-        passed = inValues.includes(String(fieldValue));
-        break;
-      }
-      case "not_in": {
-        const notInValues = Array.isArray(condition.value) ? condition.value : condition.value.split(",").map((v: string) => v.trim());
-        passed = !notInValues.includes(String(fieldValue));
-        break;
-      }
-      case "between": {
-        const low = parseFloat(condition.value);
-        const high = parseFloat(condition.value2);
-        const numField = typeof fieldValue === "number" ? fieldValue : parseFloat(String(fieldValue));
-        passed = !isNaN(numField) && !isNaN(low) && !isNaN(high) && numField >= low && numField <= high;
-        break;
-      }
-      default:
-        results.push({ ruleId: rule.id, status: "pending", autoResult: null, notes: "Operator necunoscut: " + condition.operator });
-        continue;
-    }
-
-    results.push({
-      ruleId: rule.id,
-      status: passed ? "passed" : "failed",
-      autoResult: passed,
-      notes: `${condition.field}: ${fieldValue} ${condition.operator} ${condition.value}${condition.value2 ? " - " + condition.value2 : ""}`,
-    });
-  }
-
-  // === STEP 2: INTERPRETED RULES (Opus + ET) ===
-  if (interpretedRules.length > 0) {
-    const interpretedResults = await evaluateInterpretedRules(
-      interpretedRules,
-      company,
-      allFinancials,
-      companyData,
-      organizationId,
-    );
-    results.push(...interpretedResults);
-  }
-
-  // Atomic delete+insert inside a transaction to prevent race conditions
-  if (results.length > 0) {
-    const insertValues = results.map(r => {
-      const override = overrides.get(r.ruleId);
-      if (override) {
-        return {
-          projectId,
-          ruleId: r.ruleId,
-          status: override.overrideResult === true ? "passed" as const : override.overrideResult === false ? "failed" as const : r.status,
-          autoResult: r.autoResult,
-          overrideResult: override.overrideResult,
-          overrideBy: override.overrideBy,
-          notes: override.notes || r.notes,
-        };
-      }
-      return {
-        projectId,
-        ruleId: r.ruleId,
-        status: r.status,
-        autoResult: r.autoResult,
-        notes: r.notes,
-      };
-    });
-
-    await db.transaction(async (tx) => {
-      await tx.delete(projectEligibility).where(eq(projectEligibility.projectId, projectId));
-      await tx.insert(projectEligibility).values(insertValues);
-    });
+  const elemDefMap = new Map(elemDefs.map(ed => [ed.id, ed]));
+  for (const pe of projEls) {
+    if (!pe.value || !pe.value.trim()) continue;
+    const ed = pe.elementDefId ? elemDefMap.get(pe.elementDefId) : null;
+    if (ed) companyData[ed.elementKey] = pe.value;
   }
 }
 
-// === EVALUATE INTERPRETED RULES WITH OPUS + ET ===
-async function evaluateInterpretedRules(
+/**
+ * Overlay companyData with companyElements values (from materialized table).
+ * Used for pre-eligibility when there's no project yet.
+ */
+export function overlayCompanyElements(
+  companyData: Record<string, any>,
+  companyElementRows: Array<{ elementKey: string; value: string | null }>,
+): void {
+  for (const el of companyElementRows) {
+    if (!el.value || !el.value.trim()) continue;
+    // Only set if not already present (companyData from direct fields has priority for core keys)
+    if (!(el.elementKey in companyData)) {
+      const num = parseFloat(el.value);
+      companyData[el.elementKey] = !isNaN(num) && el.value === String(num) ? num : el.value;
+    }
+  }
+}
+
+/**
+ * Find all rules from all guide documents in a session folder.
+ */
+export async function getRulesForSession(
+  sessionFolderId: string,
+): Promise<Array<typeof rules.$inferSelect & { documentName: string; documentFileType: string }>> {
+  const sessionFolders = await db.query.documentFolders.findMany({
+    where: and(
+      eq(documentFolders.parentId, sessionFolderId),
+      eq(documentFolders.type, "ghiduri"),
+    ),
+  });
+
+  const allRules: Array<typeof rules.$inferSelect & { documentName: string; documentFileType: string }> = [];
+  for (const folder of sessionFolders) {
+    const docs = await db.query.documents.findMany({
+      where: eq(documents.folderId, folder.id),
+    });
+    for (const doc of docs) {
+      const docRules = await db.query.rules.findMany({
+        where: eq(rules.documentId, doc.id),
+      });
+      allRules.push(...docRules.map(r => ({
+        ...r,
+        documentName: doc.name,
+        documentFileType: doc.fileType,
+      })));
+    }
+  }
+  return allRules;
+}
+
+/**
+ * Evaluate a single fixed rule against companyData.
+ */
+export function evaluateFixedRule(
+  rule: typeof rules.$inferSelect,
+  companyData: Record<string, any>,
+): { status: "passed" | "failed" | "pending" | "not_applicable"; autoResult: boolean | null; notes: string | null } {
+  const condition = rule.condition as any;
+  if (!condition || !condition.field) {
+    return { status: "not_applicable", autoResult: null, notes: null };
+  }
+
+  const fieldValue = companyData[condition.field];
+  if (fieldValue === undefined || fieldValue === null) {
+    return { status: "pending", autoResult: null, notes: "Date lipsă: " + condition.field };
+  }
+
+  let passed = false;
+  const condNum = parseFloat(condition.value);
+  const fieldNum = typeof fieldValue === "number" ? fieldValue : parseFloat(String(fieldValue));
+  const bothNumeric = !isNaN(condNum) && !isNaN(fieldNum);
+
+  switch (condition.operator) {
+    case "eq": passed = String(fieldValue).toLowerCase() === String(condition.value).toLowerCase(); break;
+    case "neq": passed = String(fieldValue).toLowerCase() !== String(condition.value).toLowerCase(); break;
+    case "gt": passed = bothNumeric ? fieldNum > condNum : String(fieldValue) > String(condition.value); break;
+    case "gte": passed = bothNumeric ? fieldNum >= condNum : String(fieldValue) >= String(condition.value); break;
+    case "lt": passed = bothNumeric ? fieldNum < condNum : String(fieldValue) < String(condition.value); break;
+    case "lte": passed = bothNumeric ? fieldNum <= condNum : String(fieldValue) <= String(condition.value); break;
+    case "in": {
+      const inValues = Array.isArray(condition.value) ? condition.value : condition.value.split(",").map((v: string) => v.trim());
+      passed = inValues.includes(String(fieldValue));
+      break;
+    }
+    case "not_in": {
+      const notInValues = Array.isArray(condition.value) ? condition.value : condition.value.split(",").map((v: string) => v.trim());
+      passed = !notInValues.includes(String(fieldValue));
+      break;
+    }
+    case "between": {
+      const low = parseFloat(condition.value);
+      const high = parseFloat(condition.value2);
+      const numField = typeof fieldValue === "number" ? fieldValue : parseFloat(String(fieldValue));
+      passed = !isNaN(numField) && !isNaN(low) && !isNaN(high) && numField >= low && numField <= high;
+      break;
+    }
+    default:
+      return { status: "pending", autoResult: null, notes: "Operator necunoscut: " + condition.operator };
+  }
+
+  return {
+    status: passed ? "passed" : "failed",
+    autoResult: passed,
+    notes: `${condition.field}: ${fieldValue} ${condition.operator} ${condition.value}${condition.value2 ? " - " + condition.value2 : ""}`,
+  };
+}
+
+/**
+ * Evaluate interpreted rules using Opus + Extended Thinking.
+ */
+export async function evaluateInterpretedRules(
   interpretedRules: any[],
   company: any,
   allFinancials: any[],
@@ -311,7 +289,6 @@ Pentru fiecare regulă returnează:
       evaluations = JSON.parse(cleaned);
     } catch {
       console.error("Failed to parse AI eligibility response:", cleaned.slice(0, 500));
-      // Return all as pending rather than losing data (overrides are preserved by the caller)
       return interpretedRules.map(rule => ({
         ruleId: rule.id,
         status: "pending" as const,
@@ -363,5 +340,105 @@ Pentru fiecare regulă returnează:
       autoResult: null,
       notes: "Evaluare AI eșuată — verificare manuală necesară",
     }));
+  }
+}
+
+// ============================================================
+// PROJECT ELIGIBILITY (existing flow — uses shared functions)
+// ============================================================
+
+export async function checkEligibility(projectId: string, organizationId: string) {
+  const project = await db.query.projects.findFirst({
+    where: eq(projects.id, projectId),
+  });
+  if (!project) return;
+
+  const company = await db.query.companies.findFirst({
+    where: eq(companies.id, project.companyId),
+  });
+  if (!company) return;
+
+  // Find ALL rules from ALL guides in this project's session
+  const allRules = await getRulesForSession(project.folderId);
+
+  // Get company financials
+  const allFinancials = await db.query.companyFinancials.findMany({
+    where: eq(companyFinancials.companyId, company.id),
+    orderBy: (f, { desc }) => [desc(f.year)],
+  });
+  const latestFinancial = allFinancials[0] || null;
+
+  // Build company data using shared function
+  const companyData = buildCompanyData(company, latestFinancial, allFinancials);
+
+  // Overlay projectElements values (Solomon-collected data takes precedence)
+  await overlayProjectElements(companyData, projectId, organizationId);
+
+  // Preserve manual overrides before re-evaluating
+  const existingResults = await db.query.projectEligibility.findMany({
+    where: eq(projectEligibility.projectId, projectId),
+  });
+  const overrides = new Map(
+    existingResults
+      .filter(r => r.overrideResult !== null)
+      .map(r => [r.ruleId, { overrideResult: r.overrideResult, overrideBy: r.overrideBy, notes: r.notes }])
+  );
+
+  // === STEP 1: FIXED RULES (automatic, no AI) ===
+  const results: Array<{
+    ruleId: string;
+    status: "passed" | "failed" | "pending" | "not_applicable";
+    autoResult: boolean | null;
+    notes: string | null;
+  }> = [];
+
+  const fixedRules = allRules.filter(r => r.type === "fixed");
+  const interpretedRules = allRules.filter(r => r.type === "interpreted");
+
+  for (const rule of fixedRules) {
+    const result = evaluateFixedRule(rule, companyData);
+    results.push({ ruleId: rule.id, ...result });
+  }
+
+  // === STEP 2: INTERPRETED RULES (Opus + ET) ===
+  if (interpretedRules.length > 0) {
+    const interpretedResults = await evaluateInterpretedRules(
+      interpretedRules,
+      company,
+      allFinancials,
+      companyData,
+      organizationId,
+    );
+    results.push(...interpretedResults);
+  }
+
+  // Atomic delete+insert inside a transaction to prevent race conditions
+  if (results.length > 0) {
+    const insertValues = results.map(r => {
+      const override = overrides.get(r.ruleId);
+      if (override) {
+        return {
+          projectId,
+          ruleId: r.ruleId,
+          status: override.overrideResult === true ? "passed" as const : override.overrideResult === false ? "failed" as const : r.status,
+          autoResult: r.autoResult,
+          overrideResult: override.overrideResult,
+          overrideBy: override.overrideBy,
+          notes: override.notes || r.notes,
+        };
+      }
+      return {
+        projectId,
+        ruleId: r.ruleId,
+        status: r.status,
+        autoResult: r.autoResult,
+        notes: r.notes,
+      };
+    });
+
+    await db.transaction(async (tx) => {
+      await tx.delete(projectEligibility).where(eq(projectEligibility.projectId, projectId));
+      await tx.insert(projectEligibility).values(insertValues);
+    });
   }
 }

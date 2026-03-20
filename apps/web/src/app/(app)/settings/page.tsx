@@ -62,7 +62,7 @@ const KNOWLEDGE_CATEGORIES = [
   { value: "ghid_specific", label: "Ghid specific" },
 ];
 
-const TYPE_ICONS: Record<string, string> = { ONRC: "🏛", ANAF: "📊", Email: "📧", SMS: "📱", Storage: "☁️", Custom: "🔗" };
+const TYPE_ICONS: Record<string, string> = { ListaFirme: "🔍", ONRC: "🏛", ANAF: "📊", Email: "📧", SMS: "📱", Storage: "☁️", Custom: "🔗" };
 
 export default function SettingsPage() {
   const { toast } = useToast();
@@ -73,7 +73,7 @@ export default function SettingsPage() {
   const [configError, setConfigError] = useState<string | null>(null);
   const [testingApi, setTestingApi] = useState<string | null>(null);
   const [showAddApi, setShowAddApi] = useState(false);
-  const [newApi, setNewApi] = useState({ name: "", type: "ONRC", url: "", apiKey: "" });
+  const [newApi, setNewApi] = useState({ name: "", type: "ListaFirme", url: "https://listafirme.ro/api", apiKey: "" });
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   // Branding state
@@ -220,7 +220,7 @@ export default function SettingsPage() {
     try {
       const created = await apiPost("/api/config/api-integrations", newApi);
       setApis((prev) => [...prev, created]);
-      setNewApi({ name: "", type: "ONRC", url: "", apiKey: "" });
+      setNewApi({ name: "", type: "ListaFirme", url: "https://listafirme.ro/api", apiKey: "" });
       setShowAddApi(false);
     } catch (err: any) {
       toast("error", err.message || "Eroare la salvarea setărilor.");
@@ -648,7 +648,7 @@ export default function SettingsPage() {
             <>
               <div className="text-lg font-semibold mb-1 text-slate-900">🔌 Integrare API</div>
               <div className="text-sm mb-7 leading-relaxed text-slate-500">
-                Gestioneaza conexiunile cu servicii externe: date ONRC, ANAF, email, si altele. Fiecare API poate fi testat independent.
+                Gestioneaza conexiunile cu servicii externe: ListaFirme.ro (cautare firme dupa CUI), date ONRC, ANAF, email, si altele. Fiecare cabinet isi configureaza propriul cont API.
               </div>
 
               {apis.map((api) => {
@@ -755,6 +755,7 @@ export default function SettingsPage() {
                       value={newApi.type}
                       onChange={(e) => setNewApi((p) => ({ ...p, type: e.target.value }))}
                     >
+                      <option value="ListaFirme">ListaFirme.ro</option>
                       <option value="ONRC">ONRC</option>
                       <option value="ANAF">ANAF</option>
                       <option value="Email">Email</option>

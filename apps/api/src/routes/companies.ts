@@ -4,7 +4,7 @@ import { z } from "zod";
 import { db } from "../db";
 import {
   companies, companyAssociates, companyAdministrators,
-  companyFinancials, companyIfMembers,
+  companyFinancials, companyIfMembers, documentFolders, rules, documents,
 } from "../db/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { lookupCUI, FORMA_MAP } from "../services/onrc";
@@ -12,6 +12,8 @@ import { lookupCUI_ListaFirme, searchCompany_ListaFirme } from "../services/list
 import { uploadFile, deleteFile } from "../services/storage";
 import { AuthContext } from "../middleware/auth";
 import { processCompanyQueue, JOB_PRIORITY } from "../lib/queue";
+import { populateCompanyElements } from "../services/companyElements";
+import { checkPreEligibility } from "../services/preEligibility";
 
 // Helper: ensure processing_status columns exist (self-healing)
 async function ensureProcessingColumns() {
@@ -269,6 +271,10 @@ companyRoutes.post("/", async (c) => {
       return comp;
     });
 
+    // Populate company elements (fire-and-forget)
+    populateCompanyElements(company.id, orgId).catch((e: any) =>
+      console.warn("[companies/create] companyElements:", e.message));
+
     return c.json(company, 201);
   } catch (err: any) {
     console.error("[companies/create] Transaction failed:", err.message);
@@ -301,6 +307,10 @@ companyRoutes.post("/:id/sync-onrc", async (c) => {
     lastSyncedAt: new Date(),
     updatedAt: new Date(),
   }).where(eq(companies.id, id));
+
+  // Refresh company elements
+  populateCompanyElements(id, auth.organizationId!).catch((e: any) =>
+    console.warn("[companies/sync-onrc] companyElements:", e.message));
 
   return c.json({ ok: true, message: "Sincronizare completă" });
 });
@@ -350,10 +360,11 @@ companyRoutes.get("/search-cui", async (c) => {
   if (!query || query.length < 2) return c.json([]);
 
   try {
+    const orgId = auth.organizationId!;
     // If query is numeric, treat as CUI lookup
     const isNumeric = /^\d+$/.test(query.replace(/\D/g, ""));
     if (isNumeric && query.replace(/\D/g, "").length >= 4) {
-      const result = await lookupCUI_ListaFirme(query);
+      const result = await lookupCUI_ListaFirme(query, orgId);
       if (result) {
         return c.json([{
           name: result.name,
@@ -368,7 +379,7 @@ companyRoutes.get("/search-cui", async (c) => {
     }
 
     // Otherwise search by name
-    const results = await searchCompany_ListaFirme(query);
+    const results = await searchCompany_ListaFirme(query, orgId);
     return c.json(results.slice(0, 10).map(r => ({
       name: r.name,
       fiscalCode: r.fiscalCode,
@@ -377,7 +388,7 @@ companyRoutes.get("/search-cui", async (c) => {
     })));
   } catch (err: any) {
     // If ListaFirme is not configured, return empty
-    if (err.message?.includes("LISTAFIRME_API_KEY")) {
+    if (err.message?.includes("LISTAFIRME_API_KEY") || err.message?.includes("nu este configurat")) {
       return c.json([]);
     }
     throw err;
@@ -400,8 +411,8 @@ companyRoutes.post("/from-listafirme", async (c) => {
   });
   if (existing) return c.json({ error: "Firma cu CUI " + cleanCUI + " există deja" }, 400);
 
-  // Lookup from ListaFirme
-  const lfData = await lookupCUI_ListaFirme(cleanCUI);
+  // Lookup from ListaFirme (uses org-level API key if configured)
+  const lfData = await lookupCUI_ListaFirme(cleanCUI, auth.organizationId!);
   if (!lfData) return c.json({ error: "CUI-ul nu a fost găsit pe ListaFirme.ro" }, 404);
 
   // Map legal form (reuse FORMA_MAP from onrc.ts for consistency)
@@ -480,6 +491,10 @@ companyRoutes.post("/from-listafirme", async (c) => {
 
       return comp;
     });
+
+    // Populate company elements (fire-and-forget)
+    populateCompanyElements(company.id, orgId2).catch((e: any) =>
+      console.warn("[companies/from-listafirme] companyElements:", e.message));
 
     return c.json(company, 201);
   } catch (err: any) {
@@ -578,6 +593,10 @@ companyRoutes.put("/:id", async (c) => {
 
   const [updated] = await db.update(companies).set(updateData).where(eq(companies.id, id)).returning();
 
+  // Refresh company elements
+  populateCompanyElements(id, auth.organizationId!).catch((e: any) =>
+    console.warn("[companies/update] companyElements:", e.message));
+
   return c.json(updated);
 });
 
@@ -612,4 +631,95 @@ companyRoutes.delete("/:id", async (c) => {
   await db.delete(companies).where(eq(companies.id, id));
 
   return c.json({ ok: true });
+});
+
+// --- PRE-ELIGIBILITY CHECK ---
+companyRoutes.post("/:id/pre-eligibility", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const id = c.req.param("id");
+
+  const body = await c.req.json();
+  const { sessionFolderId, includeInterpreted } = body;
+  if (!sessionFolderId) return c.json({ error: "sessionFolderId obligatoriu" }, 400);
+
+  try {
+    const result = await checkPreEligibility(
+      id,
+      sessionFolderId,
+      auth.organizationId!,
+      { includeInterpreted: !!includeInterpreted },
+    );
+    return c.json(result);
+  } catch (err: any) {
+    return c.json({ error: err.message }, 400);
+  }
+});
+
+// --- LIST SESSIONS (Program → Măsură → Sesiune hierarchy) ---
+companyRoutes.get("/sessions/list", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  if (!auth.organizationId) return c.json({ error: "No organization" }, 403);
+
+  // Get all session folders with their parent hierarchy
+  const sessions = await db.query.documentFolders.findMany({
+    where: and(
+      eq(documentFolders.organizationId, auth.organizationId),
+      eq(documentFolders.type, "sesiune"),
+    ),
+  });
+
+  // For each session, walk up to get masura → program names
+  const result = [];
+  for (const session of sessions) {
+    let masuraName = "";
+    let programName = "";
+
+    // Get masura (parent of sesiune)
+    if (session.parentId) {
+      const masura = await db.query.documentFolders.findFirst({
+        where: eq(documentFolders.id, session.parentId),
+      });
+      if (masura) {
+        masuraName = masura.name;
+        // Get program (parent of masura)
+        if (masura.parentId) {
+          const program = await db.query.documentFolders.findFirst({
+            where: eq(documentFolders.id, masura.parentId),
+          });
+          if (program) programName = program.name;
+        }
+      }
+    }
+
+    // Count rules in this session's guides
+    const guideFolders = await db.query.documentFolders.findMany({
+      where: and(
+        eq(documentFolders.parentId, session.id),
+        eq(documentFolders.type, "ghiduri"),
+      ),
+    });
+    let rulesCount = 0;
+    for (const gf of guideFolders) {
+      const docs = await db.query.documents.findMany({
+        where: eq(documents.folderId, gf.id),
+      });
+      for (const doc of docs) {
+        const docRules = await db.query.rules.findMany({
+          where: eq(rules.documentId, doc.id),
+        });
+        rulesCount += docRules.length;
+      }
+    }
+
+    result.push({
+      id: session.id,
+      name: session.name,
+      masuraName,
+      programName,
+      fullPath: [programName, masuraName, session.name].filter(Boolean).join(" → "),
+      rulesCount,
+    });
+  }
+
+  return c.json(result);
 });

@@ -13,6 +13,7 @@ import { publishEvent } from "../lib/sse";
 import { redis } from "../lib/redis";
 import { FORMA_MAP } from "../services/onrc";
 import { preflightCached } from "../services/dbPreflight";
+import { populateCompanyElements } from "../services/companyElements";
 
 /** Normalize stare text (with diacritics/caps) to DB enum value */
 function normalizeStare(raw: string): "functiune" | "radiata" | "dizolvata" | "lichidare" {
@@ -192,6 +193,10 @@ async function handleOnrcExtract(job: Job<CompanyExtractPayload>) {
     );
   }
 
+  // Materialize company elements for pre-eligibility
+  await populateCompanyElements(companyId, organizationId).catch((e: any) =>
+    console.warn("[processCompany] companyElements population:", e.message));
+
   await job.updateProgress(100);
 
   // SSE notification
@@ -325,6 +330,10 @@ async function handleOnrcUpdate(job: Job<CompanyOnrcUpdatePayload>) {
     }
   }
 
+  // Materialize company elements for pre-eligibility
+  await populateCompanyElements(companyId, organizationId).catch((e: any) =>
+    console.warn("[processCompany] companyElements population:", e.message));
+
   await job.updateProgress(100);
 
   // SSE notification
@@ -383,6 +392,10 @@ async function handleBilantParse(job: Job<CompanyBilantPayload>) {
     processingStatus: "done",
     processingError: null,
   }).where(eq(companies.id, companyId));
+
+  // Materialize company elements (financials changed)
+  await populateCompanyElements(companyId, organizationId).catch((e: any) =>
+    console.warn("[processCompany] companyElements population:", e.message));
 
   await job.updateProgress(100);
 

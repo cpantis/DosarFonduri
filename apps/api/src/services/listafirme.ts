@@ -3,10 +3,16 @@
  *
  * Docs: https://listafirme.ro/specificatii/api-info-v2.asp
  *
- * Folosit de provider pentru a adăuga cabinete de consultanță.
- * NU depinde de organizationId (e la nivel de platformă).
+ * API key resolution order:
+ * 1. Explicit `apiKey` parameter (for testing)
+ * 2. Organization-level key from `apiIntegrations` table (type="ListaFirme")
+ * 3. Platform-level fallback from `LISTAFIRME_API_KEY` env var
  */
 import { redis } from "../lib/redis";
+import { db } from "../db";
+import { apiIntegrations } from "../db/schema";
+import { eq, and } from "drizzle-orm";
+import { decrypt } from "../lib/crypto";
 
 const INFO_URL = "https://listafirme.ro/api/info-v2.asp";
 const CACHE_TTL = 7 * 86400; // 7 zile
@@ -98,20 +104,55 @@ function buildInfoPayload(cui: string): Record<string, string> {
   };
 }
 
+// ─── Resolve API key per organization ────────────────────
+
+/**
+ * Resolve the ListaFirme API key for a given organization.
+ * Priority: org-level (apiIntegrations) → platform-level (env var).
+ */
+export async function resolveListaFirmeApiKey(organizationId?: string): Promise<string | null> {
+  // 1. Try org-level key from apiIntegrations table
+  if (organizationId) {
+    const integration = await db.query.apiIntegrations.findFirst({
+      where: and(
+        eq(apiIntegrations.organizationId, organizationId),
+        eq(apiIntegrations.type, "ListaFirme"),
+        eq(apiIntegrations.enabled, true),
+      ),
+    });
+    if (integration?.apiKeyEncrypted) {
+      try {
+        return decrypt(integration.apiKeyEncrypted);
+      } catch (e: any) {
+        console.warn("[listafirme] Failed to decrypt org API key:", e.message);
+      }
+    }
+  }
+
+  // 2. Fallback to platform-level env var
+  return process.env.LISTAFIRME_API_KEY || null;
+}
+
 // ─── API call ────────────────────────────────────────────
 
 export async function lookupCUI_ListaFirme(
   cui: string,
-  apiKey?: string,
+  apiKeyOrOrgId?: string,
 ): Promise<ListaFirmeCompany | null> {
   const cleanCUI = cui.replace(/\D/g, "");
   if (!cleanCUI || cleanCUI.length < 2 || cleanCUI.length > 12) {
     throw new Error("CUI invalid — trebuie să fie între 2 și 12 cifre.");
   }
 
-  const key = apiKey || process.env.LISTAFIRME_API_KEY;
+  // If apiKeyOrOrgId looks like a UUID, resolve it as orgId; otherwise treat as direct key
+  let key: string | null;
+  if (apiKeyOrOrgId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(apiKeyOrOrgId)) {
+    key = await resolveListaFirmeApiKey(apiKeyOrOrgId);
+  } else {
+    key = apiKeyOrOrgId || await resolveListaFirmeApiKey();
+  }
   if (!key) {
-    throw new Error("LISTAFIRME_API_KEY nu este configurat.");
+    throw new Error("LISTAFIRME_API_KEY nu este configurat. Adaugă cheia API în Configurări → Integrări API.");
   }
 
   // Check cache
@@ -282,10 +323,15 @@ export interface ListaFirmeSearchResult {
 
 export async function searchCompany_ListaFirme(
   query: string,
-  apiKey?: string,
+  apiKeyOrOrgId?: string,
 ): Promise<ListaFirmeSearchResult[]> {
-  const key = apiKey || process.env.LISTAFIRME_API_KEY;
-  if (!key) throw new Error("LISTAFIRME_API_KEY nu este configurat.");
+  let key: string | null;
+  if (apiKeyOrOrgId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(apiKeyOrOrgId)) {
+    key = await resolveListaFirmeApiKey(apiKeyOrOrgId);
+  } else {
+    key = apiKeyOrOrgId || await resolveListaFirmeApiKey();
+  }
+  if (!key) throw new Error("LISTAFIRME_API_KEY nu este configurat. Adaugă cheia API în Configurări → Integrări API.");
 
   const body = `key=${encodeURIComponent(key)}&src=${encodeURIComponent(query)}`;
 

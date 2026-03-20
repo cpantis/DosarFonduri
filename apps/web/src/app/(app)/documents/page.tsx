@@ -7,6 +7,7 @@ import { FolderUploadButton } from "@/components/shared/FolderUploadButton";
 import { apiGet, apiPost, apiPut, apiDelete, api } from "@/lib/api";
 import { useSSE } from "@/hooks/useSSE";
 import { useToast } from "@/components/shared/Toast";
+import { SessionLibrary } from "@/components/documents/SessionLibrary";
 
 /* ══════════════════════════════════════════
    INTERFACES
@@ -635,6 +636,7 @@ export default function DocumentsPage() {
   const selectedNode = selectedFolder ? findNodeById(tree, selectedFolder) : null;
   const isLeafSelected = selectedNode ? LEAF_TYPES.has(selectedNode.type) : false;
   const isClientFolder = selectedNode ? CLIENT_FOLDER_TYPES.has(selectedNode.type) : false;
+  const isBiblioteca = selectedNode?.type === "biblioteca";
   const canUpload = isLeafSelected && !isClientFolder;
 
   // Stats
@@ -788,29 +790,31 @@ export default function DocumentsPage() {
             <span className="doc-bc-seg">Selecteaza un folder din stanga</span>
           )}
         </div>
-        <div className="doc-toolbar">
-          <div className="doc-search-wrap">
-            <svg className="doc-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-            </svg>
-            <input
-              ref={searchRef}
-              className="doc-search-input"
-              placeholder="Cauta document..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-            />
-            <kbd className="doc-search-kbd">Ctrl+K</kbd>
+        {!isBiblioteca && (
+          <div className="doc-toolbar">
+            <div className="doc-search-wrap">
+              <svg className="doc-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+              <input
+                ref={searchRef}
+                className="doc-search-input"
+                placeholder="Cauta document..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+              />
+              <kbd className="doc-search-kbd">Ctrl+K</kbd>
+            </div>
+            {canUpload && selectedFolder && selectedNode && (
+              <FolderUploadButton
+                folderId={selectedFolder}
+                folderType={selectedNode.type as "ghiduri" | "templateuri"}
+                onSuccess={() => { if (selectedFolder) fetchDocs(selectedFolder); }}
+                onWarnings={(warnings) => warnings.forEach(w => toast("warning", w))}
+              />
+            )}
           </div>
-          {canUpload && selectedFolder && selectedNode && (
-            <FolderUploadButton
-              folderId={selectedFolder}
-              folderType={selectedNode.type as "ghiduri" | "templateuri"}
-              onSuccess={() => { if (selectedFolder) fetchDocs(selectedFolder); }}
-              onWarnings={(warnings) => warnings.forEach(w => toast("warning", w))}
-            />
-          )}
-        </div>
+        )}
       </div>
       <div className="doc-list-scroll">
         {!selectedFolder ? (
@@ -841,6 +845,9 @@ export default function DocumentsPage() {
               </div>
             </div>
           </div>
+        ) : isBiblioteca ? (
+          /* Biblioteca Sesiune — aggregated session data */
+          <SessionLibrary folderId={selectedFolder!.replace("biblioteca_", "")} />
         ) : !isLeafSelected ? (
           /* Non-leaf folder selected — show hierarchy info */
           <div className="doc-welcome">

@@ -33,6 +33,8 @@ export interface ElementDefInput {
   sourcePriority?: string[];
   validationRules?: Record<string, any>;
   required?: boolean;
+  minCount?: number;
+  maxCount?: number | null;
   helpText?: string;
   isDerived?: boolean;
   derivationFormula?: string;
@@ -72,6 +74,8 @@ export async function upsertElementDefinition(input: ElementDefInput) {
         return parsed.success ? parsed.data : existing.validationRules;
       })(),
       required: input.required ?? existing.required,
+      minCount: input.minCount ?? existing.minCount,
+      maxCount: input.maxCount !== undefined ? input.maxCount : existing.maxCount,
       helpText: input.helpText ?? existing.helpText,
       isDerived: input.isDerived ?? existing.isDerived,
       derivationFormula: input.derivationFormula ?? existing.derivationFormula,
@@ -92,6 +96,8 @@ export async function upsertElementDefinition(input: ElementDefInput) {
     sourcePriority: input.sourcePriority ?? ["document_extracted", "solomon_chat", "consultant_manual"],
     validationRules: input.validationRules,
     required: input.required ?? false,
+    minCount: input.minCount ?? 1,
+    maxCount: input.maxCount ?? undefined,
     helpText: input.helpText,
     isDerived: input.isDerived ?? false,
     derivationFormula: input.derivationFormula,
@@ -318,6 +324,7 @@ IMPORTANT:
 - Indică unitatea de măsură unde e cazul (ha, EUR, LEI, %, ani, luni)
 - Indică valorile posibile pentru enum-uri
 - Indică formula de derivare pentru câmpuri calculate
+- CARDINALITATE: dacă ghidul cere mai multe instanțe (ex: "3 oferte de preț" → min_count=3, "minimum 2 surse" → min_count=2). Default min_count=1, max_count=null.
 
 Returnează DOAR un JSON valid. Fără backticks, fără explicații.`;
 
@@ -336,8 +343,14 @@ Pentru fiecare element returnează:
   "is_derived": true/false,
   "derivation_formula": "formula sau null",
   "source_priority": ["document_extracted", "solomon_chat", "consultant_manual"],
-  "collection_order": number (ordinea logică de colectare)
+  "collection_order": number (ordinea logică de colectare),
+  "min_count": 1,
+  "max_count": null
 }
+
+IMPORTANT CARDINALITATE: Dacă ghidul cere mai multe instanțe ale unui element, setează min_count > 1.
+Exemple: "3 oferte de preț" → min_count=3, "minimum 2 surse" → min_count=2.
+max_count = null înseamnă fără limită. Default: min_count=1, max_count=null.
 
 TEXT GHID:
 `;
@@ -401,6 +414,8 @@ export async function extractElementDefinitionsFromGuide(
         enumValues: Array.isArray(el.enum_values) ? el.enum_values : undefined,
         sourcePriority: Array.isArray(el.source_priority) ? el.source_priority : undefined,
         required: !!el.required,
+        minCount: typeof el.min_count === "number" ? el.min_count : 1,
+        maxCount: typeof el.max_count === "number" ? el.max_count : null,
         helpText: el.help_text || undefined,
         isDerived: !!el.is_derived,
         derivationFormula: el.derivation_formula || undefined,

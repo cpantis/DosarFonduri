@@ -153,6 +153,7 @@ Analizezi ghiduri de finanțare pre-structurate (text curat + tabele + clasifica
    - Toate câmpurile pe care un consultant trebuie să le colecteze
    - Categorie, tip date, unitate, valori enum, formula derivare
    - Prioritate sursă, obligatoriu da/nu
+   - CARDINALITATE: câte instanțe sunt necesare (ex: "3 oferte de preț" → min_count=3, "minimum 2 surse de finanțare" → min_count=2)
 
 Fii EXHAUSTIV — o regulă omisă poate însemna un dosar respins.
 Returnează DOAR JSON valid — un singur obiect cu 4 array-uri. Fără backticks, fără explicații.`;
@@ -227,10 +228,19 @@ Returnează un singur obiect JSON cu 4 chei:
       "is_derived": true/false,
       "derivation_formula": "formula sau null",
       "source_priority": ["document_extracted", "solomon_chat", "consultant_manual"],
-      "collection_order": number
+      "collection_order": number,
+      "min_count": 1,
+      "max_count": null
     }
   ]
 }
+
+IMPORTANT CARDINALITATE ELEMENTE:
+- Dacă ghidul cere mai multe instanțe ale unui element, setează min_count > 1.
+  Exemple: "3 oferte de preț" → min_count=3, "minimum 2 surse independente" → min_count=2,
+  "cel puțin 1 certificat" → min_count=1 (default).
+- max_count = null înseamnă fără limită superioară. max_count = 3 înseamnă exact maxim 3.
+- Dacă nu e specificată o cantitate, lasă min_count=1, max_count=null.
 
 TEXT GHID PRE-STRUCTURAT:
 `;
@@ -506,6 +516,8 @@ async function saveElementDefinitions(defs: any[], documentId: string, organizat
         enumValues: Array.isArray(el.enum_values) ? el.enum_values : undefined,
         sourcePriority: Array.isArray(el.source_priority) ? el.source_priority : undefined,
         required: !!el.required,
+        minCount: typeof el.min_count === "number" ? el.min_count : 1,
+        maxCount: typeof el.max_count === "number" ? el.max_count : null,
         helpText: el.help_text || undefined,
         isDerived: !!el.is_derived,
         derivationFormula: el.derivation_formula || undefined,

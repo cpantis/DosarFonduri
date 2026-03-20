@@ -1306,6 +1306,7 @@ documentRoutes.post("/session/:folderId/checklist/auto-populate", async (c) => {
     || r.description?.toLowerCase().includes("document")
     || r.description?.toLowerCase().includes("acte necesare")
     || r.description?.toLowerCase().includes("anexe")
+    || r.description?.toLowerCase().includes("ofert")
   );
 
   // Check existing items to avoid duplicates
@@ -1313,6 +1314,26 @@ documentRoutes.post("/session/:folderId/checklist/auto-populate", async (c) => {
     where: and(eq(sessionChecklist.folderId, folderId), eq(sessionChecklist.organizationId, auth.organizationId)),
   });
   const existingRuleIds = new Set(existing.filter(e => e.sourceRuleId).map(e => e.sourceRuleId));
+
+  // Helper: extract quantity from rule description (e.g., "3 oferte" → 3, "minimum 2 surse" → 2)
+  function extractCardinality(description: string): number | null {
+    const patterns = [
+      /(\d+)\s*oferte/i,
+      /(\d+)\s*surse/i,
+      /minim(?:um)?\s*(\d+)/i,
+      /cel\s*pu[tț]in\s*(\d+)/i,
+      /(\d+)\s*exemplare/i,
+      /(\d+)\s*copii/i,
+    ];
+    for (const pat of patterns) {
+      const m = description.match(pat);
+      if (m) {
+        const n = parseInt(m[1], 10);
+        if (n > 1 && n <= 20) return n;
+      }
+    }
+    return null;
+  }
 
   const newItems = docRules
     .filter(r => !existingRuleIds.has(r.id))
@@ -1325,7 +1346,10 @@ documentRoutes.post("/session/:folderId/checklist/auto-populate", async (c) => {
         category = "Documente tehnice";
       } else if (desc.includes("declarați") || desc.includes("angajament") || desc.includes("acord")) {
         category = "Declarații & Angajamente";
+      } else if (desc.includes("ofert")) {
+        category = "Documente achizitii";
       }
+      const cardinality = extractCardinality(r.description || "");
       return {
         folderId,
         organizationId: auth.organizationId!,
@@ -1334,6 +1358,7 @@ documentRoutes.post("/session/:folderId/checklist/auto-populate", async (c) => {
         source: "ghid" as const,
         sourceRuleId: r.id,
         sortOrder: existing.length + idx,
+        notes: cardinality ? `Necesar: ${cardinality} instanțe` : null,
       };
     });
 

@@ -1147,226 +1147,109 @@ export default function DocumentsPage() {
               )}
               {/* Expandable results section */}
               {hasSummary && isExpanded && (() => {
-                const rules = docRules[d.id] || [];
-                const criteria = docCriteria[d.id] || [];
-                const elements = docElements[d.id] || [];
-                const isLoading = docRulesLoading[d.id];
-                const activeTab = expandedTab[d.id] || "rules";
-                const CATEGORY_COLORS: Record<string, string> = {
-                  eligibilitate: "#34d399", financiar: "#fbbf24", tehnic: "#4d8bff",
-                  administrativ: "#a78bfa", achizitii: "#fb923c", documente: "#64748b",
-                  selectie: "#f87171", intensitate: "#06b6d4", ajutor_stat: "#ec4899",
-                };
-                const ELEMENT_CATEGORY_COLORS: Record<string, string> = {
-                  financial: "#fbbf24", legal: "#a78bfa", technical: "#4d8bff",
-                  environmental: "#34d399", hr: "#fb923c", other: "#64748b",
-                };
-                const tabs = [
-                  { id: "rules", label: "Reguli", count: d.summary?.rulesCount || 0, color: "#34d399", icon: "\u{1F6E1}" },
-                  { id: "criteria", label: "Criterii", count: d.summary?.scoringCount || 0, color: "#a78bfa", icon: "\u{1F4CA}" },
-                  { id: "elements", label: "Elemente", count: d.summary?.elementsCount || 0, color: "#4d8bff", icon: "\u{1F4CB}" },
-                ].filter(t => t.count > 0);
-                return (
-                  <div style={{
-                    margin: "0 4px 8px 4px",
-                    borderRadius: "0 0 10px 10px",
-                    border: "1px solid rgba(226,232,240,.8)",
-                    borderTop: "none",
-                    background: "#ffffff",
-                    fontSize: 12,
-                    animation: "docFadeIn .2s ease-out",
-                    overflow: "hidden",
-                  }}>
-                    {/* Tab bar with counts */}
-                    <div style={{ display: "flex", gap: 0, background: "#f8fafc", borderBottom: "1px solid rgba(226,232,240,.6)" }}>
-                      {d.processingType === "ghid" && tabs.map(tab => (
-                        <button key={tab.id}
-                          onClick={(e) => { e.stopPropagation(); setExpandedTab(prev => ({ ...prev, [d.id]: tab.id })); }}
-                          style={{
+                const rulesCount = d.summary?.rulesCount || 0;
+                const scoringCount = d.summary?.scoringCount || 0;
+                const elementsCount = d.summary?.elementsCount || 0;
+                const trustScore = d.summary?.trustScore;
+                const cr = d.summary?.completenessReport;
+                const found: string[] = cr?.categoriesFound || [];
+                const missing: string[] = cr?.categoriesMissing || [];
+                const warnings: string[] = cr?.warnings || [];
+
+                // For ghid: show processing pipeline summary instead of full rules list
+                if (d.processingType === "ghid") {
+                  const fixedCount = (d.summary as any)?.fixedRules || 0;
+                  const interpCount = (d.summary as any)?.interpretedRules || 0;
+                  // Pipeline stages
+                  const stages = [
+                    { icon: "\u{1F4C4}", label: "Extragere text", detail: d.pageCount ? `${d.pageCount} pagini` : null, done: true },
+                    { icon: "\u{1F6E1}", label: "Reguli eligibilitate", detail: rulesCount > 0 ? `${fixedCount || "?"} fixe + ${interpCount || "?"} interpretate = ${rulesCount}` : null, done: rulesCount > 0 },
+                    { icon: "\u{2B50}", label: "Criterii selecție", detail: scoringCount > 0 ? `${scoringCount} criterii` : null, done: scoringCount > 0 },
+                    { icon: "\u{1F4CB}", label: "Elemente (câmpuri)", detail: elementsCount > 0 ? `${elementsCount} definiții` : null, done: elementsCount > 0 },
+                    { icon: "\u{1F517}", label: "Linkuri reguli ↔ elemente", detail: null, done: rulesCount > 0 && elementsCount > 0 },
+                    { icon: "\u2705", label: "Verificare completitudine", detail: trustScore != null ? `Trust: ${Math.round(trustScore * 100)}%` : null, done: trustScore != null },
+                  ];
+                  return (
+                    <div style={{
+                      margin: "0 4px 8px 4px",
+                      borderRadius: "0 0 10px 10px",
+                      border: "1px solid rgba(226,232,240,.8)",
+                      borderTop: "none",
+                      background: "#ffffff",
+                      fontSize: 12,
+                      animation: "docFadeIn .2s ease-out",
+                      overflow: "hidden",
+                    }}>
+                      {/* Compact summary bar */}
+                      <div style={{ display: "flex", gap: 0, background: "#f8fafc", borderBottom: "1px solid rgba(226,232,240,.6)", padding: "0" }}>
+                        {[
+                          { label: "Reguli", count: rulesCount, color: "#059669", icon: "\u{1F6E1}" },
+                          { label: "Criterii", count: scoringCount, color: "#7c3aed", icon: "\u{1F4CA}" },
+                          { label: "Elemente", count: elementsCount, color: "#2563eb", icon: "\u{1F4CB}" },
+                        ].map(s => (
+                          <div key={s.label} style={{
                             flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
-                            padding: "8px 12px", border: "none", cursor: "pointer",
-                            background: activeTab === tab.id ? "#ffffff" : "transparent",
-                            borderBottom: activeTab === tab.id ? `2px solid ${tab.color}` : "2px solid transparent",
-                            color: activeTab === tab.id ? "#0f172a" : "#94a3b8",
-                            fontWeight: activeTab === tab.id ? 700 : 500,
-                            fontSize: 12, fontFamily: "'Inter', system-ui, sans-serif",
-                            transition: "all .15s",
-                          }}
-                        >
-                          <span style={{ fontSize: 13 }}>{tab.icon}</span>
-                          {tab.label}:
-                          <span style={{ fontWeight: 700, color: tab.color, fontFamily: "'JetBrains Mono', monospace" }}>{tab.count}</span>
-                        </button>
-                      ))}
-                      {d.processingType === "template" && (d.summary?.fieldsCount || 0) > 0 && (
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 14px" }}>
-                          <span style={{ fontSize: 13 }}>{"\u{1F4DD}"}</span>
-                          <span style={{ color: "#64748b" }}>Elemente extrase:</span>
-                          <span style={{ fontWeight: 700, color: "#4d8bff", fontFamily: "'JetBrains Mono', monospace" }}>{tplElements[d.id]?.total ?? d.summary?.fieldsCount}</span>
-                          {d.generationMode && (
-                            <span style={{
-                              fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 4, letterSpacing: ".3px",
-                              background: d.generationMode === "fill" ? "rgba(52,211,153,.12)" : "rgba(167,139,250,.12)",
-                              color: d.generationMode === "fill" ? "#059669" : "#7c3aed",
-                            }}>
-                              {d.generationMode === "fill" ? "FILL" : "COMPOSE"}
-                            </span>
-                          )}
-                        </div>
-                      )}
-                      {/* Trust score + completeness */}
-                      {d.summary?.trustScore != null && (
-                        <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", marginLeft: "auto" }}>
-                          <span style={{
-                            fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 4,
-                            background: d.summary.trustScore >= 0.8 ? "rgba(52,211,153,.15)" : d.summary.trustScore >= 0.6 ? "rgba(251,191,36,.15)" : "rgba(248,113,113,.15)",
-                            color: d.summary.trustScore >= 0.8 ? "#059669" : d.summary.trustScore >= 0.6 ? "#d97706" : "#dc2626",
-                            fontFamily: "'JetBrains Mono', monospace",
+                            padding: "8px 12px", fontSize: 12, color: "#64748b",
                           }}>
-                            Trust: {Math.round(d.summary.trustScore * 100)}%
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                    {/* Tab content */}
-                    {d.processingType === "ghid" && (
-                      <div style={{ maxHeight: 280, overflowY: "auto" }}>
-                        {isLoading ? (
-                          <div style={{ padding: "16px", textAlign: "center", color: "#94a3b8", fontSize: 12 }}>
-                            Se încarcă datele...
+                            <span style={{ fontSize: 13 }}>{s.icon}</span>
+                            {s.label}:
+                            <span style={{ fontWeight: 700, color: s.count > 0 ? s.color : "#cbd5e1", fontFamily: "'JetBrains Mono', monospace" }}>{s.count}</span>
                           </div>
-                        ) : activeTab === "rules" ? (
-                          rules.length === 0 ? (
-                            <div style={{ padding: "16px", textAlign: "center", color: "#94a3b8", fontSize: 12 }}>Nicio regulă extrasă</div>
-                          ) : rules.map((rule: any) => (
-                            <div key={rule.id} style={{
-                              padding: "8px 14px", borderBottom: "1px solid rgba(226,232,240,.4)",
-                              display: "flex", gap: 8, alignItems: "flex-start", transition: "background .15s",
-                            }}
-                            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "#f8fafc"; }}
-                            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
-                            >
-                              <div style={{ flexShrink: 0, marginTop: 2 }}>
-                                <span style={{
-                                  display: "inline-block", fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 4,
-                                  background: rule.type === "fixed" ? "rgba(52,211,153,.1)" : "rgba(251,191,36,.1)",
-                                  color: rule.type === "fixed" ? "#059669" : "#d97706", letterSpacing: ".3px",
-                                }}>{rule.type === "fixed" ? "FIXĂ" : "INTER"}</span>
-                              </div>
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontSize: 12, color: "#0f172a", lineHeight: 1.4, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as const, overflow: "hidden" }}>
-                                  {rule.description}
-                                </div>
-                                <div style={{ display: "flex", gap: 8, marginTop: 3, alignItems: "center" }}>
-                                  {rule.category && (
-                                    <span style={{ fontSize: 10, padding: "0 6px", borderRadius: 9999, background: (CATEGORY_COLORS[rule.category] || "#64748b") + "15", color: CATEGORY_COLORS[rule.category] || "#64748b", fontWeight: 600 }}>
-                                      {rule.category}
-                                    </span>
-                                  )}
-                                  {rule.sourcePage && <span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'JetBrains Mono', monospace" }}>p.{rule.sourcePage}</span>}
-                                  <span style={{ fontSize: 10, color: parseFloat(rule.confidence) >= 0.85 ? "#059669" : "#d97706", fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>
-                                    {Math.round(parseFloat(rule.confidence || "0") * 100)}%
-                                  </span>
-                                  {rule.validated && <span style={{ fontSize: 11, color: "#059669" }}>{"\u2713"}</span>}
-                                  {rule.needsReview && <span style={{ fontSize: 10, color: "#f59e0b" }}>{"\u26A0"}</span>}
-                                </div>
-                              </div>
-                            </div>
-                          ))
-                        ) : activeTab === "criteria" ? (
-                          criteria.length === 0 ? (
-                            <div style={{ padding: "16px", textAlign: "center", color: "#94a3b8", fontSize: 12 }}>Niciun criteriu extras</div>
-                          ) : <>
-                            {criteria.map((cr: any, i: number) => (
-                              <div key={i} style={{
-                                padding: "8px 14px", borderBottom: "1px solid rgba(226,232,240,.4)",
-                                display: "flex", gap: 8, alignItems: "flex-start", transition: "background .15s",
-                              }}
-                              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "#f8fafc"; }}
-                              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
-                              >
-                                <div style={{ flexShrink: 0, marginTop: 2 }}>
-                                  <span style={{
-                                    display: "inline-block", fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 4,
-                                    background: "rgba(167,139,250,.1)", color: "#7c3aed", letterSpacing: ".3px",
-                                    fontFamily: "'JetBrains Mono', monospace",
-                                  }}>{cr.maxPoints}p</span>
-                                </div>
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                  <div style={{ fontSize: 12, color: "#0f172a", lineHeight: 1.4, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as const, overflow: "hidden" }}>
-                                    {cr.name}
-                                  </div>
-                                  <div style={{ display: "flex", gap: 8, marginTop: 3, alignItems: "center" }}>
-                                    {cr.category && (
-                                      <span style={{ fontSize: 10, padding: "0 6px", borderRadius: 9999, background: (CATEGORY_COLORS[cr.category] || "#64748b") + "15", color: CATEGORY_COLORS[cr.category] || "#64748b", fontWeight: 600 }}>
-                                        {cr.category}
-                                      </span>
-                                    )}
-                                    {cr.evaluationLogic && (
-                                      <span style={{ fontSize: 10, color: "#94a3b8", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "inline-block" }}>
-                                        {typeof cr.evaluationLogic === "string" ? cr.evaluationLogic : cr.evaluationLogic.type || ""}
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                            {/* Total punctaj footer */}
-                            <div style={{
-                              padding: "8px 14px", background: "#f8fafc", borderTop: "1px solid rgba(226,232,240,.6)",
-                              display: "flex", justifyContent: "space-between", alignItems: "center",
+                        ))}
+                        {trustScore != null && (
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", marginLeft: "auto" }}>
+                            <span style={{
+                              fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 4,
+                              background: trustScore >= 0.8 ? "rgba(52,211,153,.15)" : trustScore >= 0.6 ? "rgba(251,191,36,.15)" : "rgba(248,113,113,.15)",
+                              color: trustScore >= 0.8 ? "#059669" : trustScore >= 0.6 ? "#d97706" : "#dc2626",
+                              fontFamily: "'JetBrains Mono', monospace",
                             }}>
-                              <span style={{ fontSize: 11, fontWeight: 600, color: "#64748b" }}>Total punctaj maxim</span>
-                              <span style={{ fontSize: 13, fontWeight: 700, color: "#7c3aed", fontFamily: "'JetBrains Mono', monospace" }}>
-                                {criteria.reduce((sum: number, cr: any) => sum + (Number(cr.maxPoints) || 0), 0)}p
+                              Trust: {Math.round(trustScore * 100)}%
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      {/* Pipeline stages */}
+                      <div style={{ padding: "12px 16px" }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".5px", color: "#94a3b8", marginBottom: 10 }}>
+                          Pipeline procesare
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                          {stages.map((stage, i) => (
+                            <div key={i} style={{
+                              display: "flex", alignItems: "center", gap: 10, padding: "5px 8px",
+                              borderRadius: 6, background: stage.done ? "rgba(52,211,153,.04)" : "rgba(148,163,184,.04)",
+                            }}>
+                              <span style={{ fontSize: 14, width: 20, textAlign: "center", flexShrink: 0 }}>{stage.icon}</span>
+                              <span style={{
+                                fontSize: 12, fontWeight: 500, flex: 1,
+                                color: stage.done ? "#0f172a" : "#94a3b8",
+                              }}>
+                                {stage.label}
+                              </span>
+                              {stage.detail && (
+                                <span style={{
+                                  fontSize: 11, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600,
+                                  color: stage.done ? "#059669" : "#94a3b8",
+                                }}>
+                                  {stage.detail}
+                                </span>
+                              )}
+                              <span style={{ fontSize: 12, flexShrink: 0, width: 16, textAlign: "center" }}>
+                                {stage.done ? "\u2713" : "\u2014"}
                               </span>
                             </div>
-                          </>
-                        ) : activeTab === "elements" ? (
-                          elements.length === 0 ? (
-                            <div style={{ padding: "16px", textAlign: "center", color: "#94a3b8", fontSize: 12 }}>Niciun element extras</div>
-                          ) : elements.map((el: any, i: number) => (
-                            <div key={i} style={{
-                              padding: "8px 14px", borderBottom: "1px solid rgba(226,232,240,.4)",
-                              display: "flex", gap: 8, alignItems: "flex-start", transition: "background .15s",
-                            }}
-                            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "#f8fafc"; }}
-                            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
-                            >
-                              <div style={{ flexShrink: 0, marginTop: 2 }}>
-                                <span style={{
-                                  display: "inline-block", fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 4,
-                                  background: "rgba(77,139,255,.1)", color: "#2563eb", letterSpacing: ".3px",
-                                }}>{el.dataType?.toUpperCase() || "TEXT"}</span>
-                              </div>
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontSize: 12, color: "#0f172a", lineHeight: 1.4 }}>
-                                  {el.displayName}
-                                </div>
-                                <div style={{ display: "flex", gap: 8, marginTop: 3, alignItems: "center" }}>
-                                  {el.category && (
-                                    <span style={{ fontSize: 10, padding: "0 6px", borderRadius: 9999, background: (ELEMENT_CATEGORY_COLORS[el.category] || "#64748b") + "15", color: ELEMENT_CATEGORY_COLORS[el.category] || "#64748b", fontWeight: 600 }}>
-                                      {el.category}
-                                    </span>
-                                  )}
-                                  {el.unit && <span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'JetBrains Mono', monospace" }}>{el.unit}</span>}
-                                  {el.required && <span style={{ fontSize: 10, color: "#dc2626", fontWeight: 600 }}>obligatoriu</span>}
-                                  <span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'JetBrains Mono', monospace" }}>{el.elementKey}</span>
-                                </div>
-                              </div>
-                            </div>
-                          ))
-                        ) : null}
+                          ))}
+                        </div>
+                        {/* Processing time */}
+                        {d.processingTimeMs != null && d.processingTimeMs > 0 && (
+                          <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 8, display: "flex", alignItems: "center", gap: 4 }}>
+                            {"\u23F1"} Procesat în {d.processingTimeMs >= 1000 ? `${(d.processingTimeMs / 1000).toFixed(1)}s` : `${d.processingTimeMs}ms`}
+                          </div>
+                        )}
                       </div>
-                    )}
-                    {/* Completeness report (ghid) */}
-                    {d.processingType === "ghid" && d.summary?.completenessReport && (() => {
-                      const cr = d.summary.completenessReport;
-                      const found: string[] = cr.categoriesFound || [];
-                      const missing: string[] = cr.categoriesMissing || [];
-                      const warnings: string[] = cr.warnings || [];
-                      if (found.length === 0 && missing.length === 0 && warnings.length === 0) return null;
-                      return (
+                      {/* Completeness report footer */}
+                      {(found.length > 0 || missing.length > 0 || warnings.length > 0) && (
                         <div style={{ padding: "10px 14px", borderTop: "1px solid rgba(226,232,240,.6)", background: "#f8fafc" }}>
                           <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".5px", color: "#94a3b8", marginBottom: 6 }}>
                             Acoperire ghid
@@ -1397,8 +1280,42 @@ export default function DocumentsPage() {
                             </div>
                           )}
                         </div>
-                      );
-                    })()}
+                      )}
+                    </div>
+                  );
+                }
+
+                // For templates: show element details (existing behavior)
+                return (
+                  <div style={{
+                    margin: "0 4px 8px 4px",
+                    borderRadius: "0 0 10px 10px",
+                    border: "1px solid rgba(226,232,240,.8)",
+                    borderTop: "none",
+                    background: "#ffffff",
+                    fontSize: 12,
+                    animation: "docFadeIn .2s ease-out",
+                    overflow: "hidden",
+                  }}>
+                    {/* Template header bar */}
+                    <div style={{ display: "flex", gap: 0, background: "#f8fafc", borderBottom: "1px solid rgba(226,232,240,.6)" }}>
+                      {d.processingType === "template" && (d.summary?.fieldsCount || 0) > 0 && (
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 14px" }}>
+                          <span style={{ fontSize: 13 }}>{"\u{1F4DD}"}</span>
+                          <span style={{ color: "#64748b" }}>Elemente extrase:</span>
+                          <span style={{ fontWeight: 700, color: "#4d8bff", fontFamily: "'JetBrains Mono', monospace" }}>{tplElements[d.id]?.total ?? d.summary?.fieldsCount}</span>
+                          {d.generationMode && (
+                            <span style={{
+                              fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 4, letterSpacing: ".3px",
+                              background: d.generationMode === "fill" ? "rgba(52,211,153,.12)" : "rgba(167,139,250,.12)",
+                              color: d.generationMode === "fill" ? "#059669" : "#7c3aed",
+                            }}>
+                              {d.generationMode === "fill" ? "FILL" : "COMPOSE"}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
                     {/* Template elements expandable section */}
                     {d.processingType === "template" && (() => {
                       const tpl = tplElements[d.id];

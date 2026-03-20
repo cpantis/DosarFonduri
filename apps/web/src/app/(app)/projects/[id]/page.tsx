@@ -78,6 +78,7 @@ type GuideRule = {
   category: string;
   sourceText: string | null;
   condition: any;
+  semanticTags: string[];
   validated: boolean;
   needsReview: boolean;
   sourceDocument: { id: string; name: string; fileType: string } | null;
@@ -187,6 +188,9 @@ function mapGuideRules(grouped: any[]): GuideRule[] {
   const rules: GuideRule[] = [];
   for (const group of grouped) {
     for (const item of group.rules || []) {
+      const cond = item.rule?.condition || null;
+      // Extract semantic_tags from condition JSONB (stored there by processGuide)
+      const tags: string[] = Array.isArray(cond?.semantic_tags) ? cond.semantic_tags : [];
       rules.push({
         id: item.id,
         type: item.rule?.type || "fixed",
@@ -196,7 +200,8 @@ function mapGuideRules(grouped: any[]): GuideRule[] {
         section: item.rule?.category || "",
         category: item.rule?.category || "",
         sourceText: item.rule?.sourceText || null,
-        condition: item.rule?.condition || null,
+        condition: cond,
+        semanticTags: tags,
         validated: item.rule?.validated ?? false,
         needsReview: item.rule?.needsReview ?? (parseFloat(item.rule?.confidence) < 0.85),
         sourceDocument: item.rule?.sourceDocument || group.document || null,
@@ -1177,13 +1182,90 @@ export default function ProjectViewPage() {
 
   const renderMsgText = (text: string) => {
     const cleaned = cleanSolomonText(text);
-    // React auto-escapes text content, so NO manual escapeHtml needed
-    return cleaned.split(/(\*\*.*?\*\*)/).map((part, i) => {
-      if (part.startsWith("**") && part.endsWith("**")) {
-        return <strong key={i} style={{ color: "#0f172a", fontWeight: 500 }}>{part.slice(2, -2)}</strong>;
+    // Parse markdown into structured blocks for rich display
+    const lines = cleaned.split("\n");
+    const blocks: React.ReactNode[] = [];
+    let currentList: string[] = [];
+    let blockKey = 0;
+
+    const flushList = () => {
+      if (currentList.length === 0) return;
+      blocks.push(
+        <ul key={blockKey++} className="solomon-md-list">
+          {currentList.map((item, i) => (
+            <li key={i}>{renderInline(item)}</li>
+          ))}
+        </ul>
+      );
+      currentList = [];
+    };
+
+    const renderInline = (line: string): React.ReactNode => {
+      // Handle **bold**, *italic*, `code`, and plain text
+      const parts = line.split(/(\*\*.*?\*\*|\*[^*]+\*|`[^`]+`)/).filter(Boolean);
+      return parts.map((part, i) => {
+        if (part.startsWith("**") && part.endsWith("**")) {
+          return <strong key={i} className="solomon-md-bold">{part.slice(2, -2)}</strong>;
+        }
+        if (part.startsWith("*") && part.endsWith("*") && !part.startsWith("**")) {
+          return <em key={i} className="solomon-md-italic">{part.slice(1, -1)}</em>;
+        }
+        if (part.startsWith("`") && part.endsWith("`")) {
+          return <code key={i} className="solomon-md-code">{part.slice(1, -1)}</code>;
+        }
+        return part;
+      });
+    };
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const trimmed = line.trim();
+
+      // Empty line — flush list and add spacer
+      if (!trimmed) {
+        flushList();
+        continue;
       }
-      return part;
-    });
+
+      // Headings
+      if (trimmed.startsWith("### ")) {
+        flushList();
+        blocks.push(<h4 key={blockKey++} className="solomon-md-h3">{renderInline(trimmed.slice(4))}</h4>);
+        continue;
+      }
+      if (trimmed.startsWith("## ")) {
+        flushList();
+        blocks.push(<h3 key={blockKey++} className="solomon-md-h2">{renderInline(trimmed.slice(3))}</h3>);
+        continue;
+      }
+      if (trimmed.startsWith("# ")) {
+        flushList();
+        blocks.push(<h3 key={blockKey++} className="solomon-md-h2">{renderInline(trimmed.slice(2))}</h3>);
+        continue;
+      }
+
+      // Bullet points (-, •, *, numbered: 1. 2.)
+      const bulletMatch = trimmed.match(/^[-•*]\s+(.+)/) || trimmed.match(/^\d+[.)]\s+(.+)/);
+      if (bulletMatch) {
+        currentList.push(bulletMatch[1]);
+        continue;
+      }
+
+      // Horizontal rule
+      if (/^[-=_]{3,}$/.test(trimmed) || /^═+$/.test(trimmed)) {
+        flushList();
+        blocks.push(<hr key={blockKey++} className="solomon-md-hr" />);
+        continue;
+      }
+
+      // Regular paragraph
+      flushList();
+      blocks.push(<p key={blockKey++} className="solomon-md-p">{renderInline(trimmed)}</p>);
+    }
+
+    flushList();
+
+    return <div className="solomon-md-content">{blocks}</div>;
   };
 
   const solomonConfirmedCount = solomonElements.filter(e => e.status === "confirmat").length;
@@ -1985,6 +2067,21 @@ export default function ProjectViewPage() {
         .rd-empty-title{font-size:16px;font-weight:700;color:#64748b}
         .rd-empty-desc{font-size:13px;text-align:center;max-width:280px;line-height:1.6}
 
+        /* Semantic tags */
+        .rd-semantic-tags{display:flex;flex-wrap:wrap;gap:5px;margin-top:10px}
+        .rd-sem-tag{font-size:10px;font-weight:700;letter-spacing:.4px;padding:3px 10px;border-radius:20px;display:inline-flex;align-items:center;gap:4px;text-transform:uppercase;font-family:'Inter',system-ui,sans-serif}
+        .rd-sem-tag.threshold{color:#0369a1;background:rgba(14,165,233,.1);border:1px solid rgba(14,165,233,.25)}
+        .rd-sem-tag.scoring{color:#7c3aed;background:rgba(167,139,250,.1);border:1px solid rgba(167,139,250,.25)}
+        .rd-sem-tag.temporal{color:#0891b2;background:rgba(6,182,212,.1);border:1px solid rgba(6,182,212,.25)}
+        .rd-sem-tag.document_based{color:#b45309;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.25)}
+        .rd-sem-tag.dependency{color:#6d28d9;background:rgba(139,92,246,.1);border:1px solid rgba(139,92,246,.25)}
+        .rd-sem-tag.exclusion{color:#dc2626;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.2)}
+        .rd-sem-tag.exception{color:#ea580c;background:rgba(249,115,22,.1);border:1px solid rgba(249,115,22,.2)}
+        .rd-sem-tag.proportional{color:#059669;background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.25)}
+        .rd-sem-tag.classification{color:#2563eb;background:rgba(37,99,235,.1);border:1px solid rgba(37,99,235,.2)}
+        .rule-card-tags{display:flex;flex-wrap:wrap;gap:3px;margin-top:6px}
+        .rule-card-tag{font-size:9px;font-weight:700;letter-spacing:.3px;padding:1px 7px;border-radius:10px;text-transform:uppercase;opacity:.85}
+
         /* Anexe & Date panel */
         .anexe-panel{display:grid;grid-template-columns:320px 1fr;flex:1;min-height:0;overflow:hidden}
         .anexe-list{overflow-y:auto;border-right:1px solid rgba(226,232,240,.8);padding:16px}
@@ -2249,9 +2346,22 @@ export default function ProjectViewPage() {
         .solomon-msg-body{flex:1;min-width:0}
         .solomon-msg-name{font-size:13px;font-weight:600;color:#0f172a;margin-bottom:4px}
         .solomon-msg-name span{font-weight:400;color:#94a3b8;margin-left:8px;font-size:12px}
-        .solomon-msg-text{font-size:16px;line-height:1.65;color:#475569}
-        .solomon-msg-text strong{color:#0f172a;font-weight:500}
+        .solomon-msg-text{font-size:15px;line-height:1.5;color:#475569;font-family:'Inter',system-ui,sans-serif}
+        .solomon-msg-text strong{color:#0f172a;font-weight:600}
         .chat-msg .msg-bold{font-weight:600;color:#0f172a}
+
+        /* Solomon Markdown Rich Content */
+        .solomon-md-content{display:flex;flex-direction:column;gap:4px}
+        .solomon-md-p{margin:0;padding:0;font-size:15px;line-height:1.5;color:#475569;max-width:640px}
+        .solomon-md-h2{margin:16px 0 6px;padding:0;font-size:16px;font-weight:700;color:#0f172a;line-height:1.4;display:flex;align-items:center;gap:6px;letter-spacing:-0.01em}
+        .solomon-md-h3{margin:12px 0 4px;padding:0;font-size:15px;font-weight:600;color:#1e293b;line-height:1.4;display:flex;align-items:center;gap:6px}
+        .solomon-md-bold{color:#0f172a;font-weight:600}
+        .solomon-md-italic{font-style:italic;color:#64748b}
+        .solomon-md-code{background:#f1f5f9;color:#7c3aed;padding:1px 5px;border-radius:4px;font-size:13px;font-family:'JetBrains Mono','SF Mono',monospace}
+        .solomon-md-list{margin:4px 0;padding-left:20px;display:flex;flex-direction:column;gap:3px;list-style:none}
+        .solomon-md-list li{position:relative;font-size:15px;line-height:1.5;color:#475569;padding-left:12px}
+        .solomon-md-list li::before{content:'';position:absolute;left:0;top:9px;width:5px;height:5px;border-radius:50%;background:#94a3b8}
+        .solomon-md-hr{border:none;height:1px;background:linear-gradient(90deg,transparent,#e2e8f0 20%,#e2e8f0 80%,transparent);margin:12px 0}
         .extraction-cards{margin-top:12px;display:flex;flex-direction:column;gap:8px}
         .extraction-card{background:#f0f7ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px 14px;transition:all .15s cubic-bezier(.4,0,.2,1)}
         .extraction-card.confirmed{border-color:#a7f3d0;background:#ecfdf5}
@@ -2899,6 +3009,16 @@ export default function ProjectViewPage() {
                 achizitii: "#ea580c", documente: "#d97706", selectie: "#dc2626", intensitate: "#0891b2",
                 eligibilitate_complexa: "#2563eb", documentare: "#d97706", ajutor_stat: "#7c3aed",
               };
+              const semanticTagLabels: Record<string, string> = {
+                THRESHOLD: "Prag", SCORING: "Punctaj", TEMPORAL: "Temporal",
+                DOCUMENT_BASED: "Document", DEPENDENCY: "Dependență", EXCLUSION: "Excludere",
+                EXCEPTION: "Excepție", PROPORTIONAL: "Proporțional", CLASSIFICATION: "Clasificare",
+              };
+              const semanticTagIcons: Record<string, string> = {
+                THRESHOLD: "⊞", SCORING: "★", TEMPORAL: "◷",
+                DOCUMENT_BASED: "◩", DEPENDENCY: "⇄", EXCLUSION: "⊘",
+                EXCEPTION: "⚑", PROPORTIONAL: "%", CLASSIFICATION: "◈",
+              };
               const categories = [...new Set(guideRules.map(r => r.category))].filter(Boolean);
               const filteredRules = ghidCategoryFilter === "all" ? guideRules : guideRules.filter(r => r.category === ghidCategoryFilter);
               const sel = selectedRule ? guideRules.find(r => r.id === selectedRule) : null;
@@ -3104,6 +3224,13 @@ export default function ProjectViewPage() {
                                 {r.validated && <span className="rule-validated-flag">✓</span>}
                               </div>
                               <div className="rule-text">{r.text}</div>
+                              {r.semanticTags.length > 0 && (
+                                <div className="rule-card-tags">
+                                  {r.semanticTags.map((tag: string) => (
+                                    <span key={tag} className={`rule-card-tag rd-sem-tag ${tag.toLowerCase()}`}>{semanticTagLabels[tag] || tag}</span>
+                                  ))}
+                                </div>
+                              )}
                               <div className="rule-meta">
                                 <span>Pag. {r.page}</span>
                                 <span>
@@ -3131,6 +3258,15 @@ export default function ProjectViewPage() {
                                 {sel.validated && <span className="rd-validated">✓ Validată</span>}
                                 {sel.needsReview && <span className="rd-needs-review">⚠ Necesită review</span>}
                               </div>
+                              {sel.semanticTags.length > 0 && (
+                                <div className="rd-semantic-tags">
+                                  {sel.semanticTags.map((tag: string) => (
+                                    <span key={tag} className={`rd-sem-tag ${tag.toLowerCase()}`}>
+                                      {semanticTagIcons[tag] || "●"} {semanticTagLabels[tag] || tag}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
                               <div className="rd-confidence-row">
                                 <span className="rd-conf-label">Încredere</span>
                                 <span className="rd-conf-value" style={{ color: sel.confidence > 0.9 ? "#059669" : sel.confidence > 0.8 ? "#2563eb" : "#d97706" }}>

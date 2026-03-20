@@ -216,6 +216,12 @@ function RulesTab({ rules }: { rules: LibraryData["rules"] }) {
                 {rule.category && <span className="text-[10px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">{rule.category}</span>}
                 {rule.sourcePage != null && <span className="text-[10px] font-mono text-slate-400">p.{rule.sourcePage}</span>}
                 {rule.confidence && <ConfidenceBar value={parseFloat(rule.confidence)} />}
+                {/* Semantic tags inline */}
+                {Array.isArray(rule.condition?.semantic_tags) && rule.condition.semantic_tags.length > 0 && (
+                  rule.condition.semantic_tags.map((tag: string) => (
+                    <span key={tag} className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full" style={semanticTagStyle(tag)}>{semanticTagLabel(tag)}</span>
+                  ))
+                )}
               </div>
             </div>
           </button>
@@ -590,6 +596,32 @@ function ChecklistTab({ checklist, folderId, onRefresh }: { checklist: LibraryDa
       ))}
     </div>
   );
+}
+
+/* ══════════════════════════════════════════
+   SEMANTIC TAG HELPERS
+   ══════════════════════════════════════════ */
+
+const SEM_TAG_MAP: Record<string, { label: string; color: string; bg: string; border: string }> = {
+  THRESHOLD:      { label: "Prag",         color: "#0369a1", bg: "rgba(14,165,233,.1)",  border: "rgba(14,165,233,.25)" },
+  SCORING:        { label: "Punctaj",      color: "#7c3aed", bg: "rgba(167,139,250,.1)", border: "rgba(167,139,250,.25)" },
+  TEMPORAL:       { label: "Temporal",     color: "#0891b2", bg: "rgba(6,182,212,.1)",   border: "rgba(6,182,212,.25)" },
+  DOCUMENT_BASED: { label: "Document",     color: "#b45309", bg: "rgba(245,158,11,.1)",  border: "rgba(245,158,11,.25)" },
+  DEPENDENCY:     { label: "Dependență",   color: "#6d28d9", bg: "rgba(139,92,246,.1)",  border: "rgba(139,92,246,.25)" },
+  EXCLUSION:      { label: "Excludere",    color: "#dc2626", bg: "rgba(239,68,68,.1)",   border: "rgba(239,68,68,.2)" },
+  EXCEPTION:      { label: "Excepție",     color: "#ea580c", bg: "rgba(249,115,22,.1)",  border: "rgba(249,115,22,.2)" },
+  PROPORTIONAL:   { label: "Proporțional", color: "#059669", bg: "rgba(16,185,129,.1)",  border: "rgba(16,185,129,.25)" },
+  CLASSIFICATION: { label: "Clasificare",  color: "#2563eb", bg: "rgba(37,99,235,.1)",   border: "rgba(37,99,235,.2)" },
+};
+
+function semanticTagLabel(tag: string): string {
+  return SEM_TAG_MAP[tag]?.label || tag;
+}
+
+function semanticTagStyle(tag: string): React.CSSProperties {
+  const m = SEM_TAG_MAP[tag];
+  if (!m) return { color: "#64748b", background: "#f1f5f9", border: "1px solid #e2e8f0" };
+  return { color: m.color, background: m.bg, border: `1px solid ${m.border}` };
 }
 
 /* ══════════════════════════════════════════

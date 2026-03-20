@@ -144,6 +144,19 @@ Analizezi ghiduri de finanțare pre-structurate (text curat + tabele + clasifica
    - Cerințe documentare condiționate, reguli achiziții complexe
    - Ajutor de stat / de minimis — cumul, verificare
 
+CLASIFICARE SEMANTICĂ — pentru FIECARE regulă (fixă sau interpretată) atribuie etichete semantice din lista:
+   - THRESHOLD — prag numeric (minim, maxim, interval). Ex: "cifra de afaceri minim 100.000 EUR"
+   - SCORING — punctaj sau evaluare cu note. Ex: "criteriu C1 — max 15 puncte"
+   - TEMPORAL — condiție legată de timp, termene, perioade. Ex: "firma înregistrată de minim 1 an", "în ultimele 3 exerciții financiare"
+   - DOCUMENT_BASED — dependentă de existența/conținutul unui document. Ex: "certificat fiscal valabil 30 zile"
+   - DEPENDENCY — regulă care depinde de altă regulă sau condiție anterioară. Ex: "doar dacă e eligibil conform criteriului X"
+   - EXCLUSION — condiție de excludere/interdicție. Ex: "nu pot aplica firmele în insolvență", "nu sunt eligibile cheltuielile cu..."
+   - EXCEPTION — excepție de la o regulă generală. Ex: "cu excepția formelor asociative", "se exceptează proiectele de tip..."
+   - PROPORTIONAL — relație procentuală, intensitate variabilă. Ex: "50% din valoarea investiției", "între 30-90% nerambursabil"
+   - CLASSIFICATION — încadrare în categorie/tip. Ex: "fermă mică: SO 8000-250000", "zona montană defavorizată"
+   O regulă poate avea MULTIPLE etichete (ex: THRESHOLD + EXCLUSION, PROPORTIONAL + CLASSIFICATION).
+   Combinațiile frecvente: CONDITIONAL + EXCLUSION, CUMULATIVE + SCORING, DECISION_TREE + CLASSIFICATION, THRESHOLD + TEMPORAL.
+
 3. CRITERII DE SELECȚIE / GRILĂ DE PUNCTAJ:
    - Cod criteriu, nume, punctaj maxim, categorie
    - Tip evaluare: lookup (tabel), range (interval), boolean, formula
@@ -173,6 +186,7 @@ Returnează un singur obiect JSON cu 4 chei:
         "value": "valoarea de comparare",
         "value2": "pentru between (opțional)"
       },
+      "semantic_tags": ["THRESHOLD", "EXCLUSION", ...],
       "source_page": number,
       "source_text": "textul exact din ghid",
       "confidence": 0.0 - 1.0
@@ -189,6 +203,7 @@ Returnează un singur obiect JSON cu 4 chei:
         "factors": ["factor1", "factor2"],
         "outcomes": [{"if": "condiție", "then": "rezultat"}]
       },
+      "semantic_tags": ["PROPORTIONAL", "CLASSIFICATION", ...],
       "source_page": number,
       "source_text": "textul exact din ghid",
       "confidence": 0.0 - 1.0,
@@ -427,18 +442,25 @@ function deduplicateElementDefs(allDefs: any[]): any[] {
 async function saveFixedRules(fixedRules: any[], documentId: string, organizationId: string): Promise<number> {
   if (fixedRules.length === 0) return 0;
   await db.insert(rules).values(
-    fixedRules.map((r: any) => ({
-      documentId,
-      organizationId,
-      type: "fixed" as const,
-      ruleKey: r.rule_key || r.ruleKey || generateRuleKey(r.category || "eligibilitate", r.description || ""),
-      category: r.category || "eligibilitate",
-      description: r.description,
-      condition: r.condition,
-      sourcePage: r.source_page,
-      sourceText: r.source_text,
-      confidence: String(Number(r.confidence) || 0.90),
-    }))
+    fixedRules.map((r: any) => {
+      // Merge semantic_tags into the condition JSONB so it's available in the frontend
+      const condition = r.condition ? { ...r.condition } : {};
+      if (Array.isArray(r.semantic_tags) && r.semantic_tags.length > 0) {
+        condition.semantic_tags = r.semantic_tags;
+      }
+      return {
+        documentId,
+        organizationId,
+        type: "fixed" as const,
+        ruleKey: r.rule_key || r.ruleKey || generateRuleKey(r.category || "eligibilitate", r.description || ""),
+        category: r.category || "eligibilitate",
+        description: r.description,
+        condition,
+        sourcePage: r.source_page,
+        sourceText: r.source_text,
+        confidence: String(Number(r.confidence) || 0.90),
+      };
+    })
   );
   return fixedRules.length;
 }
@@ -446,20 +468,27 @@ async function saveFixedRules(fixedRules: any[], documentId: string, organizatio
 async function saveInterpretedRules(interpRules: any[], documentId: string, organizationId: string): Promise<number> {
   if (interpRules.length === 0) return 0;
   await db.insert(rules).values(
-    interpRules.map((r: any) => ({
-      documentId,
-      organizationId,
-      type: "interpreted" as const,
-      ruleKey: r.rule_key || r.ruleKey || generateRuleKey(r.category || "selectie", r.description || ""),
-      category: r.category || "selectie",
-      description: r.description,
-      condition: r.condition,
-      sourcePage: r.source_page,
-      sourceText: r.source_text,
-      confidence: String(Number(r.confidence) || 0.75),
-      needsReview: r.needs_review ?? (Number(r.confidence || 0.75) < 0.85),
-      validated: false,
-    }))
+    interpRules.map((r: any) => {
+      // Merge semantic_tags into the condition JSONB so it's available in the frontend
+      const condition = r.condition ? { ...r.condition } : {};
+      if (Array.isArray(r.semantic_tags) && r.semantic_tags.length > 0) {
+        condition.semantic_tags = r.semantic_tags;
+      }
+      return {
+        documentId,
+        organizationId,
+        type: "interpreted" as const,
+        ruleKey: r.rule_key || r.ruleKey || generateRuleKey(r.category || "selectie", r.description || ""),
+        category: r.category || "selectie",
+        description: r.description,
+        condition,
+        sourcePage: r.source_page,
+        sourceText: r.source_text,
+        confidence: String(Number(r.confidence) || 0.75),
+        needsReview: r.needs_review ?? (Number(r.confidence || 0.75) < 0.85),
+        validated: false,
+      };
+    })
   );
   return interpRules.length;
 }

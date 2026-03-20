@@ -219,6 +219,42 @@ configRoutes.post("/api-integrations/:id/test", async (c) => {
   if (!integration) return c.json({ error: "Integration not found" }, 404);
 
   try {
+    // Special handling for ListaFirme: test with a known CUI
+    if (integration.type === "ListaFirme" && integration.apiKeyEncrypted) {
+      const apiKey = decrypt(integration.apiKeyEncrypted);
+      const testBody = `key=${encodeURIComponent(apiKey)}&data=${encodeURIComponent(JSON.stringify({ TaxCode: "1", Name: "" }))}`;
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+
+      const res = await fetch("https://listafirme.ro/api/info-v2.asp", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: testBody,
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+
+      const json = await res.json().catch(() => null);
+      // A valid key returns a response (even if CUI not found), invalid key returns auth error
+      const isAuthError = json?.error?.toLowerCase()?.includes("invalid key") ||
+                          json?.error?.toLowerCase()?.includes("unauthorized") ||
+                          json?.error?.toLowerCase()?.includes("expired");
+      const success = res.ok && !isAuthError;
+      const result = isAuthError ? "Cheie API invalidă sau expirată" : success ? "OK — conexiune validă" : `HTTP ${res.status}`;
+
+      await db
+        .update(apiIntegrations)
+        .set({
+          lastTestedAt: new Date(),
+          lastTestResult: result,
+          status: success ? "connected" : "error",
+        })
+        .where(eq(apiIntegrations.id, id));
+
+      return c.json({ success, result, status: res.status });
+    }
+
     // SSRF protection: only allow HTTPS URLs to public domains
     const parsedUrl = new URL(integration.url);
     const blockedHosts = ["localhost", "127.0.0.1", "0.0.0.0", "[::1]", "169.254.169.254", "metadata.google.internal"];

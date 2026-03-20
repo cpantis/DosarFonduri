@@ -360,10 +360,11 @@ companyRoutes.get("/search-cui", async (c) => {
   if (!query || query.length < 2) return c.json([]);
 
   try {
+    const orgId = auth.organizationId!;
     // If query is numeric, treat as CUI lookup
     const isNumeric = /^\d+$/.test(query.replace(/\D/g, ""));
     if (isNumeric && query.replace(/\D/g, "").length >= 4) {
-      const result = await lookupCUI_ListaFirme(query);
+      const result = await lookupCUI_ListaFirme(query, orgId);
       if (result) {
         return c.json([{
           name: result.name,
@@ -378,7 +379,7 @@ companyRoutes.get("/search-cui", async (c) => {
     }
 
     // Otherwise search by name
-    const results = await searchCompany_ListaFirme(query);
+    const results = await searchCompany_ListaFirme(query, orgId);
     return c.json(results.slice(0, 10).map(r => ({
       name: r.name,
       fiscalCode: r.fiscalCode,
@@ -387,7 +388,7 @@ companyRoutes.get("/search-cui", async (c) => {
     })));
   } catch (err: any) {
     // If ListaFirme is not configured, return empty
-    if (err.message?.includes("LISTAFIRME_API_KEY")) {
+    if (err.message?.includes("LISTAFIRME_API_KEY") || err.message?.includes("nu este configurat")) {
       return c.json([]);
     }
     throw err;
@@ -410,8 +411,8 @@ companyRoutes.post("/from-listafirme", async (c) => {
   });
   if (existing) return c.json({ error: "Firma cu CUI " + cleanCUI + " există deja" }, 400);
 
-  // Lookup from ListaFirme
-  const lfData = await lookupCUI_ListaFirme(cleanCUI);
+  // Lookup from ListaFirme (uses org-level API key if configured)
+  const lfData = await lookupCUI_ListaFirme(cleanCUI, auth.organizationId!);
   if (!lfData) return c.json({ error: "CUI-ul nu a fost găsit pe ListaFirme.ro" }, 404);
 
   // Map legal form (reuse FORMA_MAP from onrc.ts for consistency)

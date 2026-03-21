@@ -84,7 +84,28 @@ export default function TemplateViewerPage() {
   const [mappingSummary, setMappingSummary] = useState({ total: 0, mapped: 0, unmapped: 0, validated: 0 });
 
   // Rule links + scoring per element (GAP 20 & 21)
-  const [elementRuleLinks, setElementRuleLinks] = useState<Record<string, Array<{ rule?: { description: string; sourcePage: number | null; category: string } }>>>({});
+  interface RuleLinkFull {
+    id: string;
+    ruleId: string;
+    role: string;
+    description: string | null;
+    rule?: {
+      id: string;
+      type: "fixed" | "interpreted";
+      description: string;
+      category: string;
+      sourcePage: number | null;
+      sourceText: string | null;
+      confidence: string | null;
+      condition: any;
+      needsReview: boolean;
+      validated: boolean;
+      ruleKey: string | null;
+    };
+    referenceTables?: Array<{ table?: { id: string; name: string; tableType: string } }>;
+  }
+  const [elementRuleLinks, setElementRuleLinks] = useState<Record<string, RuleLinkFull[]>>({});
+  const [expandedRuleId, setExpandedRuleId] = useState<string | null>(null);
   const [elementScoring, setElementScoring] = useState<Record<string, Array<{ criterionName: string; maxPoints: number }>>>({});
 
   // Split pane
@@ -141,11 +162,14 @@ export default function TemplateViewerPage() {
 
   useEffect(() => { loadTemplate(); }, [loadTemplate]);
 
-  // Fetch rule links for selected element (GAP 20)
+  // Fetch rule links for selected element (GAP 20) — full rule data
   useEffect(() => {
     if (!selectedEl || elementRuleLinks[selectedEl]) return;
-    apiGet<Array<{ rule?: { description: string; sourcePage: number | null; category: string } }>>(`/api/reference/elements/${selectedEl}/rule-links`)
-      .then(data => setElementRuleLinks(prev => ({ ...prev, [selectedEl]: data || [] })))
+    apiGet<RuleLinkFull[]>(`/api/reference/elements/${selectedEl}/rule-links`)
+      .then(data => {
+        setElementRuleLinks(prev => ({ ...prev, [selectedEl]: data || [] }));
+        setExpandedRuleId(null);
+      })
       .catch(() => setElementRuleLinks(prev => ({ ...prev, [selectedEl]: [] })));
   }, [selectedEl, elementRuleLinks]);
 
@@ -256,6 +280,7 @@ export default function TemplateViewerPage() {
 
   const handleSelectElement = (id: string | null) => {
     setSelectedEl(id);
+    setExpandedRuleId(null);
     if (id) {
       const el = allElements.find(e => e.id === id);
       if (el && (el.pageNum || 1) !== currentPageNum) {
@@ -412,6 +437,69 @@ export default function TemplateViewerPage() {
         .el-status.validated{color:rgb(16 185 129)}
         .el-status.detected{color:rgb(245 158 11)}
         .el-status.manual{color:rgb(139 92 246)}
+
+        /* ─── Rule links expanded panel ─── */
+        .rl-panel{margin-top:8px;border-top:1px solid rgb(226 232 240);padding-top:8px}
+        .rl-header{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:rgb(148 163 184);margin-bottom:6px;display:flex;align-items:center;gap:6px}
+        .rl-count{color:rgb(37 99 235)}
+        .rl-card{padding:8px 10px;border-radius:8px;border:1px solid rgba(226,232,240,.8);background:#fff;margin-bottom:6px;cursor:pointer;transition:all .15s}
+        .rl-card:hover{border-color:rgb(203 213 225);box-shadow:0 1px 2px rgba(0,0,0,.04)}
+        .rl-card.expanded{border-color:rgb(59 130 246);background:rgba(37,99,235,.02);box-shadow:0 0 0 1px rgba(37,99,235,.12)}
+        .rl-card-top{display:flex;align-items:center;gap:5px;margin-bottom:4px;flex-wrap:wrap}
+        .rl-type-badge{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;padding:2px 7px;border-radius:4px;flex-shrink:0}
+        .rl-type-badge.fixed{color:#059669;background:rgba(52,211,153,.15);border:1px solid #a7f3d0}
+        .rl-type-badge.interpreted{color:#d97706;background:rgba(251,191,36,.15);border:1px solid #fed7aa}
+        .rl-cat-dot{width:5px;height:5px;border-radius:50%;flex-shrink:0}
+        .rl-cat-label{font-size:9px;color:#94a3b8;font-weight:600}
+        .rl-review{font-size:10px;color:#d97706}
+        .rl-valid{font-size:10px;color:#059669;font-weight:700}
+        .rl-role{font-size:9px;font-weight:600;padding:1px 6px;border-radius:4px;background:rgba(100,116,139,.08);color:#64748b;text-transform:uppercase;letter-spacing:.3px}
+        .rl-expand-icon{margin-left:auto;font-size:10px;color:#94a3b8;flex-shrink:0}
+        .rl-desc-short{font-size:12px;line-height:1.5;color:#0f172a}
+        .rl-tags-row{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}
+        .rl-struct-tag{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;padding:2px 8px;border-radius:4px;background:rgba(167,139,250,.12);color:#7c3aed;border:1px solid rgba(167,139,250,.25)}
+        .rl-sem-tag{font-size:9px;font-weight:700;letter-spacing:.3px;padding:2px 7px;border-radius:12px;display:inline-flex;align-items:center;gap:3px;text-transform:uppercase}
+        .rl-sem-tag.threshold{color:#0369a1;background:rgba(14,165,233,.1);border:1px solid rgba(14,165,233,.25)}
+        .rl-sem-tag.scoring{color:#7c3aed;background:rgba(167,139,250,.1);border:1px solid rgba(167,139,250,.25)}
+        .rl-sem-tag.temporal{color:#0891b2;background:rgba(6,182,212,.1);border:1px solid rgba(6,182,212,.25)}
+        .rl-sem-tag.document_based{color:#b45309;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.25)}
+        .rl-sem-tag.dependency{color:#6d28d9;background:rgba(139,92,246,.1);border:1px solid rgba(139,92,246,.25)}
+        .rl-sem-tag.exclusion{color:#dc2626;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.2)}
+        .rl-sem-tag.exception{color:#ea580c;background:rgba(249,115,22,.1);border:1px solid rgba(249,115,22,.2)}
+        .rl-sem-tag.proportional{color:#059669;background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.25)}
+        .rl-sem-tag.classification{color:#2563eb;background:rgba(37,99,235,.1);border:1px solid rgba(37,99,235,.2)}
+        .rl-meta-row{display:flex;align-items:center;gap:10px;margin-top:4px;font-size:10px;color:#94a3b8;font-family:'JetBrains Mono',monospace}
+        .rl-page{color:#94a3b8}
+        .rl-conf{display:flex;align-items:center;gap:4px}
+        .rl-conf-bar{width:40px;height:3px;background:#f0f2f5;border-radius:2px;overflow:hidden;display:inline-block;vertical-align:middle}
+        .rl-conf-fill{height:100%;border-radius:2px}
+        /* Expanded detail */
+        .rl-detail{margin-top:10px;padding-top:10px;border-top:1px solid rgb(226 232 240);animation:rlSlideDown .2s ease}
+        @keyframes rlSlideDown{from{opacity:0;max-height:0}to{opacity:1;max-height:600px}}
+        .rl-section{margin-bottom:12px}
+        .rl-section-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#94a3b8;margin-bottom:6px;display:flex;align-items:center;gap:6px}
+        .rl-section-page{font-size:9px;font-weight:600;color:#2563eb;background:rgba(37,99,235,.1);padding:1px 6px;border-radius:8px;margin-left:auto}
+        .rl-source-quote{font-size:12px;line-height:1.7;color:#0f172a;padding:10px 14px;border-left:3px solid #2563eb;font-style:italic;background:rgba(37,99,235,.03);border-radius:0 8px 8px 0}
+        .rl-condition-box{background:#f8fafc;border:1px solid rgba(226,232,240,.8);border-radius:8px;padding:10px 12px}
+        .rl-cond-row{display:flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;font-size:11px;flex-wrap:wrap}
+        .rl-cond-field{color:#2563eb;font-weight:700}
+        .rl-cond-op{color:#ea580c;font-weight:600;padding:1px 6px;background:rgba(251,146,60,.1);border-radius:3px;font-size:10px}
+        .rl-cond-val{color:#059669;font-weight:600}
+        .rl-logic-type{margin-bottom:8px}
+        .rl-logic-badge{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;padding:3px 10px;border-radius:4px;background:rgba(167,139,250,.12);color:#7c3aed;border:1px solid rgba(167,139,250,.25)}
+        .rl-logic-desc{font-size:12px;line-height:1.6;color:#0f172a;margin-bottom:8px}
+        .rl-factors{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-bottom:8px}
+        .rl-factors-label{font-size:10px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.4px}
+        .rl-factor-chip{font-size:10px;padding:2px 8px;border-radius:10px;background:#f8fafc;border:1px solid rgba(226,232,240,.8);color:#64748b;font-family:'JetBrains Mono',monospace}
+        .rl-outcomes{display:flex;flex-direction:column;gap:4px}
+        .rl-outcome-row{display:flex;align-items:flex-start;gap:5px;font-size:11px;line-height:1.5;padding:4px 8px;background:#f8fafc;border-radius:5px}
+        .rl-outcome-if{font-size:9px;font-weight:700;color:#2563eb;padding:1px 5px;border-radius:3px;background:rgba(37,99,235,.1);flex-shrink:0;margin-top:1px}
+        .rl-outcome-cond{color:#0f172a;flex:1}
+        .rl-outcome-then{color:#94a3b8;flex-shrink:0}
+        .rl-outcome-result{color:#059669;font-weight:600;flex:1}
+        .rl-ref-tables{display:flex;flex-wrap:wrap;gap:4px}
+        .rl-ref-chip{font-size:10px;padding:3px 8px;border-radius:6px;background:rgba(37,99,235,.06);color:#2563eb;border:1px solid rgba(37,99,235,.15);display:inline-flex;align-items:center;gap:4px}
+        .rl-ref-type{font-size:8px;font-weight:700;text-transform:uppercase;color:#94a3b8;letter-spacing:.3px}
 
         .btn-add{width:calc(100% - 12px);margin:8px 6px;padding:8px;border-radius:8px;border:1px dashed rgb(226 232 240);background:transparent;color:rgb(148 163 184);font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',system-ui,sans-serif;transition:all .15s;text-align:center}
         .btn-add:hover{border-color:rgb(139 92 246);color:rgb(139 92 246)}
@@ -717,20 +805,141 @@ export default function TemplateViewerPage() {
                               </div>
                             );
                           })()}
-                          {/* GAP 20: Rule link (shown when selected) */}
+                          {/* GAP 20: Rule links — expandable detail panels */}
                           {isActive && elementRuleLinks[el.id] && elementRuleLinks[el.id].length > 0 && (
-                            <div style={{ marginTop: 4, display: "flex", flexDirection: "column", gap: 3 }}>
-                              {elementRuleLinks[el.id].map((rl, ri) => rl.rule && (
-                                <span key={ri} title={rl.rule.description} style={{
-                                  fontSize: 10, padding: "2px 6px", borderRadius: 4,
-                                  background: "rgba(77,139,255,.08)", color: "#2563eb",
-                                  display: "inline-flex", alignItems: "center", gap: 3,
-                                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                                }}>
-                                  {"\u{1F4D6}"} Regulă: {rl.rule.description.slice(0, 60)}{rl.rule.description.length > 60 ? "…" : ""}
-                                  {rl.rule.sourcePage && <span style={{ fontFamily: "'JetBrains Mono', monospace", opacity: 0.7 }}>(p.{rl.rule.sourcePage})</span>}
-                                </span>
-                              ))}
+                            <div className="rl-panel">
+                              <div className="rl-header">
+                                <span className="rl-count">{elementRuleLinks[el.id].filter(rl => rl.rule).length} reguli asociate</span>
+                              </div>
+                              {elementRuleLinks[el.id].map((rl) => {
+                                if (!rl.rule) return null;
+                                const r = rl.rule;
+                                const conf = parseFloat(r.confidence || "0");
+                                const cond = r.condition || null;
+                                const semTags: string[] = Array.isArray(cond?.semantic_tags) ? cond.semantic_tags : [];
+                                const isExpanded = expandedRuleId === rl.ruleId;
+                                const structType = cond?.type || null;
+                                return (
+                                  <div key={rl.ruleId} className={`rl-card ${isExpanded ? "expanded" : ""}`} onClick={(ev) => { ev.stopPropagation(); setExpandedRuleId(isExpanded ? null : rl.ruleId); }}>
+                                    {/* Card header — always visible */}
+                                    <div className="rl-card-top">
+                                      <span className={`rl-type-badge ${r.type}`}>{r.type === "fixed" ? "FIXĂ" : "INTER."}</span>
+                                      <span className="rl-cat-dot" style={{ background: ({ eligibilitate: "#2563eb", financiar: "#059669", tehnic: "#7c3aed", administrativ: "#64748b", achizitii: "#ea580c", documente: "#d97706", selectie: "#dc2626", intensitate: "#0891b2", eligibilitate_complexa: "#2563eb", documentare: "#d97706", ajutor_stat: "#7c3aed" } as Record<string,string>)[r.category] || "#94a3b8" }} />
+                                      <span className="rl-cat-label">{({ eligibilitate: "Eligibilitate", financiar: "Financiar", tehnic: "Tehnic", administrativ: "Administrativ", achizitii: "Achiziții", documente: "Documente", selectie: "Selecție", intensitate: "Intensitate", eligibilitate_complexa: "Elig. complexă", documentare: "Documentare", ajutor_stat: "Ajutor stat" } as Record<string,string>)[r.category] || r.category}</span>
+                                      {r.needsReview && <span className="rl-review">⚠</span>}
+                                      {r.validated && <span className="rl-valid">✓</span>}
+                                      {rl.role && <span className="rl-role">{rl.role}</span>}
+                                      <span className="rl-expand-icon">{isExpanded ? "▾" : "▸"}</span>
+                                    </div>
+                                    <div className="rl-desc-short">{r.description}</div>
+                                    {/* Semantic tags + structural type — always visible */}
+                                    {(semTags.length > 0 || structType) && (
+                                      <div className="rl-tags-row">
+                                        {structType && (
+                                          <span className="rl-struct-tag">{structType.replace(/_/g, " ")}</span>
+                                        )}
+                                        {semTags.map((tag: string) => (
+                                          <span key={tag} className={`rl-sem-tag ${tag.toLowerCase()}`}>
+                                            {({ THRESHOLD: "⊞", SCORING: "★", TEMPORAL: "◷", DOCUMENT_BASED: "◩", DEPENDENCY: "⇄", EXCLUSION: "⊘", EXCEPTION: "⚑", PROPORTIONAL: "%", CLASSIFICATION: "◈" } as Record<string,string>)[tag] || "●"}{" "}
+                                            {({ THRESHOLD: "Prag", SCORING: "Punctaj", TEMPORAL: "Temporal", DOCUMENT_BASED: "Document", DEPENDENCY: "Dependență", EXCLUSION: "Excludere", EXCEPTION: "Excepție", PROPORTIONAL: "Proporțional", CLASSIFICATION: "Clasificare" } as Record<string,string>)[tag] || tag}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    )}
+                                    {/* Confidence + page — always visible */}
+                                    <div className="rl-meta-row">
+                                      {r.sourcePage != null && <span className="rl-page">Pag. {r.sourcePage}</span>}
+                                      <span className="rl-conf">
+                                        {Math.round(conf * 100)}%
+                                        <span className="rl-conf-bar"><span className="rl-conf-fill" style={{ width: `${conf * 100}%`, background: conf > 0.9 ? "#34d399" : conf > 0.8 ? "#2563eb" : "#fbbf24" }} /></span>
+                                      </span>
+                                    </div>
+
+                                    {/* Expanded detail — shown on click */}
+                                    {isExpanded && (
+                                      <div className="rl-detail" onClick={(ev) => ev.stopPropagation()}>
+                                        {/* Source text from guide */}
+                                        {r.sourceText && (
+                                          <div className="rl-section">
+                                            <div className="rl-section-title">
+                                              Text original din ghid
+                                              {r.sourcePage != null && <span className="rl-section-page">Pag. {r.sourcePage}</span>}
+                                            </div>
+                                            <div className="rl-source-quote">{r.sourceText}</div>
+                                          </div>
+                                        )}
+
+                                        {/* Condition / logic */}
+                                        {cond && (
+                                          <div className="rl-section">
+                                            <div className="rl-section-title">
+                                              {r.type === "fixed" ? "Condiție verificare" : "Logică decizională"}
+                                            </div>
+                                            <div className="rl-condition-box">
+                                              {r.type === "fixed" && cond.field && (
+                                                <div className="rl-cond-row">
+                                                  <span className="rl-cond-field">{cond.field}</span>
+                                                  <span className="rl-cond-op">{cond.operator}</span>
+                                                  <span className="rl-cond-val">
+                                                    {Array.isArray(cond.value) ? cond.value.join(", ") : String(cond.value ?? "")}
+                                                    {cond.value2 && ` — ${cond.value2}`}
+                                                  </span>
+                                                </div>
+                                              )}
+                                              {r.type === "interpreted" && (
+                                                <>
+                                                  {cond.type && (
+                                                    <div className="rl-logic-type">
+                                                      <span className="rl-logic-badge">{cond.type.replace(/_/g, " ")}</span>
+                                                    </div>
+                                                  )}
+                                                  {cond.logic && (
+                                                    <div className="rl-logic-desc">{cond.logic}</div>
+                                                  )}
+                                                  {cond.factors && cond.factors.length > 0 && (
+                                                    <div className="rl-factors">
+                                                      <span className="rl-factors-label">Factori:</span>
+                                                      {cond.factors.map((f: string, i: number) => (
+                                                        <span key={i} className="rl-factor-chip">{f}</span>
+                                                      ))}
+                                                    </div>
+                                                  )}
+                                                  {cond.outcomes && cond.outcomes.length > 0 && (
+                                                    <div className="rl-outcomes">
+                                                      {cond.outcomes.map((o: any, i: number) => (
+                                                        <div key={i} className="rl-outcome-row">
+                                                          <span className="rl-outcome-if">DACĂ</span>
+                                                          <span className="rl-outcome-cond">{o.if}</span>
+                                                          <span className="rl-outcome-then">→</span>
+                                                          <span className="rl-outcome-result">{o.then}</span>
+                                                        </div>
+                                                      ))}
+                                                    </div>
+                                                  )}
+                                                </>
+                                              )}
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        {/* Reference tables linked to this rule */}
+                                        {rl.referenceTables && rl.referenceTables.filter(rt => rt.table).length > 0 && (
+                                          <div className="rl-section">
+                                            <div className="rl-section-title">Tabele referință</div>
+                                            <div className="rl-ref-tables">
+                                              {rl.referenceTables.filter(rt => rt.table).map((rt, ri) => (
+                                                <span key={ri} className="rl-ref-chip">
+                                                  {rt.table!.name} <span className="rl-ref-type">{rt.table!.tableType}</span>
+                                                </span>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
                             </div>
                           )}
                           {/* GAP 21: Scoring contribution */}

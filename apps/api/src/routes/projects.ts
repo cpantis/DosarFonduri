@@ -181,7 +181,7 @@ projectRoutes.get("/", async (c) => {
     return {
       ...p,
       company: company ? { denumire: company.denumire, cui: company.cui } : null,
-      programPath: pathCache[p.folderId] || "",
+      programPath: pathCache[p.folderId] || { program: "", masura: "", sesiune: "" },
       lock: lockActive ? { lockedBy: p.lockedBy, lockedByName: lockerMap[p.lockedBy!] || null, lockedAt: p.lockedAt } : null,
       progress: {
         eligibility: { passed: Number(elig.passed), total: Number(elig.total) },

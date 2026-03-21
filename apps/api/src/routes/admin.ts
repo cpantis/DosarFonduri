@@ -163,6 +163,63 @@ adminRoutes.post("/users", async (c) => {
   return c.json(newUser, 201);
 });
 
+// ─── POST /users/:id/resend-invite ───
+adminRoutes.post("/users/:id/resend-invite", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const id = c.req.param("id");
+
+  const user = await db.query.users.findFirst({
+    where: and(eq(users.id, id), eq(users.organizationId, auth.organizationId!)),
+  });
+  if (!user) return c.json({ error: "User not found" }, 404);
+  if (user.status !== "invited") return c.json({ error: "Utilizatorul nu are status 'invitat'" }, 400);
+
+  const org = await db.query.organizations.findFirst({
+    where: eq(organizations.id, auth.organizationId!),
+  });
+  if (!org) return c.json({ error: "Organization not found" }, 404);
+
+  const apiKey = process.env.RESEND_API_KEY;
+  const from = process.env.SENDER_EMAIL || "notificari@dosarfonduri.ro";
+  if (!apiKey) return c.json({ error: "Email service not configured" }, 503);
+
+  const signupUrl = `${process.env.APP_URL || "https://app.dosarfonduri.ro"}/login?invited=1&email=${encodeURIComponent(user.email)}`;
+  try {
+    await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: `DosarFonduri <${from}>`,
+        to: user.email,
+        subject: `Reminder: Ai fost invitat în cabinetul ${org.name} pe DosarFonduri`,
+        html: [
+          `<div style="font-family:'DM Sans',system-ui,sans-serif;max-width:560px;margin:0 auto;padding:32px">`,
+          `<div style="background:linear-gradient(135deg,#a78bfa 0%,#8b5cf6 100%);border-radius:12px;padding:24px 32px;margin-bottom:24px">`,
+          `<h1 style="color:#fff;margin:0;font-size:22px">DosarFonduri</h1>`,
+          `</div>`,
+          `<h2 style="color:#1a1e28;margin:0 0 16px">Reminder invitație</h2>`,
+          `<p style="color:#5a6478;font-size:15px;line-height:1.6">`,
+          `Ai fost invitat să te alături cabinetului <strong>${escapeHtml(org.name)}</strong> cu rolul de <strong>${escapeHtml(user.role)}</strong>.`,
+          `</p>`,
+          `<div style="text-align:center;margin:28px 0">`,
+          `<a href="${signupUrl}" style="display:inline-block;padding:14px 36px;background:#a78bfa;color:#fff;text-decoration:none;border-radius:10px;font-weight:700;font-size:15px">Creează cont</a>`,
+          `</div>`,
+          `<hr style="border:none;border-top:1px solid #e0e4ea;margin:24px 0"/>`,
+          `<p style="color:#8892a8;font-size:12px">DosarFonduri &copy; ${new Date().getFullYear()}</p>`,
+          `</div>`,
+        ].join(""),
+      }),
+    });
+    return c.json({ ok: true, email: user.email });
+  } catch (emailErr: any) {
+    console.error("[admin/resend-invite] Email send failed:", emailErr.message);
+    return c.json({ error: "Trimiterea email-ului a eșuat" }, 500);
+  }
+});
+
 // ─── PUT /users/:id ───
 const updateUserSchema = z.object({
   role: z.enum(["admin", "consultant", "viewer"]).optional(),

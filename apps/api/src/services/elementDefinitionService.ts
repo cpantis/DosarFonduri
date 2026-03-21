@@ -275,10 +275,23 @@ export async function autoMapTemplatePlaceholders(
   if (tmplElements.length === 0) return 0;
 
   let mapped = 0;
-  const unmatchedElements: typeof tmplElements = [];
 
-  // Phase 1: Fuzzy text matching (fast, no AI cost)
-  for (const te of tmplElements) {
+  // ═══ Phase 1: AI Sonnet semantic matching (primary — most robust) ═══
+  // Send ALL template elements + ALL definitions to Sonnet for semantic mapping.
+  // AI understands that nr_reg_com = numar_registru_comert, supraf_totala = suprafata_totala, etc.
+  let aiUnmatched: Array<{ key: string; label: string }>;
+  if (defs.length > 0) {
+    const aiResult = await aiSemanticMapping(tmplElements, defs, templateDocumentId, organizationId);
+    mapped += aiResult.matched;
+    aiUnmatched = aiResult.unmatched;
+  } else {
+    aiUnmatched = tmplElements.map(te => ({ key: te.key, label: te.label }));
+  }
+
+  // ═══ Phase 2: Fuzzy text matching fallback (for elements AI missed or if AI failed) ═══
+  // Catches exact/normalized matches that AI might have skipped
+  const fuzzyUnmatched: typeof tmplElements = [];
+  for (const te of aiUnmatched) {
     const match = defs.length > 0
       ? await findElementDefinition(te.key, organizationId, 0.7)
       : null;
@@ -294,105 +307,83 @@ export async function autoMapTemplatePlaceholders(
         }).onConflictDoNothing();
         mapped++;
       } catch {
-        // ignore duplicates
+        // already mapped (conflict) — skip
       }
     } else {
-      unmatchedElements.push(te);
+      fuzzyUnmatched.push(te as any);
     }
   }
 
-  // Phase 2: AI semantic matching for unmatched placeholders (Sonnet)
-  if (unmatchedElements.length > 0 && defs.length > 0) {
-    const aiMapped = await aiSemanticMapping(unmatchedElements, defs, templateDocumentId, organizationId);
-    mapped += aiMapped.matched;
-    // Elements still unmatched after AI are collected for Phase 3
-    const stillUnmatched = aiMapped.unmatched;
-
-    // Phase 3: Auto-create element_definitions for truly unmatched placeholders
-    // These are marked needsReview so consultants can validate in UI
-    for (const te of stillUnmatched) {
-      try {
-        const newDef = await upsertElementDefinition({
-          guideDocumentId: null,
-          organizationId,
-          elementKey: sanitizeKey(te.key),
-          displayName: te.label || te.key.replace(/_/g, " "),
-          category: "other",
-          dataType: inferDataType(te.key, (te as any).fieldType),
-          required: false,
-        });
-        await db.insert(templatePlaceholderMapping).values({
-          templateDocumentId,
-          placeholderKey: te.key,
-          elementDefId: newDef.id,
-          mappedBy: "auto",
-          confidence: "0.50",
-          validated: false,
-        }).onConflictDoNothing();
-        mapped++;
-      } catch {
-        // ignore errors for auto-created defs
-      }
-    }
-  } else if (unmatchedElements.length > 0 && defs.length === 0) {
-    // No existing definitions at all — auto-create for each placeholder
-    for (const te of unmatchedElements) {
-      try {
-        const newDef = await upsertElementDefinition({
-          guideDocumentId: null,
-          organizationId,
-          elementKey: sanitizeKey(te.key),
-          displayName: te.label || te.key.replace(/_/g, " "),
-          category: "other",
-          dataType: inferDataType(te.key, (te as any).fieldType),
-          required: false,
-        });
-        await db.insert(templatePlaceholderMapping).values({
-          templateDocumentId,
-          placeholderKey: te.key,
-          elementDefId: newDef.id,
-          mappedBy: "auto",
-          confidence: "0.50",
-          validated: false,
-        }).onConflictDoNothing();
-        mapped++;
-      } catch {
-        // ignore
-      }
+  // ═══ Phase 3: Auto-create element_definitions for truly unmatched placeholders ═══
+  // Neither AI nor fuzzy could find a match → create new definitions,
+  // marked as unvalidated so consultants can review/correct in UI
+  for (const te of fuzzyUnmatched) {
+    try {
+      const newDef = await upsertElementDefinition({
+        guideDocumentId: null,
+        organizationId,
+        elementKey: sanitizeKey(te.key),
+        displayName: te.label || te.key.replace(/_/g, " "),
+        category: "other",
+        dataType: inferDataType(te.key, (te as any).fieldType),
+        required: false,
+      });
+      await db.insert(templatePlaceholderMapping).values({
+        templateDocumentId,
+        placeholderKey: te.key,
+        elementDefId: newDef.id,
+        mappedBy: "auto",
+        confidence: "0.50",
+        validated: false,
+      }).onConflictDoNothing();
+      mapped++;
+    } catch {
+      // ignore errors for auto-created defs
     }
   }
 
+  console.log(`[elementDefService] autoMap complete: ${mapped} total mapped (AI phase 1, fuzzy phase 2, auto-create phase 3) for template ${templateDocumentId}`);
   return mapped;
 }
 
 /**
- * AI-powered semantic matching using Sonnet.
- * Takes unmatched template elements and existing element definitions,
- * asks AI to find semantic equivalences.
+ * AI-powered semantic matching using Sonnet (Phase 1 — primary mapping strategy).
+ * Sends all template placeholders and all element definitions to Sonnet
+ * for robust semantic matching. Handles abbreviations, Romanian/English
+ * equivalences, and domain-specific synonyms that fuzzy text matching misses.
  */
 async function aiSemanticMapping(
-  unmatched: Array<{ key: string; label: string }>,
+  allElements: Array<{ key: string; label: string }>,
   defs: Array<{ id: string; elementKey: string; displayName: string }>,
   templateDocumentId: string,
   organizationId: string,
 ): Promise<{ matched: number; unmatched: Array<{ key: string; label: string }> }> {
-  if (unmatched.length === 0) return { matched: 0, unmatched: [] };
+  if (allElements.length === 0) return { matched: 0, unmatched: [] };
 
-  const unmatchedList = unmatched.map(te => `  - "${te.key}" (label: "${te.label}")`).join("\n");
+  const placeholderList = allElements.map(te => `  - "${te.key}" (label: "${te.label}")`).join("\n");
   const defsList = defs.map(d => `  - "${d.elementKey}" (${d.displayName})`).join("\n");
 
   try {
     const response = await withAILimit(() => anthropic.messages.create({
       model: "claude-sonnet-4-20250514",
-      max_tokens: 2000,
-      system: `Ești expert în maparea câmpurilor de formulare la definiții de elemente pentru fonduri europene.
-Primești câmpuri nemapate din template-uri și definiții existente.
-Returnează DOAR un JSON array cu mapările găsite. Fără explicații.
-Dacă un câmp nu are echivalent semantic clar, NU-L include.
-Threshold: mapează doar dacă ești sigur >60% că sunt echivalente semantic.`,
+      max_tokens: 4000,
+      system: `Ești expert în maparea câmpurilor de formulare la definiții de elemente pentru fonduri europene din România.
+
+SARCINĂ: Primești câmpuri placeholder din template-uri de documente și definiții canonice de elemente extrase din ghidul de finanțare. Mapează fiecare placeholder la definiția semantică echivalentă.
+
+REGULI:
+- Înțelege abrevieri: "nr_reg_com" = "numar_registru_comert", "supraf" = "suprafata", "val" = "valoare"
+- Înțelege sinonime: "firma" = "societate" = "beneficiar", "adresa" = "sediu_social"
+- Înțelege echivalențe RO/EN: "turnover" = "cifra_afaceri", "name" = "denumire"
+- Înțelege context: "capital_social" din template = "capital_social_subscris" din ghid
+- Mapează DOAR când ești sigur semantic (confidence > 0.6)
+- Dacă un placeholder NU are echivalent clar, NU-L include în rezultat
+- Fii generos cu mapările evidente dar conservator cu cele ambigue
+
+Returnează DOAR un JSON array valid. Fără backticks, fără explicații.`,
       messages: [{
         role: "user",
-        content: `Câmpuri nemapate din template:\n${unmatchedList}\n\nDefiniții existente:\n${defsList}\n\nReturnează JSON array:\n[{"placeholder_key": "...", "element_key": "...", "confidence": 0.0-1.0}]`,
+        content: `Câmpuri placeholder din template:\n${placeholderList}\n\nDefiniții canonice (din ghid):\n${defsList}\n\nReturnează JSON array cu mapările:\n[{"placeholder_key": "cheie_exacta_din_template", "element_key": "cheie_exacta_din_definitii", "confidence": 0.0-1.0}]`,
       }],
     }));
 
@@ -409,7 +400,7 @@ Threshold: mapează doar dacă ești sigur >60% că sunt echivalente semantic.`,
     });
 
     const mappings: Array<{ placeholder_key: string; element_key: string; confidence: number }> = JSON.parse(cleaned);
-    if (!Array.isArray(mappings)) return { matched: 0, unmatched };
+    if (!Array.isArray(mappings)) return { matched: 0, unmatched: allElements };
 
     const defMap = new Map(defs.map(d => [d.elementKey, d.id]));
     let matched = 0;
@@ -432,16 +423,16 @@ Threshold: mapează doar dacă ești sigur >60% că sunt echivalente semantic.`,
         matched++;
         matchedKeys.add(m.placeholder_key);
       } catch {
-        // ignore
+        // conflict = already mapped, skip
       }
     }
 
-    const stillUnmatched = unmatched.filter(te => !matchedKeys.has(te.key));
-    console.log(`[elementDefService] AI semantic mapping: ${matched} matched, ${stillUnmatched.length} still unmatched`);
+    const stillUnmatched = allElements.filter(te => !matchedKeys.has(te.key));
+    console.log(`[elementDefService] Phase 1 AI: ${matched}/${allElements.length} mapped, ${stillUnmatched.length} remaining for fuzzy/auto-create`);
     return { matched, unmatched: stillUnmatched };
   } catch (err) {
-    console.warn("[elementDefService] AI semantic mapping failed, falling back:", err instanceof Error ? err.message : err);
-    return { matched: 0, unmatched };
+    console.warn("[elementDefService] AI semantic mapping failed, all elements fall through to Phase 2 fuzzy:", err instanceof Error ? err.message : err);
+    return { matched: 0, unmatched: allElements };
   }
 }
 

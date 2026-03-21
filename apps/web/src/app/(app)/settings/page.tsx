@@ -10,7 +10,9 @@ import { useToast } from "@/components/shared/Toast";
 interface OrgConfig {
   solomonModel: string;
   solomonET: boolean;
+  solomonLabel: string;
   neemiaModel: string;
+  neemiaLabel: string;
   reguliFixeModel: string;
   reguliInterpModel: string;
   reguliInterpET: boolean;
@@ -388,6 +390,20 @@ export default function SettingsPage() {
                 </div>
               </div>
 
+              <div className="setting mt-5">
+                <div className="flex-1">
+                  <div className="text-sm font-semibold mb-0.5 text-slate-900">Denumire personalizată</div>
+                  <div className="text-xs text-slate-400">Schimbă numele afișat în interfață pentru acest modul. Default: Solomon.</div>
+                </div>
+                <input
+                  className="text-sm px-3 py-1.5 rounded-md border border-slate-200 bg-white text-slate-900 w-40 outline-none focus:border-blue-500"
+                  value={config.solomonLabel || "Solomon"}
+                  onChange={(e) => setConfig({ ...config, solomonLabel: e.target.value })}
+                  onBlur={() => updateConfig({ solomonLabel: config.solomonLabel || "Solomon" })}
+                  placeholder="Solomon"
+                />
+              </div>
+
               <div className="p-3 mt-3 flex items-center gap-3 rounded-md bg-slate-50 border border-slate-200/80">
                 <span className="text-xs flex-1 text-slate-400">Cost estimat per conversatie medie (15 mesaje):</span>
                 <span className="text-sm font-bold font-mono text-amber-500">
@@ -439,6 +455,20 @@ export default function SettingsPage() {
                   <div className="text-xs text-slate-400">Neemia verifica daca toate elementele necesare sunt confirmate, valideaza consistenta datelor intre documente si se asigura ca dosarul respecta cerintele programului inainte de generare.</div>
                 </div>
                 <div className="toggle on"><div className="toggle-knob" /></div>
+              </div>
+
+              <div className="setting mt-5">
+                <div className="flex-1">
+                  <div className="text-sm font-semibold mb-0.5 text-slate-900">Denumire personalizată</div>
+                  <div className="text-xs text-slate-400">Schimbă numele afișat în interfață pentru acest modul. Default: Neemia.</div>
+                </div>
+                <input
+                  className="text-sm px-3 py-1.5 rounded-md border border-slate-200 bg-white text-slate-900 w-40 outline-none focus:border-blue-500"
+                  value={config.neemiaLabel || "Neemia"}
+                  onChange={(e) => setConfig({ ...config, neemiaLabel: e.target.value })}
+                  onBlur={() => updateConfig({ neemiaLabel: config.neemiaLabel || "Neemia" })}
+                  placeholder="Neemia"
+                />
               </div>
             </>
           )}

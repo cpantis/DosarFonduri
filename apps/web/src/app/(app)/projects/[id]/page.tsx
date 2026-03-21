@@ -71,6 +71,7 @@ type EligibilityRule = {
 
 type GuideRule = {
   id: string;
+  ruleId?: string;
   type: "fixed" | "interpreted";
   text: string;
   confidence: number;
@@ -154,7 +155,7 @@ const STATUS_MAP: Record<string, { label: string; color: string; bg: string }> =
 const pct = (a: number, b: number) => b > 0 ? Math.round((a / b) * 100) : 0;
 const formatRON = (v: number | null | undefined) => v != null ? `${Number(v).toLocaleString("ro-RO", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} RON` : "-";
 
-type LeafType = "sumar" | "eligibilitate" | "ghid" | "solomon" | "elemente" | "checklist" | "neemia";
+type LeafType = "sumar" | "eligibilitate" | "solomon" | "elemente" | "reguli" | "scor" | "tabele" | "checklist" | "neemia";
 
 function parseAdresa(adresa: string | undefined): { localitate: string; judet: string } {
   if (!adresa) return { localitate: "-", judet: "-" };
@@ -196,6 +197,7 @@ function mapGuideRules(grouped: any[]): GuideRule[] {
       const tags: string[] = Array.isArray(cond?.semantic_tags) ? cond.semantic_tags : [];
       rules.push({
         id: item.id,
+        ruleId: item.ruleId || item.rule?.id || undefined,
         type: item.rule?.type || "fixed",
         text: item.rule?.description || "",
         confidence: parseFloat(item.rule?.confidence) || 0.5,
@@ -425,6 +427,7 @@ export default function ProjectViewPage() {
   // GAP 8: Learnings
   const [learnings, setLearnings] = useState<any | null>(null);
   const [cabinetBranding, setCabinetBranding] = useState<{ fontFamily?: string; primaryColor?: string; footerText?: string } | null>(null);
+  const [orgLabels, setOrgLabels] = useState<{ solomonLabel: string; neemiaLabel: string }>({ solomonLabel: "Solomon", neemiaLabel: "Neemia" });
 
   const [neemiaActiveTemplate, setNeemiaActiveTemplate] = useState(0);
   const [neemiaActivePage, setNeemiaActivePage] = useState(0);
@@ -624,6 +627,10 @@ export default function ProjectViewPage() {
         apiGet<any>(`/api/projects/${projectId}/learnings`).then(setLearnings).catch(() => {});
         // FIX 8: Load cabinet branding for document preview
         apiGet<any>(`/api/config/branding`).then(setCabinetBranding).catch(() => {});
+        // Load org config for custom labels
+        apiGet<any>(`/api/config`).then(cfg => {
+          if (cfg) setOrgLabels({ solomonLabel: cfg.solomonLabel || "Solomon", neemiaLabel: cfg.neemiaLabel || "Neemia" });
+        }).catch(() => {});
       } catch (err: any) {
         console.error("Failed to load project:", err);
         setLoadError(err?.message || "Eroare la încărcarea proiectului");
@@ -2019,6 +2026,10 @@ export default function ProjectViewPage() {
         .rule-cat-label{font-size:10px;color:#94a3b8;font-weight:600}
         .rule-review-flag{font-size:10px;color:#d97706;font-weight:600;margin-left:auto}
         .rule-validated-flag{font-size:12px;color:#059669;margin-left:auto}
+        .elig-status-badge{font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;margin-left:auto;flex-shrink:0;letter-spacing:.3px}
+        .elig-status-badge.pass{color:#059669;background:rgba(52,211,153,.12);border:1px solid rgba(52,211,153,.3)}
+        .elig-status-badge.fail{color:#dc2626;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.2)}
+        .elig-status-badge.pending{color:#d97706;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.25)}
         .rule-text{font-size:13px;line-height:1.5;color:#0f172a}
         .rule-meta{font-size:11px;color:#94a3b8;margin-top:6px;font-family:'JetBrains Mono',monospace;display:flex;gap:12px;align-items:center}
         .rule-doc-ref{font-size:10px;color:#94a3b8;margin-left:auto;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -2684,11 +2695,13 @@ export default function ProjectViewPage() {
           {([
             { key: "sumar" as LeafType, label: "Sumar" },
             { key: "eligibilitate" as LeafType, label: "Eligibilitate" },
-            { key: "ghid" as LeafType, label: "Ghid" },
-            { key: "solomon" as LeafType, label: "Solomon", badge: `${elemFilled}/${elemTotal}`, badgeClass: elemFilled === elemTotal && elemTotal > 0 ? "green" : elemFilled > 0 ? "blue" : "neutral" },
+            { key: "solomon" as LeafType, label: orgLabels.solomonLabel, badge: `${elemFilled}/${elemTotal}`, badgeClass: elemFilled === elemTotal && elemTotal > 0 ? "green" : elemFilled > 0 ? "blue" : "neutral" },
             { key: "elemente" as LeafType, label: "Elemente" },
+            { key: "reguli" as LeafType, label: "Reguli" },
+            { key: "scor" as LeafType, label: "Scor" },
+            { key: "tabele" as LeafType, label: "Tabele" },
             { key: "checklist" as LeafType, label: "Checklist doc" },
-            { key: "neemia" as LeafType, label: "Neemia" },
+            { key: "neemia" as LeafType, label: orgLabels.neemiaLabel },
           ]).map(tab => (
             <button
               key={tab.key}
@@ -2914,7 +2927,7 @@ export default function ProjectViewPage() {
                       </>
                     ) : (
                       <div className="text-xs text-[#94a3b8] py-2">
-                        Nu a fost identificat inca. Deschide Solomon pentru a confirma programul de finantare.
+                        Nu a fost identificat inca. Deschide {orgLabels.solomonLabel} pentru a confirma programul de finantare.
                       </div>
                     )}
                   </div>
@@ -2922,7 +2935,7 @@ export default function ProjectViewPage() {
 
                 <div className="sumar-actions">
                   <button className="sa-btn primary" onClick={() => setActiveLeaf("eligibilitate")}>&#128737; Verifică eligibilitate</button>
-                  <button className="sa-btn" onClick={() => setActiveLeaf("solomon")}>&#129302; Deschide Solomon</button>
+                  <button className="sa-btn" onClick={() => setActiveLeaf("solomon")}>&#129302; Deschide {orgLabels.solomonLabel}</button>
                   <button className="sa-btn" onClick={() => setActiveLeaf("neemia")}>&#128196; Generează documente</button>
                 </div>
               </div>
@@ -3047,8 +3060,8 @@ export default function ProjectViewPage() {
               );
             })()}
 
-            {/* GHID FINANȚARE */}
-            {activeLeaf === "ghid" && (() => {
+            {/* REGULI (combined ghid rules + eligibility status) */}
+            {activeLeaf === "reguli" && (() => {
               const categoryLabels: Record<string, string> = {
                 eligibilitate: "Eligibilitate", financiar: "Financiar", tehnic: "Tehnic", administrativ: "Administrativ",
                 achizitii: "Achiziții", documente: "Documente", selectie: "Selecție", intensitate: "Intensitate",
@@ -3074,6 +3087,11 @@ export default function ProjectViewPage() {
               const sel = selectedRule ? guideRules.find(r => r.id === selectedRule) : null;
 
               const guideTrustScore = (project as any)?.guideTrustScore as number | null;
+              // Build eligibility status map: projectEligibility.id → status
+              const eligStatusById: Record<string, { status: string; overrideResult: boolean | null; notes: string | null }> = {};
+              for (const er of eligibilityRules) {
+                eligStatusById[er.id] = { status: er.status, overrideResult: (er as any).overrideResult ?? null, notes: (er as any).notes ?? null };
+              }
 
               if (guideRules.length === 0) {
                 return (
@@ -3262,7 +3280,9 @@ export default function ProjectViewPage() {
                         </div>
 
                         <div className="rules-scroll">
-                          {filteredRules.map(r => (
+                          {filteredRules.map(r => {
+                            const eStatus = eligStatusById[r.id];
+                            return (
                             <div className={`rule-card ${selectedRule === r.id ? "active" : ""}`} key={r.id} onClick={() => setSelectedRule(r.id)}>
                               <div className="rule-card-top">
                                 <div className={`rule-type-badge ${r.type}`}>
@@ -3270,6 +3290,11 @@ export default function ProjectViewPage() {
                                 </div>
                                 <span className="rule-cat-dot" style={{ background: categoryColors[r.category] || "#94a3b8" }} />
                                 <span className="rule-cat-label">{categoryLabels[r.category] || r.category}</span>
+                                {eStatus && (
+                                  <span className={`elig-status-badge ${eStatus.status}`}>
+                                    {eStatus.status === "pass" ? "✓ Trecut" : eStatus.status === "fail" ? "✗ Respins" : "⏳ Pending"}
+                                  </span>
+                                )}
                                 {r.needsReview && <span className="rule-review-flag">⚠ Review</span>}
                                 {r.validated && <span className="rule-validated-flag">✓</span>}
                               </div>
@@ -3290,7 +3315,8 @@ export default function ProjectViewPage() {
                                 {r.sourceDocument && <span className="rule-doc-ref">{r.sourceDocument.name}</span>}
                               </div>
                             </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       </div>
 
@@ -3408,6 +3434,23 @@ export default function ProjectViewPage() {
                                   <span className="rd-doc-icon">{sel.sourceDocument.fileType === "pdf" ? "📕" : sel.sourceDocument.fileType === "docx" ? "📘" : "📗"}</span>
                                   <span className="rd-doc-name">{sel.sourceDocument.name}</span>
                                   <span className="rd-doc-page">Pag. {sel.page}</span>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Eligibility status for this rule */}
+                            {eligStatusById[sel.id] && (
+                              <div className="rd-section">
+                                <div className="rd-section-title">Status eligibilitate</div>
+                                <div className="rd-elig-status">
+                                  <span className={`elig-status-badge ${eligStatusById[sel.id].status}`} style={{ fontSize: 12, padding: "4px 14px" }}>
+                                    {eligStatusById[sel.id].status === "pass" ? "✓ TRECUT" : eligStatusById[sel.id].status === "fail" ? "✗ RESPINS" : "⏳ PENDING"}
+                                  </span>
+                                  {eligStatusById[sel.id].notes && (
+                                    <div style={{ marginTop: 8, fontSize: 12, color: "#64748b", fontStyle: "italic" }}>
+                                      Notă: {eligStatusById[sel.id].notes}
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                             )}
@@ -4051,6 +4094,210 @@ export default function ProjectViewPage() {
                 )}
               </div>
             )}
+
+            {/* SCOR (scoring criteria + points) */}
+            {activeLeaf === "scor" && (() => {
+              if (!projectScores || projectScores.scores.length === 0) {
+                return (
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 200, color: "#8892a8", padding: 24 }}>
+                    <div style={{ fontSize: 32, marginBottom: 8 }}>📊</div>
+                    <div style={{ fontSize: 14, fontWeight: 600 }}>Niciun criteriu de scor disponibil</div>
+                    <div style={{ fontSize: 12, marginTop: 4 }}>Uploadează un ghid cu grilă de evaluare pentru a genera criteriile automat</div>
+                    <button
+                      onClick={async () => {
+                        try {
+                          const data = await apiPost<any>(`/api/projects/${projectId}/recompute-scores`, {});
+                          setProjectScores(data);
+                          toast("success", "Scorurile au fost recalculate");
+                        } catch { toast("error", "Eroare la recalculare"); }
+                      }}
+                      className="pv-tab" style={{ marginTop: 12, padding: "6px 16px", background: "#2563eb", color: "#fff", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 700 }}
+                    >
+                      Recalculează scoruri
+                    </button>
+                  </div>
+                );
+              }
+              const { scores, totalPoints, maxTotalPoints, percentage } = projectScores;
+              return (
+                <div style={{ padding: 24 }}>
+                  {/* Summary header */}
+                  <div style={{ display: "flex", gap: 16, marginBottom: 24, flexWrap: "wrap" }}>
+                    <div style={{ flex: 1, minWidth: 160, padding: "16px 20px", background: "#fff", border: "1px solid rgba(226,232,240,.8)", borderRadius: 12 }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".6px", color: "#94a3b8", marginBottom: 6 }}>Total punctaj</div>
+                      <div style={{ fontSize: 28, fontWeight: 800, color: "#0f172a", fontFamily: "'JetBrains Mono', monospace" }}>
+                        {totalPoints}<span style={{ fontSize: 14, color: "#94a3b8", fontWeight: 600 }}>/{maxTotalPoints}</span>
+                      </div>
+                      <div style={{ marginTop: 8, height: 6, background: "#f0f2f5", borderRadius: 3, overflow: "hidden" }}>
+                        <div style={{ height: "100%", borderRadius: 3, width: `${percentage}%`, background: percentage >= 80 ? "#34d399" : percentage >= 50 ? "#2563eb" : "#fbbf24", transition: "width .3s" }} />
+                      </div>
+                      <div style={{ marginTop: 4, fontSize: 11, color: "#94a3b8", fontFamily: "'JetBrains Mono', monospace" }}>{Math.round(percentage)}%</div>
+                    </div>
+                    <div style={{ flex: 1, minWidth: 160, padding: "16px 20px", background: "#fff", border: "1px solid rgba(226,232,240,.8)", borderRadius: 12 }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".6px", color: "#94a3b8", marginBottom: 6 }}>Criterii evaluate</div>
+                      <div style={{ fontSize: 28, fontWeight: 800, color: "#0f172a" }}>{scores.filter(s => s.points != null).length}<span style={{ fontSize: 14, color: "#94a3b8", fontWeight: 600 }}>/{scores.length}</span></div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center" }}>
+                      <button
+                        onClick={async () => {
+                          try {
+                            const data = await apiPost<any>(`/api/projects/${projectId}/recompute-scores`, {});
+                            setProjectScores(data);
+                            toast("success", "Scorurile au fost recalculate");
+                          } catch { toast("error", "Eroare la recalculare"); }
+                        }}
+                        style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid #2563eb", background: "rgba(37,99,235,.06)", color: "#2563eb", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                      >
+                        Recalculează
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Criteria list */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {scores.map((s: any) => {
+                      const scored = s.points != null;
+                      const pct2 = scored ? Math.round((s.points / s.maxPoints) * 100) : 0;
+                      return (
+                        <div key={s.criteriaId} style={{
+                          padding: "14px 18px", borderRadius: 12, border: "1px solid rgba(226,232,240,.8)",
+                          background: "#fff", transition: "all .15s",
+                        }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                            {s.code && <span style={{ fontSize: 10, fontWeight: 700, color: "#2563eb", background: "rgba(37,99,235,.08)", padding: "2px 8px", borderRadius: 4, fontFamily: "'JetBrains Mono', monospace" }}>{s.code}</span>}
+                            <span style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", flex: 1 }}>{s.name}</span>
+                            <span style={{
+                              fontSize: 14, fontWeight: 800, fontFamily: "'JetBrains Mono', monospace",
+                              color: !scored ? "#94a3b8" : pct2 >= 80 ? "#059669" : pct2 >= 50 ? "#2563eb" : "#d97706",
+                            }}>
+                              {scored ? s.points : "—"}<span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 600 }}>/{s.maxPoints}</span>
+                            </span>
+                          </div>
+                          {scored && (
+                            <div style={{ height: 4, background: "#f0f2f5", borderRadius: 2, overflow: "hidden", marginBottom: 6 }}>
+                              <div style={{ height: "100%", borderRadius: 2, width: `${pct2}%`, background: pct2 >= 80 ? "#34d399" : pct2 >= 50 ? "#2563eb" : "#fbbf24" }} />
+                            </div>
+                          )}
+                          {s.reasoning && (
+                            <div style={{ fontSize: 12, color: "#64748b", lineHeight: 1.5 }}>{s.reasoning}</div>
+                          )}
+                          {s.inputElements && Object.keys(s.inputElements).length > 0 && (
+                            <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 4 }}>
+                              {Object.entries(s.inputElements).map(([k, v]) => (
+                                <span key={k} style={{ fontSize: 10, padding: "2px 8px", borderRadius: 6, background: "#f8fafc", border: "1px solid rgba(226,232,240,.8)", color: "#64748b", fontFamily: "'JetBrains Mono', monospace" }}>
+                                  {k}: {String(v)}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* TABELE (reference tables from guide) */}
+            {activeLeaf === "tabele" && (() => {
+              if (referenceTables.length === 0) {
+                return (
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 200, color: "#8892a8", padding: 24 }}>
+                    <div style={{ fontSize: 32, marginBottom: 8 }}>📋</div>
+                    <div style={{ fontSize: 14, fontWeight: 600 }}>Niciun tabel de referință</div>
+                    <div style={{ fontSize: 12, marginTop: 4 }}>Tabelele sunt extrase automat din ghidurile de finanțare procesate</div>
+                  </div>
+                );
+              }
+              const selTable = selectedRefTable ? referenceTables.find((t: any) => t.id === selectedRefTable) : null;
+              return (
+                <div style={{ display: "flex", height: "100%", minHeight: 400 }}>
+                  {/* Left: table list */}
+                  <div style={{ width: 280, borderRight: "1px solid rgba(226,232,240,.8)", overflow: "auto", padding: 12 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".6px", color: "#94a3b8", marginBottom: 10, padding: "0 4px" }}>
+                      {referenceTables.length} tabele
+                    </div>
+                    {referenceTables.map((t: any) => (
+                      <div key={t.id}
+                        onClick={() => setSelectedRefTable(t.id === selectedRefTable ? null : t.id)}
+                        style={{
+                          padding: "10px 12px", borderRadius: 10, border: `1px solid ${selectedRefTable === t.id ? "#2563eb" : "rgba(226,232,240,.8)"}`,
+                          background: selectedRefTable === t.id ? "rgba(37,99,235,.03)" : "#fff",
+                          marginBottom: 6, cursor: "pointer", transition: "all .15s",
+                        }}
+                      >
+                        <div style={{ fontSize: 12, fontWeight: 600, color: "#0f172a", marginBottom: 4 }}>{t.name}</div>
+                        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                          <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", padding: "2px 7px", borderRadius: 4, background: "rgba(37,99,235,.08)", color: "#2563eb" }}>{t.tableType}</span>
+                          {t.validated && <span style={{ fontSize: 10, color: "#059669", fontWeight: 700 }}>✓</span>}
+                          {t.sourcePage != null && <span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'JetBrains Mono', monospace" }}>p.{t.sourcePage}</span>}
+                        </div>
+                        {t.description && <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4, lineHeight: 1.4 }}>{t.description.slice(0, 80)}{t.description.length > 80 ? "…" : ""}</div>}
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Right: table detail */}
+                  <div style={{ flex: 1, overflow: "auto", padding: 24 }}>
+                    {selTable ? (
+                      <>
+                        <div style={{ marginBottom: 16 }}>
+                          <div style={{ fontSize: 16, fontWeight: 700, color: "#0f172a", marginBottom: 4 }}>{selTable.name}</div>
+                          {selTable.description && <div style={{ fontSize: 13, color: "#64748b", lineHeight: 1.5, marginBottom: 8 }}>{selTable.description}</div>}
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                            <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", padding: "3px 10px", borderRadius: 6, background: "rgba(37,99,235,.08)", color: "#2563eb" }}>{selTable.tableType}</span>
+                            {selTable.extractedBy && <span style={{ fontSize: 10, fontWeight: 600, padding: "3px 10px", borderRadius: 6, background: "#f8fafc", color: "#64748b", border: "1px solid rgba(226,232,240,.8)" }}>{selTable.extractedBy === "ai" ? "Extras AI" : "Manual"}</span>}
+                            {selTable.validated && <span style={{ fontSize: 10, fontWeight: 700, color: "#059669", padding: "3px 10px", borderRadius: 6, background: "rgba(52,211,153,.08)" }}>✓ Validat</span>}
+                          </div>
+                        </div>
+                        {/* Data table */}
+                        {selTable.data && selTable.data.length > 0 && selTable.schema && (
+                          <div style={{ overflowX: "auto", border: "1px solid rgba(226,232,240,.8)", borderRadius: 10 }}>
+                            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                              <thead>
+                                <tr style={{ background: "#f8fafc" }}>
+                                  {selTable.schema.map((col: any) => (
+                                    <th key={col.key} style={{ padding: "8px 12px", textAlign: "left", fontWeight: 700, fontSize: 10, textTransform: "uppercase", letterSpacing: ".5px", color: "#94a3b8", borderBottom: "1px solid rgba(226,232,240,.8)" }}>
+                                      {col.label || col.key}
+                                    </th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {selTable.data.map((row: any, ri: number) => (
+                                  <tr key={ri} style={{ borderBottom: ri < selTable.data.length - 1 ? "1px solid rgba(226,232,240,.5)" : "none" }}>
+                                    {selTable.schema.map((col: any) => (
+                                      <td key={col.key} style={{ padding: "8px 12px", color: "#0f172a", fontFamily: col.type === "number" ? "'JetBrains Mono', monospace" : "inherit" }}>
+                                        {row[col.key] ?? "—"}
+                                      </td>
+                                    ))}
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                        {/* Source text */}
+                        {selTable.sourceText && (
+                          <div style={{ marginTop: 16 }}>
+                            <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".6px", color: "#94a3b8", marginBottom: 6 }}>Text sursă din ghid</div>
+                            <div style={{ fontSize: 12, lineHeight: 1.7, color: "#0f172a", padding: "10px 14px", borderLeft: "3px solid #2563eb", fontStyle: "italic", background: "rgba(37,99,235,.03)", borderRadius: "0 8px 8px 0" }}>
+                              {selTable.sourceText}
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", color: "#94a3b8", gap: 8 }}>
+                        <div style={{ fontSize: 36, opacity: 0.4 }}>📋</div>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: "#64748b" }}>Selectează un tabel</div>
+                        <div style={{ fontSize: 12, textAlign: "center", maxWidth: 240 }}>Alege un tabel din lista din stânga pentru a vedea datele și structura</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* SOLOMON CHAT */}
             {activeLeaf === "solomon" && (

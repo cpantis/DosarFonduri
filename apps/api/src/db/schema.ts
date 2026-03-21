@@ -735,6 +735,8 @@ export const orgConfig = pgTable("org_config", {
   reguliInterpModel: varchar("reguli_interp_model", { length: 100 }).default("claude-opus-4-6"),
   reguliInterpET: boolean("reguli_interp_et").default(true),
   reviewThreshold: decimal("review_threshold", { precision: 3, scale: 2 }).default("0.85"),
+  solomonLabel: varchar("solomon_label", { length: 100 }).default("Solomon"),
+  neemiaLabel: varchar("neemia_label", { length: 100 }).default("Neemia"),
   notifNewElement: boolean("notif_new_element").default(true),
   notifEligFail: boolean("notif_elig_fail").default(true),
   notifTemplateReady: boolean("notif_template_ready").default(true),

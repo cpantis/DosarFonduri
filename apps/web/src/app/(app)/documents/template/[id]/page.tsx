@@ -78,6 +78,10 @@ export default function TemplateViewerPage() {
   const [availableRefTables, setAvailableRefTables] = useState<Array<{ id: string; name: string; tableType: string; columnCount: number; rowCount: number }>>([]);
   const [composeSaving, setComposeSaving] = useState(false);
   const [composeDetecting, setComposeDetecting] = useState(false);
+  const [expandedSection, setExpandedSection] = useState<number | null>(null);
+  const [elemPickerOpen, setElemPickerOpen] = useState<number | null>(null);
+  const [refPickerOpen, setRefPickerOpen] = useState<number | null>(null);
+  const [elemPickerSearch, setElemPickerSearch] = useState("");
 
   // Mapping review data
   const [mappingData, setMappingData] = useState<Record<string, MappingInfo>>({});
@@ -161,6 +165,16 @@ export default function TemplateViewerPage() {
   }, [docId]);
 
   useEffect(() => { loadTemplate(); }, [loadTemplate]);
+
+  // Load reference tables when compose config panel is shown
+  useEffect(() => {
+    if (!showComposeConfig || genMode !== "compose" || availableRefTables.length > 0) return;
+    apiGet<any[]>("/api/reference/tables")
+      .then(tables => {
+        if (tables?.length) setAvailableRefTables(tables.map((t: any) => ({ id: t.id, name: t.name, tableType: t.tableType, columnCount: (t.schema as any[])?.length || 0, rowCount: (t.data as any[])?.length || 0 })));
+      })
+      .catch(() => {});
+  }, [showComposeConfig, genMode, availableRefTables.length]);
 
   // Fetch rule links for selected element (GAP 20) — full rule data
   useEffect(() => {
@@ -671,43 +685,230 @@ export default function TemplateViewerPage() {
                   </div>
                 )}
 
-                {composeSections.map((sec, si) => (
-                  <div key={si} className="flex items-center gap-2 mb-1.5 px-2.5 py-1.5 rounded-md border border-slate-200 bg-white">
-                    <select
-                      value={sec.type}
-                      onChange={e => handleUpdateComposeSection(si, "type", e.target.value)}
-                      className="px-1.5 py-0.5 rounded border border-slate-200 bg-slate-50 text-slate-900 text-[11px] font-sans"
-                    >
-                      <option value="narrative">Narativ</option>
-                      <option value="table">Tabel</option>
-                      <option value="calculation">Calcul</option>
-                    </select>
-                    <input
-                      value={sec.marker}
-                      onChange={e => handleUpdateComposeSection(si, "marker", e.target.value)}
-                      placeholder="COMPOSE:secțiune"
-                      className="w-[180px] px-2 py-0.5 rounded border border-slate-200 bg-slate-50 text-slate-900 text-[11px] font-mono"
-                    />
-                    <input
-                      value={sec.label}
-                      onChange={e => handleUpdateComposeSection(si, "label", e.target.value)}
-                      placeholder="Etichetă secțiune"
-                      className="flex-1 px-2 py-0.5 rounded border border-slate-200 bg-slate-50 text-slate-900 text-[11px] font-sans"
-                    />
-                    <input
-                      value={sec.instructions || ""}
-                      onChange={e => handleUpdateComposeSection(si, "instructions", e.target.value)}
-                      placeholder="Instrucțiuni AI (opțional)"
-                      className="flex-1 px-2 py-0.5 rounded border border-slate-200 bg-slate-50 text-slate-900 text-[11px] font-sans"
-                    />
-                    <button
-                      onClick={() => handleRemoveComposeSection(si)}
-                      className="px-2 py-0.5 rounded border border-red-500 bg-transparent text-red-500 text-[11px] cursor-pointer font-sans"
-                    >
-                      &times;
-                    </button>
+                {composeSections.map((sec, si) => {
+                  const isExpanded = expandedSection === si;
+                  const secElKeys = sec.elementKeys || [];
+                  const secRefIds = sec.referenceTableIds || [];
+                  const filteredAvailableEls = allElements.filter(el =>
+                    !secElKeys.includes(el.key) &&
+                    (elemPickerSearch === "" || el.label.toLowerCase().includes(elemPickerSearch.toLowerCase()) || el.key.toLowerCase().includes(elemPickerSearch.toLowerCase()))
+                  );
+                  return (
+                  <div key={si} style={{
+                    marginBottom: 8, borderRadius: 10,
+                    border: `1px solid ${isExpanded ? "#2563eb" : "rgba(226,232,240,.8)"}`,
+                    background: isExpanded ? "rgba(37,99,235,.02)" : "#fff",
+                    transition: "all .15s",
+                  }}>
+                    {/* Section header — always visible */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 10px", cursor: "pointer" }}
+                      onClick={() => setExpandedSection(isExpanded ? null : si)}>
+                      <select
+                        value={sec.type}
+                        onChange={e => { e.stopPropagation(); handleUpdateComposeSection(si, "type", e.target.value); }}
+                        onClick={e => e.stopPropagation()}
+                        style={{ padding: "2px 4px", borderRadius: 4, border: "1px solid #e2e8f0", background: sec.type === "narrative" ? "rgba(37,99,235,.08)" : sec.type === "table" ? "rgba(5,150,105,.08)" : "rgba(217,119,6,.08)", color: sec.type === "narrative" ? "#2563eb" : sec.type === "table" ? "#059669" : "#d97706", fontSize: 10, fontWeight: 700, fontFamily: "inherit" }}
+                      >
+                        <option value="narrative">Narativ</option>
+                        <option value="table">Tabel</option>
+                        <option value="calculation">Calcul</option>
+                      </select>
+                      <input
+                        value={sec.marker}
+                        onChange={e => handleUpdateComposeSection(si, "marker", e.target.value)}
+                        onClick={e => e.stopPropagation()}
+                        placeholder="COMPOSE:secțiune"
+                        style={{ width: 160, padding: "2px 6px", borderRadius: 4, border: "1px solid #e2e8f0", background: "#f8fafc", fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: "#0f172a" }}
+                      />
+                      <input
+                        value={sec.label}
+                        onChange={e => handleUpdateComposeSection(si, "label", e.target.value)}
+                        onClick={e => e.stopPropagation()}
+                        placeholder="Etichetă secțiune"
+                        style={{ flex: 1, padding: "2px 6px", borderRadius: 4, border: "1px solid #e2e8f0", background: "#f8fafc", fontSize: 11, color: "#0f172a" }}
+                      />
+                      {/* Summary chips */}
+                      {secElKeys.length > 0 && (
+                        <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 10, background: "rgba(37,99,235,.08)", color: "#2563eb" }}>
+                          {secElKeys.length} elem.
+                        </span>
+                      )}
+                      {secRefIds.length > 0 && (
+                        <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 10, background: "rgba(5,150,105,.08)", color: "#059669" }}>
+                          {secRefIds.length} tab.
+                        </span>
+                      )}
+                      {sec.instructions && (
+                        <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 10, background: "rgba(167,139,250,.1)", color: "#7c3aed" }}>
+                          instrucțiuni
+                        </span>
+                      )}
+                      <span style={{ fontSize: 10, color: "#94a3b8", marginLeft: "auto", flexShrink: 0 }}>{isExpanded ? "▾" : "▸"}</span>
+                      <button
+                        onClick={e => { e.stopPropagation(); handleRemoveComposeSection(si); }}
+                        style={{ padding: "2px 6px", borderRadius: 4, border: "1px solid #ef4444", background: "transparent", color: "#ef4444", fontSize: 11, cursor: "pointer" }}
+                      >
+                        &times;
+                      </button>
+                    </div>
+
+                    {/* Expanded detail */}
+                    {isExpanded && (
+                      <div style={{ padding: "0 12px 12px", borderTop: "1px solid rgba(226,232,240,.5)" }}>
+                        {/* Instructions textarea */}
+                        <div style={{ marginTop: 10, marginBottom: 10 }}>
+                          <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".5px", color: "#94a3b8", marginBottom: 4 }}>
+                            Instrucțiuni AI pentru această secțiune
+                          </div>
+                          <textarea
+                            value={sec.instructions || ""}
+                            onChange={e => handleUpdateComposeSection(si, "instructions", e.target.value)}
+                            placeholder="Ex: Descrie necesitatea investiției pe baza datelor financiare ale firmei. Argumentează cu cifre din bilanț. Menționează deficiențele actuale și cum investiția le rezolvă..."
+                            rows={3}
+                            style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #e2e8f0", background: "#f8fafc", fontSize: 12, lineHeight: 1.5, color: "#0f172a", resize: "vertical", fontFamily: "inherit" }}
+                          />
+                        </div>
+
+                        {/* Element keys multi-select */}
+                        <div style={{ marginBottom: 10 }}>
+                          <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".5px", color: "#94a3b8", marginBottom: 4 }}>
+                            Elemente asociate ({secElKeys.length})
+                            <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0, marginLeft: 6 }}>— valorile acestor câmpuri sunt trimise AI-ului</span>
+                          </div>
+                          {/* Selected element chips */}
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: secElKeys.length > 0 ? 6 : 0 }}>
+                            {secElKeys.map(key => {
+                              const el = allElements.find(e => e.key === key);
+                              return (
+                                <span key={key} style={{
+                                  display: "inline-flex", alignItems: "center", gap: 3, padding: "2px 8px",
+                                  borderRadius: 10, background: "rgba(37,99,235,.08)", color: "#2563eb",
+                                  fontSize: 10, fontWeight: 600,
+                                }}>
+                                  {el?.label || key}
+                                  <button
+                                    onClick={() => handleUpdateComposeSection(si, "elementKeys", secElKeys.filter(k => k !== key))}
+                                    style={{ background: "none", border: "none", color: "#2563eb", cursor: "pointer", padding: 0, fontSize: 12, lineHeight: 1, fontWeight: 700, opacity: 0.7 }}
+                                  >×</button>
+                                </span>
+                              );
+                            })}
+                          </div>
+                          {/* Add element picker */}
+                          <div style={{ position: "relative" }}>
+                            <input
+                              placeholder={secElKeys.length === 0 ? "Toate elementele (click pentru a filtra)" : "+ Adaugă element..."}
+                              value={elemPickerOpen === si ? elemPickerSearch : ""}
+                              onFocus={() => { setElemPickerOpen(si); setElemPickerSearch(""); }}
+                              onBlur={() => setTimeout(() => setElemPickerOpen(null), 200)}
+                              onChange={e => setElemPickerSearch(e.target.value)}
+                              style={{ width: "100%", padding: "4px 8px", borderRadius: 6, border: "1px solid #e2e8f0", background: "#f8fafc", fontSize: 11, color: "#0f172a" }}
+                            />
+                            {elemPickerOpen === si && filteredAvailableEls.length > 0 && (
+                              <div style={{
+                                position: "absolute", top: "100%", left: 0, right: 0, maxHeight: 160, overflow: "auto",
+                                background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, boxShadow: "0 4px 16px rgba(0,0,0,.08)",
+                                zIndex: 20, marginTop: 2,
+                              }}>
+                                {filteredAvailableEls.slice(0, 30).map(el => (
+                                  <div key={el.key}
+                                    onMouseDown={() => {
+                                      handleUpdateComposeSection(si, "elementKeys", [...secElKeys, el.key]);
+                                      setElemPickerSearch("");
+                                    }}
+                                    style={{ padding: "5px 10px", cursor: "pointer", fontSize: 11, display: "flex", gap: 6, alignItems: "center" }}
+                                    onMouseEnter={e => (e.currentTarget.style.background = "#f0f2f5")}
+                                    onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+                                  >
+                                    <span style={{ fontWeight: 600, color: "#0f172a" }}>{el.label}</span>
+                                    <span style={{ fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "#94a3b8" }}>{el.key}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          {secElKeys.length === 0 && (
+                            <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 3, fontStyle: "italic" }}>
+                              Fără selecție = AI primește toate elementele proiectului
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Reference tables multi-select */}
+                        <div>
+                          <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".5px", color: "#94a3b8", marginBottom: 4 }}>
+                            Tabele referință ({secRefIds.length})
+                            <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0, marginLeft: 6 }}>— date tabulare din ghid trimise AI-ului</span>
+                          </div>
+                          {/* Selected ref table chips */}
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: secRefIds.length > 0 ? 6 : 0 }}>
+                            {secRefIds.map(id => {
+                              const tbl = availableRefTables.find(t => t.id === id);
+                              return (
+                                <span key={id} style={{
+                                  display: "inline-flex", alignItems: "center", gap: 3, padding: "2px 8px",
+                                  borderRadius: 10, background: "rgba(5,150,105,.08)", color: "#059669",
+                                  fontSize: 10, fontWeight: 600,
+                                }}>
+                                  {tbl?.name || id.slice(0, 8)}
+                                  <span style={{ fontSize: 8, fontWeight: 700, textTransform: "uppercase", color: "#94a3b8", marginLeft: 2 }}>{tbl?.tableType}</span>
+                                  <button
+                                    onClick={() => handleUpdateComposeSection(si, "referenceTableIds", secRefIds.filter(r => r !== id))}
+                                    style={{ background: "none", border: "none", color: "#059669", cursor: "pointer", padding: 0, fontSize: 12, lineHeight: 1, fontWeight: 700, opacity: 0.7 }}
+                                  >×</button>
+                                </span>
+                              );
+                            })}
+                          </div>
+                          {/* Add ref table picker */}
+                          {availableRefTables.length > 0 ? (
+                            <div style={{ position: "relative" }}>
+                              <button
+                                onClick={() => setRefPickerOpen(refPickerOpen === si ? null : si)}
+                                style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid #e2e8f0", background: "#f8fafc", fontSize: 11, color: "#64748b", cursor: "pointer", width: "100%", textAlign: "left" }}
+                              >
+                                {secRefIds.length === 0 ? "Toate tabelele (click pentru a filtra)" : "+ Adaugă tabel..."}
+                              </button>
+                              {refPickerOpen === si && (
+                                <div style={{
+                                  position: "absolute", top: "100%", left: 0, right: 0, maxHeight: 160, overflow: "auto",
+                                  background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, boxShadow: "0 4px 16px rgba(0,0,0,.08)",
+                                  zIndex: 20, marginTop: 2,
+                                }}>
+                                  {availableRefTables.filter(t => !secRefIds.includes(t.id)).map(t => (
+                                    <div key={t.id}
+                                      onClick={() => {
+                                        handleUpdateComposeSection(si, "referenceTableIds", [...secRefIds, t.id]);
+                                        setRefPickerOpen(null);
+                                      }}
+                                      style={{ padding: "6px 10px", cursor: "pointer", fontSize: 11, display: "flex", gap: 6, alignItems: "center" }}
+                                      onMouseEnter={e => (e.currentTarget.style.background = "#f0f2f5")}
+                                      onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+                                    >
+                                      <span style={{ fontWeight: 600, color: "#0f172a" }}>{t.name}</span>
+                                      <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", padding: "1px 5px", borderRadius: 3, background: "rgba(5,150,105,.08)", color: "#059669" }}>{t.tableType}</span>
+                                      <span style={{ fontSize: 9, color: "#94a3b8", fontFamily: "'JetBrains Mono', monospace" }}>{t.rowCount}r × {t.columnCount}c</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: 10, color: "#94a3b8", fontStyle: "italic" }}>
+                              Niciun tabel de referință disponibil. Procesează un ghid de finanțare pentru a extrage tabelele.
+                            </div>
+                          )}
+                          {secRefIds.length === 0 && availableRefTables.length > 0 && (
+                            <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 3, fontStyle: "italic" }}>
+                              Fără selecție = AI primește toate tabelele de referință
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                ))}
+                  );
+                })}
               </>
             )}
           </div>

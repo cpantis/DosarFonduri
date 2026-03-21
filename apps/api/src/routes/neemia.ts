@@ -10,9 +10,12 @@ import {
   generateAllDocuments,
 } from "../services/neemia";
 import {
+  renderDocument, getPageImage, cleanupRenderOutput,
+} from "../services/documentRenderer";
+import {
   composeDocument, validateComposeReadiness, buildComposeContext,
 } from "../services/neemiaCompose";
-import { getFileUrl } from "../services/storage";
+import { getFileUrl, getFileBuffer } from "../services/storage";
 import {
   templateDocIdSchema, generationModeSchema, composeConfigSchema,
   updateSectionContentSchema, composeGenerateSchema,
@@ -692,4 +695,150 @@ neemiaRoutes.get("/projects/:projectId/download-all", async (c) => {
   // The frontend can handle downloading them individually or we can implement
   // server-side ZIP later with a proper archiver library
   return c.json({ documents: docsWithUrls });
+});
+
+// ═══ FORM-ON-DOCUMENT: Render template as page images with field positions ═══
+
+// In-memory cache for rendered documents (TTL: 10 minutes)
+const renderCache = new Map<string, {
+  result: any;
+  outputDir: string;
+  timestamp: number;
+}>();
+const RENDER_CACHE_TTL = 10 * 60 * 1000;
+
+function cleanupExpiredCache() {
+  const now = Date.now();
+  for (const [key, entry] of renderCache) {
+    if (now - entry.timestamp > RENDER_CACHE_TTL) {
+      cleanupRenderOutput(entry.outputDir);
+      renderCache.delete(key);
+    }
+  }
+}
+
+/**
+ * GET /projects/:projectId/template-render/:templateDocId
+ * Renders the template document as page images and returns field positions.
+ * Used by the form-on-document FILL mode UI.
+ */
+neemiaRoutes.get("/projects/:projectId/template-render/:templateDocId", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const projectId = c.req.param("projectId");
+
+  const project = await verifyProjectOrg(projectId, auth.organizationId!);
+  if (!project) return c.json({ error: "Project not found" }, 404);
+
+  const templateDocId = c.req.param("templateDocId");
+
+  const templateDoc = await db.query.documents.findFirst({
+    where: eq(documents.id, templateDocId),
+  });
+  if (!templateDoc) return c.json({ error: "Template not found" }, 404);
+
+  // Check cache
+  cleanupExpiredCache();
+  const cacheKey = `${templateDocId}`;
+  let renderResult = renderCache.get(cacheKey);
+
+  if (!renderResult) {
+    // Render the document
+    const { buffer } = await getFileBuffer(templateDoc.fileId);
+    const fileType = (templateDoc.fileType || "pdf") as "pdf" | "docx" | "xlsx";
+
+    const { result, outputDir } = await renderDocument(buffer, fileType);
+
+    renderResult = { result, outputDir, timestamp: Date.now() };
+    renderCache.set(cacheKey, renderResult);
+  }
+
+  // Enrich fields with project element values
+  const projEls = await db.query.projectElements.findMany({
+    where: eq(projectElements.projectId, projectId),
+  });
+  const tmplEls = await db.query.templateElements.findMany({
+    where: eq(templateElements.documentId, templateDocId),
+  });
+
+  // Build fieldName → project value map
+  const fieldValues = new Map<string, {
+    value: string | null;
+    source: string | null;
+    confirmed: boolean;
+    templateElementId: string;
+    label: string;
+  }>();
+
+  for (const te of tmplEls) {
+    const pe = projEls.find(p => p.templateElementId === te.id);
+    fieldValues.set(te.key, {
+      value: pe?.value || null,
+      source: pe?.source || null,
+      confirmed: pe?.confirmed ?? false,
+      templateElementId: te.id,
+      label: te.label,
+    });
+  }
+
+  // Merge field positions with project values
+  const enrichedPages = renderResult.result.pages.map((page: any) => ({
+    ...page,
+    fields: page.fields.map((field: any) => {
+      const projData = fieldValues.get(field.fieldName);
+      return {
+        ...field,
+        label: projData?.label || field.fieldName.replace(/_/g, " "),
+        value: projData?.value || null,
+        source: projData?.source || null,
+        confirmed: projData?.confirmed ?? false,
+        templateElementId: projData?.templateElementId || null,
+      };
+    }),
+  }));
+
+  return c.json({
+    ...renderResult.result,
+    pages: enrichedPages,
+    templateName: templateDoc.name,
+    templateFileType: templateDoc.fileType,
+  });
+});
+
+/**
+ * GET /projects/:projectId/template-render/:templateDocId/page/:pageNum
+ * Returns the rendered page image as PNG.
+ */
+neemiaRoutes.get("/projects/:projectId/template-render/:templateDocId/page/:pageNum", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const projectId = c.req.param("projectId");
+
+  const project = await verifyProjectOrg(projectId, auth.organizationId!);
+  if (!project) return c.json({ error: "Project not found" }, 404);
+
+  const templateDocId = c.req.param("templateDocId");
+  const pageNum = parseInt(c.req.param("pageNum"), 10);
+
+  const cacheKey = `${templateDocId}`;
+  const cached = renderCache.get(cacheKey);
+
+  if (!cached) {
+    return c.json({ error: "Document not rendered yet. Call template-render first." }, 404);
+  }
+
+  const page = cached.result.pages.find((p: any) => p.pageNum === pageNum);
+  if (!page) {
+    return c.json({ error: `Page ${pageNum} not found` }, 404);
+  }
+
+  try {
+    const imageBuffer = getPageImage(cached.outputDir, page.imageName);
+    return new Response(imageBuffer, {
+      headers: {
+        "Content-Type": "image/png",
+        "Cache-Control": "public, max-age=600",
+      },
+    });
+  } catch {
+    return c.json({ error: "Page image not found" }, 404);
+  }
 });

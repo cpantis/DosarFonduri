@@ -23,10 +23,10 @@ export const eligibilityStatusEnum = pgEnum("eligibility_status", ["passed", "fa
 export const elementSourceEnum = pgEnum("element_source", ["onrc", "solomon", "manual", "calculated", "ghid", "document_extracted", "onrc_auto", "anaf_auto", "solomon_chat", "consultant_manual", "derived"]);
 export const elementCategoryEnum = pgEnum("element_category", ["beneficiary", "farm", "investment", "location", "financial", "legal", "technical", "other"]);
 export const elementDataTypeEnum = pgEnum("element_data_type", ["number", "text", "enum", "boolean", "date", "document_ref", "list_items"]);
-export const placeholderMappedByEnum = pgEnum("placeholder_mapped_by", ["auto", "manual"]);
+export const placeholderMappedByEnum = pgEnum("placeholder_mapped_by", ["auto", "manual", "ai"]);
 export const validationStatusEnum = pgEnum("validation_status", ["pending", "valid", "warning", "invalid"]);
 export const messageRoleEnum = pgEnum("message_role", ["user", "assistant", "system"]);
-export const aiAgentEnum = pgEnum("ai_agent", ["solomon", "neemia", "ghid_rules", "ocr"]);
+export const aiAgentEnum = pgEnum("ai_agent", ["solomon", "neemia", "ghid_rules", "ocr", "template_mapping"]);
 export const associateTypeEnum = pgEnum("associate_type", ["pf", "pj"]);
 export const financialSourceEnum = pgEnum("financial_source", ["onrc", "anaf_upload"]);
 export const generatedDocStatusEnum = pgEnum("generated_doc_status", ["generating", "generated", "validated", "error"]);
@@ -491,6 +491,7 @@ export const projectElements = pgTable("project_elements", {
   projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
   templateElementId: uuid("template_element_id").references(() => templateElements.id),  // nullable now — backward compat
   elementDefId: uuid("element_def_id").references(() => elementDefinitions.id),  // NEW anchor — will become NOT NULL after migration
+  instanceIndex: integer("instance_index").notNull().default(0),  // For multi-instance elements (minCount>1): 0, 1, 2...
   value: text("value"),
   source: elementSourceEnum("source").notNull().default("manual"),
   sourceDocumentId: uuid("source_document_id").references(() => documents.id),

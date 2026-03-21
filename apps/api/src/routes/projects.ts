@@ -266,6 +266,7 @@ projectRoutes.post("/", async (c) => {
       }
 
       // Step 2: Seed remaining elementDefinitions from guide that aren't already covered by templates
+      // Also handles cardinality: if minCount > 1, creates multiple instances
       const guideFolders = await db.query.documentFolders.findMany({
         where: and(
           eq(documentFolders.parentId, body.folderId),
@@ -288,19 +289,35 @@ projectRoutes.post("/", async (c) => {
 
           const newDefs = elemDefs.filter(ed => !seededElementDefIds.has(ed.id));
           if (newDefs.length > 0) {
-            await tx.insert(projectElements).values(
-              newDefs.map(ed => {
-                seededElementDefIds.add(ed.id);
-                return {
+            const rows: Array<{
+              projectId: string;
+              elementDefId: string;
+              templateElementId: null;
+              instanceIndex: number;
+              value: null;
+              source: "ghid";
+              confirmed: false;
+            }> = [];
+
+            for (const ed of newDefs) {
+              seededElementDefIds.add(ed.id);
+              const instanceCount = Math.max(ed.minCount ?? 1, 1);
+              for (let i = 0; i < instanceCount; i++) {
+                rows.push({
                   projectId: proj.id,
                   elementDefId: ed.id,
                   templateElementId: null,
+                  instanceIndex: i,
                   value: null,
-                  source: "ghid" as const,
+                  source: "ghid",
                   confirmed: false,
-                };
-              })
-            );
+                });
+              }
+            }
+
+            if (rows.length > 0) {
+              await tx.insert(projectElements).values(rows);
+            }
           }
         }
       }
@@ -312,30 +329,43 @@ projectRoutes.post("/", async (c) => {
     return c.json({ error: `Eroare la crearea proiectului: ${err.message}` }, 500);
   }
 
-  // Post-creation steps (best-effort, fire-and-forget — don't block response)
-  // The project is already committed; these enrich it in the background.
+  // Post-creation enrichment: critical steps run awaited, AI-heavy steps run in background.
+  // Checklist and eligibility rows are structural data — must succeed before user sees the project.
+  // AI-heavy steps (agentic prefill, full eligibility check) run in background.
+  const enrichmentErrors: string[] = [];
+  try {
+    await populateChecklistFromRules(project.id, project.folderId, orgId);
+  } catch (e: any) {
+    enrichmentErrors.push(`checklist: ${e.message}`);
+    console.warn("[projects/create] Checklist warning:", e.message);
+  }
+  try {
+    await seedEligibilityRows(project.id, project.folderId, orgId);
+  } catch (e: any) {
+    enrichmentErrors.push(`eligibility_seed: ${e.message}`);
+    console.warn("[projects/create] Seed eligibility warning:", e.message);
+  }
+  try {
+    await runPreEligibilityForProject(project.id, body.companyId, body.folderId, orgId);
+  } catch (e: any) {
+    enrichmentErrors.push(`pre_eligibility: ${e.message}`);
+    console.warn("[projects/create] Pre-eligibility warning:", e.message);
+  }
+
+  // AI-heavy steps: run in background (don't block response)
   Promise.resolve().then(async () => {
     try { await agenticPrefillFromCompany(project.id, company, orgId); } catch (e: any) {
       console.warn("[projects/create] Agentic prefill warning:", e.message);
     }
-    try { await populateChecklistFromRules(project.id, project.folderId, orgId); } catch (e: any) {
-      console.warn("[projects/create] Checklist warning:", e.message);
-    }
-    try { await seedEligibilityRows(project.id, project.folderId, orgId); } catch (e: any) {
-      console.warn("[projects/create] Seed eligibility warning:", e.message);
-    }
-    // Pre-eligibility: instant evaluation of fixed rules from companyElements
-    // Runs before full checkEligibility — gives immediate feedback on company data
-    try { await runPreEligibilityForProject(project.id, body.companyId, body.folderId, orgId); } catch (e: any) {
-      console.warn("[projects/create] Pre-eligibility warning:", e.message);
-    }
-    // Full eligibility: re-evaluates with projectElements overlay + AI for interpreted rules
     try { await checkEligibility(project.id, orgId); } catch (e: any) {
       console.warn("[projects/create] Eligibility warning:", e.message);
     }
   });
 
-  return c.json(project, 201);
+  return c.json({
+    ...project,
+    ...(enrichmentErrors.length > 0 ? { _enrichmentWarnings: enrichmentErrors } : {}),
+  }, 201);
 });
 
 // NOTE: prefillFromCompany() replaced by agenticPrefillFromCompany() in services/agenticPrefill.ts
@@ -766,7 +796,7 @@ projectRoutes.put("/:id/elements-bulk/confirm", async (c) => {
 
   const { elementIds } = bulkConfirmElementsSchema.parse(await c.req.json());
 
-  const results = await Promise.all(elementIds.map(eid =>
+  const results = await Promise.all(elementIds.map((eid: string) =>
     db.update(projectElements).set({
       confirmed: true,
       confirmedBy: auth.userId,

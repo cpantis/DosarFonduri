@@ -11,7 +11,7 @@ export async function logAIUsage(params: {
   organizationId: string;
   projectId?: string;
   userId?: string;
-  agent: "solomon" | "neemia" | "ghid_rules" | "ocr";
+  agent: "solomon" | "neemia" | "ghid_rules" | "ocr" | "template_mapping";
   model: string;
   tokensInput: number;
   tokensOutput: number;

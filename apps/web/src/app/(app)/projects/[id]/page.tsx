@@ -429,6 +429,13 @@ export default function ProjectViewPage() {
   const [cabinetBranding, setCabinetBranding] = useState<{ fontFamily?: string; primaryColor?: string; footerText?: string } | null>(null);
   const [orgLabels, setOrgLabels] = useState<{ solomonLabel: string; neemiaLabel: string }>({ solomonLabel: "Solomon", neemiaLabel: "Neemia" });
 
+  // Helper: resolve source label using custom org labels for Solomon/Neemia
+  const getSourceLabel = useCallback((source: string | null | undefined): string => {
+    if (!source) return "";
+    if (source === "solomon" || source === "solomon_chat") return orgLabels.solomonLabel;
+    return SOURCE_MAP[source] || source;
+  }, [orgLabels.solomonLabel]);
+
   const [neemiaActiveTemplate, setNeemiaActiveTemplate] = useState(0);
   const [neemiaActivePage, setNeemiaActivePage] = useState(0);
   const [neemiaAnimKey, setNeemiaAnimKey] = useState(0);
@@ -1712,7 +1719,7 @@ export default function ProjectViewPage() {
       try {
         const data = await apiGet<any>(`/api/neemia/projects/${projectId}/template-pages/${tmpl.templateDocumentId}`);
         if (data?.pages) {
-          const sourceLabels: Record<string, string> = { onrc: "ONRC", solomon: "Solomon", manual: "Manual", calculated: "Calculat", ghid: "Ghid" };
+          const sourceLabels: Record<string, string> = { onrc: "ONRC", solomon: orgLabels.solomonLabel, solomon_chat: orgLabels.solomonLabel, manual: "Manual", calculated: "Calculat", ghid: "Ghid" };
           const mappedPages: TemplatePage[] = data.pages.map((p: any) => ({
             num: p.num,
             title: `Pagina ${p.num}`,
@@ -2850,7 +2857,7 @@ export default function ProjectViewPage() {
                     <div className="si-row"><span className="si-label">Valoare eligibilă</span><span className="si-value">{formatRON(budgetValidation.summary.eligibleAmount)}</span></div>
                     <div className="si-row"><span className="si-label">Grant ({budgetValidation.summary.grantPct}%)</span><span className="si-value">{formatRON(budgetValidation.summary.grantAmount)}</span></div>
                     <div className="si-row"><span className="si-label">Cofinanțare ({budgetValidation.summary.coFinancingPct}%)</span><span className="si-value">{formatRON(budgetValidation.summary.coFinancingAmount)}</span></div>
-                    {budgetValidation.results.filter((r: any) => r.status !== "valid").map((r: any, i: number) => (
+                    {(budgetValidation.results || []).filter((r: any) => r.status !== "valid").map((r: any, i: number) => (
                       <div key={i} style={{ fontSize: 11, padding: "4px 6px", marginTop: 4, borderRadius: 4, background: r.status === "invalid" ? "rgba(248,113,113,.08)" : "rgba(251,191,36,.08)", color: r.status === "invalid" ? "#dc2626" : "#d97706" }}>
                         {r.label}: {r.validations?.filter((v: any) => !v.passed).map((v: any) => v.message).join("; ")}
                       </div>
@@ -3827,7 +3834,7 @@ export default function ProjectViewPage() {
                                 <div className="el-source-area">
                                   {el.sourceLabel && (
                                     <span className={`el-src-badge ${el.source === "document_extracted" ? "ocr" : el.source === "solomon" || el.source === "solomon_chat" ? "solomon" : el.source === "manual" || el.source === "consultant_manual" ? "manual" : el.source === "anaf_auto" ? "anaf" : "system"}`}>
-                                      {el.source === "document_extracted" ? "\uD83D\uDCC4" : el.source === "solomon" || el.source === "solomon_chat" ? "\uD83E\uDD16" : el.source === "manual" || el.source === "consultant_manual" ? "\u270F\uFE0F" : el.source === "anaf_auto" ? "\uD83C\uDFDB" : "\u2699"}{" "}{el.sourceLabel}
+                                      {el.source === "document_extracted" ? "\uD83D\uDCC4" : el.source === "solomon" || el.source === "solomon_chat" ? "\uD83E\uDD16" : el.source === "manual" || el.source === "consultant_manual" ? "\u270F\uFE0F" : el.source === "anaf_auto" ? "\uD83C\uDFDB" : "\u2699"}{" "}{getSourceLabel(el.source)}
                                     </span>
                                   )}
                                 </div>
@@ -3872,7 +3879,7 @@ export default function ProjectViewPage() {
                           <div className="dp-field"><div className="dp-field-label">Sursă</div><div className="dp-field-value">
                             {el.sourceLabel ? (
                               <span className={`el-src-badge ${el.source === "document_extracted" ? "ocr" : el.source === "solomon" || el.source === "solomon_chat" ? "solomon" : el.source === "manual" || el.source === "consultant_manual" ? "manual" : el.source === "anaf_auto" ? "anaf" : "system"}`}>
-                                {el.sourceLabel}
+                                {getSourceLabel(el.source)}
                               </span>
                             ) : "\u2014"}
                             {el.sourceDocName && <span style={{ marginLeft: 6, fontSize: 12, color: "#64748b" }}>{el.sourceDocName}</span>}
@@ -3929,7 +3936,7 @@ export default function ProjectViewPage() {
                                 <span className="dp-history-time">{h.changedAt ? new Date(h.changedAt).toLocaleString("ro-RO", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : ""}</span>
                                 <span>
                                   {h.oldValue && h.newValue ? `${h.oldValue.slice(0, 40)} → ${h.newValue.slice(0, 40)}` : h.newValue ? `Setat: "${h.newValue.slice(0, 60)}"` : "Modificare"}
-                                  {h.changeSource && <em> — {SOURCE_MAP[h.changeSource] || h.changeSource}</em>}
+                                  {h.changeSource && <em> — {getSourceLabel(h.changeSource)}</em>}
                                 </span>
                               </div>
                             )) : (
@@ -4157,7 +4164,7 @@ export default function ProjectViewPage() {
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {scores.map((s: any) => {
                       const scored = s.points != null;
-                      const pct2 = scored ? Math.round((s.points / s.maxPoints) * 100) : 0;
+                      const pct2 = scored && s.maxPoints > 0 ? Math.round((s.points / s.maxPoints) * 100) : 0;
                       return (
                         <div key={s.criteriaId} style={{
                           padding: "14px 18px", borderRadius: 12, border: "1px solid rgba(226,232,240,.8)",
@@ -4331,7 +4338,7 @@ export default function ProjectViewPage() {
                         </div>
                         <div className="solomon-msg-body">
                           <div className="solomon-msg-name">
-                            {msg.role === "assistant" ? "Solomon" : "Tu"}
+                            {msg.role === "assistant" ? orgLabels.solomonLabel : "Tu"}
                             <span>{new Date().toLocaleTimeString("ro-RO", { hour: "2-digit", minute: "2-digit" })}</span>
                           </div>
                           <div className="solomon-msg-text">

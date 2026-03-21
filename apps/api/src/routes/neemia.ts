@@ -1,7 +1,7 @@
 import type { AppEnv } from "../types/hono";
 import { Hono } from "hono";
 import { db } from "../db";
-import { projectDocuments, documents, templateElements, projectElements, guideReferenceTables, projects, composeSectionVersions } from "../db/schema";
+import { projectDocuments, documents, templateElements, projectElements, guideReferenceTables, projects, composeSectionVersions, templatePlaceholderMapping, companies, companyFinancials, organizations } from "../db/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { AuthContext } from "../middleware/auth";
 import {
@@ -10,15 +10,74 @@ import {
   generateAllDocuments,
 } from "../services/neemia";
 import {
+  renderDocument, getPageImage, cleanupRenderOutput,
+  type KnownKey,
+} from "../services/documentRenderer";
+import {
   composeDocument, validateComposeReadiness, buildComposeContext,
 } from "../services/neemiaCompose";
-import { getFileUrl } from "../services/storage";
+import { getFileUrl, getFileBuffer } from "../services/storage";
 import {
   templateDocIdSchema, generationModeSchema, composeConfigSchema,
   updateSectionContentSchema, composeGenerateSchema,
 } from "@dosarfonduri/shared";
 
 export const neemiaRoutes = new Hono<AppEnv>();
+
+/**
+ * Build additional injected values that Neemia adds at generation time.
+ * These are values that don't come from projectElements but are injected
+ * from project metadata, company data, financials, and cabinet branding.
+ * Both fill-preview and template-render must include these so the UI
+ * matches what generateDocument will actually produce.
+ */
+async function buildInjectedValues(projectId: string, organizationId: string): Promise<Record<string, string>> {
+  const injected: Record<string, string> = {};
+
+  // 1. Project metadata
+  const project = await db.query.projects.findFirst({
+    where: eq(projects.id, projectId),
+  });
+  if (project?.programFinantare) injected["program_finantare"] = project.programFinantare;
+  if (project?.codMasura) injected["cod_masura"] = project.codMasura;
+  if (project?.codSesiune) injected["cod_sesiune"] = project.codSesiune;
+  if (project?.codNomenclator) injected["cod_nomenclator"] = project.codNomenclator;
+  if (project?.prefixDocumente) injected["prefix_documente"] = project.prefixDocumente;
+  if (project?.codMysmis) injected["cod_mysmis"] = project.codMysmis;
+
+  // 2. Company data
+  if (project?.companyId) {
+    const company = await db.query.companies.findFirst({
+      where: eq(companies.id, project.companyId),
+    });
+    if (company?.denumire) injected["denumire_firma"] = company.denumire;
+    if (company?.cui) injected["cui_firma"] = company.cui;
+
+    // 3. Financial data (F10/F20 from latest year)
+    const financials = await db.query.companyFinancials.findMany({
+      where: eq(companyFinancials.companyId, project.companyId),
+    });
+    if (financials.length > 0) {
+      const latest = financials.sort((a: any, b: any) => b.year - a.year)[0];
+      const f10 = (latest as any).f10 as Record<string, any> || {};
+      const f20 = (latest as any).f20 as Record<string, any> || {};
+      for (const [key, value] of Object.entries({ ...f10, ...f20 })) {
+        if (value != null && String(value).trim() !== "" && !injected[key]) {
+          injected[key] = String(value);
+        }
+      }
+    }
+  }
+
+  // 4. Cabinet branding
+  const org = await db.query.organizations.findFirst({
+    where: eq(organizations.id, organizationId),
+  });
+  const cabinetStyle = (org as any)?.cabinetDocumentStyle || {};
+  if (cabinetStyle.footerText) injected["footer_cabinet"] = cabinetStyle.footerText;
+
+  return injected;
+}
 
 // Helper: verify project belongs to the user's organization
 async function verifyProjectOrg(projectId: string, organizationId: string) {
@@ -692,4 +751,325 @@ neemiaRoutes.get("/projects/:projectId/download-all", async (c) => {
   // The frontend can handle downloading them individually or we can implement
   // server-side ZIP later with a proper archiver library
   return c.json({ documents: docsWithUrls });
+});
+
+// ═══ FILL-PREVIEW: Pre-check which fields Neemia will actually fill ═══
+
+/**
+ * GET /projects/:projectId/fill-preview/:templateDocId
+ * Returns a per-field breakdown of what Neemia will fill:
+ * - For each template_element key: will it have a value? from which source?
+ * - Which keys are missing completely?
+ * - Which keys exist but are unconfirmed?
+ * This lets the frontend show "will fill" / "will be empty" indicators
+ * BEFORE the user triggers generation.
+ */
+neemiaRoutes.get("/projects/:projectId/fill-preview/:templateDocId", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const projectId = c.req.param("projectId");
+
+  const project = await verifyProjectOrg(projectId, auth.organizationId!);
+  if (!project) return c.json({ error: "Project not found" }, 404);
+
+  const templateDocId = c.req.param("templateDocId");
+
+  const templateDoc = await db.query.documents.findFirst({
+    where: eq(documents.id, templateDocId),
+  });
+  if (!templateDoc) return c.json({ error: "Template not found" }, 404);
+
+  // Use the same resolution logic as Neemia generate
+  const { validateBeforeGenerate: validate } = await import("../services/neemia");
+  const validationResult = await validate(projectId, templateDocId);
+
+  // Also load template elements for per-field breakdown
+  const tmplEls = await db.query.templateElements.findMany({
+    where: eq(templateElements.documentId, templateDocId),
+  });
+
+  const projEls = await db.query.projectElements.findMany({
+    where: eq(projectElements.projectId, projectId),
+  });
+
+  // Load placeholder mappings (Path 1: elementDefId resolution)
+  const mappings = await db.query.templatePlaceholderMapping.findMany({
+    where: eq(templatePlaceholderMapping.templateDocumentId, templateDocId),
+  });
+
+  // Build injected values (project metadata, financials, cabinet branding)
+  // These are values Neemia injects at generation time that DON'T come from projectElements
+  const injectedValues = await buildInjectedValues(projectId, auth.organizationId!);
+
+  const fieldPreview = tmplEls.map(te => {
+    // Use SAME two-path resolution as Neemia's buildElementsMap:
+    // Path 1: template_placeholder_mapping → elementDefId → projectElements
+    const mapping = mappings.find(m => m.placeholderKey === te.key);
+    let pe = mapping
+      ? projEls.find(p => p.elementDefId === mapping.elementDefId)
+      : null;
+    // Path 2 (fallback): templateElementId → projectElements
+    if (!pe) {
+      pe = projEls.find(p => p.templateElementId === te.id);
+    }
+
+    const peValue = pe?.value != null && pe.value.trim() !== "";
+    // Check injected values (project metadata, financials) as Neemia does
+    const injectedValue = injectedValues[te.key] || null;
+    const hasValue = peValue || !!injectedValue;
+    const resolvedSource = peValue ? (pe?.source || null) : injectedValue ? "auto" : null;
+
+    return {
+      key: te.key,
+      label: te.label,
+      fieldType: te.fieldType,
+      pageNum: te.pageNum,
+      willFill: hasValue,
+      value: peValue ? pe!.value : injectedValue,
+      source: resolvedSource,
+      confirmed: pe?.confirmed ?? false,
+      resolvedVia: peValue
+        ? (mapping && pe?.elementDefId ? "elementDef" : "templateElement")
+        : injectedValue ? "injected" : "none",
+      fillResult: hasValue ? "value" : "[DE COMPLETAT]",
+    };
+  });
+
+  const filledCount = fieldPreview.filter(f => f.willFill).length;
+  const missingCount = fieldPreview.filter(f => !f.willFill).length;
+  const unconfirmedCount = fieldPreview.filter(f => f.willFill && !f.confirmed).length;
+
+  return c.json({
+    canGenerate: validationResult.canGenerate,
+    warnings: validationResult.warnings,
+    fields: fieldPreview,
+    stats: {
+      total: fieldPreview.length,
+      filled: filledCount,
+      missing: missingCount,
+      unconfirmed: unconfirmedCount,
+      completenessPercent: fieldPreview.length > 0
+        ? Math.round(filledCount / fieldPreview.length * 100)
+        : 100,
+    },
+  });
+});
+
+// ═══ FORM-ON-DOCUMENT: Render template as page images with field positions ═══
+
+// In-memory cache for rendered documents (TTL: 10 minutes)
+const renderCache = new Map<string, {
+  result: any;
+  outputDir: string;
+  timestamp: number;
+}>();
+const RENDER_CACHE_TTL = 10 * 60 * 1000;
+
+function cleanupExpiredCache() {
+  const now = Date.now();
+  for (const [key, entry] of renderCache) {
+    if (now - entry.timestamp > RENDER_CACHE_TTL) {
+      cleanupRenderOutput(entry.outputDir);
+      renderCache.delete(key);
+    }
+  }
+}
+
+/**
+ * GET /projects/:projectId/template-render/:templateDocId
+ * Renders the template document as page images and returns field positions.
+ * Uses template_elements keys as source of truth for field reconciliation.
+ */
+neemiaRoutes.get("/projects/:projectId/template-render/:templateDocId", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const projectId = c.req.param("projectId");
+
+  const project = await verifyProjectOrg(projectId, auth.organizationId!);
+  if (!project) return c.json({ error: "Project not found" }, 404);
+
+  const templateDocId = c.req.param("templateDocId");
+
+  const templateDoc = await db.query.documents.findFirst({
+    where: eq(documents.id, templateDocId),
+  });
+  if (!templateDoc) return c.json({ error: "Template not found" }, 404);
+
+  // Load template elements (source of truth for field keys)
+  const tmplEls = await db.query.templateElements.findMany({
+    where: eq(templateElements.documentId, templateDocId),
+  });
+
+  // Build known keys for reconciliation
+  const knownKeys = tmplEls.map(te => ({
+    key: te.key,
+    label: te.label,
+    fieldType: te.fieldType,
+    pageNum: te.pageNum,
+  }));
+
+  // Check cache (invalidated when template changes)
+  cleanupExpiredCache();
+  const cacheKey = `${templateDocId}:${tmplEls.length}`;
+  let renderResult = renderCache.get(cacheKey);
+
+  if (!renderResult) {
+    const { buffer } = await getFileBuffer(templateDoc.fileId);
+    const fileType = (templateDoc.fileType || "pdf") as "pdf" | "docx" | "xlsx";
+
+    // Pass known keys for reconciliation — the Python script will use
+    // fuzzy matching to map detected field positions to template_elements keys
+    const { result, outputDir } = await renderDocument(buffer, fileType, knownKeys);
+
+    renderResult = { result, outputDir, timestamp: Date.now() };
+    renderCache.set(cacheKey, renderResult);
+  }
+
+  // Enrich fields with project element values
+  const projEls = await db.query.projectElements.findMany({
+    where: eq(projectElements.projectId, projectId),
+  });
+
+  // Load placeholder mappings for Path 1 resolution (elementDefId)
+  const placeholderMappings = await db.query.templatePlaceholderMapping.findMany({
+    where: eq(templatePlaceholderMapping.templateDocumentId, templateDocId),
+  });
+
+  // Build injected values (same as Neemia generateDocument)
+  const injectedValues = await buildInjectedValues(projectId, auth.organizationId!);
+
+  // Build fieldName → project value map using SAME two-path resolution as Neemia
+  const fieldValues = new Map<string, {
+    value: string | null;
+    source: string | null;
+    confirmed: boolean;
+    templateElementId: string;
+    label: string;
+    fieldType: string;
+    resolvedVia: string;
+  }>();
+
+  for (const te of tmplEls) {
+    // Path 1: template_placeholder_mapping → elementDefId → projectElements
+    const mapping = placeholderMappings.find(m => m.placeholderKey === te.key);
+    let pe = mapping
+      ? projEls.find(p => p.elementDefId === mapping.elementDefId)
+      : null;
+    const resolvedViaPath = pe ? "elementDef" : "none";
+
+    // Path 2 (fallback): templateElementId → projectElements
+    if (!pe) {
+      pe = projEls.find(p => p.templateElementId === te.id);
+    }
+
+    const peValue = pe?.value != null && pe.value.trim() !== "";
+    const injectedValue = injectedValues[te.key] || null;
+
+    fieldValues.set(te.key, {
+      value: peValue ? pe!.value : injectedValue,
+      source: peValue ? (pe?.source || null) : injectedValue ? "auto" : null,
+      confirmed: pe?.confirmed ?? false,
+      templateElementId: te.id,
+      label: te.label,
+      fieldType: te.fieldType,
+      resolvedVia: peValue ? (resolvedViaPath || "templateElement") : injectedValue ? "injected" : "none",
+    });
+  }
+
+  // Merge field positions with project values
+  const enrichedPages = renderResult.result.pages.map((page: any) => ({
+    ...page,
+    fields: page.fields.map((field: any) => {
+      const projData = fieldValues.get(field.fieldName);
+      return {
+        ...field,
+        label: projData?.label || field.knownLabel || field.fieldName.replace(/_/g, " "),
+        value: projData?.value || null,
+        source: projData?.source || null,
+        confirmed: projData?.confirmed ?? false,
+        templateElementId: projData?.templateElementId || null,
+        fieldType: projData?.fieldType || field.knownFieldType || field.fieldType || "text",
+        // Reconciliation quality — for frontend indicators
+        willFill: projData !== undefined,  // true = this field WILL be filled by Neemia
+      };
+    }),
+  }));
+
+  // Include unmatched known keys — fields in DB that couldn't be positioned on the page
+  // These need to appear in the sidebar field list for manual completion
+  const unmatchedKnown = (renderResult.result.unmatchedKnownKeys || []).map((uk: any) => {
+    const projData = fieldValues.get(uk.key);
+    return {
+      ...uk,
+      label: projData?.label || uk.label,
+      value: projData?.value || null,
+      source: projData?.source || null,
+      confirmed: projData?.confirmed ?? false,
+      templateElementId: projData?.templateElementId || null,
+      fieldType: projData?.fieldType || uk.fieldType || "text",
+      willFill: projData !== undefined,
+    };
+  });
+
+  // Compute reconciliation stats
+  const allPositioned = enrichedPages.flatMap((p: any) => p.fields);
+  const exactMatches = allPositioned.filter((f: any) => f.matchQuality === "exact").length;
+  const fuzzyMatches = allPositioned.filter((f: any) => f.matchQuality === "fuzzy").length;
+  const unmatched = allPositioned.filter((f: any) => f.matchQuality === "unmatched").length;
+  const dbOnly = unmatchedKnown.length;
+
+  return c.json({
+    ...renderResult.result,
+    pages: enrichedPages,
+    unmatchedKnownKeys: unmatchedKnown,
+    templateName: templateDoc.name,
+    templateFileType: templateDoc.fileType,
+    reconciliation: {
+      totalTemplateFields: tmplEls.length,
+      positionedExact: exactMatches,
+      positionedFuzzy: fuzzyMatches,
+      positionedUnmatched: unmatched,
+      notPositioned: dbOnly,
+      coveragePercent: tmplEls.length > 0
+        ? Math.round((exactMatches + fuzzyMatches) / tmplEls.length * 100)
+        : 100,
+    },
+  });
+});
+
+/**
+ * GET /projects/:projectId/template-render/:templateDocId/page/:pageNum
+ * Returns the rendered page image as PNG.
+ */
+neemiaRoutes.get("/projects/:projectId/template-render/:templateDocId/page/:pageNum", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const projectId = c.req.param("projectId");
+
+  const project = await verifyProjectOrg(projectId, auth.organizationId!);
+  if (!project) return c.json({ error: "Project not found" }, 404);
+
+  const templateDocId = c.req.param("templateDocId");
+  const pageNum = parseInt(c.req.param("pageNum"), 10);
+
+  const cacheKey = `${templateDocId}`;
+  const cached = renderCache.get(cacheKey);
+
+  if (!cached) {
+    return c.json({ error: "Document not rendered yet. Call template-render first." }, 404);
+  }
+
+  const page = cached.result.pages.find((p: any) => p.pageNum === pageNum);
+  if (!page) {
+    return c.json({ error: `Page ${pageNum} not found` }, 404);
+  }
+
+  try {
+    const imageBuffer = getPageImage(cached.outputDir, page.imageName);
+    return new Response(new Uint8Array(imageBuffer) as any, {
+      headers: {
+        "Content-Type": "image/png",
+        "Cache-Control": "public, max-age=600",
+      },
+    });
+  } catch {
+    return c.json({ error: "Page image not found" }, 404);
+  }
 });

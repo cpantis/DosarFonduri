@@ -44,24 +44,21 @@ export interface ElementDefInput {
 // ─── CRUD ───
 
 export async function upsertElementDefinition(input: ElementDefInput) {
-  // Find existing: by (elementKey, guideDocumentId) when guide exists,
-  // or by (elementKey, organizationId) for manual elements without guide
-  const existing = input.guideDocumentId
-    ? await db.query.elementDefinitions.findFirst({
-        where: and(
-          eq(elementDefinitions.elementKey, input.elementKey),
-          eq(elementDefinitions.guideDocumentId, input.guideDocumentId),
-        ),
-      })
-    : await db.query.elementDefinitions.findFirst({
-        where: and(
-          eq(elementDefinitions.elementKey, input.elementKey),
-          eq(elementDefinitions.organizationId, input.organizationId),
-        ),
-      });
+  // Find existing: first check org-level (prevents duplicates across guides),
+  // then fall back to guide-specific match.
+  // This ensures re-uploading a guide or uploading a new guide with the same
+  // element keys reuses existing definitions instead of creating duplicates.
+  let existing = await db.query.elementDefinitions.findFirst({
+    where: and(
+      eq(elementDefinitions.elementKey, input.elementKey),
+      eq(elementDefinitions.organizationId, input.organizationId),
+    ),
+  });
 
   if (existing) {
     const [updated] = await db.update(elementDefinitions).set({
+      // Update guideDocumentId if this definition came from a newer/different guide
+      guideDocumentId: input.guideDocumentId ?? existing.guideDocumentId,
       displayName: input.displayName,
       category: input.category ?? existing.category,
       dataType: input.dataType ?? existing.dataType,
@@ -275,29 +272,180 @@ export async function autoMapTemplatePlaceholders(
   });
 
   const defs = await getElementDefinitionsForOrg(organizationId);
-  if (defs.length === 0 || tmplElements.length === 0) return 0;
+  if (tmplElements.length === 0) return 0;
 
   let mapped = 0;
 
-  for (const te of tmplElements) {
-    const match = await findElementDefinition(te.key, organizationId, 0.7);
-    if (!match) continue;
+  // ═══ Phase 1: AI Sonnet semantic matching (primary — most robust) ═══
+  // Send ALL template elements + ALL definitions to Sonnet for semantic mapping.
+  // AI understands that nr_reg_com = numar_registru_comert, supraf_totala = suprafata_totala, etc.
+  let aiUnmatched: Array<{ key: string; label: string }>;
+  if (defs.length > 0) {
+    const aiResult = await aiSemanticMapping(tmplElements, defs, templateDocumentId, organizationId);
+    mapped += aiResult.matched;
+    aiUnmatched = aiResult.unmatched;
+  } else {
+    aiUnmatched = tmplElements.map(te => ({ key: te.key, label: te.label }));
+  }
 
-    try {
-      await db.insert(templatePlaceholderMapping).values({
-        templateDocumentId,
-        placeholderKey: te.key,
-        elementDefId: match.id,
-        mappedBy: "auto",
-        confidence: String(Number(match.score) || 0.85),
-      }).onConflictDoNothing();
-      mapped++;
-    } catch {
-      // ignore duplicates
+  // ═══ Phase 2: Fuzzy text matching fallback (for elements AI missed or if AI failed) ═══
+  // Catches exact/normalized matches that AI might have skipped
+  const fuzzyUnmatched: typeof tmplElements = [];
+  for (const te of aiUnmatched) {
+    const match = defs.length > 0
+      ? await findElementDefinition(te.key, organizationId, 0.7)
+      : null;
+
+    if (match) {
+      try {
+        await db.insert(templatePlaceholderMapping).values({
+          templateDocumentId,
+          placeholderKey: te.key,
+          elementDefId: match.id,
+          mappedBy: "auto",
+          confidence: String(Number(match.score) || 0.85),
+        }).onConflictDoNothing();
+        mapped++;
+      } catch {
+        // already mapped (conflict) — skip
+      }
+    } else {
+      fuzzyUnmatched.push(te as any);
     }
   }
 
+  // ═══ Phase 3: Auto-create element_definitions for truly unmatched placeholders ═══
+  // Neither AI nor fuzzy could find a match → create new definitions,
+  // marked as unvalidated so consultants can review/correct in UI
+  for (const te of fuzzyUnmatched) {
+    try {
+      const newDef = await upsertElementDefinition({
+        guideDocumentId: null,
+        organizationId,
+        elementKey: sanitizeKey(te.key),
+        displayName: te.label || te.key.replace(/_/g, " "),
+        category: "other",
+        dataType: inferDataType(te.key, (te as any).fieldType),
+        required: false,
+      });
+      await db.insert(templatePlaceholderMapping).values({
+        templateDocumentId,
+        placeholderKey: te.key,
+        elementDefId: newDef.id,
+        mappedBy: "auto",
+        confidence: "0.50",
+        validated: false,
+      }).onConflictDoNothing();
+      mapped++;
+    } catch {
+      // ignore errors for auto-created defs
+    }
+  }
+
+  console.log(`[elementDefService] autoMap complete: ${mapped} total mapped (AI phase 1, fuzzy phase 2, auto-create phase 3) for template ${templateDocumentId}`);
   return mapped;
+}
+
+/**
+ * AI-powered semantic matching using Sonnet (Phase 1 — primary mapping strategy).
+ * Sends all template placeholders and all element definitions to Sonnet
+ * for robust semantic matching. Handles abbreviations, Romanian/English
+ * equivalences, and domain-specific synonyms that fuzzy text matching misses.
+ */
+async function aiSemanticMapping(
+  allElements: Array<{ key: string; label: string }>,
+  defs: Array<{ id: string; elementKey: string; displayName: string }>,
+  templateDocumentId: string,
+  organizationId: string,
+): Promise<{ matched: number; unmatched: Array<{ key: string; label: string }> }> {
+  if (allElements.length === 0) return { matched: 0, unmatched: [] };
+
+  const placeholderList = allElements.map(te => `  - "${te.key}" (label: "${te.label}")`).join("\n");
+  const defsList = defs.map(d => `  - "${d.elementKey}" (${d.displayName})`).join("\n");
+
+  try {
+    const response = await withAILimit(() => anthropic.messages.create({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 4000,
+      system: `Ești expert în maparea câmpurilor de formulare la definiții de elemente pentru fonduri europene din România.
+
+SARCINĂ: Primești câmpuri placeholder din template-uri de documente și definiții canonice de elemente extrase din ghidul de finanțare. Mapează fiecare placeholder la definiția semantică echivalentă.
+
+REGULI:
+- Înțelege abrevieri: "nr_reg_com" = "numar_registru_comert", "supraf" = "suprafata", "val" = "valoare"
+- Înțelege sinonime: "firma" = "societate" = "beneficiar", "adresa" = "sediu_social"
+- Înțelege echivalențe RO/EN: "turnover" = "cifra_afaceri", "name" = "denumire"
+- Înțelege context: "capital_social" din template = "capital_social_subscris" din ghid
+- Mapează DOAR când ești sigur semantic (confidence > 0.6)
+- Dacă un placeholder NU are echivalent clar, NU-L include în rezultat
+- Fii generos cu mapările evidente dar conservator cu cele ambigue
+
+Returnează DOAR un JSON array valid. Fără backticks, fără explicații.`,
+      messages: [{
+        role: "user",
+        content: `Câmpuri placeholder din template:\n${placeholderList}\n\nDefiniții canonice (din ghid):\n${defsList}\n\nReturnează JSON array cu mapările:\n[{"placeholder_key": "cheie_exacta_din_template", "element_key": "cheie_exacta_din_definitii", "confidence": 0.0-1.0}]`,
+      }],
+    }));
+
+    const text = response.content[0].type === "text" ? response.content[0].text : "[]";
+    const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+
+    await logAIUsage({
+      organizationId,
+      agent: "template_mapping",
+      model: "claude-sonnet-4-20250514",
+      tokensInput: response.usage.input_tokens,
+      tokensOutput: response.usage.output_tokens,
+      action: "ai_semantic_mapping",
+    });
+
+    const mappings: Array<{ placeholder_key: string; element_key: string; confidence: number }> = JSON.parse(cleaned);
+    if (!Array.isArray(mappings)) return { matched: 0, unmatched: allElements };
+
+    const defMap = new Map(defs.map(d => [d.elementKey, d.id]));
+    let matched = 0;
+    const matchedKeys = new Set<string>();
+
+    for (const m of mappings) {
+      if (!m.placeholder_key || !m.element_key || (m.confidence ?? 0) < 0.6) continue;
+      const defId = defMap.get(m.element_key);
+      if (!defId) continue;
+
+      try {
+        await db.insert(templatePlaceholderMapping).values({
+          templateDocumentId,
+          placeholderKey: m.placeholder_key,
+          elementDefId: defId,
+          mappedBy: "ai",
+          confidence: String(m.confidence),
+          validated: false,
+        }).onConflictDoNothing();
+        matched++;
+        matchedKeys.add(m.placeholder_key);
+      } catch {
+        // conflict = already mapped, skip
+      }
+    }
+
+    const stillUnmatched = allElements.filter(te => !matchedKeys.has(te.key));
+    console.log(`[elementDefService] Phase 1 AI: ${matched}/${allElements.length} mapped, ${stillUnmatched.length} remaining for fuzzy/auto-create`);
+    return { matched, unmatched: stillUnmatched };
+  } catch (err) {
+    console.warn("[elementDefService] AI semantic mapping failed, all elements fall through to Phase 2 fuzzy:", err instanceof Error ? err.message : err);
+    return { matched: 0, unmatched: allElements };
+  }
+}
+
+/**
+ * Infer a reasonable data type from a placeholder key and field type.
+ */
+function inferDataType(key: string, fieldType?: string): "number" | "text" | "enum" | "boolean" | "date" | "document_ref" | "list_items" {
+  const k = key.toLowerCase();
+  if (fieldType === "number" || /valoare|suma|total|pret|cost|cantitate|suprafata|numar|nr_|procent|rata/i.test(k)) return "number";
+  if (fieldType === "date" || /data_|date_|termen|deadline|an_|luna_/i.test(k)) return "date";
+  if (fieldType === "checkbox" || /da_nu|este_|are_|accepta/i.test(k)) return "boolean";
+  if (/document|atestat|certificat|acord|aviz|autorizat/i.test(k)) return "document_ref";
+  return "text";
 }
 
 // ─── AI-POWERED ELEMENT EXTRACTION FROM GUIDE ───

@@ -5,6 +5,7 @@ import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api";
 import { getCaenDescription } from "@/lib/caen";
 import { useToast } from "@/components/shared/Toast";
 import { useSSE } from "@/hooks/useSSE";
+import FormOnDocument from "@/components/documents/FormOnDocument";
 
 const API_URL = "";
 
@@ -443,6 +444,12 @@ export default function ProjectViewPage() {
   const [neemiaSplitWidth, setNeemiaSplitWidth] = useState(380);
   const neemiaSplitDragging = useRef(false);
   const neemiaSplitRef = useRef<HTMLDivElement>(null);
+
+  // Form-on-document state
+  const [fodRenderData, setFodRenderData] = useState<any>(null);
+  const [fodLoading, setFodLoading] = useState(false);
+  const [fodError, setFodError] = useState<string | null>(null);
+  const [fodEnabled, setFodEnabled] = useState(true); // toggle between form-on-doc and classic view
 
   // COMPOSE mode state
   const [composePreviewSections, setComposePreviewSections] = useState<ComposeSection[]>([]);
@@ -1383,6 +1390,107 @@ export default function ProjectViewPage() {
     }
   };
 
+  // ─── FORM-ON-DOCUMENT: Field save handler ───
+  const handleFodFieldSave = useCallback(async (fieldName: string, value: string, templateElementId: string | null) => {
+    if (readOnly || !projectId) return;
+
+    // Find projectElement by templateElementId or by key
+    let peId: string | null = null;
+    if (templateElementId) {
+      const pe = elements.find(e => (e as any).templateElementId === templateElementId);
+      peId = pe?.id || null;
+    }
+    if (!peId) {
+      const pe = elements.find(e => e.key === fieldName);
+      peId = pe?.id || null;
+    }
+    if (!peId) {
+      const allProjEls = await apiGet<any[]>(`/api/projects/${projectId}/elements`);
+      const pe = (allProjEls || []).find((e: any) =>
+        e.templateElementId === templateElementId || e.key === fieldName
+      );
+      peId = pe?.id || null;
+    }
+    if (!peId) {
+      toast("error", "Element negăsit în proiect");
+      return;
+    }
+
+    await apiPut(`/api/projects/${projectId}/elements/${peId}`, {
+      value,
+      source: "manual",
+      confirmed: true,
+    });
+
+    // Update FOD render data
+    setFodRenderData((prev: any) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        pages: prev.pages.map((p: any) => ({
+          ...p,
+          fields: p.fields.map((f: any) =>
+            f.fieldName === fieldName ? { ...f, value, source: "manual", confirmed: true } : f
+          ),
+        })),
+      };
+    });
+
+    // Update global elements state
+    setElements(prev => prev.map(e => e.key === fieldName ? { ...e, value, source: "manual", confirmed: true } : e));
+
+    // Update neemia templates state
+    setNeemiaTemplates(prev => prev.map((t, i) => {
+      if (i !== neemiaActiveTemplate) return t;
+      return {
+        ...t,
+        pages: t.pages.map(pg => ({
+          ...pg,
+          fields: pg.fields.map(f =>
+            f.key === fieldName ? { ...f, value, source: "Manual", confirmed: true } : f
+          ),
+          filledFields: pg.fields.filter(f => f.key === fieldName ? !!value : !!f.value).length,
+        })),
+        filledFields: t.pages.reduce((sum, pg) =>
+          sum + pg.fields.filter(f => f.key === fieldName ? !!value : !!f.value).length, 0),
+      };
+    }));
+
+    toast("success", `Câmp "${fieldName}" actualizat`);
+  }, [readOnly, projectId, elements, neemiaActiveTemplate, toast]);
+
+  const handleFodFieldConfirm = useCallback(async (fieldName: string, templateElementId: string | null) => {
+    if (readOnly || !projectId) return;
+
+    let peId: string | null = null;
+    if (templateElementId) {
+      const pe = elements.find(e => (e as any).templateElementId === templateElementId);
+      peId = pe?.id || null;
+    }
+    if (!peId) {
+      const pe = elements.find(e => e.key === fieldName);
+      peId = pe?.id || null;
+    }
+    if (!peId) return;
+
+    await apiPut(`/api/projects/${projectId}/elements/${peId}`, { confirmed: true });
+
+    setFodRenderData((prev: any) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        pages: prev.pages.map((p: any) => ({
+          ...p,
+          fields: p.fields.map((f: any) =>
+            f.fieldName === fieldName ? { ...f, confirmed: true } : f
+          ),
+        })),
+      };
+    });
+
+    toast("success", `Câmp "${fieldName}" confirmat`);
+  }, [readOnly, projectId, elements, toast]);
+
   // ─── NEEMIA: Toggle generation mode (fill ↔ compose) ───
   const handleToggleGenerationMode = async (templateDocId: string, currentMode: "fill" | "compose") => {
     if (readOnly || neemiaTogglingMode) return;
@@ -1853,6 +1961,22 @@ export default function ProjectViewPage() {
         }
       } catch (err) {
         console.error("Failed to load template pages:", err);
+      }
+
+      // Load form-on-document render data for FILL mode
+      if (tmpl.generationMode !== "compose" && fodEnabled) {
+        setFodLoading(true);
+        setFodError(null);
+        setFodRenderData(null);
+        try {
+          const renderData = await apiGet<any>(`/api/neemia/projects/${projectId}/template-render/${tmpl.templateDocumentId}`);
+          setFodRenderData(renderData);
+        } catch (err) {
+          console.warn("Form-on-document render failed, using classic view:", err);
+          setFodError("Nu s-a putut renderiza documentul. Se afișează vizualizarea clasică.");
+        } finally {
+          setFodLoading(false);
+        }
       }
     }
   };
@@ -2777,6 +2901,77 @@ export default function ProjectViewPage() {
           .sumar-panel{padding:20px 16px}
           .elig-panel{padding:16px}
         }
+
+        /* ═══ FORM-ON-DOCUMENT ═══ */
+        .fod-container{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden}
+        .fod-topbar{display:flex;align-items:center;gap:12px;padding:8px 12px;border-bottom:1px solid rgba(226,232,240,.8);background:#ffffff;flex-shrink:0}
+        .fod-page-nav{display:flex;gap:3px;flex:1;overflow-x:auto}
+        .fod-page-btn{padding:4px 10px;font-size:11px;font-weight:600;border-radius:6px;border:1px solid rgba(226,232,240,.8);background:#ffffff;cursor:pointer;transition:all .15s;white-space:nowrap;font-family:'JetBrains Mono',monospace}
+        .fod-page-btn.active{background:#4d8bff;color:#fff;border-color:#4d8bff}
+        .fod-page-btn.complete{border-color:rgba(52,211,153,.4);color:#059669}
+        .fod-page-btn.partial{border-color:rgba(251,191,36,.4);color:#d97706}
+        .fod-page-btn:hover:not(.active){background:#f1f5f9}
+        .fod-stats{display:flex;gap:8px;font-size:10px;font-weight:600;flex-shrink:0}
+        .fod-stat{padding:2px 6px;border-radius:4px}
+        .fod-stat.confirmed{background:rgba(52,211,153,.1);color:#059669}
+        .fod-stat.filled{background:rgba(77,139,255,.1);color:#4d8bff}
+        .fod-stat.empty{background:rgba(148,163,184,.1);color:#94a3b8}
+        .fod-zoom{display:flex;align-items:center;gap:4px;flex-shrink:0}
+        .fod-zoom-btn{width:26px;height:26px;border-radius:6px;border:1px solid rgba(226,232,240,.8);background:#fff;cursor:pointer;font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:center;transition:background .15s}
+        .fod-zoom-btn:hover{background:#f1f5f9}
+        .fod-zoom-label{font-size:11px;font-weight:600;font-family:'JetBrains Mono',monospace;min-width:36px;text-align:center;color:#64748b}
+        .fod-scroll{flex:1;overflow:auto;display:flex;justify-content:center;padding:24px;background:#e2e8f0}
+        .fod-page-wrapper{position:relative;background:#ffffff;box-shadow:0 4px 24px rgba(0,0,0,.12);flex-shrink:0}
+        .fod-page-image{display:block;width:100%;height:100%;object-fit:contain;pointer-events:none;user-select:none}
+        .fod-field{position:absolute;cursor:pointer;border-radius:2px;transition:all .15s;box-sizing:border-box;display:flex;align-items:center;overflow:visible}
+        .fod-field.empty{background:rgba(77,139,255,.06);border:1.5px dashed rgba(77,139,255,.3)}
+        .fod-field.empty.hovered{background:rgba(77,139,255,.12);border-color:#4d8bff;box-shadow:0 0 0 2px rgba(77,139,255,.15)}
+        .fod-field.filled{background:rgba(77,139,255,.08);border:1px solid rgba(77,139,255,.25)}
+        .fod-field.filled.hovered{background:rgba(77,139,255,.14);border-color:#4d8bff}
+        .fod-field.confirmed{background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.3)}
+        .fod-field.confirmed.hovered{background:rgba(52,211,153,.14);border-color:#34d399}
+        .fod-field.editing{border:2px solid #4d8bff;background:rgba(255,255,255,.95);z-index:10;overflow:visible;box-shadow:0 2px 12px rgba(77,139,255,.25)}
+        .fod-field-value{font-size:10px;font-family:'DM Sans',system-ui,sans-serif;color:#1a1e28;padding:1px 3px;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%}
+        .fod-field-editor{display:flex;flex-direction:column;gap:4px;min-width:200px;position:relative}
+        .fod-input{width:100%;padding:4px 6px;font-size:12px;font-family:'DM Sans',system-ui,sans-serif;border:1px solid #4d8bff;border-radius:3px;background:#ffffff;outline:none;color:#1a1e28;line-height:1.3}
+        .fod-input:focus{box-shadow:0 0 0 2px rgba(77,139,255,.2)}
+        .fod-field-actions{display:flex;gap:3px;position:absolute;right:0;top:100%;margin-top:2px;z-index:20}
+        .fod-save-btn,.fod-cancel-btn{width:24px;height:24px;border-radius:4px;border:none;cursor:pointer;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;transition:background .15s}
+        .fod-save-btn{background:#4d8bff;color:#fff}
+        .fod-save-btn:hover{background:#3b7aee}
+        .fod-save-btn:disabled{opacity:.5;cursor:default}
+        .fod-cancel-btn{background:#f1f5f9;color:#64748b}
+        .fod-cancel-btn:hover{background:#e2e8f0}
+        .fod-tooltip{position:absolute;left:0;bottom:100%;margin-bottom:4px;background:#1a1e28;color:#e8ecf4;padding:8px 10px;border-radius:6px;font-size:11px;white-space:nowrap;z-index:30;box-shadow:0 4px 12px rgba(0,0,0,.3);pointer-events:auto}
+        .fod-tooltip::after{content:'';position:absolute;top:100%;left:12px;border:5px solid transparent;border-top-color:#1a1e28}
+        .fod-tooltip-label{font-weight:600;margin-bottom:2px}
+        .fod-tooltip-source{color:#8892a8;font-size:10px}
+        .fod-tooltip-confirm{margin-top:4px;padding:2px 8px;font-size:10px;font-weight:600;border-radius:4px;border:1px solid rgba(77,139,255,.3);background:rgba(77,139,255,.1);color:#4d8bff;cursor:pointer}
+        .fod-tooltip-confirm:hover{background:rgba(77,139,255,.2)}
+        .fod-tooltip-confirmed{color:#34d399;font-weight:600;margin-top:2px}
+        .fod-tooltip-empty{color:#8892a8;font-style:italic}
+        .fod-reconciliation-banner{display:flex;align-items:center;justify-content:space-between;padding:6px 12px;background:rgba(251,191,36,.06);border-bottom:1px solid rgba(251,191,36,.2);flex-shrink:0}
+        .fod-recon-stats{display:flex;gap:12px;font-size:11px;font-weight:500}
+        .fod-recon-coverage{font-weight:700}
+        .fod-recon-fuzzy{color:#d97706}
+        .fod-recon-missing{color:#dc2626}
+        .fod-recon-toggle{font-size:11px;padding:3px 10px;border-radius:5px;border:1px solid rgba(226,232,240,.8);background:#fff;cursor:pointer;font-weight:600;color:#4d8bff}
+        .fod-fuzzy-banner{display:flex;align-items:center;gap:6px;padding:4px 12px;background:rgba(251,191,36,.06);border-bottom:1px solid rgba(251,191,36,.15);font-size:11px;color:#92400e;flex-shrink:0}
+        .fod-unmatched-panel{max-height:200px;overflow-y:auto;border-bottom:1px solid rgba(226,232,240,.8);background:#fefce8;flex-shrink:0}
+        .fod-unmatched-header{padding:8px 12px;font-size:12px;font-weight:600;border-bottom:1px solid rgba(251,191,36,.15);display:flex;flex-direction:column;gap:2px}
+        .fod-unmatched-item{padding:6px 12px;border-bottom:1px solid rgba(251,191,36,.1);display:flex;align-items:center;gap:8px}
+        .fod-unmatched-item.has-value{background:rgba(52,211,153,.04)}
+        .fod-unmatched-label{font-size:11px;font-weight:600;min-width:120px;color:#1a1e28}
+        .fod-unmatched-value{font-size:11px;color:#334155;flex:1}
+        .fod-unmatched-source{font-size:10px;color:#94a3b8;padding:1px 5px;background:rgba(148,163,184,.1);border-radius:3px}
+        .fod-loading{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:#64748b}
+        .fod-spinner{width:32px;height:32px;border:3px solid rgba(77,139,255,.2);border-top-color:#4d8bff;border-radius:50%;animation:spin 1s linear infinite}
+        @keyframes spin{to{transform:rotate(360deg)}}
+        .fod-loading-text{font-size:13px;font-weight:500}
+        .fod-error{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:#dc2626}
+        .fod-error-icon{font-size:28px}
+        .fod-error-text{font-size:13px}
+        .fod-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:#94a3b8;font-size:13px}
       `}</style>
 
       {lockError && (
@@ -5257,8 +5452,55 @@ export default function ProjectViewPage() {
                         ))}
                       </div>
                     </div>
+                  ) : neemiaTemplate && neemiaTemplate.generationMode !== "compose" && fodEnabled && (fodRenderData || fodLoading) ? (
+                    /* FORM-ON-DOCUMENT VIEW */
+                    <>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 12px", borderBottom: "1px solid rgba(226,232,240,.8)", background: "#ffffff", flexShrink: 0 }}>
+                        <span style={{ fontSize: 13, fontWeight: 600 }}>{neemiaTemplate.name}</span>
+                        <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: "rgba(77,139,255,.1)", color: "#4d8bff" }}>FORM-ON-DOC</span>
+                        <div style={{ flex: 1 }} />
+                        <button
+                          style={{ fontSize: 11, padding: "3px 10px", borderRadius: 5, border: "1px solid rgba(226,232,240,.8)", background: "#fff", cursor: "pointer", fontWeight: 500 }}
+                          onClick={() => { setFodEnabled(false); setFodRenderData(null); }}
+                        >
+                          Vizualizare clasică
+                        </button>
+                      </div>
+                      <FormOnDocument
+                        renderData={fodRenderData}
+                        loading={fodLoading}
+                        error={fodError}
+                        projectId={projectId || ""}
+                        templateDocId={neemiaTemplate.templateDocumentId}
+                        readOnly={readOnly}
+                        onFieldSave={handleFodFieldSave}
+                        onFieldConfirm={handleFodFieldConfirm}
+                      />
+                    </>
                   ) : neemiaTemplate && neemiaTemplate.pages.length > 0 ? (
                     <>
+                      {/* Classic view toggle */}
+                      {!fodEnabled && neemiaTemplate.generationMode !== "compose" && (
+                        <div style={{ display: "flex", justifyContent: "flex-end", padding: "4px 12px", borderBottom: "1px solid rgba(226,232,240,.8)" }}>
+                          <button
+                            style={{ fontSize: 11, padding: "3px 10px", borderRadius: 5, border: "1px solid rgba(77,139,255,.3)", background: "rgba(77,139,255,.06)", color: "#4d8bff", cursor: "pointer", fontWeight: 600 }}
+                            onClick={() => {
+                              setFodEnabled(true);
+                              // Trigger render load
+                              if (neemiaTemplate.templateDocumentId && projectId) {
+                                setFodLoading(true);
+                                setFodError(null);
+                                apiGet<any>(`/api/neemia/projects/${projectId}/template-render/${neemiaTemplate.templateDocumentId}`)
+                                  .then(data => setFodRenderData(data))
+                                  .catch(() => setFodError("Nu s-a putut renderiza documentul."))
+                                  .finally(() => setFodLoading(false));
+                              }
+                            }}
+                          >
+                            Completare pe document
+                          </button>
+                        </div>
+                      )}
                       {/* Page navigation bar */}
                       <div className="neemia-page-nav">
                         <span className="nav-label">{neemiaTemplate.name}</span>

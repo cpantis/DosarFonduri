@@ -24,6 +24,7 @@ import {
 } from "../db/schema";
 import { eq, and, inArray, isNull, or, like } from "drizzle-orm";
 import { getFileBuffer, uploadFile } from "./storage";
+import { extractTextFromDOCX } from "./ocr";
 import { logAIUsage } from "./aiUsage";
 import crypto from "crypto";
 
@@ -102,6 +103,7 @@ export interface ComposeContext {
   programFinantare: string;
   codMasura: string;
   numberFormat: "ro" | "en";
+  templateText?: string;  // Extracted text from template DOCX for structural context
   elements: Record<string, { value: string; label: string; source: string }>;
   referenceTables: Array<{
     id: string;
@@ -266,6 +268,24 @@ export async function buildComposeContext(
   });
   const cabinetStyle = org?.cabinetDocumentStyle as Record<string, any> || {};
 
+  // Extract template DOCX text for structural context
+  let templateText: string | undefined;
+  try {
+    const templateDoc = await db.query.documents.findFirst({
+      where: eq(documents.id, templateDocumentId),
+    });
+    if (templateDoc?.fileId) {
+      const fileResult = await getFileBuffer(templateDoc.fileId);
+      if (fileResult) {
+        const rawText = await extractTextFromDOCX(fileResult.buffer, templateDoc.name || "template.docx");
+        // Truncate to ~4000 chars to avoid overwhelming the prompt
+        templateText = rawText.length > 4000 ? rawText.slice(0, 4000) + "\n[...truncat]" : rawText;
+      }
+    }
+  } catch (err) {
+    console.warn("[buildComposeContext] Could not extract template text:", err);
+  }
+
   return {
     projectName: project.name,
     companyName: company?.denumire || "N/A",
@@ -273,6 +293,7 @@ export async function buildComposeContext(
     programFinantare: project.programFinantare || "N/A",
     codMasura: project.codMasura || "N/A",
     numberFormat: (cabinetStyle.numberFormat as "ro" | "en") || "ro",
+    templateText,
     elements,
     referenceTables: relevantRefTables.map(t => ({
       id: t.id,
@@ -438,25 +459,66 @@ ${s.instructions ? `- Instrucțiuni specifice: ${s.instructions}` : ""}${bluepri
       }).join("\n\n")
     : "";
 
-  const systemPrompt = `Ești Neemia, un expert senior în redactarea documentelor pentru proiecte cu finanțare europeană (fonduri AFIR/PNDR/PNRR).
-Scrii documente profesionale care respectă standardele AFIR/PNRR — ca un consultant cu 10+ ani experiență.
+  // ── Template text context (structural awareness) ──
+  const templateTextContext = context.templateText
+    ? `\nSTRUCTURA DOCUMENTULUI TEMPLATE (text extras din DOCX):
+${context.templateText}
+`
+    : "";
 
-REGULI STRICTE:
+  const systemPrompt = `Ești Neemia, un consultant senior cu 15+ ani experiență în redactarea documentelor pentru proiecte cu finanțare europeană.
+Ai scris sute de dosare de finanțare aprobate pentru programe AFIR, PNDR, PNRR, POCIDIF, POT, PDD, PIDS, PoST, GAL-uri.
+
+═══ IDENTITATE PROFESIONALĂ ═══
+Scrii ca un expert recunoscut în consultanță fonduri europene — nu ca un AI. Documentele tale sunt indistinguibile de cele scrise de cei mai buni consultanți din piață. Fiecare secțiune trebuie să convingă evaluatorul AFIR/PNRR că proiectul merită finanțat.
+
+═══ CADRU LEGISLATIV (referințe obligatorii unde e relevant) ═══
+- Regulamentul UE 2021/2115 (PAC 2023-2027) — pentru proiecte agricole
+- Regulamentul UE 651/2014 (GBER) — intensitate maximă ajutor de stat pe regiuni (Harta ajutoarelor regionale 2022-2027)
+- Regulamentul UE 2023/2831 — de minimis: 300.000 EUR pe 3 ani fiscali consecutivi
+- OUG 66/2011 — cheltuieli eligibile (construcții, echipamente, servicii, active necorporale, contribuție proprie)
+- HG 399/2015 — proceduri achiziții: <5.000€ achiziție directă; 5.000–135.060€ procedură competitivă (3 oferte comparabile); >135.060€ licitație deschisă SEAP
+- Legea 346/2004 + Rec. UE 2003/361 — clasificare IMM: Micro (<10 angajați, ≤2M€ CA), Mică (<50, ≤10M€), Mijlocie (<250, ≤50M€) — inclusiv întreprinderi legate/partenere
+
+═══ EXPERTIZA FINANCIARĂ ═══
+- Cash flow previzionat pe 5-7 ani, cu RIR (rata internă de rentabilitate) ≥5% și VAN (valoarea actualizată netă) >0
+- Indicatori sustenabilitate: rata solvabilității >1, lichiditate curentă >1, acoperirea serviciului datoriei >1.2
+- Structura bugetului: echipamente, construcții, active necorporale, servicii, instruire, alte cheltuieli
+- Contribuție proprie: minim 10-50% din valoarea eligibilă (depinde de intensitate ajutor)
+- Formatul numerelor: ${context.numberFormat === "en" ? "EN: 1,234,567.89 RON (virgulă separare mii, punct zecimale)" : "RO: 1.234.567,89 RON (punct separare mii, virgulă zecimale)"}
+
+═══ STIL DE SCRIERE — REGULI ABSOLUTE ═══
+1. Scrie EXCLUSIV la persoana a III-a: "Solicitantul", "Societatea", "Beneficiarul" — NICIODATĂ "noi", "al nostru".
+2. FIECARE afirmație de impact TREBUIE cuantificată: procent de creștere, valoare absolută, termen. "Productivitatea muncii va crește cu 35% față de anul 2024" — nu "se va îmbunătăți semnificativ".
+3. Structura obligatorie per paragraf narativ: (a) Afirmație → (b) Date suport din proiect → (c) Legătura cu criteriul evaluatorului.
+4. Terminologia profesională standard: "implementarea proiectului", "activități eligibile", "contribuție proprie", "ajutor financiar nerambursabil", "cofinanțare", "sustenabilitatea investiției".
+5. Referință temporală: "față de anul [N]" sau "față de media ultimilor 3 ani fiscali".
+6. Paragrafe de 3-5 propoziții — dense informativ, fără repetiții, fără superlative nejustificate ("enorm", "revoluționar", "fără precedent").
+7. Fiecare tabel trebuie: caption explicativ, footer cu total/medie, evidențierea rândurilor relevante pentru proiect.
+
+═══ REGULI STRICTE DE CONȚINUT ═══
 1. Scrii EXCLUSIV în limba română, cu terminologie profesională de consultanță fonduri europene.
-2. Conținutul trebuie să fie factual — bazat STRICT pe datele furnizate (elements, reference tables).
-3. NU inventa date, cifre sau informații care nu sunt în context.
+2. Conținutul trebuie să fie FACTUAL — bazat STRICT pe datele furnizate (elements, reference tables).
+3. NU inventa date, cifre sau informații care nu sunt în context. Dacă o dată lipsește, marchează cu {{PLACEHOLDER_DESCRIERE}} — nu inventa.
 4. Folosește formatul solicitat (narrative SAU table) exact cum e cerut.
 5. Pentru tabele: returnează structura JSON exactă (headers + rows), nu text.
-6. Pentru narrative: scrie profesional, concis, cu argumente bazate pe date.
-7. Argumentează legătura între datele proiectului și regulile din ghidul de finanțare.
-8. Evidențiază (prin highlight) rândurile din tabele care sunt relevante pentru proiect.
-9. Dacă o dată lipsește, marchează cu {{PLACEHOLDER_DESCRIERE}} — nu inventa.
-10. Numere formatate ${context.numberFormat === "en" ? "EN: 1,234,567.89 RON (virgulă separare mii, punct zecimale)" : "RO: 1.234.567,89 RON (punct separare mii, virgulă zecimale)"}.
+6. Argumentează legătura între datele proiectului și regulile din ghidul de finanțare.
+7. Evidențiază (prin highlight) rândurile din tabele care sunt relevante pentru proiect.
+8. Folosește cuvintele-cheie pe care le caută evaluatorul (din writing kit și blueprint keywords).
+
+═══ STRUCTURI TIPICE PER SECȚIUNE ═══
+- **Prezentare solicitant**: CINE (forma juridică, CUI, CAEN, nr. angajați) → CE face (obiect activitate) → UNDE (sediu, punct de lucru, zona) → DIMENSIUNE (CA, profit, active, classificare IMM)
+- **Descriere investiție**: CE se achiziționează → CU CE SCOP → DIMENSIUNI tehnice → VALOARE totală → CONTRIBUȚIE proprie vs. ajutor nerambursabil
+- **Necesitate/Oportunitate**: CONTEXT piață → PROBLEMĂ identificată → CONSECINȚE fără investiție → SOLUȚIE propusă → BENEFICII cuantificate
+- **Obiective SMART**: Specific (ce exact) + Măsurabil (indicator + valoare) + Realizabil (resurse) + Relevant (pentru program) + Temporalizat (termen)
+- **Impact economic**: Indicatori ÎNAINTE vs. DUPĂ (CA, profit, productivitate, nr. angajați) → % creștere → Perioada de referință
+- **Sustenabilitate**: Viabilitate financiară (RIR, VAN, cash flow) → Capacitate managerială → Piață asigurată → Resurse umane → Mentenanță
+- **Plan de investiții**: Categorie cheltuială → Denumire → Cantitate → Preț unitar → Valoare totală → Eligibil/Neeligibil
 ${writingKitContext ? `
-WRITING KIT — Terminologie și keywords profesionale:
+═══ WRITING KIT — Terminologie și keywords profesionale ═══
 ${writingKitContext}
-` : ""}${cabinetPreferences}
-CONTEXT PROIECT:
+` : ""}${cabinetPreferences}${templateTextContext}
+═══ CONTEXT PROIECT ═══
 - Nume proiect: ${context.projectName}
 - Firmă: ${context.companyName} (CUI: ${context.companyCui})
 - Program: ${context.programFinantare}
@@ -488,19 +550,33 @@ IMPORTANT: Răspunde cu un JSON valid care conține un array "sections", unde fi
 SECȚIUNI DE GENERAT:
 ${sectionsRequest}
 
-INSTRUCȚIUNI:
-- Folosește keywords-urile din writing kit relevante pentru criteriile de selecție ale proiectului.
-- Scrie în română, cu date concrete din contextul de mai sus.
-- Dacă datele sunt insuficiente pentru o secțiune, marchează lipsurile cu {{PLACEHOLDER_DESCRIERE}}.
+INSTRUCȚIUNI DETALIATE:
+1. Scrie FIECARE secțiune narativă cu densitate maximă de informație — ca un consultant care știe că evaluatorul bifează un checklist strict. Fiecare paragraf trebuie să răspundă la un criteriu de evaluare concret.
+2. Folosește keywords-urile din writing kit relevante pentru criteriile de selecție ale proiectului.
+3. Pentru secțiunile narative: minim 3 paragrafe substanțiale (5+ rânduri fiecare), cu date concrete, procente, sume, indicatori. NU scrie răspunsuri de 2-3 rânduri.
+4. Pentru tabele financiare: include TOATE categoriile de cheltuieli, calculează corect totalurile, folosește footer row obligatoriu.
+5. Dacă datele sunt insuficiente pentru o secțiune, marchează lipsurile cu {{PLACEHOLDER_DESCRIERE}} dar scrie în jurul lor — nu lăsa secțiunea goală.
+6. Scrie în română, cu date concrete din contextul de mai sus.
 
 Răspunde DOAR cu JSON-ul, fără markdown code blocks, fără text suplimentar.`;
 
-  const response = await withAILimit(() => anthropic.messages.create({
+  // Use extended thinking for Opus models, higher max_tokens for all
+  const useExtendedThinking = aiModel.includes("opus");
+  const maxOutputTokens = useExtendedThinking ? 16000 : 12000;
+
+  const apiParams: any = {
     model: aiModel,
-    max_tokens: 8192,
+    max_tokens: maxOutputTokens,
     system: systemPrompt,
     messages: [{ role: "user", content: userPrompt }],
-  }));
+  };
+
+  // Enable extended thinking for Opus models (deeper reasoning → better document quality)
+  if (useExtendedThinking) {
+    apiParams.thinking = { type: "enabled", budget_tokens: 8000 };
+  }
+
+  const response = await withAILimit(() => anthropic.messages.create(apiParams));
 
   const tokensInput = response.usage.input_tokens;
   const tokensOutput = response.usage.output_tokens;
@@ -560,6 +636,107 @@ Răspunde DOAR cu JSON-ul, fără markdown code blocks, fără text suplimentar.
   return { sections: composeSections, tokensInput, tokensOutput, placeholders: allPlaceholders };
 }
 
+// ═══ AUTO-GENERATE BLUEPRINT ═══
+// Analyzes template structure + compose sections to create evaluation-aware blueprint
+
+async function generateBlueprint(
+  templateDoc: any,
+  composeConfig: any,
+  context: ComposeContext,
+  aiModel: string,
+  organizationId: string,
+  userId: string,
+): Promise<DocumentBlueprint> {
+  const sectionsList = composeConfig.sections
+    .map((s: any) => `- ${s.marker} (${s.type}): ${s.label}${s.instructions ? ` — ${s.instructions}` : ""}`)
+    .join("\n");
+
+  const elementsList = Object.entries(context.elements)
+    .map(([key, { label }]) => `${key}: ${label}`)
+    .join(", ");
+
+  const rulesSummary = context.relevantRules.slice(0, 20)
+    .map(r => `[${r.type}] ${r.description}`)
+    .join("\n");
+
+  const prompt = `Analizează template-ul de document "${templateDoc.name}" pentru programul "${context.programFinantare}" (${context.codMasura}).
+
+SECȚIUNI COMPOSE din template:
+${sectionsList}
+
+ELEMENTE DISPONIBILE: ${elementsList}
+
+REGULI GHID (primele 20):
+${rulesSummary}
+${context.templateText ? `\nTEXT TEMPLATE:\n${context.templateText.slice(0, 2000)}` : ""}
+
+Generează un DocumentBlueprint JSON cu:
+- documentPurpose: scopul documentului (ex: "Memoriu Justificativ sM 4.1")
+- evaluatorExpectations: ce caută evaluatorul AFIR la acest document
+- sections: array cu câte o secțiune per marker, fiecare cu:
+  - sectionId: marker-ul secțiunii
+  - title: titlu complet
+  - purpose: ce demonstrează această secțiune evaluatorului
+  - requiredElementKeys: keys obligatorii (din elementele disponibile)
+  - optionalElementKeys: keys care îmbunătățesc secțiunea
+  - referenceTableIds: [] (placeholder)
+  - tone: "formal" | "technical" | "narrative"
+  - targetLength: {min, max} în cuvinte (realist per secțiune)
+  - keywords: 5-10 cuvinte-cheie pe care le caută evaluatorul
+  - evaluatorChecklist: 3-5 puncte pe care le bifează evaluatorul
+  - structureHint: structura recomandată (ex: "CINE→CE→UNDE→DIMENSIUNE")
+  - forbiddenPhrases: expresii generice de evitat
+
+Răspunde DOAR cu JSON valid, fără markdown.`;
+
+  const response = await withAILimit(() => anthropic.messages.create({
+    model: aiModel.includes("opus") ? aiModel : "claude-sonnet-4-20250514",
+    max_tokens: 4096,
+    messages: [{ role: "user", content: prompt }],
+  }));
+
+  await logAIUsage({
+    organizationId,
+    userId,
+    agent: "neemia",
+    model: aiModel,
+    tokensInput: response.usage.input_tokens,
+    tokensOutput: response.usage.output_tokens,
+    action: "blueprint_generate",
+  });
+
+  const textContent = response.content.find(c => c.type === "text");
+  if (!textContent || textContent.type !== "text") throw new Error("Blueprint AI response empty");
+
+  let rawText = textContent.text.trim();
+  if (rawText.startsWith("```")) {
+    rawText = rawText.replace(/^```(?:json)?\s*/, "").replace(/\s*```$/, "");
+  }
+
+  const parsed = JSON.parse(rawText);
+  return {
+    templateId: templateDoc.id,
+    documentPurpose: parsed.documentPurpose || templateDoc.name,
+    evaluatorExpectations: parsed.evaluatorExpectations || "",
+    generatedAt: new Date().toISOString(),
+    generatedBy: aiModel,
+    sections: (parsed.sections || []).map((s: any) => ({
+      sectionId: s.sectionId,
+      title: s.title || s.sectionId,
+      purpose: s.purpose || "",
+      requiredElementKeys: s.requiredElementKeys || [],
+      optionalElementKeys: s.optionalElementKeys || [],
+      referenceTableIds: s.referenceTableIds || [],
+      tone: s.tone || "formal",
+      targetLength: s.targetLength || { min: 100, max: 500 },
+      keywords: s.keywords || [],
+      evaluatorChecklist: s.evaluatorChecklist || [],
+      structureHint: s.structureHint,
+      forbiddenPhrases: s.forbiddenPhrases,
+    })),
+  };
+}
+
 // ═══ COMPOSE DOCUMENT (main flow, SSE streaming) ═══
 
 export async function composeDocument(params: ComposeDocParams): Promise<ReadableStream> {
@@ -605,6 +782,22 @@ export async function composeDocument(params: ComposeDocParams): Promise<Readabl
           sections: composeConfig.sections.length,
         });
 
+        // Step 0: Auto-generate blueprint if missing (cached on template)
+        let templateBlueprint = (templateDoc as any)?.blueprint as DocumentBlueprint | null;
+        if (!templateBlueprint && !editedSections) {
+          try {
+            emit({ type: "status", message: "Se analizează structura template-ului (blueprint)..." });
+            templateBlueprint = await generateBlueprint(templateDoc, composeConfig, context, aiModel, organizationId, userId);
+            // Cache blueprint on template document for future reuse
+            await db.update(documents)
+              .set({ blueprint: templateBlueprint as any })
+              .where(eq(documents.id, templateDocumentId));
+            emit({ type: "blueprint_ready", sections: templateBlueprint.sections.length });
+          } catch (err) {
+            console.warn("[composeDocument] Blueprint generation failed, continuing without:", err);
+          }
+        }
+
         // Step 1: Generate AI content (or use edited sections)
         let composeSections: ComposeSection[];
         let tokensUsed = 0;
@@ -623,7 +816,6 @@ export async function composeDocument(params: ComposeDocParams): Promise<Readabl
             : `Se generează conținutul cu ${aiModel}...`
           });
 
-          const templateBlueprint = (templateDoc as any)?.blueprint as DocumentBlueprint | null;
           const aiResult = await generateComposeContent(
             context,
             sectionsToGenerate,

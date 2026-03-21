@@ -313,23 +313,103 @@ export async function buildComposeContext(
   };
 }
 
+// ═══ INTELLIGENT CHUNKING ═══
+// Splits large documents into optimal chunks based on section complexity
+
+type SectionSpec = {
+  marker: string;
+  type: "narrative" | "table" | "calculation";
+  label: string;
+  instructions?: string;
+  elementKeys?: string[];
+  referenceTableIds?: string[];
+};
+
+/** Estimate output complexity of a section in "weight units" (1 unit ≈ 800 output tokens) */
+function estimateSectionWeight(section: SectionSpec, blueprint?: DocumentBlueprint | null): number {
+  // Tables/calculations are cheaper — structured JSON output
+  if (section.type === "table" || section.type === "calculation") {
+    return 1;
+  }
+  // Narrative complexity depends on blueprint targetLength if available
+  if (blueprint) {
+    const bs = blueprint.sections?.find(
+      s => s.sectionId === section.marker || s.sectionId === section.marker.replace("COMPOSE:", "")
+    );
+    if (bs?.targetLength) {
+      // ~150 tokens per 100 words; add JSON overhead
+      const estimatedTokens = (bs.targetLength.max / 100) * 150 + 200;
+      return Math.max(1, Math.ceil(estimatedTokens / 800));
+    }
+  }
+  // Default: narrative sections are ~2-3 weight units (1500-2400 tokens)
+  return 2;
+}
+
+/** Split sections into chunks, respecting a max weight budget per chunk */
+function buildChunks(
+  sections: SectionSpec[],
+  blueprint?: DocumentBlueprint | null,
+  maxWeightPerChunk: number = 8,
+): SectionSpec[][] {
+  if (sections.length <= 3) return [sections]; // Small docs: single chunk
+
+  const chunks: SectionSpec[][] = [];
+  let currentChunk: SectionSpec[] = [];
+  let currentWeight = 0;
+
+  for (const section of sections) {
+    const weight = estimateSectionWeight(section, blueprint);
+
+    // If adding this section exceeds budget AND we have at least 1 section, start new chunk
+    if (currentWeight + weight > maxWeightPerChunk && currentChunk.length > 0) {
+      chunks.push(currentChunk);
+      currentChunk = [];
+      currentWeight = 0;
+    }
+
+    currentChunk.push(section);
+    currentWeight += weight;
+  }
+
+  if (currentChunk.length > 0) {
+    chunks.push(currentChunk);
+  }
+
+  return chunks;
+}
+
+/** Build a concise summary of already-generated sections for cross-chunk coherence */
+function buildPreviousSectionsSummary(previousSections: ComposeSection[]): string {
+  if (previousSections.length === 0) return "";
+
+  const summaries = previousSections.map(s => {
+    if (s.type === "narrative" && s.content) {
+      // First 200 chars of narrative content
+      const preview = s.content.slice(0, 200).replace(/\n/g, " ");
+      return `- "${s.label}": ${preview}...`;
+    }
+    if (s.tableData) {
+      return `- "${s.label}" (tabel): ${s.tableData.rows?.length || 0} rânduri, ${s.tableData.headers?.map(h => h.label).join(", ")}`;
+    }
+    return `- "${s.label}": generat`;
+  }).join("\n");
+
+  return `\nSECȚIUNI DEJA GENERATE (pentru coerență — NU le regenera, doar continuă stilul):
+${summaries}\n`;
+}
+
 // ═══ AI CONTENT GENERATION ═══
-// Calls Claude to generate narrative sections and table structures
+// Calls Claude to generate narrative sections and table structures (with chunking support)
 
 async function generateComposeContent(
   context: ComposeContext,
-  sections: Array<{
-    marker: string;
-    type: "narrative" | "table" | "calculation";
-    label: string;
-    instructions?: string;
-    elementKeys?: string[];
-    referenceTableIds?: string[];
-  }>,
+  sections: SectionSpec[],
   aiModel: string,
   organizationId: string,
   userId: string,
   blueprint?: DocumentBlueprint | null,
+  previousSections?: ComposeSection[],
 ): Promise<{ sections: ComposeSection[]; tokensInput: number; tokensOutput: number; placeholders: Array<{ section: string; placeholder: string }> }> {
 
   // Build element context string
@@ -533,8 +613,13 @@ ${tablesList}
 REGULI RELEVANTE:
 ${rulesList}`;
 
-  const userPrompt = `Generează conținutul pentru următoarele secțiuni ale documentului.
+  // Cross-chunk coherence context
+  const coherenceContext = previousSections && previousSections.length > 0
+    ? buildPreviousSectionsSummary(previousSections)
+    : "";
 
+  const userPrompt = `Generează conținutul pentru următoarele secțiuni ale documentului.
+${coherenceContext}
 IMPORTANT: Răspunde cu un JSON valid care conține un array "sections", unde fiecare secțiune are:
 - "marker": string (marker-ul secțiunii)
 - "type": "narrative" | "table" | "calculation"
@@ -803,7 +888,7 @@ export async function composeDocument(params: ComposeDocParams): Promise<Readabl
         let tokensUsed = 0;
 
         // FIX 7: Filter sections to regenerate only the requested one
-        const sectionsToGenerate = regenerateSectionMarker
+        const sectionsToGenerate: SectionSpec[] = regenerateSectionMarker
           ? composeConfig.sections.filter((s: any) => s.marker === regenerateSectionMarker)
           : composeConfig.sections;
 
@@ -811,36 +896,66 @@ export async function composeDocument(params: ComposeDocParams): Promise<Readabl
           emit({ type: "status", message: "Se folosesc secțiunile editate de consultant..." });
           composeSections = editedSections;
         } else {
-          emit({ type: "status", message: regenerateSectionMarker
-            ? `Se regenerează secțiunea "${regenerateSectionMarker}" cu ${aiModel}...`
-            : `Se generează conținutul cu ${aiModel}...`
-          });
+          // ── Intelligent Chunking ──
+          // Split sections into optimal chunks based on complexity
+          const chunks = buildChunks(sectionsToGenerate, templateBlueprint);
+          const totalChunks = chunks.length;
+          const allPlaceholders: Array<{ section: string; placeholder: string }> = [];
+          composeSections = [];
 
-          const aiResult = await generateComposeContent(
-            context,
-            sectionsToGenerate,
-            aiModel,
-            organizationId,
-            userId,
-            templateBlueprint,
-          );
+          for (let i = 0; i < chunks.length; i++) {
+            const chunk = chunks[i];
+            const chunkLabel = totalChunks > 1
+              ? ` (parte ${i + 1}/${totalChunks}: ${chunk.map(s => s.label).join(", ")})`
+              : "";
 
-          composeSections = aiResult.sections;
-          tokensUsed = aiResult.tokensInput + aiResult.tokensOutput;
+            emit({ type: "status", message: regenerateSectionMarker
+              ? `Se regenerează secțiunea "${regenerateSectionMarker}" cu ${aiModel}...`
+              : `Se generează conținutul cu ${aiModel}${chunkLabel}...`
+            });
+
+            if (totalChunks > 1) {
+              emit({
+                type: "chunk_progress",
+                current: i + 1,
+                total: totalChunks,
+                sections: chunk.map(s => s.label),
+              });
+            }
+
+            const aiResult = await generateComposeContent(
+              context,
+              chunk,
+              aiModel,
+              organizationId,
+              userId,
+              templateBlueprint,
+              // Pass previously generated sections for cross-chunk coherence
+              i > 0 ? composeSections : undefined,
+            );
+
+            composeSections.push(...aiResult.sections);
+            tokensUsed += aiResult.tokensInput + aiResult.tokensOutput;
+
+            if (aiResult.placeholders?.length) {
+              allPlaceholders.push(...aiResult.placeholders);
+            }
+          }
 
           emit({
             type: "ai_complete",
             sections: composeSections,
             tokensUsed,
             model: aiModel,
+            chunks: totalChunks,
           });
 
           // Warn about unresolved placeholders
-          if (aiResult.placeholders && aiResult.placeholders.length > 0) {
+          if (allPlaceholders.length > 0) {
             emit({
               type: "compose_warning",
-              message: `${aiResult.placeholders.length} câmpuri necompletate detectate — marchează date lipsă`,
-              missing: aiResult.placeholders,
+              message: `${allPlaceholders.length} câmpuri necompletate detectate — marchează date lipsă`,
+              missing: allPlaceholders,
             });
           }
         }

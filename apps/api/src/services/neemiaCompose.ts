@@ -623,7 +623,7 @@ ${coherenceContext}
 IMPORTANT: Răspunde cu un JSON valid care conține un array "sections", unde fiecare secțiune are:
 - "marker": string (marker-ul secțiunii)
 - "type": "narrative" | "table" | "calculation"
-- Pentru NARRATIVE: "content" (string cu textul narativ, paragrafe separate cu \\n\\n)
+- Pentru NARRATIVE: "content" (string cu text formatat minimal — paragrafe separate cu \\n\\n, **bold** pentru termeni cheie, - bullets pentru liste, ### pentru sub-titluri interne)
 - Pentru TABLE/CALCULATION: "tableData" cu:
   - "headers": [{key, label}]
   - "rows": [{ key1: val1, key2: val2, ... }]
@@ -642,6 +642,11 @@ INSTRUCȚIUNI DETALIATE:
 4. Pentru tabele financiare: include TOATE categoriile de cheltuieli, calculează corect totalurile, folosește footer row obligatoriu.
 5. Dacă datele sunt insuficiente pentru o secțiune, marchează lipsurile cu {{PLACEHOLDER_DESCRIERE}} dar scrie în jurul lor — nu lăsa secțiunea goală.
 6. Scrie în română, cu date concrete din contextul de mai sus.
+7. FORMATARE NARATIVĂ — folosește markdown minimal în "content":
+   - **text bold** pentru termeni cheie, sume importante, concluzii (ex: **250.000 EUR**, **eligibil**)
+   - ### Sub-titlu pentru secțiuni interne ale narativului (ex: ### Obiective specifice)
+   - - bullet pentru enumerări (ex: - echipament 1\\n- echipament 2)
+   - NU folosi alte formate markdown (italic, links, code blocks, etc.)
 
 Răspunde DOAR cu JSON-ul, fără markdown code blocks, fără text suplimentar.`;
 
@@ -1179,13 +1184,14 @@ async function composeDocxTemplate(
 
 // ═══ PYTHON SCRIPT: COMPOSE DOCX BUILDER ═══
 const COMPOSE_PYTHON_SCRIPT = `
-import sys, json
+import sys, json, re
 from docx import Document
-from docx.shared import Pt, Inches, Cm, RGBColor
+from docx.shared import Pt, Inches, Cm, RGBColor, Emu
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.oxml.ns import qn, nsdecls
 from docx.oxml import parse_xml
+from copy import deepcopy
 
 template_path = sys.argv[1]
 output_path = sys.argv[2]
@@ -1199,6 +1205,86 @@ sections = payload.get('sections', [])
 cabinet_style = payload.get('cabinetStyle', {})
 
 doc = Document(template_path)
+
+# ═══ FONT CASCADE: template → cabinet → fallback ═══
+# Detect the dominant font in the template
+def detect_template_font(doc):
+    """Scan template paragraphs to find the most-used font."""
+    font_counts = {}
+    for para in doc.paragraphs:
+        for run in para.runs:
+            if run.font and run.font.name and run.text.strip():
+                fn = run.font.name
+                font_counts[fn] = font_counts.get(fn, 0) + len(run.text)
+    if not font_counts:
+        return None
+    return max(font_counts, key=font_counts.get)
+
+TEMPLATE_FONT = detect_template_font(doc)
+CABINET_FONT = cabinet_style.get('fontFamily')
+# Cascade: cabinet override > template detection > safe fallback
+BASE_FONT = CABINET_FONT or TEMPLATE_FONT or 'Times New Roman'
+# Table font can be slightly different (same family but smaller)
+TABLE_FONT = BASE_FONT
+
+# ═══ HELPER: Extract style from a marker paragraph ═══
+def extract_paragraph_style(para):
+    """Extract formatting properties from a paragraph to inherit them."""
+    style = {
+        'font_name': BASE_FONT,
+        'font_size': 22,       # half-points (22 = 11pt)
+        'font_color': '1A1E28',
+        'space_after': 120,    # twips
+        'space_before': 0,
+        'line_spacing': 300,   # twips (300 = ~15pt)
+        'alignment': None,
+        'first_line_indent': None,
+    }
+    # Try to get from runs
+    for run in para.runs:
+        if run.font:
+            if run.font.name:
+                style['font_name'] = run.font.name
+            if run.font.size:
+                style['font_size'] = int(run.font.size.pt * 2)  # convert to half-points
+            if run.font.color and run.font.color.rgb:
+                style['font_color'] = str(run.font.color.rgb)
+        break  # first run is enough
+
+    # Paragraph format
+    pf = para.paragraph_format
+    if pf:
+        if pf.space_after is not None:
+            try: style['space_after'] = int(pf.space_after / Emu(12700))  # EMU to twips approx
+            except: pass
+        if pf.space_before is not None:
+            try: style['space_before'] = int(pf.space_before / Emu(12700))
+            except: pass
+        if pf.alignment is not None:
+            style['alignment'] = pf.alignment
+
+    # Also check XML directly for more reliable spacing
+    pPr = para._element.find(qn('w:pPr'))
+    if pPr is not None:
+        spacing = pPr.find(qn('w:spacing'))
+        if spacing is not None:
+            sa = spacing.get(qn('w:after'))
+            if sa: style['space_after'] = int(sa)
+            sb = spacing.get(qn('w:before'))
+            if sb: style['space_before'] = int(sb)
+            ln = spacing.get(qn('w:line'))
+            if ln: style['line_spacing'] = int(ln)
+        ind = pPr.find(qn('w:ind'))
+        if ind is not None:
+            fl = ind.get(qn('w:firstLine'))
+            if fl: style['first_line_indent'] = int(fl)
+
+    return style
+
+# ═══ HELPER: Escape XML ═══
+def esc(text):
+    """Escape XML special characters."""
+    return str(text).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
 
 # ═══ HELPER: Replace {{key}} in paragraph preserving formatting ═══
 def replace_in_paragraph(paragraph, data):
@@ -1221,159 +1307,154 @@ def replace_in_paragraph(paragraph, data):
             run.text = ''
     return replacements
 
-# ═══ HELPER: Set cell shading ═══
-def set_cell_shading(cell, color_hex):
-    """Set background color of a table cell."""
-    shading_elm = parse_xml(f'<w:shd {nsdecls("w")} w:fill="{color_hex}"/>')
-    cell._tc.get_or_add_tcPr().append(shading_elm)
+# ═══ HELPER: Parse markdown-minimal content into rich runs ═══
+def parse_rich_text(text, style):
+    """Parse minimal markdown into OOXML runs.
+    Supports: **bold**, ### Heading, - bullet items
+    Returns a list of paragraph dicts: [{type, runs, indent}]
+    """
+    font = esc(style['font_name'])
+    sz = style['font_size']
+    color = style['font_color']
+    paragraphs = []
 
-# ═══ HELPER: Set cell borders ═══
-def set_cell_border(cell, **kwargs):
-    """Set cell borders. kwargs: top, bottom, left, right, each a dict with val, sz, color."""
-    tc = cell._tc
-    tcPr = tc.get_or_add_tcPr()
-    tcBorders = parse_xml(f'<w:tcBorders {nsdecls("w")}></w:tcBorders>')
-    for edge, attrs in kwargs.items():
-        element = parse_xml(
-            f'<w:{edge} {nsdecls("w")} w:val="{attrs.get("val", "single")}" '
-            f'w:sz="{attrs.get("sz", "4")}" w:space="0" '
-            f'w:color="{attrs.get("color", "000000")}"/>'
-        )
-        tcBorders.append(element)
-    tcPr.append(tcBorders)
-
-# ═══ HELPER: Add a professional formatted table ═══
-def add_formatted_table(doc, section, insert_after=None):
-    """Insert a professionally formatted table into the document."""
-    td = section.get('tableData', {})
-    if not td:
-        return
-
-    headers = td.get('headers', [])
-    rows = td.get('rows', [])
-    highlight_rows = td.get('highlightRows', [])
-    footer_row = td.get('footerRow')
-    caption = td.get('caption', '')
-    header_color = td.get('headerColor', '1a3a5c').lstrip('#')
-
-    if not headers or not rows:
-        return
-
-    num_cols = len(headers)
-    total_rows = len(rows) + 1 + (1 if footer_row else 0)
-
-    # Add caption as paragraph before table
-    if caption:
-        p_caption = doc.add_paragraph()
-        run = p_caption.add_run(caption)
-        run.bold = True
-        run.font.size = Pt(10)
-        run.font.color.rgb = RGBColor(0x1a, 0x3a, 0x5c)
-        p_caption.alignment = WD_ALIGN_PARAGRAPH.LEFT
-        p_caption.space_after = Pt(4)
-
-    # Create table
-    table = doc.add_table(rows=total_rows, cols=num_cols)
-    table.alignment = WD_TABLE_ALIGNMENT.CENTER
-    table.autofit = True
-
-    # Style header row
-    header_row_cells = table.rows[0].cells
-    for i, h in enumerate(headers):
-        cell = header_row_cells[i]
-        cell.text = ''
-        p = cell.paragraphs[0]
-        run = p.add_run(h.get('label', h.get('key', '')))
-        run.bold = True
-        run.font.size = Pt(9)
-        run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
-        run.font.name = 'DM Sans'
-        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        # Header background
-        set_cell_shading(cell, header_color)
-
-    # Data rows
-    for row_idx, row_data in enumerate(rows):
-        row_cells = table.rows[row_idx + 1].cells
-        is_highlight = row_idx in highlight_rows
-
-        for col_idx, h in enumerate(headers):
-            cell = row_cells[col_idx]
-            key = h.get('key', '')
-            value = str(row_data.get(key, ''))
-            cell.text = ''
-            p = cell.paragraphs[0]
-            run = p.add_run(value)
-            run.font.size = Pt(9)
-            run.font.name = 'DM Sans'
-
-            if is_highlight:
-                # Highlight row: light yellow background + bold
-                set_cell_shading(cell, 'FFF3CD')
-                run.bold = True
-                run.font.color.rgb = RGBColor(0x85, 0x6D, 0x0E)
-            else:
-                # Alternate row shading
-                if row_idx % 2 == 1:
-                    set_cell_shading(cell, 'F8F9FA')
-
-            # Right-align numeric values
-            try:
-                float(value.replace(',', '.').replace(' ', '').replace('%', ''))
-                p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-            except (ValueError, AttributeError):
-                p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-
-    # Footer row (totals)
-    if footer_row:
-        footer_cells = table.rows[-1].cells
-        for col_idx, h in enumerate(headers):
-            cell = footer_cells[col_idx]
-            key = h.get('key', '')
-            value = str(footer_row.get(key, ''))
-            cell.text = ''
-            p = cell.paragraphs[0]
-            run = p.add_run(value)
-            run.bold = True
-            run.font.size = Pt(9)
-            run.font.name = 'DM Sans'
-            run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
-            p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-            set_cell_shading(cell, '2C3E50')
-
-    # Add thin borders to all cells
-    for row in table.rows:
-        for cell in row.cells:
-            set_cell_border(cell,
-                top={"val": "single", "sz": "4", "color": "DEE2E6"},
-                bottom={"val": "single", "sz": "4", "color": "DEE2E6"},
-                left={"val": "single", "sz": "4", "color": "DEE2E6"},
-                right={"val": "single", "sz": "4", "color": "DEE2E6"},
-            )
-
-    # Space after table
-    p_after = doc.add_paragraph()
-    p_after.space_before = Pt(6)
-
-    return table
-
-# ═══ HELPER: Add narrative paragraphs ═══
-def add_narrative(doc, content):
-    """Insert AI-generated narrative text, splitting by double newlines into paragraphs."""
-    if not content:
-        return
-    paragraphs = content.split('\\n\\n')
-    for text in paragraphs:
-        text = text.strip()
-        if not text:
+    lines = text.split('\\n')
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+        if not line:
+            i += 1
             continue
-        p = doc.add_paragraph()
-        run = p.add_run(text)
-        run.font.size = Pt(11)
-        run.font.name = 'DM Sans'
-        run.font.color.rgb = RGBColor(0x1a, 0x1e, 0x28)
-        p.paragraph_format.space_after = Pt(6)
-        p.paragraph_format.line_spacing = Pt(15)
+
+        # Sub-heading: ### Title
+        if line.startswith('### '):
+            heading_text = line[4:].strip()
+            paragraphs.append({
+                'type': 'heading',
+                'runs': [{'text': esc(heading_text), 'bold': True, 'sz': sz + 2}],
+            })
+            i += 1
+            continue
+
+        # Bullet: - item
+        if line.startswith('- '):
+            bullet_text = line[2:].strip()
+            runs = parse_inline_bold(bullet_text, font, sz, color)
+            paragraphs.append({
+                'type': 'bullet',
+                'runs': runs,
+            })
+            i += 1
+            continue
+
+        # Regular paragraph — accumulate consecutive non-special lines
+        para_lines = [line]
+        i += 1
+        while i < len(lines):
+            next_line = lines[i].strip()
+            if not next_line or next_line.startswith('### ') or next_line.startswith('- '):
+                break
+            para_lines.append(next_line)
+            i += 1
+
+        full_para = ' '.join(para_lines)
+        runs = parse_inline_bold(full_para, font, sz, color)
+        paragraphs.append({
+            'type': 'paragraph',
+            'runs': runs,
+        })
+
+    return paragraphs
+
+
+def parse_inline_bold(text, font, sz, color):
+    """Parse **bold** markers within text into runs."""
+    runs = []
+    parts = re.split(r'(\\*\\*[^*]+\\*\\*)', text)
+    for part in parts:
+        if part.startswith('**') and part.endswith('**'):
+            inner = part[2:-2]
+            runs.append({'text': esc(inner), 'bold': True, 'sz': sz})
+        elif part:
+            runs.append({'text': esc(part), 'bold': False, 'sz': sz})
+    return runs
+
+
+def build_rich_paragraph_xml(para_dict, style):
+    """Build OOXML paragraph from parsed rich text dict."""
+    font = esc(style['font_name'])
+    color = style['font_color']
+    sa = style['space_after']
+    ls = style['line_spacing']
+    first_indent = style.get('first_line_indent')
+
+    ptype = para_dict['type']
+
+    # Spacing and indentation
+    spacing = f'<w:spacing w:after="{sa}" w:line="{ls}" w:lineRule="auto"/>'
+    indent = ''
+
+    if ptype == 'heading':
+        # Sub-heading: slightly more space before, bold
+        spacing = f'<w:spacing w:before="160" w:after="80" w:line="{ls}" w:lineRule="auto"/>'
+    elif ptype == 'bullet':
+        # Bullet: left indent + hanging indent for bullet char
+        indent = '<w:ind w:left="720" w:hanging="360"/>'
+    elif first_indent:
+        indent = f'<w:ind w:firstLine="{first_indent}"/>'
+
+    xml = f'<w:p {nsdecls("w")}><w:pPr>{spacing}{indent}</w:pPr>'
+
+    # Add bullet character for bullet type
+    if ptype == 'bullet':
+        xml += f'<w:r><w:rPr><w:rFonts w:ascii="Symbol" w:hAnsi="Symbol"/>'
+        xml += f'<w:sz w:val="{style["font_size"]}"/><w:color w:val="{color}"/></w:rPr>'
+        xml += '<w:t>&#x2022;</w:t></w:r>'
+        xml += f'<w:r><w:rPr><w:rFonts w:ascii="{font}" w:hAnsi="{font}"/>'
+        xml += f'<w:sz w:val="{style["font_size"]}"/></w:rPr>'
+        xml += '<w:t xml:space="preserve"> </w:t></w:r>'
+
+    for run in para_dict['runs']:
+        bold = '<w:b/>' if run.get('bold') else ''
+        run_sz = run.get('sz', style['font_size'])
+        xml += f'<w:r><w:rPr><w:rFonts w:ascii="{font}" w:hAnsi="{font}"/>'
+        xml += f'<w:sz w:val="{run_sz}"/>{bold}<w:color w:val="{color}"/></w:rPr>'
+        xml += f'<w:t xml:space="preserve">{run["text"]}</w:t></w:r>'
+
+    xml += '</w:p>'
+    return xml
+
+# ═══ HELPER: Calculate column widths based on content ═══
+def calc_column_widths(headers, rows, footer_row, num_cols):
+    """Calculate proportional column widths based on content length.
+    Returns list of width percentages (sum = 5000 in pct units).
+    """
+    max_lengths = [0] * num_cols
+    for i, h in enumerate(headers):
+        label = h.get('label', h.get('key', ''))
+        max_lengths[i] = max(max_lengths[i], len(str(label)))
+    for row_data in rows:
+        for i, h in enumerate(headers):
+            val = str(row_data.get(h.get('key', ''), ''))
+            max_lengths[i] = max(max_lengths[i], len(val))
+    if footer_row:
+        for i, h in enumerate(headers):
+            val = str(footer_row.get(h.get('key', ''), ''))
+            max_lengths[i] = max(max_lengths[i], len(val))
+
+    # Ensure minimum width and cap maximum
+    for i in range(num_cols):
+        max_lengths[i] = max(max_lengths[i], 4)   # min 4 chars
+        max_lengths[i] = min(max_lengths[i], 80)   # cap at 80
+
+    total = sum(max_lengths) or 1
+    # Convert to pct units (5000 = 100%)
+    widths = [int((l / total) * 5000) for l in max_lengths]
+    # Adjust rounding to exactly 5000
+    diff = 5000 - sum(widths)
+    if widths:
+        widths[0] += diff
+    return widths
 
 # ═══ BUILD SECTION MAP ═══
 section_map = {}
@@ -1405,7 +1486,6 @@ for section in doc.sections:
                 replace_in_paragraph(para, elements)
 
 # ═══ PHASE 2: Replace COMPOSE/TABLE/CALC markers ═══
-# Find paragraphs containing {{COMPOSE:...}}, {{TABLE:...}}, {{CALC:...}}
 marker_prefixes = ['COMPOSE:', 'TABLE:', 'CALC:']
 
 paragraphs_to_process = []
@@ -1414,7 +1494,6 @@ for i, para in enumerate(doc.paragraphs):
     for prefix in marker_prefixes:
         marker_start = '{{' + prefix
         if marker_start in text:
-            # Extract full marker
             start = text.index(marker_start) + 2
             end = text.index('}}', start)
             marker = text[start:end]
@@ -1424,42 +1503,51 @@ for i, para in enumerate(doc.paragraphs):
 for idx, para, marker, marker_type in reversed(paragraphs_to_process):
     section_data = section_map.get(marker)
     if not section_data:
-        # Leave marker as-is if no AI content
         continue
+
+    # Extract style from marker paragraph BEFORE clearing it
+    inherited_style = extract_paragraph_style(para)
+    # Override font with cascade
+    inherited_style['font_name'] = BASE_FONT
 
     # Clear the marker paragraph
     for run in para.runs:
         run.text = ''
 
-    # Get the paragraph's parent element to insert after
-    parent = para._element.getparent()
     para_element = para._element
 
     if marker_type == 'COMPOSE' and section_data.get('content'):
-        # Insert narrative paragraphs after the marker position
         content = section_data['content']
-        paragraphs_text = content.split('\\n\\n')
+        # Parse rich text (markdown minimal → structured paragraphs)
+        rich_paragraphs = parse_rich_text(content, inherited_style)
 
         insert_after = para_element
-        for text in paragraphs_text:
-            text = text.strip()
-            if not text:
-                continue
-            # Create new paragraph element
-            new_para = parse_xml(
-                f'<w:p {nsdecls("w")}>'
-                f'<w:pPr><w:spacing w:after="120" w:line="300" w:lineRule="auto"/></w:pPr>'
-                f'<w:r><w:rPr><w:rFonts w:ascii="DM Sans" w:hAnsi="DM Sans"/>'
-                f'<w:sz w:val="22"/><w:color w:val="1A1E28"/></w:rPr>'
-                f'<w:t xml:space="preserve">{text}</w:t></w:r>'
-                f'</w:p>'
-            )
-            insert_after.addnext(new_para)
-            insert_after = new_para
+        for rp in rich_paragraphs:
+            xml = build_rich_paragraph_xml(rp, inherited_style)
+            try:
+                new_para = parse_xml(xml)
+                insert_after.addnext(new_para)
+                insert_after = new_para
+            except Exception as e:
+                # Fallback: plain text without formatting
+                fallback_text = ' '.join(r['text'] for r in rp.get('runs', []))
+                font_n = esc(BASE_FONT)
+                fallback_xml = (
+                    f'<w:p {nsdecls("w")}>'
+                    f'<w:pPr><w:spacing w:after="120" w:line="300" w:lineRule="auto"/></w:pPr>'
+                    f'<w:r><w:rPr><w:rFonts w:ascii="{font_n}" w:hAnsi="{font_n}"/>'
+                    f'<w:sz w:val="22"/></w:rPr>'
+                    f'<w:t xml:space="preserve">{fallback_text}</w:t></w:r>'
+                    f'</w:p>'
+                )
+                try:
+                    new_para = parse_xml(fallback_xml)
+                    insert_after.addnext(new_para)
+                    insert_after = new_para
+                except:
+                    pass
 
     elif marker_type in ('TABLE', 'CALC') and section_data.get('tableData'):
-        # For tables, we need to insert after the paragraph
-        # We'll use the document body to find position and insert table XML
         td = section_data['tableData']
         headers = td.get('headers', [])
         rows = td.get('rows', [])
@@ -1472,56 +1560,66 @@ for idx, para, marker, marker_type in reversed(paragraphs_to_process):
             continue
 
         num_cols = len(headers)
+        col_widths = calc_column_widths(headers, rows, footer_row, num_cols)
+        table_font = esc(TABLE_FONT)
 
-        # Add caption in the marker paragraph itself
+        # Caption in the marker paragraph
         if caption:
             if para.runs:
                 para.runs[0].text = caption
                 para.runs[0].bold = True
                 para.runs[0].font.size = Pt(10)
                 para.runs[0].font.color.rgb = RGBColor(0x1a, 0x3a, 0x5c)
+                para.runs[0].font.name = BASE_FONT
             else:
                 run = para.add_run(caption)
                 run.bold = True
                 run.font.size = Pt(10)
                 run.font.color.rgb = RGBColor(0x1a, 0x3a, 0x5c)
+                run.font.name = BASE_FONT
 
-        # Build table XML
-        all_rows = [headers] + [[row_data.get(h.get('key', ''), '') for h in headers] for row_data in rows]
+        # Build all row data
+        all_rows_data = [headers] + [[row_data.get(h.get('key', ''), '') for h in headers] for row_data in rows]
         if footer_row:
-            all_rows.append([footer_row.get(h.get('key', ''), '') for h in headers])
+            all_rows_data.append([footer_row.get(h.get('key', ''), '') for h in headers])
 
-        # Build OOXml table
+        # Build OOXml table with column widths
         tbl_xml = f'<w:tbl {nsdecls("w")}>'
         tbl_xml += '<w:tblPr><w:tblW w:w="5000" w:type="pct"/>'
         tbl_xml += '<w:tblBorders>'
         for border in ['top', 'left', 'bottom', 'right', 'insideH', 'insideV']:
             tbl_xml += f'<w:{border} w:val="single" w:sz="4" w:space="0" w:color="DEE2E6"/>'
         tbl_xml += '</w:tblBorders></w:tblPr>'
-        tbl_xml += f'<w:tblGrid>{"".join(f"<w:gridCol/>" for _ in range(num_cols))}</w:tblGrid>'
+        # Grid columns with calculated widths
+        tbl_xml += '<w:tblGrid>'
+        for w in col_widths:
+            tbl_xml += f'<w:gridCol w:w="{w}"/>'
+        tbl_xml += '</w:tblGrid>'
 
-        for r_idx, r_data in enumerate(all_rows):
-            is_header = (r_idx == 0)
-            is_footer = (footer_row and r_idx == len(all_rows) - 1)
-            is_highlight = (r_idx - 1) in highlight_rows if r_idx > 0 and not is_footer else False
-            is_alt = (r_idx % 2 == 0) and not is_header and not is_footer and not is_highlight
+        for r_idx, r_data in enumerate(all_rows_data):
+            is_header_row = (r_idx == 0)
+            is_footer_row = (footer_row and r_idx == len(all_rows_data) - 1)
+            is_highlight = (r_idx - 1) in highlight_rows if r_idx > 0 and not is_footer_row else False
+            is_alt = (r_idx % 2 == 0) and not is_header_row and not is_footer_row and not is_highlight
 
             tbl_xml += '<w:tr>'
 
             for c_idx in range(num_cols):
-                if is_header:
+                if is_header_row:
                     cell_val = r_data[c_idx].get('label', r_data[c_idx].get('key', '')) if isinstance(r_data[c_idx], dict) else str(r_data[c_idx])
                 else:
                     cell_val = str(r_data[c_idx]) if r_data[c_idx] is not None else ''
 
-                # Escape XML special chars
-                cell_val = cell_val.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                cell_val = esc(cell_val)
+
+                # Cell width
+                width_xml = f'<w:tcW w:w="{col_widths[c_idx]}" w:type="pct"/>'
 
                 # Cell shading
                 shading = ''
-                if is_header:
+                if is_header_row:
                     shading = f'<w:shd w:val="clear" w:color="auto" w:fill="{header_color}"/>'
-                elif is_footer:
+                elif is_footer_row:
                     shading = '<w:shd w:val="clear" w:color="auto" w:fill="2C3E50"/>'
                 elif is_highlight:
                     shading = '<w:shd w:val="clear" w:color="auto" w:fill="FFF3CD"/>'
@@ -1529,19 +1627,28 @@ for idx, para, marker, marker_type in reversed(paragraphs_to_process):
                     shading = '<w:shd w:val="clear" w:color="auto" w:fill="F8F9FA"/>'
 
                 # Font color
-                if is_header or is_footer:
+                if is_header_row or is_footer_row:
                     font_color = 'FFFFFF'
                 elif is_highlight:
                     font_color = '856D0E'
                 else:
                     font_color = '1A1E28'
 
-                bold_tag = '<w:b/>' if (is_header or is_footer or is_highlight) else ''
+                bold_tag = '<w:b/>' if (is_header_row or is_footer_row or is_highlight) else ''
+
+                # Detect numeric for right-alignment
+                align_xml = ''
+                try:
+                    float(cell_val.replace(',', '.').replace(' ', '').replace('%', '').replace('&amp;', ''))
+                    align_xml = '<w:jc w:val="right"/>'
+                except (ValueError, AttributeError):
+                    if is_header_row:
+                        align_xml = '<w:jc w:val="center"/>'
 
                 tbl_xml += '<w:tc>'
-                tbl_xml += f'<w:tcPr>{shading}</w:tcPr>'
-                tbl_xml += f'<w:p><w:pPr><w:spacing w:after="40" w:before="40"/></w:pPr>'
-                tbl_xml += f'<w:r><w:rPr><w:rFonts w:ascii="DM Sans" w:hAnsi="DM Sans"/>'
+                tbl_xml += f'<w:tcPr>{width_xml}{shading}</w:tcPr>'
+                tbl_xml += f'<w:p><w:pPr><w:spacing w:after="40" w:before="40"/>{align_xml}</w:pPr>'
+                tbl_xml += f'<w:r><w:rPr><w:rFonts w:ascii="{table_font}" w:hAnsi="{table_font}"/>'
                 tbl_xml += f'<w:sz w:val="18"/>{bold_tag}<w:color w:val="{font_color}"/></w:rPr>'
                 tbl_xml += f'<w:t xml:space="preserve">{cell_val}</w:t></w:r>'
                 tbl_xml += '</w:p></w:tc>'
@@ -1554,7 +1661,6 @@ for idx, para, marker, marker_type in reversed(paragraphs_to_process):
             tbl_element = parse_xml(tbl_xml)
             para_element.addnext(tbl_element)
         except Exception as e:
-            # Fallback: just note the error in the marker paragraph
             if para.runs:
                 para.runs[0].text = f'[EROARE TABEL: {str(e)[:100]}]'
 
@@ -1565,25 +1671,14 @@ for table in doc.tables:
             for para in cell.paragraphs:
                 replace_in_paragraph(para, elements)
 
-# Apply cabinet document style
-cab_font = cabinet_style.get('fontFamily')
+# ═══ FINAL: Apply cabinet footer + watermark ═══
 cab_footer = cabinet_style.get('footerText')
 cab_draft_watermark = cabinet_style.get('draftWatermark', False)
 cab_watermark_text = cabinet_style.get('draftWatermarkText', 'DRAFT')
 cab_is_work_doc = cabinet_style.get('_isWorkDocument', True)
 
-if cab_font:
-    for para in doc.paragraphs:
-        for run in para.runs:
-            if run.font and run.text.strip():
-                run.font.name = cab_font
-    for table in doc.tables:
-        for row in table.rows:
-            for cell in row.cells:
-                for para in cell.paragraphs:
-                    for run in para.runs:
-                        if run.font and run.text.strip():
-                            run.font.name = cab_font
+# Apply BASE_FONT to all AI-generated content (not template content which keeps its own fonts)
+# This is already handled via the XML generation above using BASE_FONT
 
 if cab_footer:
     for section in doc.sections:
@@ -1593,8 +1688,7 @@ if cab_footer:
             run = p.add_run(cab_footer)
             run.font.size = Pt(8)
             run.font.color.rgb = RGBColor(0x88, 0x88, 0x88)
-            if cab_font:
-                run.font.name = cab_font
+            run.font.name = BASE_FONT
 
 # Add DRAFT watermark on work documents
 if cab_draft_watermark and cab_is_work_doc and cab_watermark_text:
@@ -1608,7 +1702,7 @@ if cab_draft_watermark and cab_is_work_doc and cab_watermark_text:
             <w:sz w:val="96"/>
             <w:szCs w:val="96"/>
           </w:rPr>
-          <w:t>{cab_watermark_text}</w:t>
+          <w:t>{esc(cab_watermark_text)}</w:t>
         </w:r>'''
         try:
             p._element.append(parse_xml(watermark_xml))
@@ -1625,7 +1719,9 @@ report = {
     "filled_count": len(filled_keys),
     "filled_keys": filled_keys,
     "composed_sections": composed_sections,
-    "total_sections": len(composed_sections)
+    "total_sections": len(composed_sections),
+    "base_font": BASE_FONT,
+    "template_font_detected": TEMPLATE_FONT or "none"
 }
 print(json.dumps(report))
 `;

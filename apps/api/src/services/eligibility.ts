@@ -374,7 +374,7 @@ export async function checkEligibility(projectId: string, organizationId: string
   // Overlay projectElements values (Solomon-collected data takes precedence)
   await overlayProjectElements(companyData, projectId, organizationId);
 
-  // Preserve manual overrides before re-evaluating
+  // Preserve manual overrides AND pre-eligibility notes before re-evaluating
   const existingResults = await db.query.projectEligibility.findMany({
     where: eq(projectEligibility.projectId, projectId),
   });
@@ -382,6 +382,11 @@ export async function checkEligibility(projectId: string, organizationId: string
     existingResults
       .filter(r => r.overrideResult !== null)
       .map(r => [r.ruleId, { overrideResult: r.overrideResult, overrideBy: r.overrideBy, notes: r.notes }])
+  );
+  const preEligNotes = new Map(
+    existingResults
+      .filter(r => r.notes && r.notes.startsWith("[Pre-elig]"))
+      .map(r => [r.ruleId, r.notes])
   );
 
   // === STEP 1: FIXED RULES (automatic, no AI) ===
@@ -427,12 +432,17 @@ export async function checkEligibility(projectId: string, organizationId: string
           notes: override.notes || r.notes,
         };
       }
+      // Preserve pre-eligibility notes: append them to new notes so instant feedback isn't lost
+      const preNote = preEligNotes.get(r.ruleId);
+      const combinedNotes = preNote && r.notes
+        ? `${r.notes} | ${preNote}`
+        : r.notes || preNote || null;
       return {
         projectId,
         ruleId: r.ruleId,
         status: r.status,
         autoResult: r.autoResult,
-        notes: r.notes,
+        notes: combinedNotes,
       };
     });
 

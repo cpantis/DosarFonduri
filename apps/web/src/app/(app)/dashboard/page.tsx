@@ -16,6 +16,10 @@ interface DashboardData {
   recentProjects: Array<{
     id: string; name: string; status: string; updatedAt: string;
     firma: string; program: string;
+    eligibility?: number; eligTotal?: number;
+    elements?: number; elemTotal?: number;
+    checkDone?: number; checkTotal?: number;
+    docsGenerated?: number; docsTotal?: number;
   }>;
   activity: Array<{
     id: string; userId: string; userName: string | null;
@@ -122,7 +126,7 @@ export default function DashboardPage() {
                       className="bg-white rounded-xl border border-slate-200/80 p-4 shadow-[0_1px_2px_rgba(0,0,0,.03)] hover:shadow-[0_3px_8px_rgba(0,0,0,.06)] hover:border-slate-300/80 transition-all cursor-pointer group flex items-center justify-between overflow-hidden"
                       onClick={() => router.push(`/projects/${p.id}`)}
                     >
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2.5 flex-wrap">
                           <span className="text-[15px] font-semibold text-slate-900 group-hover:text-blue-600 transition-colors truncate max-w-full">{p.name}</span>
                           <StatusBadge status={p.status} />
@@ -131,6 +135,14 @@ export default function DashboardPage() {
                           <span className="truncate max-w-[200px]">{p.firma}</span>
                           {p.program && <><span className="text-slate-300">·</span><span className="text-slate-400 truncate max-w-[200px]">{p.program}</span></>}
                         </div>
+                        {(p.eligTotal != null && p.eligTotal > 0) && (
+                          <div className="flex items-center gap-3 mt-1.5 text-[11px] text-slate-400">
+                            <span title="Eligibilitate">✓ {p.eligibility ?? 0}/{p.eligTotal}</span>
+                            {p.elemTotal != null && p.elemTotal > 0 && <span title="Elemente">◈ {p.elements ?? 0}/{p.elemTotal}</span>}
+                            {p.checkTotal != null && p.checkTotal > 0 && <span title="Checklist">☑ {p.checkDone ?? 0}/{p.checkTotal}</span>}
+                            {p.docsTotal != null && p.docsTotal > 0 && <span title="Documente generate">⎙ {p.docsGenerated ?? 0}/{p.docsTotal}</span>}
+                          </div>
+                        )}
                       </div>
                       <svg className="w-4 h-4 text-slate-300 group-hover:text-slate-400 transition-colors shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                     </div>

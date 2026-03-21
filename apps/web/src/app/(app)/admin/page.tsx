@@ -331,7 +331,16 @@ export default function AdminPage() {
                           Schimbă rol
                         </BtnSecondary>
                         {u.status === "invited" && (
-                          <BtnSecondary size="sm" icon={<IconSend />}>
+                          <BtnSecondary size="sm" icon={<IconSend />}
+                            onClick={async () => {
+                              try {
+                                await apiPost(`/api/admin/users/${u.id}/resend-invite`, {});
+                                toast("success", `Invitație retrimisă la ${u.email}`);
+                              } catch (err: any) {
+                                toast("error", err.message || "Eroare la retrimitere.");
+                              }
+                            }}
+                          >
                             Retrimite invitație
                           </BtnSecondary>
                         )}

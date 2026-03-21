@@ -181,7 +181,7 @@ projectRoutes.get("/", async (c) => {
     return {
       ...p,
       company: company ? { denumire: company.denumire, cui: company.cui } : null,
-      programPath: pathCache[p.folderId] || "",
+      programPath: pathCache[p.folderId] || { program: "", masura: "", sesiune: "" },
       lock: lockActive ? { lockedBy: p.lockedBy, lockedByName: lockerMap[p.lockedBy!] || null, lockedAt: p.lockedAt } : null,
       progress: {
         eligibility: { passed: Number(elig.passed), total: Number(elig.total) },
@@ -699,16 +699,27 @@ projectRoutes.put("/:id/elements/:eid", async (c) => {
     });
   }
 
-  // 3. SSE: element validated
+  // 3. SSE: element validated — resolve key from templateElement OR elementDefinition
   const templateEl = updated.templateElementId ? await db.query.templateElements.findFirst({
     where: eq(templateElements.id, updated.templateElementId),
   }) : null;
+  let sseElementKey = templateEl?.key || "";
+  let sseElementLabel = templateEl?.label || templateEl?.key || "";
+  if (!sseElementKey && updated.elementDefId) {
+    const elemDef = await db.query.elementDefinitions.findFirst({
+      where: eq(elementDefinitions.id, updated.elementDefId),
+    });
+    if (elemDef) {
+      sseElementKey = elemDef.elementKey;
+      sseElementLabel = elemDef.displayName || elemDef.elementKey;
+    }
+  }
   publishElementValidated(id, {
     elementId: eid,
-    elementKey: templateEl?.key || "",
+    elementKey: sseElementKey,
     value: updated.value,
     validationStatus: validation.status,
-    message: `Element "${templateEl?.label || templateEl?.key}" → ${validation.status}`,
+    message: `Element "${sseElementLabel}" → ${validation.status}`,
   });
 
   // 4. Re-check eligibility

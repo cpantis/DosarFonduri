@@ -39,6 +39,8 @@ const configUpdateSchema = z.object({
   reguliInterpModel: z.string().optional(),
   reguliInterpET: z.boolean().optional(),
   reviewThreshold: z.string().optional(),
+  solomonLabel: z.string().max(100).optional(),
+  neemiaLabel: z.string().max(100).optional(),
   notifNewElement: z.boolean().optional(),
   notifEligFail: z.boolean().optional(),
   notifTemplateReady: z.boolean().optional(),

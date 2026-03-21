@@ -140,7 +140,7 @@ authRoutes.post("/login", async (c) => {
     const token = await sign({ sub: user.id, exp: Math.floor(Date.now() / 1000) + 7 * 86400 }, process.env.JWT_SECRET!, "HS256");
     return c.json({
       token,
-      user: { id: user.id, email: user.email, name: user.name, role: user.role, theme: user.theme },
+      user: sanitizeUser(user),
       hasOrganization: !!user.organizationId,
     });
   } catch (err: any) {

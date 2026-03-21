@@ -20,7 +20,7 @@ import {
   templateElements, documents, orgConfig, companies,
   guideReferenceTables, rules, ruleReferenceLinks, elementRuleLinks,
   organizations, solomonKnowledge, composeSectionVersions,
-  projectChecklist,
+  projectChecklist, elementDefinitions,
 } from "../db/schema";
 import { eq, and, inArray, isNull, or, like } from "drizzle-orm";
 import { getFileBuffer, uploadFile } from "./storage";
@@ -159,17 +159,44 @@ export async function buildComposeContext(
     : [];
   const tmplElMap = new Map(allTmplEls.map(t => [t.id, t]));
 
-  // Build elements map with metadata
+  // Build elements map with metadata — resolve via templateElementId AND elementDefId
   const elements: ComposeContext["elements"] = {};
+
+  // Load element definitions for elementDefId resolution
+  const elemDefIds = [...new Set(projEls.map(pe => pe.elementDefId).filter((id): id is string => id != null))];
+  const allElemDefs = elemDefIds.length > 0
+    ? await db.query.elementDefinitions.findMany({
+        where: inArray(elementDefinitions.id, elemDefIds),
+      })
+    : [];
+  const elemDefMap = new Map(allElemDefs.map(ed => [ed.id, ed]));
+
   for (const pe of projEls) {
-    if (!pe.templateElementId) continue;
-    const te = tmplElMap.get(pe.templateElementId);
-    if (te && pe.value) {
-      elements[te.key] = {
-        value: pe.value,
-        label: te.label,
-        source: pe.source,
-      };
+    if (!pe.value) continue;
+
+    // Path 1: resolve via templateElementId (existing behavior)
+    if (pe.templateElementId) {
+      const te = tmplElMap.get(pe.templateElementId);
+      if (te) {
+        elements[te.key] = {
+          value: pe.value,
+          label: te.label,
+          source: pe.source,
+        };
+        continue;
+      }
+    }
+
+    // Path 2: resolve via elementDefId (new — handles guide-based elements)
+    if (pe.elementDefId) {
+      const ed = elemDefMap.get(pe.elementDefId);
+      if (ed && !elements[ed.elementKey]) {
+        elements[ed.elementKey] = {
+          value: pe.value,
+          label: ed.displayName || ed.elementKey,
+          source: pe.source,
+        };
+      }
     }
   }
 
@@ -661,9 +688,10 @@ export async function composeDocument(params: ComposeDocParams): Promise<Readabl
 
         emit({ type: "status", message: "Se construiește documentul cu tabele și conținut narativ..." });
 
-        // Build elements map for simple {{key}} replacements
+        // Re-read elements fresh before DOCX fill to capture any changes made during AI generation
+        const freshContext = await buildComposeContext(projectId, organizationId, templateDocumentId);
         const simpleElements: Record<string, string> = {};
-        for (const [key, { value }] of Object.entries(context.elements)) {
+        for (const [key, { value }] of Object.entries(freshContext.elements)) {
           simpleElements[key] = value;
         }
         if (cabinetStyle.footerText) simpleElements["footer_cabinet"] = cabinetStyle.footerText;

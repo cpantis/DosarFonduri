@@ -24,6 +24,7 @@ import {
 } from "../db/schema";
 import { eq, and, inArray, isNull, or, like } from "drizzle-orm";
 import { getFileBuffer, uploadFile } from "./storage";
+import { extractTextFromDOCX } from "./ocr";
 import { logAIUsage } from "./aiUsage";
 import crypto from "crypto";
 
@@ -102,6 +103,7 @@ export interface ComposeContext {
   programFinantare: string;
   codMasura: string;
   numberFormat: "ro" | "en";
+  templateText?: string;  // Extracted text from template DOCX for structural context
   elements: Record<string, { value: string; label: string; source: string }>;
   referenceTables: Array<{
     id: string;
@@ -266,6 +268,24 @@ export async function buildComposeContext(
   });
   const cabinetStyle = org?.cabinetDocumentStyle as Record<string, any> || {};
 
+  // Extract template DOCX text for structural context
+  let templateText: string | undefined;
+  try {
+    const templateDoc = await db.query.documents.findFirst({
+      where: eq(documents.id, templateDocumentId),
+    });
+    if (templateDoc?.fileId) {
+      const fileResult = await getFileBuffer(templateDoc.fileId);
+      if (fileResult) {
+        const rawText = await extractTextFromDOCX(fileResult.buffer, templateDoc.name || "template.docx");
+        // Truncate to ~4000 chars to avoid overwhelming the prompt
+        templateText = rawText.length > 4000 ? rawText.slice(0, 4000) + "\n[...truncat]" : rawText;
+      }
+    }
+  } catch (err) {
+    console.warn("[buildComposeContext] Could not extract template text:", err);
+  }
+
   return {
     projectName: project.name,
     companyName: company?.denumire || "N/A",
@@ -273,6 +293,7 @@ export async function buildComposeContext(
     programFinantare: project.programFinantare || "N/A",
     codMasura: project.codMasura || "N/A",
     numberFormat: (cabinetStyle.numberFormat as "ro" | "en") || "ro",
+    templateText,
     elements,
     referenceTables: relevantRefTables.map(t => ({
       id: t.id,
@@ -292,23 +313,172 @@ export async function buildComposeContext(
   };
 }
 
+// ═══ INTELLIGENT CHUNKING ═══
+// Splits large documents into optimal chunks based on section complexity
+
+type SectionSpec = {
+  marker: string;
+  type: "narrative" | "table" | "calculation";
+  label: string;
+  instructions?: string;
+  elementKeys?: string[];
+  referenceTableIds?: string[];
+};
+
+/** Estimate output complexity of a section in "weight units" (1 unit ≈ 800 output tokens) */
+function estimateSectionWeight(section: SectionSpec, blueprint?: DocumentBlueprint | null): number {
+  // Tables/calculations are cheaper — structured JSON output
+  if (section.type === "table" || section.type === "calculation") {
+    return 1;
+  }
+  // Narrative complexity depends on blueprint targetLength if available
+  if (blueprint) {
+    const bs = blueprint.sections?.find(
+      s => s.sectionId === section.marker || s.sectionId === section.marker.replace("COMPOSE:", "")
+    );
+    if (bs?.targetLength) {
+      // ~150 tokens per 100 words; add JSON overhead
+      const estimatedTokens = (bs.targetLength.max / 100) * 150 + 200;
+      return Math.max(1, Math.ceil(estimatedTokens / 800));
+    }
+  }
+  // Default: narrative sections are ~2-3 weight units (1500-2400 tokens)
+  return 2;
+}
+
+/** Split sections into chunks, respecting a max weight budget per chunk */
+function buildChunks(
+  sections: SectionSpec[],
+  blueprint?: DocumentBlueprint | null,
+  maxWeightPerChunk: number = 8,
+): SectionSpec[][] {
+  if (sections.length <= 3) return [sections]; // Small docs: single chunk
+
+  const chunks: SectionSpec[][] = [];
+  let currentChunk: SectionSpec[] = [];
+  let currentWeight = 0;
+
+  for (const section of sections) {
+    const weight = estimateSectionWeight(section, blueprint);
+
+    // If adding this section exceeds budget AND we have at least 1 section, start new chunk
+    if (currentWeight + weight > maxWeightPerChunk && currentChunk.length > 0) {
+      chunks.push(currentChunk);
+      currentChunk = [];
+      currentWeight = 0;
+    }
+
+    currentChunk.push(section);
+    currentWeight += weight;
+  }
+
+  if (currentChunk.length > 0) {
+    chunks.push(currentChunk);
+  }
+
+  return chunks;
+}
+
+/** Build a concise summary of already-generated sections for cross-chunk coherence */
+function buildPreviousSectionsSummary(previousSections: ComposeSection[]): string {
+  if (previousSections.length === 0) return "";
+
+  const summaries = previousSections.map(s => {
+    if (s.type === "narrative" && s.content) {
+      // First 200 chars of narrative content
+      const preview = s.content.slice(0, 200).replace(/\n/g, " ");
+      return `- "${s.label}": ${preview}...`;
+    }
+    if (s.tableData) {
+      return `- "${s.label}" (tabel): ${s.tableData.rows?.length || 0} rânduri, ${s.tableData.headers?.map(h => h.label).join(", ")}`;
+    }
+    return `- "${s.label}": generat`;
+  }).join("\n");
+
+  return `\nSECȚIUNI DEJA GENERATE (pentru coerență — NU le regenera, doar continuă stilul):
+${summaries}\n`;
+}
+
+// ═══ AUTO-GENERATE PROGRAM-SPECIFIC WRITING KIT ═══
+// Extracts terminology, keywords, and scoring criteria from guide rules
+
+async function generateProgramWritingKit(
+  programFinantare: string,
+  codMasura: string | undefined,
+  relevantRules: ComposeContext["relevantRules"],
+  aiModel: string,
+  organizationId: string,
+  userId: string,
+): Promise<Record<string, any>> {
+  const rulesSummary = relevantRules.slice(0, 40)
+    .map(r => `[${r.type}] ${r.category || "general"}: ${r.description}${r.sourceText ? ` (sursa: ${r.sourceText.slice(0, 100)})` : ""}`)
+    .join("\n");
+
+  const prompt = `Analizează regulile ghidului de finanțare pentru programul "${programFinantare}" ${codMasura ? `(măsura ${codMasura})` : ""} și generează un Writing Kit adaptat.
+
+REGULI DIN GHID:
+${rulesSummary}
+
+Generează un JSON cu:
+1. "terminology" — array de {bad, good}: 8-12 perechi de expresii neprofesionale → formulări profesionale specifice acestui program
+2. "evaluator_keywords" — obiect cu secțiuni:
+   - "eligibility": 5-8 fraze cheie pe care evaluatorul le caută la eligibilitate
+   - "necessity": 5-8 fraze pentru necesitate/oportunitate
+   - "objectives": 5-8 fraze pentru contribuția la obiectivele programului
+   - "impact": 5-8 fraze pentru impact și rezultate măsurabile
+   - "sustainability": 4-6 fraze pentru sustenabilitate
+   - "environment": 4-6 fraze pentru mediu/climă/social (dacă relevant)
+3. "scoring_criteria" — obiect cu criteriile de selecție specifice acestui program: cheie = cod criteriu, valoare = array de keywords/fraze asociate
+4. "forbidden_phrases" — array de expresii generice de evitat (ex: "cel mai bun", "revoluționar")
+5. "program_specifics" — obiect cu:
+   - "full_name": numele complet al programului
+   - "authority": autoritatea de management (AFIR, MIPE, etc.)
+   - "regulation_refs": referințe legislative relevante
+   - "typical_beneficiaries": tipuri de beneficiari eligibili
+   - "intensity_ranges": intervale intensitate ajutor
+
+IMPORTANT: Toate frazele trebuie să fie în română, specifice pentru "${programFinantare}", NU generice. Bazează-te strict pe regulile furnizate.
+
+Răspunde DOAR cu JSON valid.`;
+
+  const response = await withAILimit(() => anthropic.messages.create({
+    model: "claude-sonnet-4-20250514", // Use Sonnet for speed — WK gen is a one-time operation
+    max_tokens: 4096,
+    messages: [{ role: "user", content: prompt }],
+  }));
+
+  await logAIUsage({
+    organizationId,
+    userId,
+    agent: "neemia",
+    model: "claude-sonnet-4-20250514",
+    tokensInput: response.usage.input_tokens,
+    tokensOutput: response.usage.output_tokens,
+    action: "writing_kit_generate",
+  });
+
+  const textContent = response.content.find(c => c.type === "text");
+  if (!textContent || textContent.type !== "text") throw new Error("WK generation: empty response");
+
+  let rawText = textContent.text.trim();
+  if (rawText.startsWith("```")) {
+    rawText = rawText.replace(/^```(?:json)?\s*/, "").replace(/\s*```$/, "");
+  }
+
+  return JSON.parse(rawText);
+}
+
 // ═══ AI CONTENT GENERATION ═══
-// Calls Claude to generate narrative sections and table structures
+// Calls Claude to generate narrative sections and table structures (with chunking support)
 
 async function generateComposeContent(
   context: ComposeContext,
-  sections: Array<{
-    marker: string;
-    type: "narrative" | "table" | "calculation";
-    label: string;
-    instructions?: string;
-    elementKeys?: string[];
-    referenceTableIds?: string[];
-  }>,
+  sections: SectionSpec[],
   aiModel: string,
   organizationId: string,
   userId: string,
   blueprint?: DocumentBlueprint | null,
+  previousSections?: ComposeSection[],
 ): Promise<{ sections: ComposeSection[]; tokensInput: number; tokensOutput: number; placeholders: Array<{ section: string; placeholder: string }> }> {
 
   // Build element context string
@@ -389,7 +559,49 @@ async function generateComposeContent(
 ${s.instructions ? `- Instrucțiuni specifice: ${s.instructions}` : ""}${blueprintHint}`;
   }).join("\n");
 
-  // Load writing kit from solomonKnowledge (global + org-specific)
+  // Load writing kit — prioritize program-specific, then org-specific, then global
+  const programTag = context.programFinantare?.replace(/\s+/g, "_").toLowerCase() || "";
+  const programWkCategory = programTag ? `wk_prog_${programTag}` : "";
+
+  // Check if program-specific WK exists; if not, auto-generate from guide rules
+  if (programWkCategory && context.relevantRules.length > 0) {
+    const existingProgWk = await db.query.solomonKnowledge.findFirst({
+      where: and(
+        eq(solomonKnowledge.category, programWkCategory),
+        eq(solomonKnowledge.enabled, true),
+        or(
+          isNull(solomonKnowledge.organizationId),
+          eq(solomonKnowledge.organizationId, organizationId),
+        ),
+      ),
+    });
+
+    if (!existingProgWk) {
+      try {
+        const progWk = await generateProgramWritingKit(
+          context.programFinantare,
+          context.codMasura,
+          context.relevantRules,
+          aiModel,
+          organizationId,
+          userId,
+        );
+        // Save for future reuse (org-scoped so each cabinet can customize)
+        await db.insert(solomonKnowledge).values({
+          organizationId,
+          category: programWkCategory,
+          title: `Writing Kit — ${context.programFinantare} ${context.codMasura || ""}`.trim(),
+          content: JSON.stringify(progWk),
+          priority: 15, // Higher than generic WK (10)
+          enabled: true,
+        });
+      } catch (err) {
+        console.warn("[generateComposeContent] Program WK generation failed:", err);
+      }
+    }
+  }
+
+  // Load all applicable WK entries: program-specific + org-specific + global
   const writingKit = await db.select().from(solomonKnowledge)
     .where(and(
       like(solomonKnowledge.category, "wk_%"),
@@ -398,7 +610,26 @@ ${s.instructions ? `- Instrucțiuni specifice: ${s.instructions}` : ""}${bluepri
         isNull(solomonKnowledge.organizationId),
         eq(solomonKnowledge.organizationId, organizationId),
       ),
-    ));
+    ))
+    .orderBy(solomonKnowledge.priority);
+
+  // Deduplicate: if program-specific WK covers same topic as generic, prefer program-specific
+  const writingKitFiltered = (() => {
+    const programEntries = writingKit.filter(wk => wk.category.startsWith("wk_prog_"));
+    const genericEntries = writingKit.filter(wk => !wk.category.startsWith("wk_prog_"));
+
+    // If we have program-specific entries, skip generic scoring/keywords (they're for a different program)
+    if (programEntries.length > 0) {
+      const skipGeneric = new Set(["wk_scoring_keywords", "wk_keywords_eligibility",
+        "wk_keywords_necessity", "wk_keywords_objectives", "wk_keywords_impact",
+        "wk_keywords_sustainability", "wk_keywords_environment"]);
+      return [
+        ...programEntries,
+        ...genericEntries.filter(wk => !skipGeneric.has(wk.category)),
+      ];
+    }
+    return writingKit;
+  })();
 
   // Load cabinet preferences from previous consultant edits (feedback loop)
   const cabinetEditHistory = await db.select({
@@ -427,8 +658,8 @@ ${s.instructions ? `- Instrucțiuni specifice: ${s.instructions}` : ""}${bluepri
       }\n`
     : "";
 
-  const writingKitContext = writingKit.length > 0
-    ? writingKit.map(wk => {
+  const writingKitContext = writingKitFiltered.length > 0
+    ? writingKitFiltered.map(wk => {
         try {
           const parsed = JSON.parse(wk.content);
           return `## ${wk.title}\n${JSON.stringify(parsed, null, 2)}`;
@@ -438,25 +669,66 @@ ${s.instructions ? `- Instrucțiuni specifice: ${s.instructions}` : ""}${bluepri
       }).join("\n\n")
     : "";
 
-  const systemPrompt = `Ești Neemia, un expert senior în redactarea documentelor pentru proiecte cu finanțare europeană (fonduri AFIR/PNDR/PNRR).
-Scrii documente profesionale care respectă standardele AFIR/PNRR — ca un consultant cu 10+ ani experiență.
+  // ── Template text context (structural awareness) ──
+  const templateTextContext = context.templateText
+    ? `\nSTRUCTURA DOCUMENTULUI TEMPLATE (text extras din DOCX):
+${context.templateText}
+`
+    : "";
 
-REGULI STRICTE:
+  const systemPrompt = `Ești Neemia, un consultant senior cu 15+ ani experiență în redactarea documentelor pentru proiecte cu finanțare europeană.
+Ai scris sute de dosare de finanțare aprobate pentru programe AFIR, PNDR, PNRR, POCIDIF, POT, PDD, PIDS, PoST, GAL-uri.
+
+═══ IDENTITATE PROFESIONALĂ ═══
+Scrii ca un expert recunoscut în consultanță fonduri europene — nu ca un AI. Documentele tale sunt indistinguibile de cele scrise de cei mai buni consultanți din piață. Fiecare secțiune trebuie să convingă evaluatorul AFIR/PNRR că proiectul merită finanțat.
+
+═══ CADRU LEGISLATIV (referințe obligatorii unde e relevant) ═══
+- Regulamentul UE 2021/2115 (PAC 2023-2027) — pentru proiecte agricole
+- Regulamentul UE 651/2014 (GBER) — intensitate maximă ajutor de stat pe regiuni (Harta ajutoarelor regionale 2022-2027)
+- Regulamentul UE 2023/2831 — de minimis: 300.000 EUR pe 3 ani fiscali consecutivi
+- OUG 66/2011 — cheltuieli eligibile (construcții, echipamente, servicii, active necorporale, contribuție proprie)
+- HG 399/2015 — proceduri achiziții: <5.000€ achiziție directă; 5.000–135.060€ procedură competitivă (3 oferte comparabile); >135.060€ licitație deschisă SEAP
+- Legea 346/2004 + Rec. UE 2003/361 — clasificare IMM: Micro (<10 angajați, ≤2M€ CA), Mică (<50, ≤10M€), Mijlocie (<250, ≤50M€) — inclusiv întreprinderi legate/partenere
+
+═══ EXPERTIZA FINANCIARĂ ═══
+- Cash flow previzionat pe 5-7 ani, cu RIR (rata internă de rentabilitate) ≥5% și VAN (valoarea actualizată netă) >0
+- Indicatori sustenabilitate: rata solvabilității >1, lichiditate curentă >1, acoperirea serviciului datoriei >1.2
+- Structura bugetului: echipamente, construcții, active necorporale, servicii, instruire, alte cheltuieli
+- Contribuție proprie: minim 10-50% din valoarea eligibilă (depinde de intensitate ajutor)
+- Formatul numerelor: ${context.numberFormat === "en" ? "EN: 1,234,567.89 RON (virgulă separare mii, punct zecimale)" : "RO: 1.234.567,89 RON (punct separare mii, virgulă zecimale)"}
+
+═══ STIL DE SCRIERE — REGULI ABSOLUTE ═══
+1. Scrie EXCLUSIV la persoana a III-a: "Solicitantul", "Societatea", "Beneficiarul" — NICIODATĂ "noi", "al nostru".
+2. FIECARE afirmație de impact TREBUIE cuantificată: procent de creștere, valoare absolută, termen. "Productivitatea muncii va crește cu 35% față de anul 2024" — nu "se va îmbunătăți semnificativ".
+3. Structura obligatorie per paragraf narativ: (a) Afirmație → (b) Date suport din proiect → (c) Legătura cu criteriul evaluatorului.
+4. Terminologia profesională standard: "implementarea proiectului", "activități eligibile", "contribuție proprie", "ajutor financiar nerambursabil", "cofinanțare", "sustenabilitatea investiției".
+5. Referință temporală: "față de anul [N]" sau "față de media ultimilor 3 ani fiscali".
+6. Paragrafe de 3-5 propoziții — dense informativ, fără repetiții, fără superlative nejustificate ("enorm", "revoluționar", "fără precedent").
+7. Fiecare tabel trebuie: caption explicativ, footer cu total/medie, evidențierea rândurilor relevante pentru proiect.
+
+═══ REGULI STRICTE DE CONȚINUT ═══
 1. Scrii EXCLUSIV în limba română, cu terminologie profesională de consultanță fonduri europene.
-2. Conținutul trebuie să fie factual — bazat STRICT pe datele furnizate (elements, reference tables).
-3. NU inventa date, cifre sau informații care nu sunt în context.
+2. Conținutul trebuie să fie FACTUAL — bazat STRICT pe datele furnizate (elements, reference tables).
+3. NU inventa date, cifre sau informații care nu sunt în context. Dacă o dată lipsește, marchează cu {{PLACEHOLDER_DESCRIERE}} — nu inventa.
 4. Folosește formatul solicitat (narrative SAU table) exact cum e cerut.
 5. Pentru tabele: returnează structura JSON exactă (headers + rows), nu text.
-6. Pentru narrative: scrie profesional, concis, cu argumente bazate pe date.
-7. Argumentează legătura între datele proiectului și regulile din ghidul de finanțare.
-8. Evidențiază (prin highlight) rândurile din tabele care sunt relevante pentru proiect.
-9. Dacă o dată lipsește, marchează cu {{PLACEHOLDER_DESCRIERE}} — nu inventa.
-10. Numere formatate ${context.numberFormat === "en" ? "EN: 1,234,567.89 RON (virgulă separare mii, punct zecimale)" : "RO: 1.234.567,89 RON (punct separare mii, virgulă zecimale)"}.
+6. Argumentează legătura între datele proiectului și regulile din ghidul de finanțare.
+7. Evidențiază (prin highlight) rândurile din tabele care sunt relevante pentru proiect.
+8. Folosește cuvintele-cheie pe care le caută evaluatorul (din writing kit și blueprint keywords).
+
+═══ STRUCTURI TIPICE PER SECȚIUNE ═══
+- **Prezentare solicitant**: CINE (forma juridică, CUI, CAEN, nr. angajați) → CE face (obiect activitate) → UNDE (sediu, punct de lucru, zona) → DIMENSIUNE (CA, profit, active, classificare IMM)
+- **Descriere investiție**: CE se achiziționează → CU CE SCOP → DIMENSIUNI tehnice → VALOARE totală → CONTRIBUȚIE proprie vs. ajutor nerambursabil
+- **Necesitate/Oportunitate**: CONTEXT piață → PROBLEMĂ identificată → CONSECINȚE fără investiție → SOLUȚIE propusă → BENEFICII cuantificate
+- **Obiective SMART**: Specific (ce exact) + Măsurabil (indicator + valoare) + Realizabil (resurse) + Relevant (pentru program) + Temporalizat (termen)
+- **Impact economic**: Indicatori ÎNAINTE vs. DUPĂ (CA, profit, productivitate, nr. angajați) → % creștere → Perioada de referință
+- **Sustenabilitate**: Viabilitate financiară (RIR, VAN, cash flow) → Capacitate managerială → Piață asigurată → Resurse umane → Mentenanță
+- **Plan de investiții**: Categorie cheltuială → Denumire → Cantitate → Preț unitar → Valoare totală → Eligibil/Neeligibil
 ${writingKitContext ? `
-WRITING KIT — Terminologie și keywords profesionale:
+═══ WRITING KIT — Terminologie și keywords profesionale ═══
 ${writingKitContext}
-` : ""}${cabinetPreferences}
-CONTEXT PROIECT:
+` : ""}${cabinetPreferences}${templateTextContext}
+═══ CONTEXT PROIECT ═══
 - Nume proiect: ${context.projectName}
 - Firmă: ${context.companyName} (CUI: ${context.companyCui})
 - Program: ${context.programFinantare}
@@ -471,12 +743,17 @@ ${tablesList}
 REGULI RELEVANTE:
 ${rulesList}`;
 
-  const userPrompt = `Generează conținutul pentru următoarele secțiuni ale documentului.
+  // Cross-chunk coherence context
+  const coherenceContext = previousSections && previousSections.length > 0
+    ? buildPreviousSectionsSummary(previousSections)
+    : "";
 
+  const userPrompt = `Generează conținutul pentru următoarele secțiuni ale documentului.
+${coherenceContext}
 IMPORTANT: Răspunde cu un JSON valid care conține un array "sections", unde fiecare secțiune are:
 - "marker": string (marker-ul secțiunii)
 - "type": "narrative" | "table" | "calculation"
-- Pentru NARRATIVE: "content" (string cu textul narativ, paragrafe separate cu \\n\\n)
+- Pentru NARRATIVE: "content" (string cu text formatat minimal — paragrafe separate cu \\n\\n, **bold** pentru termeni cheie, - bullets pentru liste, ### pentru sub-titluri interne)
 - Pentru TABLE/CALCULATION: "tableData" cu:
   - "headers": [{key, label}]
   - "rows": [{ key1: val1, key2: val2, ... }]
@@ -488,19 +765,38 @@ IMPORTANT: Răspunde cu un JSON valid care conține un array "sections", unde fi
 SECȚIUNI DE GENERAT:
 ${sectionsRequest}
 
-INSTRUCȚIUNI:
-- Folosește keywords-urile din writing kit relevante pentru criteriile de selecție ale proiectului.
-- Scrie în română, cu date concrete din contextul de mai sus.
-- Dacă datele sunt insuficiente pentru o secțiune, marchează lipsurile cu {{PLACEHOLDER_DESCRIERE}}.
+INSTRUCȚIUNI DETALIATE:
+1. Scrie FIECARE secțiune narativă cu densitate maximă de informație — ca un consultant care știe că evaluatorul bifează un checklist strict. Fiecare paragraf trebuie să răspundă la un criteriu de evaluare concret.
+2. Folosește keywords-urile din writing kit relevante pentru criteriile de selecție ale proiectului.
+3. Pentru secțiunile narative: minim 3 paragrafe substanțiale (5+ rânduri fiecare), cu date concrete, procente, sume, indicatori. NU scrie răspunsuri de 2-3 rânduri.
+4. Pentru tabele financiare: include TOATE categoriile de cheltuieli, calculează corect totalurile, folosește footer row obligatoriu.
+5. Dacă datele sunt insuficiente pentru o secțiune, marchează lipsurile cu {{PLACEHOLDER_DESCRIERE}} dar scrie în jurul lor — nu lăsa secțiunea goală.
+6. Scrie în română, cu date concrete din contextul de mai sus.
+7. FORMATARE NARATIVĂ — folosește markdown minimal în "content":
+   - **text bold** pentru termeni cheie, sume importante, concluzii (ex: **250.000 EUR**, **eligibil**)
+   - ### Sub-titlu pentru secțiuni interne ale narativului (ex: ### Obiective specifice)
+   - - bullet pentru enumerări (ex: - echipament 1\\n- echipament 2)
+   - NU folosi alte formate markdown (italic, links, code blocks, etc.)
 
 Răspunde DOAR cu JSON-ul, fără markdown code blocks, fără text suplimentar.`;
 
-  const response = await withAILimit(() => anthropic.messages.create({
+  // Use extended thinking for Opus models, higher max_tokens for all
+  const useExtendedThinking = aiModel.includes("opus");
+  const maxOutputTokens = useExtendedThinking ? 16000 : 12000;
+
+  const apiParams: any = {
     model: aiModel,
-    max_tokens: 8192,
+    max_tokens: maxOutputTokens,
     system: systemPrompt,
     messages: [{ role: "user", content: userPrompt }],
-  }));
+  };
+
+  // Enable extended thinking for Opus models (deeper reasoning → better document quality)
+  if (useExtendedThinking) {
+    apiParams.thinking = { type: "enabled", budget_tokens: 8000 };
+  }
+
+  const response = await withAILimit(() => anthropic.messages.create(apiParams));
 
   const tokensInput = response.usage.input_tokens;
   const tokensOutput = response.usage.output_tokens;
@@ -560,6 +856,107 @@ Răspunde DOAR cu JSON-ul, fără markdown code blocks, fără text suplimentar.
   return { sections: composeSections, tokensInput, tokensOutput, placeholders: allPlaceholders };
 }
 
+// ═══ AUTO-GENERATE BLUEPRINT ═══
+// Analyzes template structure + compose sections to create evaluation-aware blueprint
+
+async function generateBlueprint(
+  templateDoc: any,
+  composeConfig: any,
+  context: ComposeContext,
+  aiModel: string,
+  organizationId: string,
+  userId: string,
+): Promise<DocumentBlueprint> {
+  const sectionsList = composeConfig.sections
+    .map((s: any) => `- ${s.marker} (${s.type}): ${s.label}${s.instructions ? ` — ${s.instructions}` : ""}`)
+    .join("\n");
+
+  const elementsList = Object.entries(context.elements)
+    .map(([key, { label }]) => `${key}: ${label}`)
+    .join(", ");
+
+  const rulesSummary = context.relevantRules.slice(0, 20)
+    .map(r => `[${r.type}] ${r.description}`)
+    .join("\n");
+
+  const prompt = `Analizează template-ul de document "${templateDoc.name}" pentru programul "${context.programFinantare}" (${context.codMasura}).
+
+SECȚIUNI COMPOSE din template:
+${sectionsList}
+
+ELEMENTE DISPONIBILE: ${elementsList}
+
+REGULI GHID (primele 20):
+${rulesSummary}
+${context.templateText ? `\nTEXT TEMPLATE:\n${context.templateText.slice(0, 2000)}` : ""}
+
+Generează un DocumentBlueprint JSON cu:
+- documentPurpose: scopul documentului (ex: "Memoriu Justificativ sM 4.1")
+- evaluatorExpectations: ce caută evaluatorul AFIR la acest document
+- sections: array cu câte o secțiune per marker, fiecare cu:
+  - sectionId: marker-ul secțiunii
+  - title: titlu complet
+  - purpose: ce demonstrează această secțiune evaluatorului
+  - requiredElementKeys: keys obligatorii (din elementele disponibile)
+  - optionalElementKeys: keys care îmbunătățesc secțiunea
+  - referenceTableIds: [] (placeholder)
+  - tone: "formal" | "technical" | "narrative"
+  - targetLength: {min, max} în cuvinte (realist per secțiune)
+  - keywords: 5-10 cuvinte-cheie pe care le caută evaluatorul
+  - evaluatorChecklist: 3-5 puncte pe care le bifează evaluatorul
+  - structureHint: structura recomandată (ex: "CINE→CE→UNDE→DIMENSIUNE")
+  - forbiddenPhrases: expresii generice de evitat
+
+Răspunde DOAR cu JSON valid, fără markdown.`;
+
+  const response = await withAILimit(() => anthropic.messages.create({
+    model: aiModel.includes("opus") ? aiModel : "claude-sonnet-4-20250514",
+    max_tokens: 4096,
+    messages: [{ role: "user", content: prompt }],
+  }));
+
+  await logAIUsage({
+    organizationId,
+    userId,
+    agent: "neemia",
+    model: aiModel,
+    tokensInput: response.usage.input_tokens,
+    tokensOutput: response.usage.output_tokens,
+    action: "blueprint_generate",
+  });
+
+  const textContent = response.content.find(c => c.type === "text");
+  if (!textContent || textContent.type !== "text") throw new Error("Blueprint AI response empty");
+
+  let rawText = textContent.text.trim();
+  if (rawText.startsWith("```")) {
+    rawText = rawText.replace(/^```(?:json)?\s*/, "").replace(/\s*```$/, "");
+  }
+
+  const parsed = JSON.parse(rawText);
+  return {
+    templateId: templateDoc.id,
+    documentPurpose: parsed.documentPurpose || templateDoc.name,
+    evaluatorExpectations: parsed.evaluatorExpectations || "",
+    generatedAt: new Date().toISOString(),
+    generatedBy: aiModel,
+    sections: (parsed.sections || []).map((s: any) => ({
+      sectionId: s.sectionId,
+      title: s.title || s.sectionId,
+      purpose: s.purpose || "",
+      requiredElementKeys: s.requiredElementKeys || [],
+      optionalElementKeys: s.optionalElementKeys || [],
+      referenceTableIds: s.referenceTableIds || [],
+      tone: s.tone || "formal",
+      targetLength: s.targetLength || { min: 100, max: 500 },
+      keywords: s.keywords || [],
+      evaluatorChecklist: s.evaluatorChecklist || [],
+      structureHint: s.structureHint,
+      forbiddenPhrases: s.forbiddenPhrases,
+    })),
+  };
+}
+
 // ═══ COMPOSE DOCUMENT (main flow, SSE streaming) ═══
 
 export async function composeDocument(params: ComposeDocParams): Promise<ReadableStream> {
@@ -605,12 +1002,28 @@ export async function composeDocument(params: ComposeDocParams): Promise<Readabl
           sections: composeConfig.sections.length,
         });
 
+        // Step 0: Auto-generate blueprint if missing (cached on template)
+        let templateBlueprint = (templateDoc as any)?.blueprint as DocumentBlueprint | null;
+        if (!templateBlueprint && !editedSections) {
+          try {
+            emit({ type: "status", message: "Se analizează structura template-ului (blueprint)..." });
+            templateBlueprint = await generateBlueprint(templateDoc, composeConfig, context, aiModel, organizationId, userId);
+            // Cache blueprint on template document for future reuse
+            await db.update(documents)
+              .set({ blueprint: templateBlueprint as any })
+              .where(eq(documents.id, templateDocumentId));
+            emit({ type: "blueprint_ready", sections: templateBlueprint.sections.length });
+          } catch (err) {
+            console.warn("[composeDocument] Blueprint generation failed, continuing without:", err);
+          }
+        }
+
         // Step 1: Generate AI content (or use edited sections)
         let composeSections: ComposeSection[];
         let tokensUsed = 0;
 
         // FIX 7: Filter sections to regenerate only the requested one
-        const sectionsToGenerate = regenerateSectionMarker
+        const sectionsToGenerate: SectionSpec[] = regenerateSectionMarker
           ? composeConfig.sections.filter((s: any) => s.marker === regenerateSectionMarker)
           : composeConfig.sections;
 
@@ -618,37 +1031,66 @@ export async function composeDocument(params: ComposeDocParams): Promise<Readabl
           emit({ type: "status", message: "Se folosesc secțiunile editate de consultant..." });
           composeSections = editedSections;
         } else {
-          emit({ type: "status", message: regenerateSectionMarker
-            ? `Se regenerează secțiunea "${regenerateSectionMarker}" cu ${aiModel}...`
-            : `Se generează conținutul cu ${aiModel}...`
-          });
+          // ── Intelligent Chunking ──
+          // Split sections into optimal chunks based on complexity
+          const chunks = buildChunks(sectionsToGenerate, templateBlueprint);
+          const totalChunks = chunks.length;
+          const allPlaceholders: Array<{ section: string; placeholder: string }> = [];
+          composeSections = [];
 
-          const templateBlueprint = (templateDoc as any)?.blueprint as DocumentBlueprint | null;
-          const aiResult = await generateComposeContent(
-            context,
-            sectionsToGenerate,
-            aiModel,
-            organizationId,
-            userId,
-            templateBlueprint,
-          );
+          for (let i = 0; i < chunks.length; i++) {
+            const chunk = chunks[i];
+            const chunkLabel = totalChunks > 1
+              ? ` (parte ${i + 1}/${totalChunks}: ${chunk.map(s => s.label).join(", ")})`
+              : "";
 
-          composeSections = aiResult.sections;
-          tokensUsed = aiResult.tokensInput + aiResult.tokensOutput;
+            emit({ type: "status", message: regenerateSectionMarker
+              ? `Se regenerează secțiunea "${regenerateSectionMarker}" cu ${aiModel}...`
+              : `Se generează conținutul cu ${aiModel}${chunkLabel}...`
+            });
+
+            if (totalChunks > 1) {
+              emit({
+                type: "chunk_progress",
+                current: i + 1,
+                total: totalChunks,
+                sections: chunk.map(s => s.label),
+              });
+            }
+
+            const aiResult = await generateComposeContent(
+              context,
+              chunk,
+              aiModel,
+              organizationId,
+              userId,
+              templateBlueprint,
+              // Pass previously generated sections for cross-chunk coherence
+              i > 0 ? composeSections : undefined,
+            );
+
+            composeSections.push(...aiResult.sections);
+            tokensUsed += aiResult.tokensInput + aiResult.tokensOutput;
+
+            if (aiResult.placeholders?.length) {
+              allPlaceholders.push(...aiResult.placeholders);
+            }
+          }
 
           emit({
             type: "ai_complete",
             sections: composeSections,
             tokensUsed,
             model: aiModel,
+            chunks: totalChunks,
           });
 
           // Warn about unresolved placeholders
-          if (aiResult.placeholders && aiResult.placeholders.length > 0) {
+          if (allPlaceholders.length > 0) {
             emit({
               type: "compose_warning",
-              message: `${aiResult.placeholders.length} câmpuri necompletate detectate — marchează date lipsă`,
-              missing: aiResult.placeholders,
+              message: `${allPlaceholders.length} câmpuri necompletate detectate — marchează date lipsă`,
+              missing: allPlaceholders,
             });
           }
         }
@@ -872,13 +1314,14 @@ async function composeDocxTemplate(
 
 // ═══ PYTHON SCRIPT: COMPOSE DOCX BUILDER ═══
 const COMPOSE_PYTHON_SCRIPT = `
-import sys, json
+import sys, json, re
 from docx import Document
-from docx.shared import Pt, Inches, Cm, RGBColor
+from docx.shared import Pt, Inches, Cm, RGBColor, Emu
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.oxml.ns import qn, nsdecls
 from docx.oxml import parse_xml
+from copy import deepcopy
 
 template_path = sys.argv[1]
 output_path = sys.argv[2]
@@ -892,6 +1335,86 @@ sections = payload.get('sections', [])
 cabinet_style = payload.get('cabinetStyle', {})
 
 doc = Document(template_path)
+
+# ═══ FONT CASCADE: template → cabinet → fallback ═══
+# Detect the dominant font in the template
+def detect_template_font(doc):
+    """Scan template paragraphs to find the most-used font."""
+    font_counts = {}
+    for para in doc.paragraphs:
+        for run in para.runs:
+            if run.font and run.font.name and run.text.strip():
+                fn = run.font.name
+                font_counts[fn] = font_counts.get(fn, 0) + len(run.text)
+    if not font_counts:
+        return None
+    return max(font_counts, key=font_counts.get)
+
+TEMPLATE_FONT = detect_template_font(doc)
+CABINET_FONT = cabinet_style.get('fontFamily')
+# Cascade: cabinet override > template detection > safe fallback
+BASE_FONT = CABINET_FONT or TEMPLATE_FONT or 'Times New Roman'
+# Table font can be slightly different (same family but smaller)
+TABLE_FONT = BASE_FONT
+
+# ═══ HELPER: Extract style from a marker paragraph ═══
+def extract_paragraph_style(para):
+    """Extract formatting properties from a paragraph to inherit them."""
+    style = {
+        'font_name': BASE_FONT,
+        'font_size': 22,       # half-points (22 = 11pt)
+        'font_color': '1A1E28',
+        'space_after': 120,    # twips
+        'space_before': 0,
+        'line_spacing': 300,   # twips (300 = ~15pt)
+        'alignment': None,
+        'first_line_indent': None,
+    }
+    # Try to get from runs
+    for run in para.runs:
+        if run.font:
+            if run.font.name:
+                style['font_name'] = run.font.name
+            if run.font.size:
+                style['font_size'] = int(run.font.size.pt * 2)  # convert to half-points
+            if run.font.color and run.font.color.rgb:
+                style['font_color'] = str(run.font.color.rgb)
+        break  # first run is enough
+
+    # Paragraph format
+    pf = para.paragraph_format
+    if pf:
+        if pf.space_after is not None:
+            try: style['space_after'] = int(pf.space_after / Emu(12700))  # EMU to twips approx
+            except: pass
+        if pf.space_before is not None:
+            try: style['space_before'] = int(pf.space_before / Emu(12700))
+            except: pass
+        if pf.alignment is not None:
+            style['alignment'] = pf.alignment
+
+    # Also check XML directly for more reliable spacing
+    pPr = para._element.find(qn('w:pPr'))
+    if pPr is not None:
+        spacing = pPr.find(qn('w:spacing'))
+        if spacing is not None:
+            sa = spacing.get(qn('w:after'))
+            if sa: style['space_after'] = int(sa)
+            sb = spacing.get(qn('w:before'))
+            if sb: style['space_before'] = int(sb)
+            ln = spacing.get(qn('w:line'))
+            if ln: style['line_spacing'] = int(ln)
+        ind = pPr.find(qn('w:ind'))
+        if ind is not None:
+            fl = ind.get(qn('w:firstLine'))
+            if fl: style['first_line_indent'] = int(fl)
+
+    return style
+
+# ═══ HELPER: Escape XML ═══
+def esc(text):
+    """Escape XML special characters."""
+    return str(text).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
 
 # ═══ HELPER: Replace {{key}} in paragraph preserving formatting ═══
 def replace_in_paragraph(paragraph, data):
@@ -914,159 +1437,154 @@ def replace_in_paragraph(paragraph, data):
             run.text = ''
     return replacements
 
-# ═══ HELPER: Set cell shading ═══
-def set_cell_shading(cell, color_hex):
-    """Set background color of a table cell."""
-    shading_elm = parse_xml(f'<w:shd {nsdecls("w")} w:fill="{color_hex}"/>')
-    cell._tc.get_or_add_tcPr().append(shading_elm)
+# ═══ HELPER: Parse markdown-minimal content into rich runs ═══
+def parse_rich_text(text, style):
+    """Parse minimal markdown into OOXML runs.
+    Supports: **bold**, ### Heading, - bullet items
+    Returns a list of paragraph dicts: [{type, runs, indent}]
+    """
+    font = esc(style['font_name'])
+    sz = style['font_size']
+    color = style['font_color']
+    paragraphs = []
 
-# ═══ HELPER: Set cell borders ═══
-def set_cell_border(cell, **kwargs):
-    """Set cell borders. kwargs: top, bottom, left, right, each a dict with val, sz, color."""
-    tc = cell._tc
-    tcPr = tc.get_or_add_tcPr()
-    tcBorders = parse_xml(f'<w:tcBorders {nsdecls("w")}></w:tcBorders>')
-    for edge, attrs in kwargs.items():
-        element = parse_xml(
-            f'<w:{edge} {nsdecls("w")} w:val="{attrs.get("val", "single")}" '
-            f'w:sz="{attrs.get("sz", "4")}" w:space="0" '
-            f'w:color="{attrs.get("color", "000000")}"/>'
-        )
-        tcBorders.append(element)
-    tcPr.append(tcBorders)
-
-# ═══ HELPER: Add a professional formatted table ═══
-def add_formatted_table(doc, section, insert_after=None):
-    """Insert a professionally formatted table into the document."""
-    td = section.get('tableData', {})
-    if not td:
-        return
-
-    headers = td.get('headers', [])
-    rows = td.get('rows', [])
-    highlight_rows = td.get('highlightRows', [])
-    footer_row = td.get('footerRow')
-    caption = td.get('caption', '')
-    header_color = td.get('headerColor', '1a3a5c').lstrip('#')
-
-    if not headers or not rows:
-        return
-
-    num_cols = len(headers)
-    total_rows = len(rows) + 1 + (1 if footer_row else 0)
-
-    # Add caption as paragraph before table
-    if caption:
-        p_caption = doc.add_paragraph()
-        run = p_caption.add_run(caption)
-        run.bold = True
-        run.font.size = Pt(10)
-        run.font.color.rgb = RGBColor(0x1a, 0x3a, 0x5c)
-        p_caption.alignment = WD_ALIGN_PARAGRAPH.LEFT
-        p_caption.space_after = Pt(4)
-
-    # Create table
-    table = doc.add_table(rows=total_rows, cols=num_cols)
-    table.alignment = WD_TABLE_ALIGNMENT.CENTER
-    table.autofit = True
-
-    # Style header row
-    header_row_cells = table.rows[0].cells
-    for i, h in enumerate(headers):
-        cell = header_row_cells[i]
-        cell.text = ''
-        p = cell.paragraphs[0]
-        run = p.add_run(h.get('label', h.get('key', '')))
-        run.bold = True
-        run.font.size = Pt(9)
-        run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
-        run.font.name = 'DM Sans'
-        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        # Header background
-        set_cell_shading(cell, header_color)
-
-    # Data rows
-    for row_idx, row_data in enumerate(rows):
-        row_cells = table.rows[row_idx + 1].cells
-        is_highlight = row_idx in highlight_rows
-
-        for col_idx, h in enumerate(headers):
-            cell = row_cells[col_idx]
-            key = h.get('key', '')
-            value = str(row_data.get(key, ''))
-            cell.text = ''
-            p = cell.paragraphs[0]
-            run = p.add_run(value)
-            run.font.size = Pt(9)
-            run.font.name = 'DM Sans'
-
-            if is_highlight:
-                # Highlight row: light yellow background + bold
-                set_cell_shading(cell, 'FFF3CD')
-                run.bold = True
-                run.font.color.rgb = RGBColor(0x85, 0x6D, 0x0E)
-            else:
-                # Alternate row shading
-                if row_idx % 2 == 1:
-                    set_cell_shading(cell, 'F8F9FA')
-
-            # Right-align numeric values
-            try:
-                float(value.replace(',', '.').replace(' ', '').replace('%', ''))
-                p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-            except (ValueError, AttributeError):
-                p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-
-    # Footer row (totals)
-    if footer_row:
-        footer_cells = table.rows[-1].cells
-        for col_idx, h in enumerate(headers):
-            cell = footer_cells[col_idx]
-            key = h.get('key', '')
-            value = str(footer_row.get(key, ''))
-            cell.text = ''
-            p = cell.paragraphs[0]
-            run = p.add_run(value)
-            run.bold = True
-            run.font.size = Pt(9)
-            run.font.name = 'DM Sans'
-            run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
-            p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-            set_cell_shading(cell, '2C3E50')
-
-    # Add thin borders to all cells
-    for row in table.rows:
-        for cell in row.cells:
-            set_cell_border(cell,
-                top={"val": "single", "sz": "4", "color": "DEE2E6"},
-                bottom={"val": "single", "sz": "4", "color": "DEE2E6"},
-                left={"val": "single", "sz": "4", "color": "DEE2E6"},
-                right={"val": "single", "sz": "4", "color": "DEE2E6"},
-            )
-
-    # Space after table
-    p_after = doc.add_paragraph()
-    p_after.space_before = Pt(6)
-
-    return table
-
-# ═══ HELPER: Add narrative paragraphs ═══
-def add_narrative(doc, content):
-    """Insert AI-generated narrative text, splitting by double newlines into paragraphs."""
-    if not content:
-        return
-    paragraphs = content.split('\\n\\n')
-    for text in paragraphs:
-        text = text.strip()
-        if not text:
+    lines = text.split('\\n')
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+        if not line:
+            i += 1
             continue
-        p = doc.add_paragraph()
-        run = p.add_run(text)
-        run.font.size = Pt(11)
-        run.font.name = 'DM Sans'
-        run.font.color.rgb = RGBColor(0x1a, 0x1e, 0x28)
-        p.paragraph_format.space_after = Pt(6)
-        p.paragraph_format.line_spacing = Pt(15)
+
+        # Sub-heading: ### Title
+        if line.startswith('### '):
+            heading_text = line[4:].strip()
+            paragraphs.append({
+                'type': 'heading',
+                'runs': [{'text': esc(heading_text), 'bold': True, 'sz': sz + 2}],
+            })
+            i += 1
+            continue
+
+        # Bullet: - item
+        if line.startswith('- '):
+            bullet_text = line[2:].strip()
+            runs = parse_inline_bold(bullet_text, font, sz, color)
+            paragraphs.append({
+                'type': 'bullet',
+                'runs': runs,
+            })
+            i += 1
+            continue
+
+        # Regular paragraph — accumulate consecutive non-special lines
+        para_lines = [line]
+        i += 1
+        while i < len(lines):
+            next_line = lines[i].strip()
+            if not next_line or next_line.startswith('### ') or next_line.startswith('- '):
+                break
+            para_lines.append(next_line)
+            i += 1
+
+        full_para = ' '.join(para_lines)
+        runs = parse_inline_bold(full_para, font, sz, color)
+        paragraphs.append({
+            'type': 'paragraph',
+            'runs': runs,
+        })
+
+    return paragraphs
+
+
+def parse_inline_bold(text, font, sz, color):
+    """Parse **bold** markers within text into runs."""
+    runs = []
+    parts = re.split(r'(\\*\\*[^*]+\\*\\*)', text)
+    for part in parts:
+        if part.startswith('**') and part.endswith('**'):
+            inner = part[2:-2]
+            runs.append({'text': esc(inner), 'bold': True, 'sz': sz})
+        elif part:
+            runs.append({'text': esc(part), 'bold': False, 'sz': sz})
+    return runs
+
+
+def build_rich_paragraph_xml(para_dict, style):
+    """Build OOXML paragraph from parsed rich text dict."""
+    font = esc(style['font_name'])
+    color = style['font_color']
+    sa = style['space_after']
+    ls = style['line_spacing']
+    first_indent = style.get('first_line_indent')
+
+    ptype = para_dict['type']
+
+    # Spacing and indentation
+    spacing = f'<w:spacing w:after="{sa}" w:line="{ls}" w:lineRule="auto"/>'
+    indent = ''
+
+    if ptype == 'heading':
+        # Sub-heading: slightly more space before, bold
+        spacing = f'<w:spacing w:before="160" w:after="80" w:line="{ls}" w:lineRule="auto"/>'
+    elif ptype == 'bullet':
+        # Bullet: left indent + hanging indent for bullet char
+        indent = '<w:ind w:left="720" w:hanging="360"/>'
+    elif first_indent:
+        indent = f'<w:ind w:firstLine="{first_indent}"/>'
+
+    xml = f'<w:p {nsdecls("w")}><w:pPr>{spacing}{indent}</w:pPr>'
+
+    # Add bullet character for bullet type
+    if ptype == 'bullet':
+        xml += f'<w:r><w:rPr><w:rFonts w:ascii="Symbol" w:hAnsi="Symbol"/>'
+        xml += f'<w:sz w:val="{style["font_size"]}"/><w:color w:val="{color}"/></w:rPr>'
+        xml += '<w:t>&#x2022;</w:t></w:r>'
+        xml += f'<w:r><w:rPr><w:rFonts w:ascii="{font}" w:hAnsi="{font}"/>'
+        xml += f'<w:sz w:val="{style["font_size"]}"/></w:rPr>'
+        xml += '<w:t xml:space="preserve"> </w:t></w:r>'
+
+    for run in para_dict['runs']:
+        bold = '<w:b/>' if run.get('bold') else ''
+        run_sz = run.get('sz', style['font_size'])
+        xml += f'<w:r><w:rPr><w:rFonts w:ascii="{font}" w:hAnsi="{font}"/>'
+        xml += f'<w:sz w:val="{run_sz}"/>{bold}<w:color w:val="{color}"/></w:rPr>'
+        xml += f'<w:t xml:space="preserve">{run["text"]}</w:t></w:r>'
+
+    xml += '</w:p>'
+    return xml
+
+# ═══ HELPER: Calculate column widths based on content ═══
+def calc_column_widths(headers, rows, footer_row, num_cols):
+    """Calculate proportional column widths based on content length.
+    Returns list of width percentages (sum = 5000 in pct units).
+    """
+    max_lengths = [0] * num_cols
+    for i, h in enumerate(headers):
+        label = h.get('label', h.get('key', ''))
+        max_lengths[i] = max(max_lengths[i], len(str(label)))
+    for row_data in rows:
+        for i, h in enumerate(headers):
+            val = str(row_data.get(h.get('key', ''), ''))
+            max_lengths[i] = max(max_lengths[i], len(val))
+    if footer_row:
+        for i, h in enumerate(headers):
+            val = str(footer_row.get(h.get('key', ''), ''))
+            max_lengths[i] = max(max_lengths[i], len(val))
+
+    # Ensure minimum width and cap maximum
+    for i in range(num_cols):
+        max_lengths[i] = max(max_lengths[i], 4)   # min 4 chars
+        max_lengths[i] = min(max_lengths[i], 80)   # cap at 80
+
+    total = sum(max_lengths) or 1
+    # Convert to pct units (5000 = 100%)
+    widths = [int((l / total) * 5000) for l in max_lengths]
+    # Adjust rounding to exactly 5000
+    diff = 5000 - sum(widths)
+    if widths:
+        widths[0] += diff
+    return widths
 
 # ═══ BUILD SECTION MAP ═══
 section_map = {}
@@ -1098,7 +1616,6 @@ for section in doc.sections:
                 replace_in_paragraph(para, elements)
 
 # ═══ PHASE 2: Replace COMPOSE/TABLE/CALC markers ═══
-# Find paragraphs containing {{COMPOSE:...}}, {{TABLE:...}}, {{CALC:...}}
 marker_prefixes = ['COMPOSE:', 'TABLE:', 'CALC:']
 
 paragraphs_to_process = []
@@ -1107,7 +1624,6 @@ for i, para in enumerate(doc.paragraphs):
     for prefix in marker_prefixes:
         marker_start = '{{' + prefix
         if marker_start in text:
-            # Extract full marker
             start = text.index(marker_start) + 2
             end = text.index('}}', start)
             marker = text[start:end]
@@ -1117,42 +1633,51 @@ for i, para in enumerate(doc.paragraphs):
 for idx, para, marker, marker_type in reversed(paragraphs_to_process):
     section_data = section_map.get(marker)
     if not section_data:
-        # Leave marker as-is if no AI content
         continue
+
+    # Extract style from marker paragraph BEFORE clearing it
+    inherited_style = extract_paragraph_style(para)
+    # Override font with cascade
+    inherited_style['font_name'] = BASE_FONT
 
     # Clear the marker paragraph
     for run in para.runs:
         run.text = ''
 
-    # Get the paragraph's parent element to insert after
-    parent = para._element.getparent()
     para_element = para._element
 
     if marker_type == 'COMPOSE' and section_data.get('content'):
-        # Insert narrative paragraphs after the marker position
         content = section_data['content']
-        paragraphs_text = content.split('\\n\\n')
+        # Parse rich text (markdown minimal → structured paragraphs)
+        rich_paragraphs = parse_rich_text(content, inherited_style)
 
         insert_after = para_element
-        for text in paragraphs_text:
-            text = text.strip()
-            if not text:
-                continue
-            # Create new paragraph element
-            new_para = parse_xml(
-                f'<w:p {nsdecls("w")}>'
-                f'<w:pPr><w:spacing w:after="120" w:line="300" w:lineRule="auto"/></w:pPr>'
-                f'<w:r><w:rPr><w:rFonts w:ascii="DM Sans" w:hAnsi="DM Sans"/>'
-                f'<w:sz w:val="22"/><w:color w:val="1A1E28"/></w:rPr>'
-                f'<w:t xml:space="preserve">{text}</w:t></w:r>'
-                f'</w:p>'
-            )
-            insert_after.addnext(new_para)
-            insert_after = new_para
+        for rp in rich_paragraphs:
+            xml = build_rich_paragraph_xml(rp, inherited_style)
+            try:
+                new_para = parse_xml(xml)
+                insert_after.addnext(new_para)
+                insert_after = new_para
+            except Exception as e:
+                # Fallback: plain text without formatting
+                fallback_text = ' '.join(r['text'] for r in rp.get('runs', []))
+                font_n = esc(BASE_FONT)
+                fallback_xml = (
+                    f'<w:p {nsdecls("w")}>'
+                    f'<w:pPr><w:spacing w:after="120" w:line="300" w:lineRule="auto"/></w:pPr>'
+                    f'<w:r><w:rPr><w:rFonts w:ascii="{font_n}" w:hAnsi="{font_n}"/>'
+                    f'<w:sz w:val="22"/></w:rPr>'
+                    f'<w:t xml:space="preserve">{fallback_text}</w:t></w:r>'
+                    f'</w:p>'
+                )
+                try:
+                    new_para = parse_xml(fallback_xml)
+                    insert_after.addnext(new_para)
+                    insert_after = new_para
+                except:
+                    pass
 
     elif marker_type in ('TABLE', 'CALC') and section_data.get('tableData'):
-        # For tables, we need to insert after the paragraph
-        # We'll use the document body to find position and insert table XML
         td = section_data['tableData']
         headers = td.get('headers', [])
         rows = td.get('rows', [])
@@ -1165,56 +1690,66 @@ for idx, para, marker, marker_type in reversed(paragraphs_to_process):
             continue
 
         num_cols = len(headers)
+        col_widths = calc_column_widths(headers, rows, footer_row, num_cols)
+        table_font = esc(TABLE_FONT)
 
-        # Add caption in the marker paragraph itself
+        # Caption in the marker paragraph
         if caption:
             if para.runs:
                 para.runs[0].text = caption
                 para.runs[0].bold = True
                 para.runs[0].font.size = Pt(10)
                 para.runs[0].font.color.rgb = RGBColor(0x1a, 0x3a, 0x5c)
+                para.runs[0].font.name = BASE_FONT
             else:
                 run = para.add_run(caption)
                 run.bold = True
                 run.font.size = Pt(10)
                 run.font.color.rgb = RGBColor(0x1a, 0x3a, 0x5c)
+                run.font.name = BASE_FONT
 
-        # Build table XML
-        all_rows = [headers] + [[row_data.get(h.get('key', ''), '') for h in headers] for row_data in rows]
+        # Build all row data
+        all_rows_data = [headers] + [[row_data.get(h.get('key', ''), '') for h in headers] for row_data in rows]
         if footer_row:
-            all_rows.append([footer_row.get(h.get('key', ''), '') for h in headers])
+            all_rows_data.append([footer_row.get(h.get('key', ''), '') for h in headers])
 
-        # Build OOXml table
+        # Build OOXml table with column widths
         tbl_xml = f'<w:tbl {nsdecls("w")}>'
         tbl_xml += '<w:tblPr><w:tblW w:w="5000" w:type="pct"/>'
         tbl_xml += '<w:tblBorders>'
         for border in ['top', 'left', 'bottom', 'right', 'insideH', 'insideV']:
             tbl_xml += f'<w:{border} w:val="single" w:sz="4" w:space="0" w:color="DEE2E6"/>'
         tbl_xml += '</w:tblBorders></w:tblPr>'
-        tbl_xml += f'<w:tblGrid>{"".join(f"<w:gridCol/>" for _ in range(num_cols))}</w:tblGrid>'
+        # Grid columns with calculated widths
+        tbl_xml += '<w:tblGrid>'
+        for w in col_widths:
+            tbl_xml += f'<w:gridCol w:w="{w}"/>'
+        tbl_xml += '</w:tblGrid>'
 
-        for r_idx, r_data in enumerate(all_rows):
-            is_header = (r_idx == 0)
-            is_footer = (footer_row and r_idx == len(all_rows) - 1)
-            is_highlight = (r_idx - 1) in highlight_rows if r_idx > 0 and not is_footer else False
-            is_alt = (r_idx % 2 == 0) and not is_header and not is_footer and not is_highlight
+        for r_idx, r_data in enumerate(all_rows_data):
+            is_header_row = (r_idx == 0)
+            is_footer_row = (footer_row and r_idx == len(all_rows_data) - 1)
+            is_highlight = (r_idx - 1) in highlight_rows if r_idx > 0 and not is_footer_row else False
+            is_alt = (r_idx % 2 == 0) and not is_header_row and not is_footer_row and not is_highlight
 
             tbl_xml += '<w:tr>'
 
             for c_idx in range(num_cols):
-                if is_header:
+                if is_header_row:
                     cell_val = r_data[c_idx].get('label', r_data[c_idx].get('key', '')) if isinstance(r_data[c_idx], dict) else str(r_data[c_idx])
                 else:
                     cell_val = str(r_data[c_idx]) if r_data[c_idx] is not None else ''
 
-                # Escape XML special chars
-                cell_val = cell_val.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                cell_val = esc(cell_val)
+
+                # Cell width
+                width_xml = f'<w:tcW w:w="{col_widths[c_idx]}" w:type="pct"/>'
 
                 # Cell shading
                 shading = ''
-                if is_header:
+                if is_header_row:
                     shading = f'<w:shd w:val="clear" w:color="auto" w:fill="{header_color}"/>'
-                elif is_footer:
+                elif is_footer_row:
                     shading = '<w:shd w:val="clear" w:color="auto" w:fill="2C3E50"/>'
                 elif is_highlight:
                     shading = '<w:shd w:val="clear" w:color="auto" w:fill="FFF3CD"/>'
@@ -1222,19 +1757,28 @@ for idx, para, marker, marker_type in reversed(paragraphs_to_process):
                     shading = '<w:shd w:val="clear" w:color="auto" w:fill="F8F9FA"/>'
 
                 # Font color
-                if is_header or is_footer:
+                if is_header_row or is_footer_row:
                     font_color = 'FFFFFF'
                 elif is_highlight:
                     font_color = '856D0E'
                 else:
                     font_color = '1A1E28'
 
-                bold_tag = '<w:b/>' if (is_header or is_footer or is_highlight) else ''
+                bold_tag = '<w:b/>' if (is_header_row or is_footer_row or is_highlight) else ''
+
+                # Detect numeric for right-alignment
+                align_xml = ''
+                try:
+                    float(cell_val.replace(',', '.').replace(' ', '').replace('%', '').replace('&amp;', ''))
+                    align_xml = '<w:jc w:val="right"/>'
+                except (ValueError, AttributeError):
+                    if is_header_row:
+                        align_xml = '<w:jc w:val="center"/>'
 
                 tbl_xml += '<w:tc>'
-                tbl_xml += f'<w:tcPr>{shading}</w:tcPr>'
-                tbl_xml += f'<w:p><w:pPr><w:spacing w:after="40" w:before="40"/></w:pPr>'
-                tbl_xml += f'<w:r><w:rPr><w:rFonts w:ascii="DM Sans" w:hAnsi="DM Sans"/>'
+                tbl_xml += f'<w:tcPr>{width_xml}{shading}</w:tcPr>'
+                tbl_xml += f'<w:p><w:pPr><w:spacing w:after="40" w:before="40"/>{align_xml}</w:pPr>'
+                tbl_xml += f'<w:r><w:rPr><w:rFonts w:ascii="{table_font}" w:hAnsi="{table_font}"/>'
                 tbl_xml += f'<w:sz w:val="18"/>{bold_tag}<w:color w:val="{font_color}"/></w:rPr>'
                 tbl_xml += f'<w:t xml:space="preserve">{cell_val}</w:t></w:r>'
                 tbl_xml += '</w:p></w:tc>'
@@ -1247,7 +1791,6 @@ for idx, para, marker, marker_type in reversed(paragraphs_to_process):
             tbl_element = parse_xml(tbl_xml)
             para_element.addnext(tbl_element)
         except Exception as e:
-            # Fallback: just note the error in the marker paragraph
             if para.runs:
                 para.runs[0].text = f'[EROARE TABEL: {str(e)[:100]}]'
 
@@ -1258,25 +1801,14 @@ for table in doc.tables:
             for para in cell.paragraphs:
                 replace_in_paragraph(para, elements)
 
-# Apply cabinet document style
-cab_font = cabinet_style.get('fontFamily')
+# ═══ FINAL: Apply cabinet footer + watermark ═══
 cab_footer = cabinet_style.get('footerText')
 cab_draft_watermark = cabinet_style.get('draftWatermark', False)
 cab_watermark_text = cabinet_style.get('draftWatermarkText', 'DRAFT')
 cab_is_work_doc = cabinet_style.get('_isWorkDocument', True)
 
-if cab_font:
-    for para in doc.paragraphs:
-        for run in para.runs:
-            if run.font and run.text.strip():
-                run.font.name = cab_font
-    for table in doc.tables:
-        for row in table.rows:
-            for cell in row.cells:
-                for para in cell.paragraphs:
-                    for run in para.runs:
-                        if run.font and run.text.strip():
-                            run.font.name = cab_font
+# Apply BASE_FONT to all AI-generated content (not template content which keeps its own fonts)
+# This is already handled via the XML generation above using BASE_FONT
 
 if cab_footer:
     for section in doc.sections:
@@ -1286,8 +1818,7 @@ if cab_footer:
             run = p.add_run(cab_footer)
             run.font.size = Pt(8)
             run.font.color.rgb = RGBColor(0x88, 0x88, 0x88)
-            if cab_font:
-                run.font.name = cab_font
+            run.font.name = BASE_FONT
 
 # Add DRAFT watermark on work documents
 if cab_draft_watermark and cab_is_work_doc and cab_watermark_text:
@@ -1301,7 +1832,7 @@ if cab_draft_watermark and cab_is_work_doc and cab_watermark_text:
             <w:sz w:val="96"/>
             <w:szCs w:val="96"/>
           </w:rPr>
-          <w:t>{cab_watermark_text}</w:t>
+          <w:t>{esc(cab_watermark_text)}</w:t>
         </w:r>'''
         try:
             p._element.append(parse_xml(watermark_xml))
@@ -1318,7 +1849,9 @@ report = {
     "filled_count": len(filled_keys),
     "filled_keys": filled_keys,
     "composed_sections": composed_sections,
-    "total_sections": len(composed_sections)
+    "total_sections": len(composed_sections),
+    "base_font": BASE_FONT,
+    "template_font_detected": TEMPLATE_FONT or "none"
 }
 print(json.dumps(report))
 `;

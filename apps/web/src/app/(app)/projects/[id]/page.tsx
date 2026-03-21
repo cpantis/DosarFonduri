@@ -18,7 +18,7 @@ type SolomonElement = {
   key: string; label: string; value: string; source: string; status: "confirmat" | "propus";
 };
 
-type TemplateField = { key: string; name: string; value: string | null; source: string | null; confirmed: boolean; fieldType: string; group: string | null };
+type TemplateField = { key: string; name: string; value: string | null; source: string | null; confirmed: boolean; fieldType: string; group: string | null; templateElementId?: string };
 type TemplatePage = { num: number; title: string; status: "complete" | "partial" | "empty"; fields: TemplateField[]; totalFields: number; filledFields: number; confirmedFields: number };
 
 type ComposeSection = {
@@ -476,6 +476,10 @@ export default function ProjectViewPage() {
   const [consistencyResult, setConsistencyResult] = useState<{ consistent: boolean; conflicts: any[] } | null>(null);
   const [consistencyLoading, setConsistencyLoading] = useState(false);
   const [neemiaBulkGenerating, setNeemiaBulkGenerating] = useState(false);
+  const [neemiaEditingField, setNeemiaEditingField] = useState<string | null>(null); // field key being edited
+  const [neemiaEditValue, setNeemiaEditValue] = useState("");
+  const [neemiaSavingField, setNeemiaSavingField] = useState(false);
+  const [neemiaTogglingMode, setNeemiaTogglingMode] = useState(false);
 
   // ─── LOCK STATE ───
   const [lockOwned, setLockOwned] = useState(false);
@@ -1288,6 +1292,115 @@ export default function ProjectViewPage() {
 
   const solomonConfirmedCount = solomonElements.filter(e => e.status === "confirmat").length;
 
+  // ─── NEEMIA: Refresh documents list helper ───
+  const refreshNeemiaDocs = async () => {
+    const docs = await apiGet<any[]>(`/api/neemia/projects/${projectId}/documents`).catch(() => []);
+    setNeemiaTemplates(prev => (docs || []).map((doc: any) => {
+      // Preserve loaded pages from previous state if same template
+      const existing = prev.find(t => t.templateDocumentId === doc.templateDocumentId);
+      return {
+        id: doc.id,
+        name: doc.templateName || "Document",
+        type: (doc.templateFileType || "DOCX").toUpperCase(),
+        pages: existing?.pages || [],
+        totalFields: existing?.totalFields || doc.filledCount || 0,
+        filledFields: existing?.filledFields || doc.filledCount || 0,
+        templateDocumentId: doc.templateDocumentId,
+        status: doc.status,
+        downloadUrl: doc.downloadUrl || null,
+        generationMode: doc.generationMode || "fill",
+        composeSections: doc.composeContent?.sections || undefined,
+      };
+    }));
+  };
+
+  // ─── NEEMIA: Inline field edit (Fill mode) ───
+  const handleNeemiaFieldEdit = async (field: TemplateField, newValue: string) => {
+    if (readOnly || neemiaSavingField) return;
+    if (!projectId) return;
+
+    setNeemiaSavingField(true);
+    try {
+      // Find projectElement by templateElementId or by key
+      const projEls = elements;
+      let peId: string | null = null;
+
+      if (field.templateElementId) {
+        const pe = projEls.find(e => (e as any).templateElementId === field.templateElementId);
+        peId = pe?.id || null;
+      }
+      if (!peId) {
+        const pe = projEls.find(e => e.key === field.key);
+        peId = pe?.id || null;
+      }
+
+      if (!peId) {
+        // Fetch from API as fallback
+        const allProjEls = await apiGet<any[]>(`/api/projects/${projectId}/elements`);
+        const pe = (allProjEls || []).find((e: any) =>
+          e.templateElementId === field.templateElementId || e.key === field.key
+        );
+        peId = pe?.id || null;
+      }
+
+      if (!peId) {
+        toast("error", "Element negăsit în proiect");
+        return;
+      }
+
+      await apiPut(`/api/projects/${projectId}/elements/${peId}`, {
+        value: newValue,
+        source: "manual",
+        confirmed: true,
+      });
+
+      // Update local Neemia state for immediate feedback
+      setNeemiaTemplates(prev => prev.map((t, i) => {
+        if (i !== neemiaActiveTemplate) return t;
+        return {
+          ...t,
+          pages: t.pages.map(pg => ({
+            ...pg,
+            fields: pg.fields.map(f =>
+              f.key === field.key ? { ...f, value: newValue, source: "Manual", confirmed: true } : f
+            ),
+            filledFields: pg.fields.filter(f => f.key === field.key ? !!newValue : !!f.value).length,
+          })),
+          filledFields: t.pages.reduce((sum, pg) =>
+            sum + pg.fields.filter(f => f.key === field.key ? !!newValue : !!f.value).length, 0),
+        };
+      }));
+
+      // Also update global elements state
+      setElements(prev => prev.map(e => e.key === field.key ? { ...e, value: newValue, source: "manual", confirmed: true } : e));
+      toast("success", `Câmp "${field.name}" actualizat`);
+    } catch (err) {
+      toast("error", `Eroare: ${(err as Error).message}`);
+    } finally {
+      setNeemiaSavingField(false);
+      setNeemiaEditingField(null);
+      setNeemiaEditValue("");
+    }
+  };
+
+  // ─── NEEMIA: Toggle generation mode (fill ↔ compose) ───
+  const handleToggleGenerationMode = async (templateDocId: string, currentMode: "fill" | "compose") => {
+    if (readOnly || neemiaTogglingMode) return;
+    const newMode = currentMode === "fill" ? "compose" : "fill";
+    setNeemiaTogglingMode(true);
+    try {
+      await apiPut(`/api/neemia/templates/${templateDocId}/generation-mode`, { mode: newMode });
+      setNeemiaTemplates(prev => prev.map(t =>
+        t.templateDocumentId === templateDocId ? { ...t, generationMode: newMode } : t
+      ));
+      toast("success", `Mod schimbat: ${newMode.toUpperCase()}`);
+    } catch (err) {
+      toast("error", `Eroare: ${(err as Error).message}`);
+    } finally {
+      setNeemiaTogglingMode(false);
+    }
+  };
+
   // ─── NEEMIA: Generate single template ───
   const handleNeemiaGenerate = async (templateDocumentId: string) => {
     if (readOnly || neemiaGenerating) return;
@@ -1347,14 +1460,7 @@ export default function ProjectViewPage() {
             else if (evt.type === "complete") {
               setNeemiaGenProgress(100);
               setNeemiaGenStatus(`✓ Document generat (v${evt.version || "?"}) — ${evt.filledCount} câmpuri completate`);
-              // Refresh Neemia documents list
-              const docs = await apiGet<any[]>(`/api/neemia/projects/${projectId}/documents`).catch(() => []);
-              setNeemiaTemplates((docs || []).map((doc: any) => ({
-                id: doc.id, name: doc.templateName || "Document",
-                type: (doc.templateFileType || "DOCX").toUpperCase(),
-                pages: [], totalFields: doc.filledCount || 0, filledFields: doc.filledCount || 0,
-                templateDocumentId: doc.templateDocumentId, status: doc.status, downloadUrl: doc.downloadUrl || null,
-              })));
+              await refreshNeemiaDocs();
             }
             else if (evt.type === "error") { setNeemiaGenStatus(`Eroare: ${evt.message}`); setNeemiaGenProgress(0); }
           } catch {}
@@ -1401,13 +1507,7 @@ export default function ProjectViewPage() {
             else if (evt.type === "calculated_fields") setNeemiaGenStatus(`Câmpuri calculate: ${evt.fields.length}`);
             else if (evt.type === "bulk_complete") {
               setNeemiaGenStatus(`✓ Dosar complet: ${evt.totalGenerated} documente generate, ${evt.totalFailed} eșuate`);
-              const docs = await apiGet<any[]>(`/api/neemia/projects/${projectId}/documents`).catch(() => []);
-              setNeemiaTemplates((docs || []).map((doc: any) => ({
-                id: doc.id, name: doc.templateName || "Document",
-                type: (doc.templateFileType || "DOCX").toUpperCase(),
-                pages: [], totalFields: doc.filledCount || 0, filledFields: doc.filledCount || 0,
-                templateDocumentId: doc.templateDocumentId, status: doc.status, downloadUrl: doc.downloadUrl || null,
-              })));
+              await refreshNeemiaDocs();
             }
             else if (evt.type === "error") setNeemiaGenStatus(`Eroare: ${evt.message}`);
           } catch {}
@@ -1504,15 +1604,7 @@ export default function ProjectViewPage() {
             else if (evt.type === "complete") {
               setNeemiaGenStatus(`✓ Document COMPOSE generat — ${evt.filledCount} secțiuni`);
               setComposePreviewSections([]);
-              const docs = await apiGet<any[]>(`/api/neemia/projects/${projectId}/documents`).catch(() => []);
-              setNeemiaTemplates((docs || []).map((doc: any) => ({
-                id: doc.id, name: doc.templateName || "Document",
-                type: (doc.templateFileType || "DOCX").toUpperCase(),
-                pages: [], totalFields: doc.filledCount || 0, filledFields: doc.filledCount || 0,
-                templateDocumentId: doc.templateDocumentId, status: doc.status, downloadUrl: doc.downloadUrl || null,
-                generationMode: doc.generationMode || "fill",
-                composeSections: doc.composeContent?.sections || undefined,
-              })));
+              await refreshNeemiaDocs();
             }
             else if (evt.type === "error") setNeemiaGenStatus(`Eroare: ${evt.message}`);
           } catch {}
@@ -1525,13 +1617,26 @@ export default function ProjectViewPage() {
     }
   };
 
-  // ─── COMPOSE: Edit section text ───
-  const handleComposeEditSave = (sectionIdx: number) => {
+  // ─── COMPOSE: Edit section text (persist to API if document exists) ───
+  const handleComposeEditSave = async (sectionIdx: number) => {
+    const section = composePreviewSections[sectionIdx];
     setComposePreviewSections(prev => prev.map((s, i) =>
       i === sectionIdx ? { ...s, content: composeEditText, approved: true } : s
     ));
     setComposeEditing(null);
     setComposeEditText("");
+
+    // Persist to API if a generated document exists
+    const composeTmpl = neemiaTemplates.find(t => t.generationMode === "compose" && t.id);
+    if (composeTmpl?.id && section?.marker) {
+      try {
+        await apiPut(`/api/neemia/documents/${composeTmpl.id}/sections/${encodeURIComponent(section.marker)}`, {
+          content: composeEditText,
+        });
+      } catch (err) {
+        toast("warning", "Editarea s-a salvat local dar nu s-a putut persista pe server");
+      }
+    }
   };
 
   // ─── COMPOSE: Regenerate single section ───
@@ -1736,6 +1841,7 @@ export default function ProjectViewPage() {
               confirmed: f.confirmed,
               fieldType: f.fieldType,
               group: f.group,
+              templateElementId: f.templateElementId,
             })),
           }));
           setNeemiaTemplates(prev => prev.map((t, i) => i === idx ? {
@@ -4882,9 +4988,17 @@ export default function ProjectViewPage() {
                         <div className="tc-name">
                           {tmpl.name}
                           <span className="tc-badge">{tmpl.type}</span>
-                          <span className={`tc-mode-badge ${tmpl.generationMode === "compose" ? "compose" : "fill"}`}>
+                          <button
+                            className={`tc-mode-badge ${tmpl.generationMode === "compose" ? "compose" : "fill"}`}
+                            title={`Click pentru a comuta la ${tmpl.generationMode === "compose" ? "FILL" : "COMPOSE"}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleToggleGenerationMode(tmpl.templateDocumentId, tmpl.generationMode || "fill");
+                            }}
+                            disabled={readOnly || neemiaTogglingMode}
+                          >
                             {tmpl.generationMode === "compose" ? "COMPOSE" : "FILL"}
-                          </span>
+                          </button>
                         </div>
                         <div className="tc-info">
                           {tmpl.generationMode === "compose"
@@ -4960,13 +5074,7 @@ export default function ProjectViewPage() {
                                 e.stopPropagation();
                                 try {
                                   await apiPut(`/api/neemia/documents/${tmpl.id}/validate`, {});
-                                  const docs = await apiGet<any[]>(`/api/neemia/projects/${projectId}/documents`);
-                                  setNeemiaTemplates((docs || []).map((doc: any) => ({
-                                    id: doc.id, name: doc.templateName || "Document", type: (doc.templateFileType || "DOCX").toUpperCase(),
-                                    pages: [], totalFields: 0, filledFields: 0, templateDocumentId: doc.templateDocumentId,
-                                    status: doc.status, downloadUrl: doc.downloadUrl || null, generationMode: doc.generationMode || "fill",
-                                    composeSections: doc.composeContent?.sections || undefined,
-                                  })));
+                                  await refreshNeemiaDocs();
                                   toast("success", "Document validat de consultant");
                                 } catch { toast("error", "Eroare la validare"); }
                               }}
@@ -5005,13 +5113,7 @@ export default function ProjectViewPage() {
                                       e.stopPropagation();
                                       try {
                                         await apiPost(`/api/neemia/documents/${v.id}/rollback`, {});
-                                        const docs = await apiGet<any[]>(`/api/neemia/projects/${projectId}/documents`);
-                                        setNeemiaTemplates((docs || []).map((doc: any) => ({
-                                          id: doc.id, name: doc.templateName || "Document", type: (doc.templateFileType || "DOCX").toUpperCase(),
-                                          pages: [], totalFields: 0, filledFields: 0, templateDocumentId: doc.templateDocumentId,
-                                          status: doc.status, downloadUrl: doc.downloadUrl || null, generationMode: doc.generationMode || "fill",
-                                          composeSections: doc.composeContent?.sections || undefined,
-                                        })));
+                                        await refreshNeemiaDocs();
                                         toast("success", `Versiunea v${v.version} a fost restaurată.`);
                                       } catch { toast("error", "Eroare la restaurarea versiunii."); }
                                     }}
@@ -5213,23 +5315,91 @@ export default function ProjectViewPage() {
                           </div>
                           <div className="nfp-scroll">
                             {neemiaPage?.fields.map((f, fi) => (
-                              <div className={`nfp-card ${f.value ? (f.confirmed ? "is-confirmed" : "is-proposed") : "is-empty"}`} key={fi}>
+                              <div
+                                className={`nfp-card ${f.value ? (f.confirmed ? "is-confirmed" : "is-proposed") : "is-empty"} ${neemiaEditingField === f.key ? "is-editing" : ""}`}
+                                key={fi}
+                                onClick={() => {
+                                  if (readOnly || neemiaEditingField === f.key) return;
+                                  setNeemiaEditingField(f.key);
+                                  setNeemiaEditValue(f.value || "");
+                                }}
+                                style={{ cursor: readOnly ? "default" : "pointer" }}
+                              >
                                 <div className="nfp-card-top">
                                   <span className="nfp-card-label">{f.name}</span>
                                   <span className={`nfp-card-status ${f.confirmed ? "confirmed" : f.value ? "proposed" : "empty"}`}>
                                     {f.confirmed ? "✓ Confirmat" : f.value ? "○ Propus" : "— Gol"}
                                   </span>
                                 </div>
-                                <div className={`nfp-card-value ${!f.value ? "missing" : ""}`}>
-                                  {f.value || `{{${f.key}}}`}
-                                </div>
-                                {f.source && (
+                                {neemiaEditingField === f.key ? (
+                                  <div style={{ padding: "6px 0" }} onClick={e => e.stopPropagation()}>
+                                    {f.fieldType === "textarea" || (f.value && f.value.length > 80) ? (
+                                      <textarea
+                                        style={{
+                                          width: "100%", padding: "8px 10px", fontSize: 13, fontFamily: "inherit",
+                                          border: "1.5px solid #4d8bff", borderRadius: 6, background: "#f8fafc",
+                                          resize: "vertical", outline: "none", lineHeight: 1.5,
+                                        }}
+                                        value={neemiaEditValue}
+                                        onChange={e => setNeemiaEditValue(e.target.value)}
+                                        rows={3}
+                                        autoFocus
+                                        onKeyDown={e => {
+                                          if (e.key === "Escape") { setNeemiaEditingField(null); setNeemiaEditValue(""); }
+                                        }}
+                                      />
+                                    ) : (
+                                      <input
+                                        style={{
+                                          width: "100%", padding: "8px 10px", fontSize: 13, fontFamily: "inherit",
+                                          border: "1.5px solid #4d8bff", borderRadius: 6, background: "#f8fafc",
+                                          outline: "none",
+                                        }}
+                                        type={f.fieldType === "number" ? "number" : "text"}
+                                        value={neemiaEditValue}
+                                        onChange={e => setNeemiaEditValue(e.target.value)}
+                                        autoFocus
+                                        onKeyDown={e => {
+                                          if (e.key === "Enter") handleNeemiaFieldEdit(f, neemiaEditValue);
+                                          if (e.key === "Escape") { setNeemiaEditingField(null); setNeemiaEditValue(""); }
+                                        }}
+                                      />
+                                    )}
+                                    <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                                      <button
+                                        style={{
+                                          padding: "4px 12px", fontSize: 11, fontWeight: 600, borderRadius: 5,
+                                          border: "none", background: "#4d8bff", color: "#fff", cursor: "pointer",
+                                          opacity: neemiaSavingField ? 0.6 : 1,
+                                        }}
+                                        onClick={() => handleNeemiaFieldEdit(f, neemiaEditValue)}
+                                        disabled={neemiaSavingField}
+                                      >
+                                        {neemiaSavingField ? "..." : "Salvează"}
+                                      </button>
+                                      <button
+                                        style={{
+                                          padding: "4px 12px", fontSize: 11, fontWeight: 600, borderRadius: 5,
+                                          border: "1px solid #e2e8f0", background: "#fff", color: "#64748b", cursor: "pointer",
+                                        }}
+                                        onClick={() => { setNeemiaEditingField(null); setNeemiaEditValue(""); }}
+                                      >
+                                        Anulează
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className={`nfp-card-value ${!f.value ? "missing" : ""}`}>
+                                    {f.value || `{{${f.key}}}`}
+                                  </div>
+                                )}
+                                {f.source && neemiaEditingField !== f.key && (
                                   <div className="nfp-card-source">
                                     <span className={`source-dot ${f.source.toLowerCase()}`} />
                                     {f.source}
                                   </div>
                                 )}
-                                {f.fieldType !== "text" && (
+                                {f.fieldType !== "text" && neemiaEditingField !== f.key && (
                                   <div className="nfp-card-type">{f.fieldType}</div>
                                 )}
                               </div>

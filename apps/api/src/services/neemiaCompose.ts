@@ -399,6 +399,75 @@ function buildPreviousSectionsSummary(previousSections: ComposeSection[]): strin
 ${summaries}\n`;
 }
 
+// ═══ AUTO-GENERATE PROGRAM-SPECIFIC WRITING KIT ═══
+// Extracts terminology, keywords, and scoring criteria from guide rules
+
+async function generateProgramWritingKit(
+  programFinantare: string,
+  codMasura: string | undefined,
+  relevantRules: ComposeContext["relevantRules"],
+  aiModel: string,
+  organizationId: string,
+  userId: string,
+): Promise<Record<string, any>> {
+  const rulesSummary = relevantRules.slice(0, 40)
+    .map(r => `[${r.type}] ${r.category || "general"}: ${r.description}${r.sourceText ? ` (sursa: ${r.sourceText.slice(0, 100)})` : ""}`)
+    .join("\n");
+
+  const prompt = `Analizează regulile ghidului de finanțare pentru programul "${programFinantare}" ${codMasura ? `(măsura ${codMasura})` : ""} și generează un Writing Kit adaptat.
+
+REGULI DIN GHID:
+${rulesSummary}
+
+Generează un JSON cu:
+1. "terminology" — array de {bad, good}: 8-12 perechi de expresii neprofesionale → formulări profesionale specifice acestui program
+2. "evaluator_keywords" — obiect cu secțiuni:
+   - "eligibility": 5-8 fraze cheie pe care evaluatorul le caută la eligibilitate
+   - "necessity": 5-8 fraze pentru necesitate/oportunitate
+   - "objectives": 5-8 fraze pentru contribuția la obiectivele programului
+   - "impact": 5-8 fraze pentru impact și rezultate măsurabile
+   - "sustainability": 4-6 fraze pentru sustenabilitate
+   - "environment": 4-6 fraze pentru mediu/climă/social (dacă relevant)
+3. "scoring_criteria" — obiect cu criteriile de selecție specifice acestui program: cheie = cod criteriu, valoare = array de keywords/fraze asociate
+4. "forbidden_phrases" — array de expresii generice de evitat (ex: "cel mai bun", "revoluționar")
+5. "program_specifics" — obiect cu:
+   - "full_name": numele complet al programului
+   - "authority": autoritatea de management (AFIR, MIPE, etc.)
+   - "regulation_refs": referințe legislative relevante
+   - "typical_beneficiaries": tipuri de beneficiari eligibili
+   - "intensity_ranges": intervale intensitate ajutor
+
+IMPORTANT: Toate frazele trebuie să fie în română, specifice pentru "${programFinantare}", NU generice. Bazează-te strict pe regulile furnizate.
+
+Răspunde DOAR cu JSON valid.`;
+
+  const response = await withAILimit(() => anthropic.messages.create({
+    model: "claude-sonnet-4-20250514", // Use Sonnet for speed — WK gen is a one-time operation
+    max_tokens: 4096,
+    messages: [{ role: "user", content: prompt }],
+  }));
+
+  await logAIUsage({
+    organizationId,
+    userId,
+    agent: "neemia",
+    model: "claude-sonnet-4-20250514",
+    tokensInput: response.usage.input_tokens,
+    tokensOutput: response.usage.output_tokens,
+    action: "writing_kit_generate",
+  });
+
+  const textContent = response.content.find(c => c.type === "text");
+  if (!textContent || textContent.type !== "text") throw new Error("WK generation: empty response");
+
+  let rawText = textContent.text.trim();
+  if (rawText.startsWith("```")) {
+    rawText = rawText.replace(/^```(?:json)?\s*/, "").replace(/\s*```$/, "");
+  }
+
+  return JSON.parse(rawText);
+}
+
 // ═══ AI CONTENT GENERATION ═══
 // Calls Claude to generate narrative sections and table structures (with chunking support)
 
@@ -490,7 +559,49 @@ async function generateComposeContent(
 ${s.instructions ? `- Instrucțiuni specifice: ${s.instructions}` : ""}${blueprintHint}`;
   }).join("\n");
 
-  // Load writing kit from solomonKnowledge (global + org-specific)
+  // Load writing kit — prioritize program-specific, then org-specific, then global
+  const programTag = context.programFinantare?.replace(/\s+/g, "_").toLowerCase() || "";
+  const programWkCategory = programTag ? `wk_prog_${programTag}` : "";
+
+  // Check if program-specific WK exists; if not, auto-generate from guide rules
+  if (programWkCategory && context.relevantRules.length > 0) {
+    const existingProgWk = await db.query.solomonKnowledge.findFirst({
+      where: and(
+        eq(solomonKnowledge.category, programWkCategory),
+        eq(solomonKnowledge.enabled, true),
+        or(
+          isNull(solomonKnowledge.organizationId),
+          eq(solomonKnowledge.organizationId, organizationId),
+        ),
+      ),
+    });
+
+    if (!existingProgWk) {
+      try {
+        const progWk = await generateProgramWritingKit(
+          context.programFinantare,
+          context.codMasura,
+          context.relevantRules,
+          aiModel,
+          organizationId,
+          userId,
+        );
+        // Save for future reuse (org-scoped so each cabinet can customize)
+        await db.insert(solomonKnowledge).values({
+          organizationId,
+          category: programWkCategory,
+          title: `Writing Kit — ${context.programFinantare} ${context.codMasura || ""}`.trim(),
+          content: JSON.stringify(progWk),
+          priority: 15, // Higher than generic WK (10)
+          enabled: true,
+        });
+      } catch (err) {
+        console.warn("[generateComposeContent] Program WK generation failed:", err);
+      }
+    }
+  }
+
+  // Load all applicable WK entries: program-specific + org-specific + global
   const writingKit = await db.select().from(solomonKnowledge)
     .where(and(
       like(solomonKnowledge.category, "wk_%"),
@@ -499,7 +610,26 @@ ${s.instructions ? `- Instrucțiuni specifice: ${s.instructions}` : ""}${bluepri
         isNull(solomonKnowledge.organizationId),
         eq(solomonKnowledge.organizationId, organizationId),
       ),
-    ));
+    ))
+    .orderBy(solomonKnowledge.priority);
+
+  // Deduplicate: if program-specific WK covers same topic as generic, prefer program-specific
+  const writingKitFiltered = (() => {
+    const programEntries = writingKit.filter(wk => wk.category.startsWith("wk_prog_"));
+    const genericEntries = writingKit.filter(wk => !wk.category.startsWith("wk_prog_"));
+
+    // If we have program-specific entries, skip generic scoring/keywords (they're for a different program)
+    if (programEntries.length > 0) {
+      const skipGeneric = new Set(["wk_scoring_keywords", "wk_keywords_eligibility",
+        "wk_keywords_necessity", "wk_keywords_objectives", "wk_keywords_impact",
+        "wk_keywords_sustainability", "wk_keywords_environment"]);
+      return [
+        ...programEntries,
+        ...genericEntries.filter(wk => !skipGeneric.has(wk.category)),
+      ];
+    }
+    return writingKit;
+  })();
 
   // Load cabinet preferences from previous consultant edits (feedback loop)
   const cabinetEditHistory = await db.select({
@@ -528,8 +658,8 @@ ${s.instructions ? `- Instrucțiuni specifice: ${s.instructions}` : ""}${bluepri
       }\n`
     : "";
 
-  const writingKitContext = writingKit.length > 0
-    ? writingKit.map(wk => {
+  const writingKitContext = writingKitFiltered.length > 0
+    ? writingKitFiltered.map(wk => {
         try {
           const parsed = JSON.parse(wk.content);
           return `## ${wk.title}\n${JSON.stringify(parsed, null, 2)}`;

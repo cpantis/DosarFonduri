@@ -1,7 +1,7 @@
 import type { AppEnv } from "../types/hono";
 import { Hono } from "hono";
 import { db } from "../db";
-import { projectDocuments, documents, templateElements, projectElements, guideReferenceTables, projects, composeSectionVersions, templatePlaceholderMapping } from "../db/schema";
+import { projectDocuments, documents, templateElements, projectElements, guideReferenceTables, projects, composeSectionVersions, templatePlaceholderMapping, companies, companyFinancials, organizations } from "../db/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { AuthContext } from "../middleware/auth";
 import {
@@ -23,6 +23,61 @@ import {
 } from "@dosarfonduri/shared";
 
 export const neemiaRoutes = new Hono<AppEnv>();
+
+/**
+ * Build additional injected values that Neemia adds at generation time.
+ * These are values that don't come from projectElements but are injected
+ * from project metadata, company data, financials, and cabinet branding.
+ * Both fill-preview and template-render must include these so the UI
+ * matches what generateDocument will actually produce.
+ */
+async function buildInjectedValues(projectId: string, organizationId: string): Promise<Record<string, string>> {
+  const injected: Record<string, string> = {};
+
+  // 1. Project metadata
+  const project = await db.query.projects.findFirst({
+    where: eq(projects.id, projectId),
+  });
+  if (project?.programFinantare) injected["program_finantare"] = project.programFinantare;
+  if (project?.codMasura) injected["cod_masura"] = project.codMasura;
+  if (project?.codSesiune) injected["cod_sesiune"] = project.codSesiune;
+  if (project?.codNomenclator) injected["cod_nomenclator"] = project.codNomenclator;
+  if (project?.prefixDocumente) injected["prefix_documente"] = project.prefixDocumente;
+  if (project?.codMysmis) injected["cod_mysmis"] = project.codMysmis;
+
+  // 2. Company data
+  if (project?.companyId) {
+    const company = await db.query.companies.findFirst({
+      where: eq(companies.id, project.companyId),
+    });
+    if (company?.denumire) injected["denumire_firma"] = company.denumire;
+    if (company?.cui) injected["cui_firma"] = company.cui;
+
+    // 3. Financial data (F10/F20 from latest year)
+    const financials = await db.query.companyFinancials.findMany({
+      where: eq(companyFinancials.companyId, project.companyId),
+    });
+    if (financials.length > 0) {
+      const latest = financials.sort((a: any, b: any) => b.year - a.year)[0];
+      const f10 = (latest as any).f10 as Record<string, any> || {};
+      const f20 = (latest as any).f20 as Record<string, any> || {};
+      for (const [key, value] of Object.entries({ ...f10, ...f20 })) {
+        if (value != null && String(value).trim() !== "" && !injected[key]) {
+          injected[key] = String(value);
+        }
+      }
+    }
+  }
+
+  // 4. Cabinet branding
+  const org = await db.query.organizations.findFirst({
+    where: eq(organizations.id, organizationId),
+  });
+  const cabinetStyle = (org as any)?.cabinetDocumentStyle || {};
+  if (cabinetStyle.footerText) injected["footer_cabinet"] = cabinetStyle.footerText;
+
+  return injected;
+}
 
 // Helper: verify project belongs to the user's organization
 async function verifyProjectOrg(projectId: string, organizationId: string) {
@@ -741,6 +796,10 @@ neemiaRoutes.get("/projects/:projectId/fill-preview/:templateDocId", async (c) =
     where: eq(templatePlaceholderMapping.templateDocumentId, templateDocId),
   });
 
+  // Build injected values (project metadata, financials, cabinet branding)
+  // These are values Neemia injects at generation time that DON'T come from projectElements
+  const injectedValues = await buildInjectedValues(projectId, auth.organizationId!);
+
   const fieldPreview = tmplEls.map(te => {
     // Use SAME two-path resolution as Neemia's buildElementsMap:
     // Path 1: template_placeholder_mapping → elementDefId → projectElements
@@ -752,17 +811,25 @@ neemiaRoutes.get("/projects/:projectId/fill-preview/:templateDocId", async (c) =
     if (!pe) {
       pe = projEls.find(p => p.templateElementId === te.id);
     }
-    const hasValue = pe?.value != null && pe.value.trim() !== "";
+
+    const peValue = pe?.value != null && pe.value.trim() !== "";
+    // Check injected values (project metadata, financials) as Neemia does
+    const injectedValue = injectedValues[te.key] || null;
+    const hasValue = peValue || !!injectedValue;
+    const resolvedSource = peValue ? (pe?.source || null) : injectedValue ? "auto" : null;
+
     return {
       key: te.key,
       label: te.label,
       fieldType: te.fieldType,
       pageNum: te.pageNum,
       willFill: hasValue,
-      value: hasValue ? pe!.value : null,
-      source: pe?.source || null,
+      value: peValue ? pe!.value : injectedValue,
+      source: resolvedSource,
       confirmed: pe?.confirmed ?? false,
-      resolvedVia: mapping && pe?.elementDefId ? "elementDef" : pe?.templateElementId ? "templateElement" : "none",
+      resolvedVia: peValue
+        ? (mapping && pe?.elementDefId ? "elementDef" : "templateElement")
+        : injectedValue ? "injected" : "none",
       fillResult: hasValue ? "value" : "[DE COMPLETAT]",
     };
   });
@@ -866,6 +933,9 @@ neemiaRoutes.get("/projects/:projectId/template-render/:templateDocId", async (c
     where: eq(templatePlaceholderMapping.templateDocumentId, templateDocId),
   });
 
+  // Build injected values (same as Neemia generateDocument)
+  const injectedValues = await buildInjectedValues(projectId, auth.organizationId!);
+
   // Build fieldName → project value map using SAME two-path resolution as Neemia
   const fieldValues = new Map<string, {
     value: string | null;
@@ -883,21 +953,24 @@ neemiaRoutes.get("/projects/:projectId/template-render/:templateDocId", async (c
     let pe = mapping
       ? projEls.find(p => p.elementDefId === mapping.elementDefId)
       : null;
-    const resolvedVia = pe ? "elementDef" : "none";
+    const resolvedViaPath = pe ? "elementDef" : "none";
 
     // Path 2 (fallback): templateElementId → projectElements
     if (!pe) {
       pe = projEls.find(p => p.templateElementId === te.id);
     }
 
+    const peValue = pe?.value != null && pe.value.trim() !== "";
+    const injectedValue = injectedValues[te.key] || null;
+
     fieldValues.set(te.key, {
-      value: pe?.value || null,
-      source: pe?.source || null,
+      value: peValue ? pe!.value : injectedValue,
+      source: peValue ? (pe?.source || null) : injectedValue ? "auto" : null,
       confirmed: pe?.confirmed ?? false,
       templateElementId: te.id,
       label: te.label,
       fieldType: te.fieldType,
-      resolvedVia: pe ? resolvedVia || "templateElement" : "none",
+      resolvedVia: peValue ? (resolvedViaPath || "templateElement") : injectedValue ? "injected" : "none",
     });
   }
 

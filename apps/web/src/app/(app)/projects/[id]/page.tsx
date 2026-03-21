@@ -2950,6 +2950,20 @@ export default function ProjectViewPage() {
         .fod-tooltip-confirm:hover{background:rgba(77,139,255,.2)}
         .fod-tooltip-confirmed{color:#34d399;font-weight:600;margin-top:2px}
         .fod-tooltip-empty{color:#8892a8;font-style:italic}
+        .fod-reconciliation-banner{display:flex;align-items:center;justify-content:space-between;padding:6px 12px;background:rgba(251,191,36,.06);border-bottom:1px solid rgba(251,191,36,.2);flex-shrink:0}
+        .fod-recon-stats{display:flex;gap:12px;font-size:11px;font-weight:500}
+        .fod-recon-coverage{font-weight:700}
+        .fod-recon-fuzzy{color:#d97706}
+        .fod-recon-missing{color:#dc2626}
+        .fod-recon-toggle{font-size:11px;padding:3px 10px;border-radius:5px;border:1px solid rgba(226,232,240,.8);background:#fff;cursor:pointer;font-weight:600;color:#4d8bff}
+        .fod-fuzzy-banner{display:flex;align-items:center;gap:6px;padding:4px 12px;background:rgba(251,191,36,.06);border-bottom:1px solid rgba(251,191,36,.15);font-size:11px;color:#92400e;flex-shrink:0}
+        .fod-unmatched-panel{max-height:200px;overflow-y:auto;border-bottom:1px solid rgba(226,232,240,.8);background:#fefce8;flex-shrink:0}
+        .fod-unmatched-header{padding:8px 12px;font-size:12px;font-weight:600;border-bottom:1px solid rgba(251,191,36,.15);display:flex;flex-direction:column;gap:2px}
+        .fod-unmatched-item{padding:6px 12px;border-bottom:1px solid rgba(251,191,36,.1);display:flex;align-items:center;gap:8px}
+        .fod-unmatched-item.has-value{background:rgba(52,211,153,.04)}
+        .fod-unmatched-label{font-size:11px;font-weight:600;min-width:120px;color:#1a1e28}
+        .fod-unmatched-value{font-size:11px;color:#334155;flex:1}
+        .fod-unmatched-source{font-size:10px;color:#94a3b8;padding:1px 5px;background:rgba(148,163,184,.1);border-radius:3px}
         .fod-loading{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:#64748b}
         .fod-spinner{width:32px;height:32px;border:3px solid rgba(77,139,255,.2);border-top-color:#4d8bff;border-radius:50%;animation:spin 1s linear infinite}
         @keyframes spin{to{transform:rotate(360deg)}}

@@ -1,7 +1,7 @@
 import type { AppEnv } from "../types/hono";
 import { Hono } from "hono";
 import { db } from "../db";
-import { projectDocuments, documents, templateElements, projectElements, guideReferenceTables, projects, composeSectionVersions } from "../db/schema";
+import { projectDocuments, documents, templateElements, projectElements, guideReferenceTables, projects, composeSectionVersions, templatePlaceholderMapping } from "../db/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { AuthContext } from "../middleware/auth";
 import {
@@ -736,22 +736,34 @@ neemiaRoutes.get("/projects/:projectId/fill-preview/:templateDocId", async (c) =
     where: eq(projectElements.projectId, projectId),
   });
 
+  // Load placeholder mappings (Path 1: elementDefId resolution)
+  const mappings = await db.query.templatePlaceholderMapping.findMany({
+    where: eq(templatePlaceholderMapping.templateDocumentId, templateDocId),
+  });
+
   const fieldPreview = tmplEls.map(te => {
-    const pe = projEls.find(p => p.templateElementId === te.id);
+    // Use SAME two-path resolution as Neemia's buildElementsMap:
+    // Path 1: template_placeholder_mapping → elementDefId → projectElements
+    const mapping = mappings.find(m => m.placeholderKey === te.key);
+    let pe = mapping
+      ? projEls.find(p => p.elementDefId === mapping.elementDefId)
+      : null;
+    // Path 2 (fallback): templateElementId → projectElements
+    if (!pe) {
+      pe = projEls.find(p => p.templateElementId === te.id);
+    }
     const hasValue = pe?.value != null && pe.value.trim() !== "";
     return {
       key: te.key,
       label: te.label,
       fieldType: te.fieldType,
       pageNum: te.pageNum,
-      // Fill prediction
       willFill: hasValue,
       value: hasValue ? pe!.value : null,
       source: pe?.source || null,
       confirmed: pe?.confirmed ?? false,
-      fillResult: hasValue
-        ? "value"
-        : "[DE COMPLETAT]",  // What Neemia will put in the document
+      resolvedVia: mapping && pe?.elementDefId ? "elementDef" : pe?.templateElementId ? "templateElement" : "none",
+      fillResult: hasValue ? "value" : "[DE COMPLETAT]",
     };
   });
 
@@ -849,7 +861,12 @@ neemiaRoutes.get("/projects/:projectId/template-render/:templateDocId", async (c
     where: eq(projectElements.projectId, projectId),
   });
 
-  // Build fieldName → project value map using template_elements
+  // Load placeholder mappings for Path 1 resolution (elementDefId)
+  const placeholderMappings = await db.query.templatePlaceholderMapping.findMany({
+    where: eq(templatePlaceholderMapping.templateDocumentId, templateDocId),
+  });
+
+  // Build fieldName → project value map using SAME two-path resolution as Neemia
   const fieldValues = new Map<string, {
     value: string | null;
     source: string | null;
@@ -857,10 +874,22 @@ neemiaRoutes.get("/projects/:projectId/template-render/:templateDocId", async (c
     templateElementId: string;
     label: string;
     fieldType: string;
+    resolvedVia: string;
   }>();
 
   for (const te of tmplEls) {
-    const pe = projEls.find(p => p.templateElementId === te.id);
+    // Path 1: template_placeholder_mapping → elementDefId → projectElements
+    const mapping = placeholderMappings.find(m => m.placeholderKey === te.key);
+    let pe = mapping
+      ? projEls.find(p => p.elementDefId === mapping.elementDefId)
+      : null;
+    const resolvedVia = pe ? "elementDef" : "none";
+
+    // Path 2 (fallback): templateElementId → projectElements
+    if (!pe) {
+      pe = projEls.find(p => p.templateElementId === te.id);
+    }
+
     fieldValues.set(te.key, {
       value: pe?.value || null,
       source: pe?.source || null,
@@ -868,6 +897,7 @@ neemiaRoutes.get("/projects/:projectId/template-render/:templateDocId", async (c
       templateElementId: te.id,
       label: te.label,
       fieldType: te.fieldType,
+      resolvedVia: pe ? resolvedVia || "templateElement" : "none",
     });
   }
 

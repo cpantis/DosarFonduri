@@ -740,6 +740,7 @@ export default function ProjectViewPage() {
       /\bcu opus\b/, /\btreci pe opus\b/, /\bmodel opus\b/, /\banaliz[aă] complex[aă]\b/,
       /\banaliz[aă] detaliat[aă]\b/, /\banaliz[aă] aprofundat[aă]\b/,
       /\bgândește mai profund\b/, /\bgandeste mai profund\b/,
+      /\bgândire aprofundat[aă]\b/, /\bgandire aprofundata\b/,
       /\bextended thinking\b/, /\bthinking extins\b/,
     ];
     return opusPatterns.some(p => p.test(lower));

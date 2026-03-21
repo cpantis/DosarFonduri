@@ -66,6 +66,7 @@ type EligibilityRule = {
   sourceDocument?: { id: string; name: string; fileType: string } | null;
   hasReferenceData?: boolean;
   referenceTableNames?: string[];
+  isPreEligibility?: boolean;
 };
 
 type GuideRule = {
@@ -167,12 +168,13 @@ function parseAdresa(adresa: string | undefined): { localitate: string; judet: s
 function mapEligibilityRules(flat: any[]): EligibilityRule[] {
   return flat.map(item => {
     const conf = parseFloat(item.rule?.confidence) || item.confidence;
+    const notes = item.notes || item.detail || "";
     return {
       id: item.id,
       ruleId: item.ruleId || item.rule?.id,
       name: item.rule?.description || "Regulă necunoscută",
       status: item.status === "passed" ? "pass" : item.status === "failed" ? "fail" : "pending",
-      detail: item.detail || "",
+      detail: notes,
       type: item.rule?.type || "fixed",
       confidence: conf,
       page: item.rule?.sourcePage ?? item.rule?.page,
@@ -180,6 +182,7 @@ function mapEligibilityRules(flat: any[]): EligibilityRule[] {
       category: item.rule?.category || "",
       needsReview: item.rule?.needsReview ?? (conf != null && conf < 0.85),
       sourceDocument: item.rule?.sourceDocument || null,
+      isPreEligibility: typeof notes === "string" && notes.startsWith("[Pre-elig]"),
     };
   });
 }
@@ -2951,6 +2954,9 @@ export default function ProjectViewPage() {
                   </div>
                 );
               }
+              const preEligRules = eligibilityRules.filter(r => r.isPreEligibility);
+              const projectRules = eligibilityRules.filter(r => !r.isPreEligibility);
+
               return (
               <div className="elig-panel">
                 <div className="elig-summary">
@@ -2972,25 +2978,69 @@ export default function ProjectViewPage() {
                   </div>
                 </div>
 
-                <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-                  {eligibilityRules.map(rule => (
-                    <div className={`elig-rule ${rule.status}-bg`} key={rule.id}>
-                      <div className={`elig-icon ${rule.status}`}>
-                        {eligStatusIcons[rule.status]}
-                      </div>
-                      <span className={`elig-name ${rule.status}-text`}>
-                        {rule.name}
-                        {rule.status === "pending" && rule.detail && (
-                          <span style={{ fontWeight: 400 }}> — {rule.detail}</span>
-                        )}
+                {/* Pre-eligibilitate firmă (from companyElements — instant, no AI) */}
+                {preEligRules.length > 0 && (
+                  <>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px 6px", marginTop: 4 }}>
+                      <span style={{ fontSize: 13 }}>{"\u{1F3E2}"}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", textTransform: "uppercase", letterSpacing: ".5px" }}>Pre-eligibilitate firmă</span>
+                      <span style={{ fontSize: 10, color: "#64748b", fontWeight: 500 }}>— date ONRC & financiare</span>
+                      <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", color: "#059669" }}>
+                        {preEligRules.filter(r => r.status === "pass").length}/{preEligRules.length}
                       </span>
                     </div>
-                  ))}
-                </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                      {preEligRules.map(rule => (
+                        <div className={`elig-rule ${rule.status}-bg`} key={rule.id}>
+                          <div className={`elig-icon ${rule.status}`}>
+                            {eligStatusIcons[rule.status]}
+                          </div>
+                          <span className={`elig-name ${rule.status}-text`}>
+                            {rule.name}
+                            {rule.detail && (
+                              <span style={{ fontWeight: 400, fontSize: 11, color: "#64748b" }}> — {rule.detail.replace("[Pre-elig] ", "")}</span>
+                            )}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {/* Eligibilitate proiect (all other rules) */}
+                {projectRules.length > 0 && (
+                  <>
+                    {preEligRules.length > 0 && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px 6px", marginTop: 8, borderTop: "1px solid rgba(226,232,240,.6)" }}>
+                        <span style={{ fontSize: 13 }}>{"\u{1F4CB}"}</span>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", textTransform: "uppercase", letterSpacing: ".5px" }}>Eligibilitate proiect</span>
+                        <span style={{ fontSize: 10, color: "#64748b", fontWeight: 500 }}>— date proiect & AI</span>
+                        <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", color: "#059669" }}>
+                          {projectRules.filter(r => r.status === "pass").length}/{projectRules.length}
+                        </span>
+                      </div>
+                    )}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                      {projectRules.map(rule => (
+                        <div className={`elig-rule ${rule.status}-bg`} key={rule.id}>
+                          <div className={`elig-icon ${rule.status}`}>
+                            {eligStatusIcons[rule.status]}
+                          </div>
+                          <span className={`elig-name ${rule.status}-text`}>
+                            {rule.name}
+                            {rule.status === "pending" && rule.detail && (
+                              <span style={{ fontWeight: 400 }}> — {rule.detail}</span>
+                            )}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
 
                 <div style={{ marginTop: 16 }}>
                   <button className="sa-btn primary" style={{ display: "inline-flex" }} onClick={handleRecheckEligibility} disabled={recheckLoading}>
-                    {recheckLoading ? "Se verifică..." : "🔄 Re-verifică eligibilitate"}
+                    {recheckLoading ? "Se verifică..." : "\u{1F504} Re-verifică eligibilitate"}
                   </button>
                 </div>
               </div>

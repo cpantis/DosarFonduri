@@ -20,7 +20,7 @@ import {
   createChecklistItemSchema,
   updateChecklistItemSchema,
 } from "@dosarfonduri/shared";
-import { checkEligibility } from "../services/eligibility";
+import { checkEligibility, runPreEligibilityForProject } from "../services/eligibility";
 import { deleteFile, getFileUrl } from "../services/storage";
 import { validateElement, logElementChange } from "../services/elementValidation";
 import { computeProjectScores } from "../services/scoring";
@@ -324,6 +324,12 @@ projectRoutes.post("/", async (c) => {
     try { await seedEligibilityRows(project.id, project.folderId, orgId); } catch (e: any) {
       console.warn("[projects/create] Seed eligibility warning:", e.message);
     }
+    // Pre-eligibility: instant evaluation of fixed rules from companyElements
+    // Runs before full checkEligibility — gives immediate feedback on company data
+    try { await runPreEligibilityForProject(project.id, body.companyId, body.folderId, orgId); } catch (e: any) {
+      console.warn("[projects/create] Pre-eligibility warning:", e.message);
+    }
+    // Full eligibility: re-evaluates with projectElements overlay + AI for interpreted rules
     try { await checkEligibility(project.id, orgId); } catch (e: any) {
       console.warn("[projects/create] Eligibility warning:", e.message);
     }

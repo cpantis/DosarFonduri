@@ -1,7 +1,7 @@
 import { db } from "../db";
 import {
   projects, projectEligibility, rules, companies, companyFinancials,
-  documentFolders, documents, orgConfig, projectElements, elementDefinitions,
+  companyElements, documentFolders, documents, orgConfig, projectElements, elementDefinitions,
 } from "../db/schema";
 import { eq, and } from "drizzle-orm";
 import { anthropic, withAILimit } from "../lib/anthropic";
@@ -441,4 +441,70 @@ export async function checkEligibility(projectId: string, organizationId: string
       await tx.insert(projectEligibility).values(insertValues);
     });
   }
+}
+
+// ============================================================
+// PRE-ELIGIBILITY AT PROJECT CREATION (instant, from companyElements)
+// ============================================================
+
+/**
+ * Run instant pre-eligibility using companyElements (materialized company data).
+ * Only evaluates fixed rules — no AI, no cost, instant.
+ * Updates existing project_eligibility rows (seeded as "pending" by seedEligibilityRows).
+ * Called right after project creation, before the full checkEligibility().
+ */
+export async function runPreEligibilityForProject(
+  projectId: string,
+  companyId: string,
+  sessionFolderId: string,
+  organizationId: string,
+): Promise<{ evaluated: number; passed: number; failed: number }> {
+  // 1. Load companyElements as flat key→value map
+  const companyEls = await db.query.companyElements.findMany({
+    where: eq(companyElements.companyId, companyId),
+  });
+  if (companyEls.length === 0) return { evaluated: 0, passed: 0, failed: 0 };
+
+  const companyData: Record<string, any> = {};
+  for (const el of companyEls) {
+    if (!el.value) continue;
+    const num = parseFloat(el.value);
+    companyData[el.elementKey] = !isNaN(num) && el.value === String(num) ? num : el.value;
+  }
+
+  // 2. Get all rules from session
+  const allRules = await getRulesForSession(sessionFolderId);
+  const fixedRules = allRules.filter(r => r.type === "fixed");
+
+  if (fixedRules.length === 0) return { evaluated: 0, passed: 0, failed: 0 };
+
+  // 3. Evaluate fixed rules against companyData
+  let passed = 0;
+  let failed = 0;
+  let evaluated = 0;
+
+  for (const rule of fixedRules) {
+    const result = evaluateFixedRule(rule, companyData);
+    if (result.status === "passed" || result.status === "failed") {
+      evaluated++;
+      if (result.status === "passed") passed++;
+      else failed++;
+
+      // Update the seeded project_eligibility row for this rule
+      await db.update(projectEligibility).set({
+        status: result.status,
+        autoResult: result.autoResult,
+        notes: result.notes ? `[Pre-elig] ${result.notes}` : null,
+        checkedAt: new Date(),
+      }).where(
+        and(
+          eq(projectEligibility.projectId, projectId),
+          eq(projectEligibility.ruleId, rule.id),
+        )
+      );
+    }
+  }
+
+  console.log(`[preEligibility] Proiect ${projectId}: ${evaluated}/${fixedRules.length} reguli fixe evaluate instant (${passed} passed, ${failed} failed)`);
+  return { evaluated, passed, failed };
 }

@@ -281,9 +281,14 @@ Mapează datele firmei la elementele de mai sus. Returnează DOAR un JSON array.
       ? mapping.source
       : "onrc";
 
+    // Official sources (ONRC, ANAF) are auto-confirmed — no need for manual review
+    const isOfficialSource = source === "onrc" || source === "onrc_auto" || source === "anaf_auto";
+
     await db.update(projectElements).set({
       value: String(mapping.value),
       source: source as any,
+      confirmed: isOfficialSource,
+      validationStatus: isOfficialSource ? "valid" as const : "pending" as const,
     }).where(eq(projectElements.id, projectElementId));
 
     updatedCount++;
@@ -390,7 +395,13 @@ async function fallbackPrefillFromCompany(
     if (!el) continue;
     if (el.value && el.value.trim()) continue;
 
-    await db.update(projectElements).set({ value, source }).where(eq(projectElements.id, el.id));
+    const isOfficialSource = source === "onrc" || source === "onrc_auto" || source === "anaf_auto";
+    await db.update(projectElements).set({
+      value,
+      source,
+      confirmed: isOfficialSource,
+      validationStatus: isOfficialSource ? "valid" as const : "pending" as const,
+    }).where(eq(projectElements.id, el.id));
     updatedCount++;
   }
 

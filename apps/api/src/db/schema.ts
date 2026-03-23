@@ -824,3 +824,16 @@ export const extractionCache = pgTable("extraction_cache", {
   hashTypeIdx: uniqueIndex("cache_hash_type_idx").on(table.contentHash, table.extractionType, table.organizationId),
   orgIdx: index("cache_org_idx").on(table.organizationId),
 }));
+
+// === PASSWORD RESET TOKENS ===
+export const passwordResetTokens = pgTable("password_reset_tokens", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  tokenHash: varchar("token_hash", { length: 64 }).notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  usedAt: timestamp("used_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  tokenIdx: uniqueIndex("prt_token_hash_idx").on(table.tokenHash),
+  userIdx: index("prt_user_idx").on(table.userId),
+}));

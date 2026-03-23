@@ -2,11 +2,13 @@ import { Hono } from "hono";
 import { sign, verify } from "hono/jwt";
 import { z } from "zod";
 import { db } from "../db";
-import { users, organizations, cabinetCodes } from "../db/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { users, organizations, cabinetCodes, passwordResetTokens } from "../db/schema";
+import { eq, and, sql, lt } from "drizzle-orm";
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
 import type { AppEnv } from "../types/hono";
 import { lookupCUI_ListaFirme } from "../services/listafirme";
+import { sendEmail } from "../services/email";
 
 export const authRoutes = new Hono<AppEnv>();
 
@@ -260,6 +262,85 @@ authRoutes.post("/validate-code", async (c) => {
     cui: cabinetCode.cui || null,
     companyName: cabinetCode.companyName || null,
   });
+});
+
+// --- FORGOT PASSWORD ---
+authRoutes.post("/forgot-password", async (c) => {
+  const { email } = z.object({ email: z.string().email() }).parse(await c.req.json());
+
+  // Always return success to avoid email enumeration
+  const user = await db.query.users.findFirst({ where: eq(users.email, email) });
+  if (!user || user.status === "disabled") {
+    return c.json({ ok: true });
+  }
+
+  // Generate secure token
+  const rawToken = crypto.randomBytes(32).toString("hex");
+  const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+
+  // Invalidate any existing tokens for this user
+  await db.delete(passwordResetTokens).where(eq(passwordResetTokens.userId, user.id));
+
+  // Store hashed token (expires in 1 hour)
+  await db.insert(passwordResetTokens).values({
+    userId: user.id,
+    tokenHash,
+    expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+  });
+
+  // Send reset email
+  const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+  const resetUrl = `${frontendUrl}/reset-password?token=${rawToken}`;
+
+  await sendEmail({
+    organizationId: user.organizationId || "system",
+    to: user.email,
+    subject: "Resetare parola — DosarFonduri",
+    html: `
+      <h2>Resetare parola</h2>
+      <p>Salut, <strong>${user.name}</strong>!</p>
+      <p>Ai solicitat resetarea parolei. Apasa pe link-ul de mai jos:</p>
+      <p><a href="${resetUrl}" style="display:inline-block;padding:12px 24px;background:#4d8bff;color:#fff;border-radius:8px;text-decoration:none;font-weight:bold;">Reseteaza parola</a></p>
+      <p style="color:#64748b;font-size:13px;">Link-ul expira in 1 ora. Daca nu ai solicitat resetarea, ignora acest email.</p>
+    `,
+  });
+
+  return c.json({ ok: true });
+});
+
+// --- RESET PASSWORD ---
+authRoutes.post("/reset-password", async (c) => {
+  const { token, password } = z.object({
+    token: z.string().min(1),
+    password: z.string().min(6),
+  }).parse(await c.req.json());
+
+  const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+
+  const resetToken = await db.query.passwordResetTokens.findFirst({
+    where: eq(passwordResetTokens.tokenHash, tokenHash),
+  });
+
+  if (!resetToken) {
+    return c.json({ error: "Link invalid sau expirat" }, 400);
+  }
+
+  if (resetToken.usedAt) {
+    return c.json({ error: "Link-ul a fost deja folosit" }, 400);
+  }
+
+  if (new Date() > resetToken.expiresAt) {
+    return c.json({ error: "Link-ul a expirat. Solicita un nou link de resetare." }, 400);
+  }
+
+  // Update password
+  const passwordHash = await bcrypt.hash(password, 12);
+  await db.update(users).set({ passwordHash }).where(eq(users.id, resetToken.userId));
+
+  // Mark token as used
+  await db.update(passwordResetTokens).set({ usedAt: new Date() }).where(eq(passwordResetTokens.id, resetToken.id));
+
+  return c.json({ ok: true });
 });
 
 // --- PREFERENCES ---

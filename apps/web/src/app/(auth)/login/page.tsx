@@ -452,8 +452,10 @@ function SignupWizard({ onGo, invitedEmail }: { onGo: () => void; invitedEmail?:
               type="email"
               placeholder="ion.popescu@firma.ro"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => { if (!invitedEmail) setEmail(e.target.value); }}
               onBlur={checkInvited}
+              readOnly={!!invitedEmail}
+              style={invitedEmail ? { opacity: 0.7, cursor: "not-allowed" } : undefined}
             />
           </div>
           <div className="fg">

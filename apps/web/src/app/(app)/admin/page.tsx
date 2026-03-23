@@ -160,10 +160,15 @@ export default function AdminPage() {
   const handleInvite = async () => {
     if (!inviteEmail.includes("@")) return;
     try {
-      await apiPost("/api/admin/users", { email: inviteEmail, role: inviteRole });
+      const result = await apiPost<{ emailSent?: boolean; emailError?: string }>("/api/admin/users", { email: inviteEmail, role: inviteRole });
       setShowInvite(false);
       setInviteEmail("");
       await loadUsers();
+      if (result.emailSent === false) {
+        toast("error", `Utilizatorul a fost creat, dar email-ul nu a putut fi trimis: ${result.emailError || "necunoscut"}`);
+      } else {
+        toast("success", `Invitație trimisă la ${inviteEmail}`);
+      }
     } catch (err: any) {
       toast("error", err.message || "Eroare la operațiune.");
     }

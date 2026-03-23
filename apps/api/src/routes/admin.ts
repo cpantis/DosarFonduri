@@ -188,7 +188,10 @@ adminRoutes.post("/users/:id/resend-invite", async (c) => {
   });
 
   if (!emailResult.sent) {
-    return c.json({ error: `Trimiterea email-ului a eșuat: ${emailResult.reason}`, detail: emailResult }, 500);
+    const reason = emailResult.reason === "no_api_key"
+      ? "Serviciul de email nu este configurat (RESEND_API_KEY lipsă)"
+      : `Trimiterea email-ului a eșuat: ${emailResult.reason}`;
+    return c.json({ error: reason, detail: emailResult }, 422);
   }
   return c.json({ ok: true, email: user.email });
 });

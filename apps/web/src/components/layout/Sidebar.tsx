@@ -3,6 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { useSidebar } from "@/hooks/useSidebar";
+import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 
 /* ─── Monochrome SVG icons (Linear-style) ─── */
@@ -135,7 +136,8 @@ function SectionLabel({ children, collapsed }: { children: React.ReactNode; coll
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { organization, user } = useAuth();
+  const router = useRouter();
+  const { organization, user, logout } = useAuth();
   const { isCollapsed, toggle, expand } = useSidebar();
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -300,9 +302,10 @@ export function Sidebar() {
           padding: isCollapsed ? "12px 0" : "12px 16px",
           borderTop: "1px solid #e2e8f0",
           display: "flex",
+          flexDirection: isCollapsed ? "column" : "row",
           justifyContent: isCollapsed ? "center" : "flex-start",
           alignItems: "center",
-          gap: isCollapsed ? 0 : 10,
+          gap: isCollapsed ? 6 : 10,
         }}>
           <div style={{
             width: 28, height: 28, borderRadius: "50%", flexShrink: 0,
@@ -314,10 +317,52 @@ export function Sidebar() {
             {(user.name || user.email || "U").charAt(0).toUpperCase()}
           </div>
           {!isCollapsed && (
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div style={{ fontSize: 12, color: "#0f172a", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.name || user.email}</div>
-              <div style={{ fontSize: 10, color: "#94a3b8", textTransform: "capitalize" }}>{user.role || "consultant"}</div>
-            </div>
+            <>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: 12, color: "#0f172a", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.name || user.email}</div>
+                <div style={{ fontSize: 10, color: "#94a3b8", textTransform: "capitalize" }}>{user.role || "consultant"}</div>
+              </div>
+              <button
+                onClick={() => { logout(); router.push("/login"); }}
+                title="Deconectare"
+                style={{
+                  width: 28, height: 28, borderRadius: 6, flexShrink: 0,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  background: "transparent", border: "none",
+                  color: "#94a3b8", cursor: "pointer",
+                  transition: "all .15s",
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = "rgba(248,113,113,.08)"; e.currentTarget.style.color = "#f87171"; }}
+                onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#94a3b8"; }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
+                  <polyline points="16 17 21 12 16 7" />
+                  <line x1="21" y1="12" x2="9" y2="12" />
+                </svg>
+              </button>
+            </>
+          )}
+          {isCollapsed && (
+            <button
+              onClick={() => { logout(); router.push("/login"); }}
+              title="Deconectare"
+              style={{
+                width: 28, height: 28, borderRadius: 6,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                background: "transparent", border: "none",
+                color: "#94a3b8", cursor: "pointer",
+                transition: "all .15s",
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = "rgba(248,113,113,.08)"; e.currentTarget.style.color = "#f87171"; }}
+              onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#94a3b8"; }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
+                <polyline points="16 17 21 12 16 7" />
+                <line x1="21" y1="12" x2="9" y2="12" />
+              </svg>
+            </button>
           )}
         </div>
       )}

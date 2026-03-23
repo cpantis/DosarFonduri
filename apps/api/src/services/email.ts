@@ -21,15 +21,15 @@ export async function sendEmail(params: EmailParams) {
   const apiKey = process.env.RESEND_API_KEY;
 
   if (!apiKey) {
-    console.warn("RESEND_API_KEY not set, skipping email send");
-    return;
+    console.warn("[email] RESEND_API_KEY not set, skipping email to", params.to, "subject:", params.subject);
+    return { sent: false, reason: "no_api_key" };
   }
 
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15000);
     try {
-      await fetch("https://api.resend.com/emails", {
+      const res = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${apiKey}`,
@@ -43,11 +43,22 @@ export async function sendEmail(params: EmailParams) {
         }),
         signal: controller.signal,
       });
+
+      const body = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        console.error("[email] Resend API error:", res.status, body);
+        return { sent: false, reason: "api_error", status: res.status, detail: body };
+      }
+
+      console.log("[email] Sent to", params.to, "id:", body?.id);
+      return { sent: true, id: body?.id };
     } finally {
       clearTimeout(timeout);
     }
   } catch (error) {
-    console.error("Email send error:", error);
+    console.error("[email] Send error:", error);
+    return { sent: false, reason: "exception", detail: String(error) };
   }
 }
 

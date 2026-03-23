@@ -233,14 +233,14 @@ Fișierul `docs/specs/REVIEW_Prototipuri_vs_Specs.md` documentează procesul de 
 - **Deploy**: Railway (API + Web + Worker)
 - **Monorepo**: Turborepo (`turbo.json`) with `apps/api`, `apps/web`, `packages/shared`
 
-### 9. STARE IMPLEMENTARE (actualizat)
+### 9. STARE IMPLEMENTARE (actualizat 2026-03-23)
 
 **Toate fazele FAZA_1–FAZA_7 sunt implementate.** Codebase-ul este funcțional end-to-end:
 
 | Componentă | Status | Detalii |
 |------------|--------|---------|
-| DB Schema + Migrations | ✅ Complet | `schema.ts` + 17 migrations (0001–0017) |
-| Auth (login/signup/me) | ✅ Complet | JWT tokens, cabinet codes, provider auth |
+| DB Schema + Migrations | ✅ Complet | `schema.ts` (30 tabele) + 42 migrations (0000–0115) |
+| Auth (login/signup/me) | ✅ Complet | JWT tokens, cabinet codes, provider auth, password reset |
 | Companies CRUD | ✅ Complet | Auto (CUI/ListaFirme) + Manual (ONRC PDF upload) |
 | OCR + Extractors | ✅ Complet | 12+ specialized extractors (ONRC, bilanț, facturi, etc.) |
 | Documents + Folders | ✅ Complet | Tree structure, upload, reprocessing |
@@ -289,9 +289,16 @@ apiDelete<T>(path)                 // DELETE
 - `DELETE /api/projects/:id/lock` → release
 
 #### Migrations
-- Sequential SQL files in `apps/api/src/db/migrations/` (prefix `0001_` to `0017_`)
+- Sequential SQL files in `apps/api/src/db/migrations/` (prefix `0000_` to `0115_`)
 - Run via `apps/api/src/db/migrate.ts`
-- Schema defined in `apps/api/src/db/schema.ts` (single file, all tables)
+- Schema defined in `apps/api/src/db/schema.ts` (single file, 30 tables)
+- Key alignment migrations: `0099_alignment.sql`, `0111_user_delete_cascade.sql`, `0112_schema_fk_audit_fixes.sql`
+
+#### Delete Strategy
+- **100% hard delete** — no soft delete / `deleted_at` anywhere
+- R2/S3 storage cleanup on entity delete (companies, documents, projects, folders)
+- CASCADE FK for child entities (associates, admins, rules, elements, etc.)
+- 6 db.transaction blocks for atomic upserts (company creation, eligibility, scoring)
 
 ### 11. KNOWN GAPS (nu sunt încă implementate)
 
@@ -303,6 +310,47 @@ apiDelete<T>(path)                 // DELETE
 6. **Audit log filtering** — Admin page afișează log-ul dar fără filtrare UI
 7. **Version rollback** — Neemia version history se încarcă dar nu are buton de restore
 8. **Anexe tab** — Ghid Finanțare sub-tab "Anexe" este stub
+
+### 11b. DB AUDIT (2026-03-23) — PROBLEME DESCOPERITE
+
+**Rezumat descoperire**: 30 tabele, 87 FK-uri, 44 indexuri, 18 hard delete operations, 6 tranzacții, 0 soft delete.
+
+#### CRITICE
+
+| # | Tabel/Rută | Problemă | Fix propus |
+|---|-----------|----------|------------|
+| C1 | `project_elements.template_element_id` | FK fără `onDelete` (default NO ACTION). Ștergerea unui template_element (CASCADE de la document delete) → **FK violation error** | Adaugă `onDelete: "set null"` în schema.ts + migrare ALTER |
+| C2 | `project_elements.element_def_id` | FK fără `onDelete` (default NO ACTION). Ștergerea element_definitions (CASCADE de la ghid delete) → **FK violation error** | Adaugă `onDelete: "set null"` în schema.ts + migrare ALTER |
+| C3 | `DELETE /companies/:id` | Ștergerea firmei cascade-delete proiectele, dar fișierele R2 generate de Neemia (`projectDocuments.generatedFileId`) **rămân orfane** | Pre-delete: query `projectDocuments` prin `projects.companyId`, `deleteFile()` pe fiecare |
+| C4 | `DELETE /folders/:id` | Folder delete curăță R2 pt documente, dar **NU** pt `projectDocuments.generatedFileId` ale proiectelor din folder (cascade-deleted) | Pre-delete: query `projects` din folder → `projectDocuments` → `deleteFile()` |
+| C5 | `POST /:id/lock/release` (projects.ts:1157) | Ruta de sendBeacon **nu verifică organizationId** — leak existență proiect cross-org | Adaugă check org (din JWT payload extras din body.token) |
+
+#### MEDII
+
+| # | Tabel/Rută | Problemă | Fix propus |
+|---|-----------|----------|------------|
+| M1 | `project_eligibility.project_id` | FK cu CASCADE dar **fără index** — JOIN/CASCADE lent pe tabele mari | `CREATE INDEX proj_elig_project_idx ON project_eligibility(project_id)` |
+| M2 | `project_documents.project_id` | FK cu CASCADE dar **fără index** — DELETE CASCADE lent | `CREATE INDEX proj_doc_project_idx ON project_documents(project_id)` |
+| M3 | `project_checklist.project_id` | FK cu CASCADE dar **fără index** | `CREATE INDEX proj_check_project_idx ON project_checklist(project_id)` |
+| M4 | `solomon_conversations.project_id` | FK cu CASCADE dar **fără index** | `CREATE INDEX solomon_conv_project_idx ON solomon_conversations(project_id)` |
+| M5 | `rules.document_id` | FK cu CASCADE dar **fără index** — document delete slow | `CREATE INDEX rules_doc_idx ON rules(document_id)` |
+| M6 | `rules.organization_id` | FK fără index — filtrat frecvent | `CREATE INDEX rules_org_idx ON rules(organization_id)` |
+| M7 | `template_elements.organization_id` | FK fără index — filtrat frecvent | `CREATE INDEX tmpl_el_org_idx ON template_elements(organization_id)` |
+| M8 | `users.organization_id` | FK fără index — JOIN cu org la login | `CREATE INDEX users_org_idx ON users(organization_id)` |
+| M9 | `files.organization_id` | FK fără index | `CREATE INDEX files_org_idx ON files(organization_id)` |
+| M10 | `compose_section_versions.project_document_id` | FK CASCADE fără index | `CREATE INDEX csv_projdoc_idx ON compose_section_versions(project_document_id)` |
+| M11 | `company_associates.company_id` | FK CASCADE fără index | `CREATE INDEX comp_assoc_company_idx ON company_associates(company_id)` |
+| M12 | `company_administrators.company_id` | FK CASCADE fără index | `CREATE INDEX comp_admin_company_idx ON company_administrators(company_id)` |
+| M13 | `company_if_members.company_id` | FK CASCADE fără index | `CREATE INDEX comp_ifm_company_idx ON company_if_members(company_id)` |
+| M14 | Ștergere company associates/admins (companies.ts:337,375) | Replace pattern fără tranzacție — crash între delete și insert = pierdere date | Wrap în `db.transaction()` |
+
+#### LOW
+
+| # | Tabel/Rută | Problemă | Fix propus |
+|---|-----------|----------|------------|
+| L1 | 54 FK-uri fără index dedicat | Multe sunt `validated_by`, `uploaded_by` etc. — rar filtrate | Adaugă index doar pe cele cu CASCADE (listate la MEDII) |
+| L2 | `project_checklist.id` delete fără org check | `DELETE /:id/checklist/:itemId` — șterge doar cu `eq(id, itemId)` fără org filter | Adaugă `eq(projectChecklist.projectId, id)` cu project ownership |
+| L3 | `reference-tables DELETE /tables/:id` | Nu verifică dacă tabelul e referențiat de reguli active | Adaugă warning/check dacă `ruleReferenceLinks` referă acest tabel |
 
 ### 12. BUILD VERIFICATION RULE
 

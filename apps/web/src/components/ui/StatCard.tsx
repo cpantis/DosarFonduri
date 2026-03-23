@@ -6,11 +6,21 @@ interface StatCardProps {
   trend?: { value: string; up?: boolean };
 }
 
+const iconColorMap: Record<string, { bg: string; ring: string }> = {
+  blue:    { bg: "bg-blue-50",    ring: "ring-blue-200/60" },
+  amber:   { bg: "bg-amber-50",   ring: "ring-amber-200/60" },
+  emerald: { bg: "bg-emerald-50", ring: "ring-emerald-200/60" },
+  red:     { bg: "bg-red-50",     ring: "ring-red-200/60" },
+  purple:  { bg: "bg-purple-50",  ring: "ring-purple-200/60" },
+};
+
 export function StatCard({ icon, label, value, color = "blue", trend }: StatCardProps) {
+  const ic = iconColorMap[color] || iconColorMap.blue;
+
   return (
     <div className="bg-white rounded-xl border border-slate-200/80 p-5 shadow-[0_1px_3px_rgba(0,0,0,.04),0_1px_2px_rgba(0,0,0,.06)] hover:shadow-[0_4px_12px_rgba(0,0,0,.06),0_1px_3px_rgba(0,0,0,.04)] hover:border-slate-300/80 transition-all group">
       <div className="flex items-start justify-between">
-        <div className="w-10 h-10 rounded-xl bg-slate-50 ring-1 ring-slate-200/60 flex items-center justify-center text-[18px]" style={{ filter: "grayscale(1) opacity(0.55)" }}>{icon}</div>
+        <div className={`w-10 h-10 rounded-xl ${ic.bg} ring-1 ${ic.ring} flex items-center justify-center text-[18px]`}>{icon}</div>
         {trend && (
           <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${trend.up ? "text-emerald-600 bg-emerald-50" : "text-red-600 bg-red-50"}`}>
             {trend.up ? "\u2191" : "\u2193"} {trend.value}

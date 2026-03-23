@@ -82,7 +82,7 @@ export const users = pgTable("users", {
   role: userRoleEnum("role").notNull().default("consultant"),
   theme: themeEnum("theme").notNull().default("dark"),
   status: userStatusEnum("status").notNull().default("pending_cabinet"),
-  invitedBy: uuid("invited_by"),
+  invitedBy: uuid("invited_by").references((): any => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   lastActiveAt: timestamp("last_active_at"),
 });
@@ -129,7 +129,7 @@ export const companies = pgTable("companies", {
   patrimoniu_afectat: text("patrimoniu_afectat"),
   reprezentantIF: varchar("reprezentant_if", { length: 255 }),
   onrcRawData: jsonb("onrc_raw_data"),
-  certificatFileId: uuid("certificat_file_id").references(() => files.id),
+  certificatFileId: uuid("certificat_file_id").references(() => files.id, { onDelete: "set null" }),
   processingStatus: varchar("processing_status", { length: 20 }).default("idle"),
   processingError: text("processing_error"),
   lastSyncedAt: timestamp("last_synced_at"),
@@ -173,7 +173,7 @@ export const companyFinancials = pgTable("company_financials", {
   companyId: uuid("company_id").references(() => companies.id, { onDelete: "cascade" }).notNull(),
   year: integer("year").notNull(),
   source: financialSourceEnum("source").notNull(),
-  fileId: uuid("file_id").references(() => files.id),
+  fileId: uuid("file_id").references(() => files.id, { onDelete: "set null" }),
   f10: jsonb("f10"),
   f20: jsonb("f20"),
   f30: jsonb("f30"),
@@ -231,7 +231,7 @@ export const documents = pgTable("documents", {
   organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
   name: varchar("name", { length: 500 }).notNull(),
   fileType: docFileTypeEnum("file_type").notNull(),
-  fileId: uuid("file_id").references(() => files.id).notNull(),
+  fileId: uuid("file_id").references(() => files.id, { onDelete: "cascade" }).notNull(),
   mimeType: varchar("mime_type", { length: 100 }).notNull(),
   fileSize: integer("file_size").notNull(),
   fileHash: varchar("file_hash", { length: 64 }),
@@ -351,7 +351,7 @@ export const elementDefinitions = pgTable("element_definitions", {
   }>(),
   usedByRules: jsonb("used_by_rules").$type<string[]>(),
   usedInTemplates: jsonb("used_in_templates").$type<string[]>(),
-  lookupTableId: uuid("lookup_table_id"),
+  lookupTableId: uuid("lookup_table_id").references(() => guideReferenceTables.id, { onDelete: "set null" }),
   collectionOrder: integer("collection_order").default(0),
   required: boolean("required").notNull().default(false),
   minCount: integer("min_count").notNull().default(1),
@@ -490,11 +490,11 @@ export const projectElements = pgTable("project_elements", {
   id: uuid("id").defaultRandom().primaryKey(),
   projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
   templateElementId: uuid("template_element_id").references(() => templateElements.id),  // nullable now — backward compat
-  elementDefId: uuid("element_def_id").references(() => elementDefinitions.id),  // NEW anchor — will become NOT NULL after migration
+  elementDefId: uuid("element_def_id").references(() => elementDefinitions.id),  // NEW anchor — nullable for backward compat with legacy templateElement-only rows
   instanceIndex: integer("instance_index").notNull().default(0),  // For multi-instance elements (minCount>1): 0, 1, 2...
   value: text("value"),
   source: elementSourceEnum("source").notNull().default("manual"),
-  sourceDocumentId: uuid("source_document_id").references(() => documents.id),
+  sourceDocumentId: uuid("source_document_id").references(() => documents.id, { onDelete: "set null" }),
   confirmed: boolean("confirmed").notNull().default(false),
   confirmedBy: uuid("confirmed_by").references(() => users.id, { onDelete: "set null" }),
   validationStatus: validationStatusEnum("validation_status").notNull().default("pending"),
@@ -532,7 +532,7 @@ export const projectDocuments = pgTable("project_documents", {
   id: uuid("id").defaultRandom().primaryKey(),
   projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
   templateDocumentId: uuid("template_document_id").references(() => documents.id, { onDelete: "cascade" }).notNull(),
-  generatedFileId: uuid("generated_file_id").references(() => files.id),
+  generatedFileId: uuid("generated_file_id").references(() => files.id, { onDelete: "set null" }),
   status: generatedDocStatusEnum("status").notNull().default("generating"),
   version: integer("version").notNull().default(1),
   pagesCompleted: integer("pages_completed").default(0),
@@ -603,6 +603,7 @@ export const sessionChecklist = pgTable("session_checklist", {
   source: varchar("source", { length: 20 }).notNull().default("manual"), // "ghid" or "manual"
   sourceRuleId: uuid("source_rule_id").references(() => rules.id, { onDelete: "set null" }),
   templateId: uuid("template_id").references(() => documents.id, { onDelete: "set null" }),
+  done: boolean("done").notNull().default(false),
   notes: text("notes"),
   sortOrder: integer("sort_order").default(0),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -798,10 +799,10 @@ export const cabinetCodes = pgTable("cabinet_codes", {
   trialDays: integer("trial_days").notNull().default(30),
   cui: varchar("cui", { length: 20 }),
   companyName: varchar("company_name", { length: 500 }),
-  organizationId: uuid("organization_id").references(() => organizations.id),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "set null" }),
   activatedAt: timestamp("activated_at"),
   isActive: boolean("is_active").notNull().default(true),
-  createdBy: uuid("created_by").references(() => providerUsers.id).notNull(),
+  createdBy: uuid("created_by").references(() => providerUsers.id, { onDelete: "cascade" }).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

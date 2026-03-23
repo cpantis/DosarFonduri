@@ -1070,7 +1070,9 @@ projectRoutes.delete("/:id/checklist/:itemId", async (c) => {
   const lockErr = await requireLock(id, auth.userId);
   if (lockErr) return c.json({ error: lockErr }, 423);
 
-  await db.delete(projectChecklist).where(eq(projectChecklist.id, itemId));
+  await db.delete(projectChecklist).where(
+    and(eq(projectChecklist.id, itemId), eq(projectChecklist.projectId, id))
+  );
   return c.json({ ok: true });
 });
 
@@ -1159,9 +1161,11 @@ projectRoutes.post("/:id/lock/release", async (c) => {
 
   // Try auth from middleware first (normal authenticated request)
   let userId: string | null = null;
+  let organizationId: string | null = null;
   try {
     const auth = c.get("auth") as AuthContext;
     userId = auth.userId;
+    organizationId = auth.organizationId ?? null;
   } catch {
     // sendBeacon may not have gone through auth middleware properly
   }
@@ -1181,8 +1185,20 @@ projectRoutes.post("/:id/lock/release", async (c) => {
 
   if (!userId) return c.json({ error: "Unauthorized" }, 401);
 
+  // Resolve organizationId from user record (JWT doesn't carry it)
+  if (!organizationId) {
+    const user = await db.query.users.findFirst({
+      where: eq(users.id, userId),
+      columns: { organizationId: true },
+    });
+    organizationId = user?.organizationId ?? null;
+  }
+
+  // Verify project belongs to user's organization (prevent cross-org access)
   const project = await db.query.projects.findFirst({
-    where: eq(projects.id, id),
+    where: organizationId
+      ? and(eq(projects.id, id), eq(projects.organizationId, organizationId))
+      : eq(projects.id, id),
     columns: { id: true, lockedBy: true },
   });
   if (!project) return c.json({ error: "Not found" }, 404);

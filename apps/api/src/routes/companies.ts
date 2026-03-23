@@ -5,8 +5,9 @@ import { db } from "../db";
 import {
   companies, companyAssociates, companyAdministrators,
   companyFinancials, companyIfMembers, documentFolders, rules, documents,
+  projects, projectDocuments,
 } from "../db/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, inArray } from "drizzle-orm";
 import { lookupCUI, FORMA_MAP } from "../services/onrc";
 import { lookupCUI_ListaFirme, searchCompany_ListaFirme } from "../services/listafirme";
 import { uploadFile, deleteFile } from "../services/storage";
@@ -332,57 +333,63 @@ companyRoutes.post("/:id/sync-onrc", async (c) => {
     updatedAt: new Date(),
   }).where(eq(companies.id, id));
 
-  // Replace associates (ONRC is authoritative source)
-  if (onrcData.asociatiPF.length > 0 || onrcData.asociatiPJ.length > 0) {
-    await db.delete(companyAssociates).where(eq(companyAssociates.companyId, id));
+  // Replace associates + administrators atomically (ONRC is authoritative source)
+  const hasNewAssociates = onrcData.asociatiPF.length > 0 || onrcData.asociatiPJ.length > 0;
+  const hasNewAdmins = onrcData.administratori.length > 0;
 
-    if (onrcData.asociatiPF.length > 0) {
-      await db.insert(companyAssociates).values(
-        onrcData.asociatiPF.map(a => ({
-          companyId: id,
-          type: "pf" as const,
-          name: a.nume,
-          role: a.calitate,
-          citizenshipOrCountry: a.cetatenie,
-          contribution: a.aport?.toString(),
-          shares: a.partiSociale || a.actiuni,
-          pctBenefits: a.cotaBeneficii?.toString(),
-          pctLosses: a.cotaPierderi?.toString(),
-          tipAsociat: a.tipAsociat,
-        }))
-      );
-    }
+  if (hasNewAssociates || hasNewAdmins) {
+    await db.transaction(async (tx) => {
+      if (hasNewAssociates) {
+        await tx.delete(companyAssociates).where(eq(companyAssociates.companyId, id));
 
-    if (onrcData.asociatiPJ.length > 0) {
-      await db.insert(companyAssociates).values(
-        onrcData.asociatiPJ.map(a => ({
-          companyId: id,
-          type: "pj" as const,
-          name: a.denumire,
-          role: a.calitate,
-          citizenshipOrCountry: a.tara,
-          contribution: a.aport?.toString(),
-          shares: a.partiSociale || a.actiuni,
-          pctBenefits: a.cotaBeneficii?.toString(),
-          pctLosses: a.cotaPierderi?.toString(),
-        }))
-      );
-    }
-  }
+        if (onrcData.asociatiPF.length > 0) {
+          await tx.insert(companyAssociates).values(
+            onrcData.asociatiPF.map(a => ({
+              companyId: id,
+              type: "pf" as const,
+              name: a.nume,
+              role: a.calitate,
+              citizenshipOrCountry: a.cetatenie,
+              contribution: a.aport?.toString(),
+              shares: a.partiSociale || a.actiuni,
+              pctBenefits: a.cotaBeneficii?.toString(),
+              pctLosses: a.cotaPierderi?.toString(),
+              tipAsociat: a.tipAsociat,
+            }))
+          );
+        }
 
-  // Replace administrators
-  if (onrcData.administratori.length > 0) {
-    await db.delete(companyAdministrators).where(eq(companyAdministrators.companyId, id));
-    await db.insert(companyAdministrators).values(
-      onrcData.administratori.map(a => ({
-        companyId: id,
-        name: a.nume,
-        role: a.functie,
-        powers: a.puteri,
-        mandateDuration: a.durataMandatLabel,
-        appointmentDate: a.dataNumirii,
-      }))
-    );
+        if (onrcData.asociatiPJ.length > 0) {
+          await tx.insert(companyAssociates).values(
+            onrcData.asociatiPJ.map(a => ({
+              companyId: id,
+              type: "pj" as const,
+              name: a.denumire,
+              role: a.calitate,
+              citizenshipOrCountry: a.tara,
+              contribution: a.aport?.toString(),
+              shares: a.partiSociale || a.actiuni,
+              pctBenefits: a.cotaBeneficii?.toString(),
+              pctLosses: a.cotaPierderi?.toString(),
+            }))
+          );
+        }
+      }
+
+      if (hasNewAdmins) {
+        await tx.delete(companyAdministrators).where(eq(companyAdministrators.companyId, id));
+        await tx.insert(companyAdministrators).values(
+          onrcData.administratori.map(a => ({
+            companyId: id,
+            name: a.nume,
+            role: a.functie,
+            powers: a.puteri,
+            mandateDuration: a.durataMandatLabel,
+            appointmentDate: a.dataNumirii,
+          }))
+        );
+      }
+    });
   }
 
   // Update/insert financials
@@ -762,7 +769,25 @@ companyRoutes.delete("/:id", async (c) => {
     }
   }
 
-  // Cascade deletes handle associates, admins, financials, IF members
+  // Delete R2 files: Neemia-generated docs for all projects of this company
+  const companyProjects = await db.query.projects.findMany({
+    where: eq(projects.companyId, id),
+    columns: { id: true },
+  });
+  if (companyProjects.length > 0) {
+    const projectIds = companyProjects.map(p => p.id);
+    const generatedDocs = await db.query.projectDocuments.findMany({
+      where: inArray(projectDocuments.projectId, projectIds),
+      columns: { generatedFileId: true },
+    });
+    for (const doc of generatedDocs) {
+      if (doc.generatedFileId) {
+        await deleteFile(doc.generatedFileId).catch((e: any) => console.warn("[companies] neemia file cleanup:", e.message));
+      }
+    }
+  }
+
+  // Cascade deletes handle associates, admins, financials, IF members, projects
   await db.delete(companies).where(eq(companies.id, id));
 
   return c.json({ ok: true });

@@ -233,14 +233,14 @@ Fișierul `docs/specs/REVIEW_Prototipuri_vs_Specs.md` documentează procesul de 
 - **Deploy**: Railway (API + Web + Worker)
 - **Monorepo**: Turborepo (`turbo.json`) with `apps/api`, `apps/web`, `packages/shared`
 
-### 9. STARE IMPLEMENTARE (actualizat)
+### 9. STARE IMPLEMENTARE (actualizat 2026-03-23)
 
 **Toate fazele FAZA_1–FAZA_7 sunt implementate.** Codebase-ul este funcțional end-to-end:
 
 | Componentă | Status | Detalii |
 |------------|--------|---------|
-| DB Schema + Migrations | ✅ Complet | `schema.ts` + 17 migrations (0001–0017) |
-| Auth (login/signup/me) | ✅ Complet | JWT tokens, cabinet codes, provider auth |
+| DB Schema + Migrations | ✅ Complet | `schema.ts` (30 tabele) + 42 migrations (0000–0115) |
+| Auth (login/signup/me) | ✅ Complet | JWT tokens, cabinet codes, provider auth, password reset |
 | Companies CRUD | ✅ Complet | Auto (CUI/ListaFirme) + Manual (ONRC PDF upload) |
 | OCR + Extractors | ✅ Complet | 12+ specialized extractors (ONRC, bilanț, facturi, etc.) |
 | Documents + Folders | ✅ Complet | Tree structure, upload, reprocessing |
@@ -289,9 +289,16 @@ apiDelete<T>(path)                 // DELETE
 - `DELETE /api/projects/:id/lock` → release
 
 #### Migrations
-- Sequential SQL files in `apps/api/src/db/migrations/` (prefix `0001_` to `0017_`)
+- Sequential SQL files in `apps/api/src/db/migrations/` (prefix `0000_` to `0116_`)
 - Run via `apps/api/src/db/migrate.ts`
-- Schema defined in `apps/api/src/db/schema.ts` (single file, all tables)
+- Schema defined in `apps/api/src/db/schema.ts` (single file, 30 tables)
+- Key alignment migrations: `0099_alignment.sql`, `0111_user_delete_cascade.sql`, `0112_schema_fk_audit_fixes.sql`, `0116_db_audit_fixes.sql`
+
+#### Delete Strategy
+- **100% hard delete** — no soft delete / `deleted_at` anywhere
+- R2/S3 storage cleanup on entity delete (companies, documents, projects, folders)
+- CASCADE FK for child entities (associates, admins, rules, elements, etc.)
+- 6 db.transaction blocks for atomic upserts (company creation, eligibility, scoring)
 
 ### 11. KNOWN GAPS (nu sunt încă implementate)
 
@@ -303,6 +310,86 @@ apiDelete<T>(path)                 // DELETE
 6. **Audit log filtering** — Admin page afișează log-ul dar fără filtrare UI
 7. **Version rollback** — Neemia version history se încarcă dar nu are buton de restore
 8. **Anexe tab** — Ghid Finanțare sub-tab "Anexe" este stub
+
+### 11b. DB AUDIT (2026-03-23) — ✅ TOATE FIXATE
+
+**Toate problemele de DB au fost fixate** în commit `b486619` (migration `0116_db_audit_fixes.sql`):
+- ✅ C1-C2: `onDelete: "set null"` pe `project_elements.template_element_id` și `element_def_id`
+- ✅ C3-C4: R2 cleanup pe company/folder delete (inclusiv Neemia-generated files)
+- ✅ C5: Lock release verifică organizationId din user record
+- ✅ C6: Migration 0111 — eliminat ALTER pe `documents.created_by` inexistent
+- ✅ M1-M13: 15 indexuri noi pe CASCADE FK columns
+- ✅ M14: Associates/admins replace wrapped în `db.transaction()`
+- ✅ L2: Checklist delete filtrează pe `projectId`
+- ✅ L3: Reference table delete verifică referințe active (409 + `?force=true`)
+
+### 11c. ARCHITECTURE AUDIT (2026-03-23) — PROBLEME DESCOPERITE
+
+**Rezumat**: 125+ API endpoints, 16 pagini frontend, 30+ componente, 38+ servicii, 7 job procesoare, 0 teste.
+
+#### CRITICE
+
+| # | Fișier:Linie | Axă | Problemă | Fix propus |
+|---|-------------|-----|----------|-----------|
+| C1 | `projects.ts:1267` | Securitate | DELETE proiect nu filtrează pe `organizationId` în WHERE (doar SELECT verifică) | Adaugă `eq(projects.organizationId, auth.organizationId!)` în DELETE |
+| C2 | `projects.ts:1199-1210` | Securitate | Lock release: dacă `organizationId` e null, query nu filtrează pe org → cross-org leak | Adaugă `if (!organizationId) return 401` explicit |
+| C3 | `health.ts:57,64` | Securitate | `/health/invalidate-cache` și `/health/run-migrations` fără auth | Adaugă secret param sau auth |
+| C4 | `projects/[id]/page.tsx` | Organizare | **5.691 linii** monolith — imposibil de menținut/testat | Split în 7+ componente (Eligibility, Solomon, Elements, etc.) |
+| C5 | `projects.ts:493-525` | Performance | N+1 CRITIC: per-element 2 queries (templateEl + elemDef). 100 elem = 200 queries | Batch cu `inArray()` |
+| C6 | `neemia.ts:587` | Observabilitate | AI usage log `.catch(() => {})` — cost tracking pierdut | Cel puțin log error |
+
+#### MEDII
+
+| # | Fișier:Linie | Axă | Problemă |
+|---|-------------|-----|----------|
+| M1 | `admin.ts:100-113` | Performance | N+1: per-user project count (20 users = 20 queries extra) |
+| M2 | `documents.ts:196-225` | Performance | N+1: per-document 3× count queries (50 docs = 150 queries) |
+| M3 | `export.ts:20-39` | Performance | N+1 dublu: per-project elements × per-element template (5000 queries posibil) |
+| M4 | `export.ts:81-90` | Performance | N+1: per-project element count |
+| M5 | `projects.ts:824-844` | Performance | N+1: per-eligibility rule + doc lookups |
+| M6 | `projects.ts:756,899` | Reziliență | `checkEligibility()` fără try-catch |
+| M7 | `companies.ts:47-52` | Performance | GET /companies fără paginare |
+| M8 | `projects.ts:106-109` | Performance | GET /projects fără paginare |
+| M9 | `routes/*.ts` | Type Safety | 100× `as any` type assertions |
+| M10 | `components/shared/` vs `ui/` | Organizare | 6 componente duplicate (EmptyState, PageHeader, StatCard, StatusBadge, ProgressBar, TypeBadge) |
+| M11 | `projects/[id]/page.tsx` | Reziliență | 9 useEffect, doar 2 cu cleanup — 7 potențiale memory leaks |
+| M12 | `projects.ts:1065-1077` | Securitate | Checklist delete verifică projectId dar NU org ownership |
+| M13 | Toate DELETE routes | API Design | Returnează 200 `{ ok: true }` în loc de 204 |
+| M14 | `auth.ts:222,244` | Validare | check-invited/validate-code fără zod |
+| M15 | `index.ts:86-87` | Securitate | Zero rate limit pe Solomon, Neemia, eligibility AI endpoints |
+
+#### LOW
+
+| # | Fișier:Linie | Axă | Problemă |
+|---|-------------|-----|----------|
+| L1 | `neemia.ts:153-165` | Performance | N+1 minor: per-neemia-doc template lookup |
+| L2 | `reference-tables.ts:189-221` | Performance | N+1: per-link table/rule lookups |
+| L3 | `projects.ts:997-1006` | Performance | N+1: per-checklist-item template lookup |
+| L4 | `rateLimit.ts:14` | Securitate | IP spoofable via x-forwarded-for |
+| L5 | `index.ts:256` | Securitate | Setup-DB expune stack trace |
+| L6 | Multiple | Logging | `.catch(e => warn(e.message))` pierde stack |
+| L7 | `solomon.ts:22-30` | Securitate | sanitizeForPrompt limitată (doar `<>` și `═`) |
+| L8 | Codebase | Testabilitate | **Zero teste** (nici unit, nici integration, nici E2E) |
+
+#### TOP 5 IMPROVEMENTS (effort/impact)
+
+1. **Split `projects/[id]/page.tsx`** (5691→7 componente) — ~4h, cel mai mare ROI
+2. **Fix N+1 queries** (C5, M1-M5) cu batch `inArray()` — ~3h
+3. **Adaugă paginare** pe GET /companies, /projects — ~2h
+4. **Auth pe health routes + org filter pe DELETE** (C1, C3) — ~1h
+5. **Consolidează componente duplicate** (shared/ vs ui/) — ~2h
+
+#### ARCHITECTURE DECISIONS (de păstrat la refactor)
+
+- **ADR-1**: useState + useEffect only (no Redux/Zustand) — corect pentru scală actuală
+- **ADR-2**: 100% hard delete — simplifică schema + GDPR
+- **ADR-3**: Pessimistic locking pe proiecte (acquire/heartbeat/release)
+- **ADR-4**: AI concurrency limiter global (max 3, queue, retry 4×)
+- **ADR-5**: SSE via Redis pub/sub (scalabil multi-instanță)
+- **ADR-6**: Single schema.ts (30 tabele, split la 50+)
+- **ADR-7**: Dual storage (S3/R2 + local filesystem)
+- **ADR-8**: Job processors separați per document type
+- **ADR-9**: Extraction cache Redis (document hash → results)
 
 ### 12. BUILD VERIFICATION RULE
 

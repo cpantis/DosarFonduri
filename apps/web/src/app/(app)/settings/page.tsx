@@ -404,7 +404,7 @@ export default function SettingsPage() {
                 />
               </div>
 
-              <div className="p-3 mt-3 flex items-center gap-3 rounded-md bg-slate-50 border border-slate-200/80">
+              <div className="p-3 mt-3 flex items-center gap-3 rounded-[12px] bg-white border border-slate-200/70">
                 <span className="text-xs flex-1 text-slate-400">Cost estimat per conversatie medie (15 mesaje):</span>
                 <span className="text-sm font-bold font-mono text-amber-500">
                   {config.solomonModel.includes("opus") ? "~$0.35" : config.solomonModel.includes("sonnet") ? "~$0.08" : "~$0.02"}
@@ -553,7 +553,7 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              <div className="p-3 mt-3 flex items-center gap-3 rounded-md bg-slate-50 border border-slate-200/80">
+              <div className="p-3 mt-3 flex items-center gap-3 rounded-[12px] bg-white border border-slate-200/70">
                 <span className="text-xs flex-1 text-slate-400">Cost estimat procesare completa ghid (60 pag.):</span>
                 <span className="text-sm font-bold font-mono text-amber-500">~$0.30 (~50s)</span>
               </div>
@@ -578,7 +578,7 @@ export default function SettingsPage() {
 
               {/* Add/Edit form */}
               {showAddKnowledge && (
-                <div className="mb-5 p-4 rounded-xl border border-slate-200 bg-slate-50">
+                <div className="mb-5 p-4 rounded-[12px] border border-slate-200/70 bg-white">
                   <div className="grid grid-cols-2 gap-3 mb-3">
                     <div>
                       <label className="text-xs font-semibold text-slate-500 mb-1 block">Categorie</label>
@@ -713,11 +713,11 @@ export default function SettingsPage() {
                     </div>
 
                     <div className="grid grid-cols-2 gap-2 mb-2.5">
-                      <div className="p-2 rounded-md bg-slate-50 border border-slate-200/80">
+                      <div className="p-2 rounded-[12px] bg-white border border-slate-200/70">
                         <div className="text-[10px] font-semibold uppercase mb-0.5 text-slate-400" style={{ letterSpacing: ".5px" }}>API Key</div>
                         <div className="text-xs font-mono text-slate-500">{api.apiKeyMasked || "—"}</div>
                       </div>
-                      <div className="p-2 rounded-md bg-slate-50 border border-slate-200/80">
+                      <div className="p-2 rounded-[12px] bg-white border border-slate-200/70">
                         <div className="text-[10px] font-semibold uppercase mb-0.5 text-slate-400" style={{ letterSpacing: ".5px" }}>Ultimul test</div>
                         <div className={`text-xs font-mono ${api.lastTestResult?.includes("OK") ? "text-emerald-500" : "text-slate-400"}`}>
                           {api.lastTestResult || "—"}
@@ -765,7 +765,7 @@ export default function SettingsPage() {
                   + Adauga integrare API
                 </button>
               ) : (
-                <div className="p-4 mt-2.5 rounded-[10px] border border-dashed border-slate-200 bg-slate-50">
+                <div className="p-4 mt-2.5 rounded-[12px] border border-dashed border-slate-200/70 bg-white">
                   <div className="flex justify-between items-center mb-3">
                     <div className="text-[13px] font-bold text-slate-900">Adauga API nou</div>
                     <button
@@ -983,7 +983,7 @@ export default function SettingsPage() {
               )}
 
               {/* Preview — Document page mock */}
-              <div className="mb-6 p-4 rounded-[10px] border border-slate-200/80 bg-slate-50">
+              <div className="mb-6 p-4 rounded-[12px] border border-slate-200/70 bg-white">
                 <div className="text-[11px] uppercase tracking-wide font-medium mb-3 text-slate-500" style={{ letterSpacing: ".7px" }}>Previzualizare pagina document</div>
                 <div style={{ background: "#fff", border: "1px solid #dee2e6", borderRadius: "4px", padding: "24px 28px", maxWidth: "520px", position: "relative", overflow: "hidden", fontFamily: branding.fontFamily }}>
                   {/* Draft watermark overlay */}

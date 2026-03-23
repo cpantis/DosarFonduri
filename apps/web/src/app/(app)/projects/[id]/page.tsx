@@ -2282,7 +2282,7 @@ export default function ProjectViewPage() {
         /* Sumar */
         .sumar-panel{padding:24px;overflow-y:auto;flex:1;min-height:0}
         .sumar-progress{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px}
-        .sp-card{padding:16px 20px;border-radius:12px;border:1px solid rgba(226,232,240,.8);background:#ffffff}
+        .sp-card{padding:14px 20px;border-radius:12px;border:1px solid rgba(226,232,240,.7);background:#ffffff;transition:all .2s}
         .sp-card .sp-val{font-size:24px;font-weight:600;margin-bottom:2px}
         .sp-card .sp-label{font-size:13px;color:#94a3b8}
         .sumar-activity{padding:0}
@@ -2292,7 +2292,7 @@ export default function ProjectViewPage() {
         .sa-item-text{font-size:14px;color:#0f172a;flex:1}
         .sa-item-time{font-size:12px;color:#94a3b8;white-space:nowrap;flex-shrink:0}
         .sumar-info{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px}
-        .si-card{padding:18px;border-radius:12px;border:1px solid rgba(226,232,240,.8);background:#ffffff}
+        .si-card{padding:14px 20px;border-radius:12px;border:1px solid rgba(226,232,240,.7);background:#ffffff;transition:all .2s}
         .si-card h3{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #f0f2f5}
         .si-row{display:flex;justify-content:space-between;font-size:13px;margin-bottom:8px}
         .si-row .si-label{color:#64748b}
@@ -2426,9 +2426,9 @@ export default function ProjectViewPage() {
         .anexe-panel{display:grid;grid-template-columns:320px 1fr;flex:1;min-height:0;overflow:hidden}
         .anexe-list{overflow-y:auto;border-right:1px solid rgba(226,232,240,.8);padding:16px}
         .anexe-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;text-align:center;color:#64748b}
-        .anexe-card{padding:12px;border:1px solid rgba(226,232,240,.8);border-radius:12px;cursor:pointer;transition:all .15s cubic-bezier(.4,0,.2,1);margin-bottom:8px;background:#ffffff}
-        .anexe-card:hover{border-color:#cbd5e1;box-shadow:0 1px 3px rgba(0,0,0,.05)}
-        .anexe-card.active{border-color:#2563eb;background:rgba(37,99,235,.02);box-shadow:0 0 0 1px rgba(37,99,235,.12)}
+        .anexe-card{padding:14px 20px;border:1px solid rgba(226,232,240,.7);border-radius:12px;cursor:pointer;transition:all .2s;margin-bottom:8px;background:#ffffff}
+        .anexe-card:hover{border-color:#cbd5e1}
+        .anexe-card.active{border-color:#2563eb;background:rgba(37,99,235,.02)}
         .anexe-card-top{display:flex;align-items:center;gap:8px;margin-bottom:6px}
         .anexe-type-badge{font-size:9px;font-weight:700;padding:2px 8px;border-radius:8px;text-transform:uppercase;letter-spacing:.5px}
         .anexe-type-badge.lookup{color:#2563eb;background:rgba(37,99,235,.12)}
@@ -2703,7 +2703,7 @@ export default function ProjectViewPage() {
         .solomon-md-list li::before{content:'';position:absolute;left:0;top:9px;width:5px;height:5px;border-radius:50%;background:#94a3b8}
         .solomon-md-hr{border:none;height:1px;background:linear-gradient(90deg,transparent,#e2e8f0 20%,#e2e8f0 80%,transparent);margin:12px 0}
         .extraction-cards{margin-top:12px;display:flex;flex-direction:column;gap:8px}
-        .extraction-card{background:#f0f7ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px 14px;transition:all .15s cubic-bezier(.4,0,.2,1)}
+        .extraction-card{background:#f0f7ff;border:1px solid #bfdbfe;border-radius:12px;padding:14px 20px;transition:all .2s}
         .extraction-card.confirmed{border-color:#a7f3d0;background:#ecfdf5}
         .extraction-card.rejected{border-color:#dc2626;opacity:.5;text-decoration:line-through}
         .exc-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}

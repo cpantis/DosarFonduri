@@ -237,7 +237,7 @@ export default function CompanyDetailPage() {
   return (
     <div className="flex flex-col h-full overflow-hidden animate-[fadeIn_.2s_ease-out]">
       <style>{`
-        .cd-info{padding:16px;border-radius:12px;border:1px solid rgba(226,232,240,.8);background:#ffffff;transition:all .15s}
+        .cd-info{padding:14px 20px;border-radius:12px;border:1px solid rgba(226,232,240,.7);background:#ffffff;transition:all .2s}
         .cd-info:hover{border-color:#cbd5e1}
         .cd-info-label{font-size:11px;text-transform:uppercase;letter-spacing:.06em;font-weight:600;color:#94a3b8;margin-bottom:6px}
         .cd-info-value{font-size:15px;font-weight:600;color:#0f172a}
@@ -256,7 +256,7 @@ export default function CompanyDetailPage() {
         .cd-table tbody tr:hover{background:#f8fafc}
         .cd-table tbody tr.clickable{cursor:pointer}
         .cd-table tbody tr.active{background:rgba(37,99,235,.04)}
-        .cd-card{padding:20px;border-radius:12px;border:1px solid rgba(226,232,240,.8);background:#ffffff;transition:all .15s}
+        .cd-card{padding:14px 20px;border-radius:12px;border:1px solid rgba(226,232,240,.7);background:#ffffff;transition:all .2s}
         .cd-card:hover{border-color:#cbd5e1}
         .cd-banner{margin:0 32px;margin-top:16px;padding:14px 20px;border-radius:12px;display:flex;align-items:center;gap:12px;flex-shrink:0}
         .cd-banner.processing{background:rgba(37,99,235,.04);border:1px solid rgba(37,99,235,.15)}
@@ -281,7 +281,7 @@ export default function CompanyDetailPage() {
       {loading && (
         <div style={{ padding: "32px", display: "flex", flexDirection: "column", gap: 12 }}>
           <div className="skeleton" style={{ height: 60, borderRadius: 12 }} />
-          <div className="skeleton" style={{ height: 40, borderRadius: 8 }} />
+          <div className="skeleton" style={{ height: 40, borderRadius: 12 }} />
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
             {[1,2,3,4,5,6].map(i => <div key={i} className="skeleton" style={{ height: 80, borderRadius: 12 }} />)}
           </div>
@@ -341,7 +341,7 @@ export default function CompanyDetailPage() {
         {/* GAP 7: Insolvency/restriction banner */}
         {(sel.stare === "dizolvata" || sel.stare === "lichidare" || sel.stare === "radiata") && (
           <div style={{ maxWidth: 1152, margin: "0 auto", padding: "12px 32px" }}>
-            <div style={{ padding: "12px 16px", borderRadius: 10, background: "rgba(248,113,113,.08)", border: "1px solid rgba(248,113,113,.3)", display: "flex", alignItems: "center", gap: 10, fontSize: 14, color: "#dc2626" }}>
+            <div style={{ padding: "12px 16px", borderRadius: 12, background: "rgba(248,113,113,.08)", border: "1px solid rgba(248,113,113,.3)", display: "flex", alignItems: "center", gap: 10, fontSize: 14, color: "#dc2626" }}>
               <span style={{ fontSize: 20 }}>{"\u26A0"}</span>
               <div>
                 <strong>Aten&#539;ie:</strong> Aceast&#259; firm&#259; are statut{" "}
@@ -1007,7 +1007,7 @@ export default function CompanyDetailPage() {
 
             {/* Error */}
             {preEligError && (
-              <div style={{ padding: 14, borderRadius: 10, background: "rgba(239,68,68,.06)", border: "1px solid rgba(239,68,68,.2)", marginBottom: 20, fontSize: 13, color: "#dc2626" }}>
+              <div style={{ padding: 14, borderRadius: 12, background: "rgba(239,68,68,.06)", border: "1px solid rgba(239,68,68,.2)", marginBottom: 20, fontSize: 13, color: "#dc2626" }}>
                 {preEligError}
               </div>
             )}

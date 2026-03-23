@@ -116,7 +116,7 @@ adminRoutes.post("/users", async (c) => {
 
   // Send invitation email via Resend
   const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.SENDER_EMAIL || "notificari@dosarfonduri.ro";
+  const from = process.env.SENDER_EMAIL || "noreply@dosar-fonduri.com";
   if (apiKey) {
     const signupUrl = `${process.env.APP_URL || "https://app.dosarfonduri.ro"}/login?invited=1&email=${encodeURIComponent(body.email)}`;
     try {
@@ -180,7 +180,7 @@ adminRoutes.post("/users/:id/resend-invite", async (c) => {
   if (!org) return c.json({ error: "Organization not found" }, 404);
 
   const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.SENDER_EMAIL || "notificari@dosarfonduri.ro";
+  const from = process.env.SENDER_EMAIL || "noreply@dosar-fonduri.com";
   if (!apiKey) return c.json({ error: "Email service not configured" }, 503);
 
   const signupUrl = `${process.env.APP_URL || "https://app.dosarfonduri.ro"}/login?invited=1&email=${encodeURIComponent(user.email)}`;

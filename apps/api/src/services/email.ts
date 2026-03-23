@@ -10,14 +10,23 @@ interface EmailParams {
 }
 
 async function getFromAddress(organizationId: string): Promise<string> {
-  const config = await db.query.orgConfig.findFirst({
-    where: eq(orgConfig.organizationId, organizationId),
-  });
-  return config?.emailFrom || process.env.SENDER_EMAIL || "notificari@dosarfonduri.ro";
+  // SENDER_EMAIL env var takes priority — it must match the domain verified in Resend
+  if (process.env.SENDER_EMAIL) return process.env.SENDER_EMAIL;
+
+  try {
+    if (organizationId && organizationId !== "system") {
+      const config = await db.query.orgConfig.findFirst({
+        where: eq(orgConfig.organizationId, organizationId),
+      });
+      if (config?.emailFrom) return config.emailFrom;
+    }
+  } catch {
+    // Invalid UUID or DB error — fall through to default
+  }
+  return "noreply@dosar-fonduri.com";
 }
 
 export async function sendEmail(params: EmailParams) {
-  const from = await getFromAddress(params.organizationId);
   const apiKey = process.env.RESEND_API_KEY;
 
   if (!apiKey) {
@@ -26,6 +35,7 @@ export async function sendEmail(params: EmailParams) {
   }
 
   try {
+    const from = await getFromAddress(params.organizationId);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15000);
     try {

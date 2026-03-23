@@ -292,7 +292,7 @@ authRoutes.post("/forgot-password", async (c) => {
   const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
   const resetUrl = `${frontendUrl}/reset-password?token=${rawToken}`;
 
-  const result = await sendEmail({
+  const emailResult = await sendEmail({
     organizationId: user.organizationId || "system",
     to: user.email,
     subject: "Resetare parola — DosarFonduri",
@@ -305,11 +305,17 @@ authRoutes.post("/forgot-password", async (c) => {
     `,
   });
 
-  if (result && !result.sent) {
-    console.warn("[forgot-password] Email not sent to", user.email, "reason:", result.reason, result.detail || "");
+  const emailSent = !!(emailResult && emailResult.sent);
+  if (!emailSent) {
+    console.warn("[forgot-password] Email not sent to", user.email, "reason:", emailResult?.reason, emailResult?.detail || "");
   }
 
-  return c.json({ ok: true });
+  // Return resetUrl as fallback when email service is not configured (admin can share the link manually)
+  return c.json({
+    ok: true,
+    emailSent,
+    ...(!emailSent ? { resetUrl } : {}),
+  });
 });
 
 // --- RESET PASSWORD ---

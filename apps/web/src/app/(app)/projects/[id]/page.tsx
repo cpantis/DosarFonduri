@@ -491,61 +491,88 @@ export default function ProjectViewPage() {
   // ─── LOCK STATE ───
   const [lockOwned, setLockOwned] = useState(false);
   const [lockError, setLockError] = useState<{ lockedByName: string; lockedAt: string } | null>(null);
+  const [lockRetrying, setLockRetrying] = useState(false);
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lockPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const cancelledRef = useRef(false);
+
+  // Shared lock acquire function (used on mount + retry)
+  const tryAcquireLock = async () => {
+    try {
+      await apiPost<any>(`/api/projects/${projectId}/lock`, {});
+      if (!cancelledRef.current) {
+        setLockOwned(true);
+        setLockError(null);
+        // Stop polling — we own the lock now
+        if (lockPollRef.current) { clearInterval(lockPollRef.current); lockPollRef.current = null; }
+        // Start heartbeat
+        if (!heartbeatRef.current) {
+          heartbeatRef.current = setInterval(async () => {
+            try {
+              await apiPost(`/api/projects/${projectId}/lock/heartbeat`, {});
+            } catch {
+              setLockOwned(false);
+            }
+          }, 5 * 60 * 1000);
+        }
+      }
+      return true;
+    } catch (err: any) {
+      if (!cancelledRef.current) {
+        try {
+          const msg = err.message || "";
+          if (msg.includes("blocat")) {
+            const lockInfo = await apiGet<any>(`/api/projects/${projectId}/lock`);
+            setLockError({ lockedByName: lockInfo.lockedByName || "Alt utilizator", lockedAt: lockInfo.lockedAt || "" });
+          }
+        } catch {
+          setLockError({ lockedByName: "Alt utilizator", lockedAt: "" });
+        }
+        setLockOwned(false);
+      }
+      return false;
+    }
+  };
+
+  // Manual retry from banner button
+  const handleRetryLock = async () => {
+    setLockRetrying(true);
+    await tryAcquireLock();
+    setLockRetrying(false);
+  };
 
   // Acquire lock on mount, release on unmount
   useEffect(() => {
-    let cancelled = false;
+    cancelledRef.current = false;
 
-    async function acquireLock() {
-      try {
-        const res = await apiPost<any>(`/api/projects/${projectId}/lock`, {});
-        if (!cancelled) {
-          setLockOwned(true);
-          setLockError(null);
-        }
-      } catch (err: any) {
-        if (!cancelled) {
-          // Parse lock error from response
+    tryAcquireLock().then((acquired) => {
+      // If lock not acquired, start polling every 30s to auto-acquire when freed
+      if (!acquired && !cancelledRef.current) {
+        lockPollRef.current = setInterval(async () => {
+          if (cancelledRef.current) return;
           try {
-            const msg = err.message || "";
-            if (msg.includes("blocat")) {
-              // Fetch lock info
-              const lockInfo = await apiGet<any>(`/api/projects/${projectId}/lock`);
+            const lockInfo = await apiGet<any>(`/api/projects/${projectId}/lock`);
+            if (!lockInfo.locked) {
+              // Lock is free — try to acquire
+              await tryAcquireLock();
+            } else if (!cancelledRef.current) {
+              // Update banner with fresh info
               setLockError({ lockedByName: lockInfo.lockedByName || "Alt utilizator", lockedAt: lockInfo.lockedAt || "" });
             }
           } catch {
-            setLockError({ lockedByName: "Alt utilizator", lockedAt: "" });
+            // Ignore poll errors
           }
-          setLockOwned(false);
-        }
+        }, 30_000);
       }
-    }
-
-    acquireLock();
-
-    // Heartbeat every 5 minutes
-    heartbeatRef.current = setInterval(async () => {
-      if (!cancelled) {
-        try {
-          await apiPost(`/api/projects/${projectId}/lock/heartbeat`, {});
-        } catch {
-          // Lock lost
-          setLockOwned(false);
-        }
-      }
-    }, 5 * 60 * 1000);
+    });
 
     // Release lock on unmount / navigation
     const releaseLock = () => {
       const token = typeof window !== "undefined" ? localStorage.getItem("df-token") || "" : "";
-      // Use sendBeacon with a Blob for beforeunload reliability (no auth header but server can identify via cookie)
-      // Fall back to fetch with keepalive for normal unmount
       if (typeof navigator !== "undefined" && navigator.sendBeacon) {
         const blob = new Blob([JSON.stringify({ token })], { type: "application/json" });
         navigator.sendBeacon(`${API_URL}/api/projects/${projectId}/lock/release`, blob);
       }
-      // Also try fetch with keepalive as backup (works in normal unmount, may not in beforeunload)
       fetch(`${API_URL}/api/projects/${projectId}/lock`, {
         method: "DELETE",
         headers: {
@@ -559,8 +586,9 @@ export default function ProjectViewPage() {
     window.addEventListener("beforeunload", releaseLock);
 
     return () => {
-      cancelled = true;
-      if (heartbeatRef.current) clearInterval(heartbeatRef.current);
+      cancelledRef.current = true;
+      if (heartbeatRef.current) { clearInterval(heartbeatRef.current); heartbeatRef.current = null; }
+      if (lockPollRef.current) { clearInterval(lockPollRef.current); lockPollRef.current = null; }
       window.removeEventListener("beforeunload", releaseLock);
       releaseLock();
     };
@@ -2166,7 +2194,10 @@ export default function ProjectViewPage() {
         .lock-banner{display:flex;align-items:center;gap:10px;padding:10px 24px;background:#fffbeb;border-bottom:1px solid #fde68a;font-size:13px;color:#d97706;font-family:'Inter',system-ui,sans-serif}
         .lock-banner .lb-icon{font-size:18px}
         .lock-banner .lb-name{font-weight:700;color:#d97706}
-        .lock-banner .lb-time{font-size:11px;color:#94a3b8;margin-left:auto;font-family:'JetBrains Mono',monospace}
+        .lock-banner .lb-retry{margin-left:auto;padding:4px 12px;border-radius:6px;border:1px solid #fbbf24;background:#fef3c7;color:#92400e;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s}
+        .lock-banner .lb-retry:hover{background:#fde68a;border-color:#f59e0b}
+        .lock-banner .lb-retry:disabled{opacity:.5;cursor:not-allowed}
+        .lock-banner .lb-time{font-size:11px;color:#94a3b8;font-family:'JetBrains Mono',monospace}
         .pv-container{display:flex;flex-direction:column;height:100vh;overflow:hidden;background:#ffffff}
 
         .pv-project-header{padding:10px 24px;background:#ffffff;display:flex;align-items:center;gap:8px;border-bottom:1px solid rgba(226,232,240,.8);flex-shrink:0;min-height:44px}
@@ -2978,6 +3009,9 @@ export default function ProjectViewPage() {
         <div className="lock-banner">
           <span className="lb-icon">&#128274;</span>
           Proiectul este deschis de <span className="lb-name">{lockError.lockedByName}</span> — vizualizare doar în citire
+          <button className="lb-retry" onClick={handleRetryLock} disabled={lockRetrying}>
+            {lockRetrying ? "Se încearcă..." : "Reîncearcă blocarea"}
+          </button>
           {lockError.lockedAt && <span className="lb-time">din {new Date(lockError.lockedAt).toLocaleTimeString("ro-RO", { hour: "2-digit", minute: "2-digit" })}</span>}
         </div>
       )}

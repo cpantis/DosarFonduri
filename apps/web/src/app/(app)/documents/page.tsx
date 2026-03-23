@@ -1072,7 +1072,7 @@ export default function DocumentsPage() {
                   )}
                   {hasSummary && (
                     <button
-                      onClick={(e) => { e.stopPropagation(); toggleExpandCard(d.id); }}
+                      onClick={(e) => { e.stopPropagation(); toggleExpandCard(d.id); if (!isSelected) setSelectedDoc(d.id); }}
                       style={{
                         background: "none", border: "none", cursor: "pointer",
                         color: "#4d8bff", fontSize: 11, fontWeight: 600, padding: "2px 6px",

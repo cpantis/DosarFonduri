@@ -434,6 +434,8 @@ export default function ProjectViewPage() {
   const [selectedRefTable, setSelectedRefTable] = useState<string | null>(null);
   const [refTablesLoading, setRefTablesLoading] = useState(false);
   const [ghidCategoryFilter, setGhidCategoryFilter] = useState<string>("all");
+  const [ghidTypeFilter, setGhidTypeFilter] = useState<string>("all");
+  const [expandedRuleIds, setExpandedRuleIds] = useState<Set<string>>(new Set());
   const [ghidViewerData, setGhidViewerData] = useState<{
     guides: Array<{
       id: string; name: string; fileType: string; pageCount: number | null;
@@ -3500,8 +3502,19 @@ export default function ProjectViewPage() {
                 EXCEPTION: "⚑", PROPORTIONAL: "%", CLASSIFICATION: "◈",
               };
               const categories = [...new Set(guideRules.map(r => r.category))].filter(Boolean);
-              const filteredRules = ghidCategoryFilter === "all" ? guideRules : guideRules.filter(r => r.category === ghidCategoryFilter);
-              const sel = selectedRule ? guideRules.find(r => r.id === selectedRule) : null;
+              const catFiltered = ghidCategoryFilter === "all" ? guideRules : guideRules.filter(r => r.category === ghidCategoryFilter);
+              const filteredRules = ghidTypeFilter === "fixed" ? catFiltered.filter(r => r.type === "fixed")
+                : ghidTypeFilter === "interpreted" ? catFiltered.filter(r => r.type === "interpreted")
+                : catFiltered;
+              const fixedCount = guideRules.filter(r => r.type === "fixed").length;
+              const interpCount = guideRules.filter(r => r.type === "interpreted").length;
+              const toggleRuleExpand = (id: string) => {
+                setExpandedRuleIds(prev => {
+                  const next = new Set(prev);
+                  next.has(id) ? next.delete(id) : next.add(id);
+                  return next;
+                });
+              };
 
               const guideTrustScore = (project as any)?.guideTrustScore as number | null;
               // Build eligibility status map: projectEligibility.id → status
@@ -3681,234 +3694,234 @@ export default function ProjectViewPage() {
                       </div>
                     </div>
                   ) : ghidTab === "reguli" ? (
-                    <>
-                      <div className="rules-panel">
-                        {/* Category filter chips */}
-                        <div className="rule-category-filters">
-                          <button className={`rcf-chip ${ghidCategoryFilter === "all" ? "active" : ""}`} onClick={() => setGhidCategoryFilter("all")}>
-                            Toate <span className="rcf-count">{guideRules.length}</span>
+                    <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+                      {/* Filter bar */}
+                      <div style={{ padding: "12px 16px", borderBottom: "1px solid rgba(226,232,240,.6)", flexShrink: 0, display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".5px", color: "#94a3b8", marginRight: 4 }}>Reguli extrase ({guideRules.length})</span>
+                        {/* Type filter */}
+                        {[
+                          { key: "all", label: `Toate (${guideRules.length})` },
+                          ...(fixedCount > 0 ? [{ key: "fixed", label: `Fixe (${fixedCount})` }] : []),
+                          ...(interpCount > 0 ? [{ key: "interpreted", label: `Interpretate (${interpCount})` }] : []),
+                        ].map(tab => (
+                          <button key={tab.key} onClick={() => setGhidTypeFilter(tab.key)}
+                            className={`rcf-chip ${ghidTypeFilter === tab.key ? "active" : ""}`}>
+                            {tab.label}
                           </button>
-                          {categories.map(cat => (
-                            <button key={cat} className={`rcf-chip ${ghidCategoryFilter === cat ? "active" : ""}`} onClick={() => setGhidCategoryFilter(cat)}
-                              style={{ "--chip-color": categoryColors[cat] || "#94a3b8" } as React.CSSProperties}>
-                              {categoryLabels[cat] || cat} <span className="rcf-count">{guideRules.filter(r => r.category === cat).length}</span>
-                            </button>
-                          ))}
-                        </div>
-
-                        <div className="rules-scroll">
-                          {filteredRules.map(r => {
-                            const eStatus = eligStatusById[r.id];
-                            return (
-                            <div className={`rule-card ${selectedRule === r.id ? "active" : ""}`} key={r.id} onClick={() => setSelectedRule(r.id)}>
-                              <div className="rule-card-top">
-                                <div className={`rule-type-badge ${r.type}`}>
-                                  {r.type === "fixed" ? "FIXĂ" : "INTERPRETATĂ"}
-                                </div>
-                                <span className="rule-cat-dot" style={{ background: categoryColors[r.category] || "#94a3b8" }} />
-                                <span className="rule-cat-label">{categoryLabels[r.category] || r.category}</span>
-                                {eStatus && (
-                                  <span className={`elig-status-badge ${eStatus.status}`}>
-                                    {eStatus.status === "pass" ? "✓ Trecut" : eStatus.status === "fail" ? "✗ Respins" : "⏳ Pending"}
-                                  </span>
-                                )}
-                                {r.needsReview && <span className="rule-review-flag">⚠ Review</span>}
-                                {r.validated && <span className="rule-validated-flag">✓</span>}
-                              </div>
-                              <div className="rule-text">{r.text}</div>
-                              {/* Human-readable condition preview */}
-                              {r.type === "fixed" && r.condition?.field && (() => {
-                                const ct = formatConditionText(r.condition);
-                                return ct ? (
-                                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, padding: "4px 10px", borderRadius: 8, background: "rgba(77,139,255,.05)", border: "1px solid rgba(77,139,255,.12)", fontSize: 11, fontWeight: 600, color: "#2563eb" }}>
-                                    <span style={{ flexShrink: 0 }}>{"\u{1F9EA}"}</span>
-                                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ct}</span>
-                                  </div>
-                                ) : null;
-                              })()}
-                              {r.type === "interpreted" && r.condition?.logic && (
-                                <div style={{ marginTop: 6, padding: "4px 10px", borderRadius: 8, background: "rgba(167,139,250,.05)", border: "1px solid rgba(167,139,250,.12)", fontSize: 11, color: "#7c3aed", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                  {r.condition.logic}
-                                </div>
-                              )}
-                              {r.semanticTags.length > 0 && (
-                                <div className="rule-card-tags">
-                                  {r.semanticTags.map((tag: string) => (
-                                    <span key={tag} className={`rule-card-tag rd-sem-tag ${tag.toLowerCase()}`}>{semanticTagLabels[tag] || tag}</span>
-                                  ))}
-                                </div>
-                              )}
-                              <div className="rule-meta">
-                                <span>Pag. {r.page}</span>
-                                <span>
-                                  {Math.round(r.confidence * 100)}%
-                                  <span className="confidence-bar"><span className="confidence-fill" style={{ width: `${r.confidence * 100}%`, background: r.confidence > 0.9 ? "#34d399" : r.confidence > 0.8 ? "#2563eb" : "#fbbf24" }} /></span>
-                                </span>
-                                {r.sourceDocument && <span className="rule-doc-ref">{r.sourceDocument.name}</span>}
-                              </div>
-                            </div>
-                            );
-                          })}
-                        </div>
+                        ))}
+                        <span style={{ width: 1, height: 16, background: "rgba(226,232,240,.8)", margin: "0 2px" }} />
+                        {/* Category filter */}
+                        {categories.map(cat => (
+                          <button key={cat} className={`rcf-chip ${ghidCategoryFilter === cat ? "active" : ""}`}
+                            onClick={() => setGhidCategoryFilter(ghidCategoryFilter === cat ? "all" : cat)}
+                            style={{ "--chip-color": categoryColors[cat] || "#94a3b8" } as React.CSSProperties}>
+                            {categoryLabels[cat] || cat} <span className="rcf-count">{guideRules.filter(r => r.category === cat).length}</span>
+                          </button>
+                        ))}
                       </div>
-
-                      {/* Rule detail panel */}
-                      <div className="rule-detail-panel">
-                        {sel ? (
-                          <div className="rd-content">
-                            {/* Header */}
-                            <div className="rd-header">
-                              <div className="rd-badges">
-                                <div className={`rule-type-badge ${sel.type}`}>{sel.type === "fixed" ? "REGULĂ FIXĂ" : "REGULĂ INTERPRETATĂ"}</div>
-                                <span className="rd-cat-pill" style={{ background: `color-mix(in srgb, ${categoryColors[sel.category] || "#64748b"} 12%, transparent)`, color: categoryColors[sel.category] || "#94a3b8", border: `1px solid color-mix(in srgb, ${categoryColors[sel.category] || "#64748b"} 25%, transparent)` }}>
-                                  {categoryLabels[sel.category] || sel.category}
-                                </span>
-                                {sel.validated && <span className="rd-validated">✓ Validată</span>}
-                                {sel.needsReview && <span className="rd-needs-review">⚠ Necesită review</span>}
-                              </div>
-                              {sel.semanticTags.length > 0 && (
-                                <div className="rd-semantic-tags">
-                                  {sel.semanticTags.map((tag: string) => (
-                                    <span key={tag} className={`rd-sem-tag ${tag.toLowerCase()}`}>
-                                      {semanticTagIcons[tag] || "●"} {semanticTagLabels[tag] || tag}
+                      {/* Scrollable rule cards */}
+                      <div style={{ flex: 1, overflowY: "auto", padding: "12px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
+                        {filteredRules.map(r => {
+                          const isOpen = expandedRuleIds.has(r.id);
+                          const eStatus = eligStatusById[r.id];
+                          const catColor = categoryColors[r.category] || "#94a3b8";
+                          return (
+                            <div key={r.id} style={{
+                              borderRadius: 12, border: "1px solid rgba(226,232,240,.8)", background: "#fff",
+                              overflow: "hidden", transition: "border-color .15s",
+                            }}>
+                              {/* Collapsed header */}
+                              <div onClick={() => toggleRuleExpand(r.id)} style={{
+                                display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 14px",
+                                cursor: "pointer", userSelect: "none",
+                                background: isOpen ? "rgba(77,139,255,.03)" : "transparent",
+                                transition: "background .15s",
+                              }}>
+                                <span style={{
+                                  fontSize: 10, marginTop: 3, flexShrink: 0, color: "#94a3b8",
+                                  transition: "transform .2s", transform: isOpen ? "rotate(90deg)" : "rotate(0deg)",
+                                }}>▶</span>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 4 }}>
+                                    <span className={`rule-type-badge ${r.type}`} style={{ fontSize: 9 }}>
+                                      {r.type === "fixed" ? "FIXĂ" : "INTERPRETATĂ"}
                                     </span>
-                                  ))}
+                                    <span style={{
+                                      fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 3, letterSpacing: ".3px",
+                                      background: `color-mix(in srgb, ${catColor} 12%, transparent)`,
+                                      color: catColor, border: `1px solid color-mix(in srgb, ${catColor} 25%, transparent)`,
+                                      textTransform: "uppercase",
+                                    }}>
+                                      {categoryLabels[r.category] || r.category}
+                                    </span>
+                                    {eStatus && (
+                                      <span className={`elig-status-badge ${eStatus.status}`} style={{ fontSize: 9, padding: "1px 6px" }}>
+                                        {eStatus.status === "pass" ? "✓ Trecut" : eStatus.status === "fail" ? "✗ Respins" : "⏳"}
+                                      </span>
+                                    )}
+                                    {r.needsReview && <span style={{ fontSize: 9, fontWeight: 700, color: "#d97706" }}>⚠ Review</span>}
+                                    {r.validated && <span style={{ fontSize: 9, fontWeight: 700, color: "#059669" }}>✓ Validată</span>}
+                                  </div>
+                                  <div style={{ fontSize: 12, lineHeight: 1.5, color: "#0f172a", fontWeight: 500 }}>{r.text}</div>
                                 </div>
-                              )}
-                              <div className="rd-confidence-row">
-                                <span className="rd-conf-label">Încredere</span>
-                                <span className="rd-conf-value" style={{ color: sel.confidence > 0.9 ? "#059669" : sel.confidence > 0.8 ? "#2563eb" : "#d97706" }}>
-                                  {Math.round(sel.confidence * 100)}%
-                                </span>
-                                <div className="rd-conf-bar">
-                                  <div className="rd-conf-fill" style={{ width: `${sel.confidence * 100}%`, background: sel.confidence > 0.9 ? "#34d399" : sel.confidence > 0.8 ? "#2563eb" : "#fbbf24" }} />
+                                <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, marginTop: 2 }}>
+                                  <span style={{
+                                    fontSize: 11, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace",
+                                    color: r.confidence > 0.9 ? "#059669" : r.confidence > 0.8 ? "#2563eb" : "#d97706",
+                                  }}>
+                                    {Math.round(r.confidence * 100)}%
+                                  </span>
+                                  <span style={{
+                                    fontSize: 9, fontWeight: 600, color: "#2563eb", background: "rgba(37,99,235,.08)",
+                                    padding: "1px 5px", borderRadius: 8,
+                                  }}>
+                                    p.{r.page}
+                                  </span>
                                 </div>
                               </div>
-                            </div>
-
-                            {/* Description */}
-                            <div className="rd-section">
-                              <div className="rd-section-title">Descriere regulă</div>
-                              <div className="rd-description">{sel.text}</div>
-                            </div>
-
-                            {/* Source text from guide */}
-                            {sel.sourceText && (
-                              <div className="rd-section">
-                                <div className="rd-section-title">
-                                  Text original din ghid
-                                  <span className="rd-page-ref">Pag. {sel.page}</span>
-                                </div>
-                                <div className="rd-source-text">
-                                  <div className="rd-source-quote">{sel.sourceText}</div>
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Condition / logic */}
-                            {sel.condition && (
-                              <div className="rd-section">
-                                <div className="rd-section-title">
-                                  {sel.type === "fixed" ? "Condiție verificare" : "Logică decizională"}
-                                </div>
-                                <div className="rd-condition">
-                                  {sel.type === "fixed" && sel.condition.field && (() => {
-                                    const humanText = formatConditionText(sel.condition);
-                                    return (
-                                      <>
-                                        {/* Human-readable summary */}
-                                        {humanText && (
-                                          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 10, background: "rgba(77,139,255,.04)", border: "1px solid rgba(77,139,255,.15)", marginBottom: 10 }}>
-                                            <span style={{ fontSize: 16, flexShrink: 0 }}>{"\u{1F9EA}"}</span>
-                                            <span style={{ fontSize: 14, fontWeight: 700, color: "#0f172a" }}>{humanText}</span>
+                              {/* Expanded detail */}
+                              {isOpen && (
+                                <div style={{ padding: "0 14px 14px 34px", borderTop: "1px solid rgba(226,232,240,.5)" }}>
+                                  {/* Confidence bar */}
+                                  <div className="rd-confidence-row" style={{ marginTop: 12, marginBottom: 12 }}>
+                                    <span className="rd-conf-label">Încredere</span>
+                                    <span className="rd-conf-value" style={{ color: r.confidence > 0.9 ? "#059669" : r.confidence > 0.8 ? "#2563eb" : "#d97706" }}>
+                                      {Math.round(r.confidence * 100)}%
+                                    </span>
+                                    <div className="rd-conf-bar">
+                                      <div className="rd-conf-fill" style={{ width: `${r.confidence * 100}%`, background: r.confidence > 0.9 ? "#34d399" : r.confidence > 0.8 ? "#2563eb" : "#fbbf24" }} />
+                                    </div>
+                                  </div>
+                                  {/* Semantic tags */}
+                                  {r.semanticTags.length > 0 && (
+                                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 12 }}>
+                                      {r.semanticTags.map((tag: string) => (
+                                        <span key={tag} className={`rd-sem-tag ${tag.toLowerCase()}`}>
+                                          {semanticTagIcons[tag] || "●"} {semanticTagLabels[tag] || tag}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {/* Description */}
+                                  <div className="rd-section">
+                                    <div className="rd-section-title">Descriere regulă</div>
+                                    <div className="rd-description">{r.text}</div>
+                                  </div>
+                                  {/* Source text */}
+                                  {r.sourceText && (
+                                    <div className="rd-section">
+                                      <div className="rd-section-title">
+                                        Text original din ghid
+                                        <span className="rd-page-ref">Pag. {r.page}</span>
+                                      </div>
+                                      <div className="rd-source-text">
+                                        <div className="rd-source-quote">{r.sourceText}</div>
+                                      </div>
+                                    </div>
+                                  )}
+                                  {/* Condition / logic */}
+                                  {r.condition && (
+                                    <div className="rd-section">
+                                      <div className="rd-section-title">
+                                        {r.type === "fixed" ? "Condiție verificare" : "Logică decizională"}
+                                      </div>
+                                      <div className="rd-condition">
+                                        {r.type === "fixed" && r.condition.field && (() => {
+                                          const humanText = formatConditionText(r.condition);
+                                          return (
+                                            <>
+                                              {humanText && (
+                                                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 10, background: "rgba(77,139,255,.04)", border: "1px solid rgba(77,139,255,.15)", marginBottom: 10 }}>
+                                                  <span style={{ fontSize: 16, flexShrink: 0 }}>{"\u{1F9EA}"}</span>
+                                                  <span style={{ fontSize: 14, fontWeight: 700, color: "#0f172a" }}>{humanText}</span>
+                                                </div>
+                                              )}
+                                              <div className="rd-cond-row">
+                                                <span className="rd-cond-field">{formatFieldName(r.condition.field)}</span>
+                                                <span className="rd-cond-op">{OPERATOR_LABELS[r.condition.operator] || r.condition.operator}</span>
+                                                <span className="rd-cond-val">
+                                                  {formatConditionValue(r.condition.value)}
+                                                  {r.condition.value2 != null && ` — ${formatConditionValue(r.condition.value2)}`}
+                                                </span>
+                                              </div>
+                                            </>
+                                          );
+                                        })()}
+                                        {r.type === "interpreted" && (
+                                          <>
+                                            {r.condition.type && (
+                                              <div className="rd-logic-type">
+                                                <span className="rd-logic-badge">{r.condition.type.replace(/_/g, " ")}</span>
+                                              </div>
+                                            )}
+                                            {r.condition.logic && (
+                                              <div className="rd-logic-desc">{r.condition.logic}</div>
+                                            )}
+                                            {r.condition.factors && r.condition.factors.length > 0 && (
+                                              <div className="rd-factors">
+                                                <span className="rd-factors-label">Factori:</span>
+                                                {r.condition.factors.map((f: string, i: number) => (
+                                                  <span key={i} className="rd-factor-chip">{f}</span>
+                                                ))}
+                                              </div>
+                                            )}
+                                            {r.condition.outcomes && r.condition.outcomes.length > 0 && (
+                                              <div className="rd-outcomes">
+                                                {r.condition.outcomes.map((o: any, i: number) => (
+                                                  <div key={i} className="rd-outcome-row">
+                                                    <span className="rd-outcome-if">DACĂ</span>
+                                                    <span className="rd-outcome-cond">{o.if}</span>
+                                                    <span className="rd-outcome-then">→</span>
+                                                    <span className="rd-outcome-result">{o.then}</span>
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            )}
+                                          </>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )}
+                                  {/* Source document */}
+                                  {r.sourceDocument && (
+                                    <div className="rd-section">
+                                      <div className="rd-section-title">Sursă document</div>
+                                      <div className="rd-doc-ref">
+                                        <span className="rd-doc-icon">{r.sourceDocument.fileType === "pdf" ? "📕" : r.sourceDocument.fileType === "docx" ? "📘" : "📗"}</span>
+                                        <span className="rd-doc-name">{r.sourceDocument.name}</span>
+                                        <span className="rd-doc-page">Pag. {r.page}</span>
+                                      </div>
+                                    </div>
+                                  )}
+                                  {/* Eligibility status */}
+                                  {eStatus && (
+                                    <div className="rd-section">
+                                      <div className="rd-section-title">Status eligibilitate</div>
+                                      <div className="rd-elig-status">
+                                        <span className={`elig-status-badge ${eStatus.status}`} style={{ fontSize: 12, padding: "4px 14px" }}>
+                                          {eStatus.status === "pass" ? "✓ TRECUT" : eStatus.status === "fail" ? "✗ RESPINS" : "⏳ PENDING"}
+                                        </span>
+                                        {eStatus.notes && (
+                                          <div style={{ marginTop: 8, fontSize: 12, color: "#64748b", fontStyle: "italic" }}>
+                                            Notă: {eStatus.notes}
                                           </div>
                                         )}
-                                        {/* Structured breakdown */}
-                                        <div className="rd-cond-row">
-                                          <span className="rd-cond-field">{formatFieldName(sel.condition.field)}</span>
-                                          <span className="rd-cond-op">{OPERATOR_LABELS[sel.condition.operator] || sel.condition.operator}</span>
-                                          <span className="rd-cond-val">
-                                            {formatConditionValue(sel.condition.value)}
-                                            {sel.condition.value2 != null && ` — ${formatConditionValue(sel.condition.value2)}`}
-                                          </span>
-                                        </div>
-                                      </>
-                                    );
-                                  })()}
-                                  {sel.type === "interpreted" && (
-                                    <>
-                                      {sel.condition.type && (
-                                        <div className="rd-logic-type">
-                                          <span className="rd-logic-badge">{sel.condition.type.replace(/_/g, " ")}</span>
-                                        </div>
-                                      )}
-                                      {sel.condition.logic && (
-                                        <div className="rd-logic-desc">{sel.condition.logic}</div>
-                                      )}
-                                      {sel.condition.factors && sel.condition.factors.length > 0 && (
-                                        <div className="rd-factors">
-                                          <span className="rd-factors-label">Factori:</span>
-                                          {sel.condition.factors.map((f: string, i: number) => (
-                                            <span key={i} className="rd-factor-chip">{f}</span>
-                                          ))}
-                                        </div>
-                                      )}
-                                      {sel.condition.outcomes && sel.condition.outcomes.length > 0 && (
-                                        <div className="rd-outcomes">
-                                          {sel.condition.outcomes.map((o: any, i: number) => (
-                                            <div key={i} className="rd-outcome-row">
-                                              <span className="rd-outcome-if">DACĂ</span>
-                                              <span className="rd-outcome-cond">{o.if}</span>
-                                              <span className="rd-outcome-then">→</span>
-                                              <span className="rd-outcome-result">{o.then}</span>
-                                            </div>
-                                          ))}
-                                        </div>
-                                      )}
-                                    </>
-                                  )}
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Source document */}
-                            {sel.sourceDocument && (
-                              <div className="rd-section">
-                                <div className="rd-section-title">Sursă document</div>
-                                <div className="rd-doc-ref">
-                                  <span className="rd-doc-icon">{sel.sourceDocument.fileType === "pdf" ? "📕" : sel.sourceDocument.fileType === "docx" ? "📘" : "📗"}</span>
-                                  <span className="rd-doc-name">{sel.sourceDocument.name}</span>
-                                  <span className="rd-doc-page">Pag. {sel.page}</span>
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Eligibility status for this rule */}
-                            {eligStatusById[sel.id] && (
-                              <div className="rd-section">
-                                <div className="rd-section-title">Status eligibilitate</div>
-                                <div className="rd-elig-status">
-                                  <span className={`elig-status-badge ${eligStatusById[sel.id].status}`} style={{ fontSize: 12, padding: "4px 14px" }}>
-                                    {eligStatusById[sel.id].status === "pass" ? "✓ TRECUT" : eligStatusById[sel.id].status === "fail" ? "✗ RESPINS" : "⏳ PENDING"}
-                                  </span>
-                                  {eligStatusById[sel.id].notes && (
-                                    <div style={{ marginTop: 8, fontSize: 12, color: "#64748b", fontStyle: "italic" }}>
-                                      Notă: {eligStatusById[sel.id].notes}
+                                      </div>
                                     </div>
                                   )}
                                 </div>
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="rd-empty">
-                            <div className="rd-empty-icon">📖</div>
-                            <div className="rd-empty-title">Selectează o regulă</div>
-                            <div className="rd-empty-desc">Alege o regulă din lista din stânga pentru a vedea detaliile complete, textul original din ghid și condiția de verificare.</div>
+                              )}
+                            </div>
+                          );
+                        })}
+                        {filteredRules.length === 0 && (
+                          <div style={{ textAlign: "center", padding: "40px 0", color: "#94a3b8" }}>
+                            <div style={{ fontSize: 32, opacity: 0.3, marginBottom: 8 }}>🛡</div>
+                            <div style={{ fontSize: 13, fontWeight: 600 }}>Nicio regulă găsită</div>
                           </div>
                         )}
                       </div>
-                    </>
+                    </div>
                   ) : (
                     /* ─── GHID COMPLET: PDF Viewer + Rules sidebar ─── */
                     ghidViewerLoading ? (
@@ -4022,7 +4035,7 @@ export default function ProjectViewPage() {
                                     border: "1px solid rgba(226,232,240,.6)", cursor: "pointer",
                                     transition: "all .15s",
                                   }}
-                                  onClick={() => { setGhidTab("reguli"); setSelectedRule(rule.id); }}
+                                  onClick={() => { setGhidTab("reguli"); setExpandedRuleIds(prev => new Set(prev).add(rule.id)); }}
                                   onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "#f8fafc"; (e.currentTarget as HTMLElement).style.borderColor = "rgba(37,99,235,.3)"; }}
                                   onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.borderColor = "rgba(226,232,240,.6)"; }}
                                 >

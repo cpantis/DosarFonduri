@@ -42,8 +42,8 @@ function buildInviteEmailHtml(opts: {
     // Bulletproof button (table-based — works in Yahoo, Gmail, Outlook)
     `<div style="text-align:center;margin:28px 0">`,
     `<table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin:auto">`,
-    `<tr><td style="border-radius:10px;background:#a78bfa">`,
-    `<a href="${signupUrl}" target="_blank" style="display:inline-block;padding:14px 36px;color:#ffffff;text-decoration:none;font-weight:700;font-size:15px;font-family:'DM Sans',Helvetica,Arial,sans-serif;border-radius:10px">Creează cont</a>`,
+    `<tr><td style="border-radius:10px">`,
+    `<a href="${signupUrl}" target="_blank" style="display:block;padding:14px 36px;background:#a78bfa;color:#ffffff;text-decoration:none;font-weight:700;font-size:15px;font-family:'DM Sans',Helvetica,Arial,sans-serif;border-radius:10px;text-align:center">Creează cont</a>`,
     `</td></tr>`,
     `</table>`,
     `</div>`,

@@ -23,7 +23,7 @@ async function getFromAddress(organizationId: string): Promise<string> {
   } catch {
     // Invalid UUID or DB error — fall through to default
   }
-  return "noreply@dosar-fonduri.com";
+  return "office@dosar-fonduri.com";
 }
 
 export async function sendEmail(params: EmailParams) {

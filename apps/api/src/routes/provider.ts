@@ -299,7 +299,7 @@ providerRoutes.post("/cabinets/:id/email", providerAuth, async (c) => {
   }
 
   const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.SENDER_EMAIL || "noreply@dosar-fonduri.com";
+  const from = process.env.SENDER_EMAIL || "office@dosar-fonduri.com";
 
   if (!apiKey) {
     return c.json({ error: "RESEND_API_KEY nu este configurat" }, 500);

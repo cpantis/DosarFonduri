@@ -7,6 +7,26 @@ interface EmailParams {
   to: string;
   subject: string;
   html: string;
+  text?: string;
+}
+
+/** Strip HTML tags to produce a plain-text fallback */
+function htmlToText(html: string): string {
+  return html
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<\/h[1-6]>/gi, "\n\n")
+    .replace(/<hr[^>]*>/gi, "---\n")
+    .replace(/<a[^>]+href="([^"]*)"[^>]*>([^<]*)<\/a>/gi, "$2 ($1)")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&copy;/g, "©")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 async function getFromAddress(organizationId: string): Promise<string> {
@@ -36,6 +56,7 @@ export async function sendEmail(params: EmailParams) {
 
   try {
     const from = await getFromAddress(params.organizationId);
+    const replyTo = process.env.REPLY_TO_EMAIL || from;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15000);
     try {
@@ -47,9 +68,14 @@ export async function sendEmail(params: EmailParams) {
         },
         body: JSON.stringify({
           from: `DosarFonduri <${from}>`,
+          reply_to: replyTo,
           to: params.to,
           subject: params.subject,
           html: params.html,
+          text: params.text || htmlToText(params.html),
+          headers: {
+            "List-Unsubscribe": `<mailto:${replyTo}?subject=unsubscribe>`,
+          },
         }),
         signal: controller.signal,
       });

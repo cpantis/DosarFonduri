@@ -3696,84 +3696,96 @@ export default function ProjectViewPage() {
                   ) : ghidTab === "reguli" ? (
                     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
                       {/* Filter bar */}
-                      <div style={{ padding: "12px 16px", borderBottom: "1px solid rgba(226,232,240,.6)", flexShrink: 0, display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
-                        <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".5px", color: "#94a3b8", marginRight: 4 }}>Reguli extrase ({guideRules.length})</span>
-                        {/* Type filter */}
-                        {[
-                          { key: "all", label: `Toate (${guideRules.length})` },
-                          ...(fixedCount > 0 ? [{ key: "fixed", label: `Fixe (${fixedCount})` }] : []),
-                          ...(interpCount > 0 ? [{ key: "interpreted", label: `Interpretate (${interpCount})` }] : []),
-                        ].map(tab => (
-                          <button key={tab.key} onClick={() => setGhidTypeFilter(tab.key)}
-                            className={`rcf-chip ${ghidTypeFilter === tab.key ? "active" : ""}`}>
-                            {tab.label}
-                          </button>
-                        ))}
-                        <span style={{ width: 1, height: 16, background: "rgba(226,232,240,.8)", margin: "0 2px" }} />
-                        {/* Category filter */}
-                        {categories.map(cat => (
-                          <button key={cat} className={`rcf-chip ${ghidCategoryFilter === cat ? "active" : ""}`}
-                            onClick={() => setGhidCategoryFilter(ghidCategoryFilter === cat ? "all" : cat)}
-                            style={{ "--chip-color": categoryColors[cat] || "#94a3b8" } as React.CSSProperties}>
-                            {categoryLabels[cat] || cat} <span className="rcf-count">{guideRules.filter(r => r.category === cat).length}</span>
-                          </button>
-                        ))}
+                      <div style={{ padding: "14px 24px", borderBottom: "1px solid rgba(226,232,240,.6)", flexShrink: 0 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".5px", color: "#94a3b8", marginBottom: 10 }}>
+                          Reguli extrase ({guideRules.length})
+                        </div>
+                        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
+                          {[
+                            { key: "all", label: `Toate (${guideRules.length})` },
+                            ...(fixedCount > 0 ? [{ key: "fixed", label: `Fixe (${fixedCount})` }] : []),
+                            ...(interpCount > 0 ? [{ key: "interpreted", label: `Interpretate (${interpCount})` }] : []),
+                          ].map(tab => (
+                            <button key={tab.key} onClick={() => setGhidTypeFilter(tab.key)} style={{
+                              fontSize: 12, fontWeight: 600, padding: "4px 14px", borderRadius: 20,
+                              border: ghidTypeFilter === tab.key ? "1.5px solid #2563eb" : "1px solid rgba(226,232,240,.8)",
+                              background: ghidTypeFilter === tab.key ? "rgba(37,99,235,.06)" : "#fff",
+                              color: ghidTypeFilter === tab.key ? "#2563eb" : "#64748b",
+                              cursor: "pointer", transition: "all .15s",
+                            }}>
+                              {tab.label}
+                            </button>
+                          ))}
+                          <span style={{ width: 1, height: 16, background: "rgba(226,232,240,.8)", margin: "0 4px" }} />
+                          {categories.map(cat => (
+                            <button key={cat} onClick={() => setGhidCategoryFilter(ghidCategoryFilter === cat ? "all" : cat)} style={{
+                              fontSize: 12, fontWeight: 600, padding: "4px 14px", borderRadius: 20,
+                              border: ghidCategoryFilter === cat ? `1.5px solid ${categoryColors[cat] || "#94a3b8"}` : "1px solid rgba(226,232,240,.8)",
+                              background: ghidCategoryFilter === cat ? `color-mix(in srgb, ${categoryColors[cat] || "#94a3b8"} 8%, transparent)` : "#fff",
+                              color: ghidCategoryFilter === cat ? (categoryColors[cat] || "#94a3b8") : "#64748b",
+                              cursor: "pointer", transition: "all .15s",
+                            }}>
+                              {categoryLabels[cat] || cat} {guideRules.filter(r => r.category === cat).length}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                       {/* Scrollable rule cards */}
-                      <div style={{ flex: 1, overflowY: "auto", padding: "12px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
-                        {filteredRules.map(r => {
+                      <div style={{ flex: 1, overflowY: "auto", padding: 0 }}>
+                        {filteredRules.map((r, idx) => {
                           const isOpen = expandedRuleIds.has(r.id);
                           const eStatus = eligStatusById[r.id];
                           const catColor = categoryColors[r.category] || "#94a3b8";
                           return (
                             <div key={r.id} style={{
-                              borderRadius: 12, border: "1px solid rgba(226,232,240,.8)", background: "#fff",
-                              overflow: "hidden", transition: "border-color .15s",
+                              borderBottom: idx < filteredRules.length - 1 ? "1px solid rgba(226,232,240,.7)" : "none",
+                              background: isOpen ? "rgba(248,250,252,.5)" : "#fff",
+                              transition: "background .15s",
                             }}>
                               {/* Collapsed header */}
                               <div onClick={() => toggleRuleExpand(r.id)} style={{
-                                display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 14px",
+                                display: "flex", alignItems: "flex-start", gap: 12, padding: "14px 24px",
                                 cursor: "pointer", userSelect: "none",
-                                background: isOpen ? "rgba(77,139,255,.03)" : "transparent",
-                                transition: "background .15s",
-                              }}>
+                              }}
+                              onMouseEnter={(e) => { if (!isOpen) (e.currentTarget.parentElement as HTMLElement).style.background = "#fafbfc"; }}
+                              onMouseLeave={(e) => { if (!isOpen) (e.currentTarget.parentElement as HTMLElement).style.background = "#fff"; }}
+                              >
                                 <span style={{
-                                  fontSize: 10, marginTop: 3, flexShrink: 0, color: "#94a3b8",
-                                  transition: "transform .2s", transform: isOpen ? "rotate(90deg)" : "rotate(0deg)",
+                                  fontSize: 9, marginTop: 6, flexShrink: 0, color: isOpen ? "#2563eb" : "#cbd5e1",
+                                  transition: "transform .2s, color .2s", transform: isOpen ? "rotate(90deg)" : "rotate(0deg)",
                                 }}>▶</span>
                                 <div style={{ flex: 1, minWidth: 0 }}>
-                                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 4 }}>
-                                    <span className={`rule-type-badge ${r.type}`} style={{ fontSize: 9 }}>
+                                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 6 }}>
+                                    <span className={`rule-type-badge ${r.type}`} style={{ fontSize: 10, padding: "2px 10px", borderRadius: 4 }}>
                                       {r.type === "fixed" ? "FIXĂ" : "INTERPRETATĂ"}
                                     </span>
                                     <span style={{
-                                      fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 3, letterSpacing: ".3px",
-                                      background: `color-mix(in srgb, ${catColor} 12%, transparent)`,
+                                      fontSize: 10, fontWeight: 700, padding: "2px 10px", borderRadius: 4, letterSpacing: ".3px",
+                                      background: `color-mix(in srgb, ${catColor} 14%, transparent)`,
                                       color: catColor, border: `1px solid color-mix(in srgb, ${catColor} 25%, transparent)`,
                                       textTransform: "uppercase",
                                     }}>
                                       {categoryLabels[r.category] || r.category}
                                     </span>
                                     {eStatus && (
-                                      <span className={`elig-status-badge ${eStatus.status}`} style={{ fontSize: 9, padding: "1px 6px" }}>
-                                        {eStatus.status === "pass" ? "✓ Trecut" : eStatus.status === "fail" ? "✗ Respins" : "⏳"}
+                                      <span className={`elig-status-badge ${eStatus.status}`} style={{ fontSize: 10, padding: "2px 10px" }}>
+                                        {eStatus.status === "pass" ? "✓ Trecut" : eStatus.status === "fail" ? "✗ Respins" : "⏳ Pending"}
                                       </span>
                                     )}
-                                    {r.needsReview && <span style={{ fontSize: 9, fontWeight: 700, color: "#d97706" }}>⚠ Review</span>}
-                                    {r.validated && <span style={{ fontSize: 9, fontWeight: 700, color: "#059669" }}>✓ Validată</span>}
+                                    {r.needsReview && <span style={{ fontSize: 10, fontWeight: 700, color: "#d97706" }}>⚠ Review</span>}
+                                    {r.validated && <span style={{ fontSize: 10, fontWeight: 700, color: "#059669" }}>✓ Validată</span>}
                                   </div>
-                                  <div style={{ fontSize: 12, lineHeight: 1.5, color: "#0f172a", fontWeight: 500 }}>{r.text}</div>
+                                  <div style={{ fontSize: 13, lineHeight: 1.6, color: "#0f172a", fontWeight: 500 }}>{r.text}</div>
                                 </div>
-                                <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, marginTop: 2 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, marginTop: 4 }}>
                                   <span style={{
-                                    fontSize: 11, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace",
+                                    fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace",
                                     color: r.confidence > 0.9 ? "#059669" : r.confidence > 0.8 ? "#2563eb" : "#d97706",
                                   }}>
                                     {Math.round(r.confidence * 100)}%
                                   </span>
                                   <span style={{
-                                    fontSize: 9, fontWeight: 600, color: "#2563eb", background: "rgba(37,99,235,.08)",
-                                    padding: "1px 5px", borderRadius: 8,
+                                    fontSize: 11, fontWeight: 600, color: "#94a3b8",
                                   }}>
                                     p.{r.page}
                                   </span>
@@ -3781,9 +3793,9 @@ export default function ProjectViewPage() {
                               </div>
                               {/* Expanded detail */}
                               {isOpen && (
-                                <div style={{ padding: "0 14px 14px 34px", borderTop: "1px solid rgba(226,232,240,.5)" }}>
+                                <div className="rd-content" style={{ padding: "0 24px 20px 46px", animation: "docFadeIn .15s ease-out" }}>
                                   {/* Confidence bar */}
-                                  <div className="rd-confidence-row" style={{ marginTop: 12, marginBottom: 12 }}>
+                                  <div className="rd-confidence-row" style={{ marginBottom: 16 }}>
                                     <span className="rd-conf-label">Încredere</span>
                                     <span className="rd-conf-value" style={{ color: r.confidence > 0.9 ? "#059669" : r.confidence > 0.8 ? "#2563eb" : "#d97706" }}>
                                       {Math.round(r.confidence * 100)}%
@@ -3794,7 +3806,7 @@ export default function ProjectViewPage() {
                                   </div>
                                   {/* Semantic tags */}
                                   {r.semanticTags.length > 0 && (
-                                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 12 }}>
+                                    <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 16 }}>
                                       {r.semanticTags.map((tag: string) => (
                                         <span key={tag} className={`rd-sem-tag ${tag.toLowerCase()}`}>
                                           {semanticTagIcons[tag] || "●"} {semanticTagLabels[tag] || tag}
@@ -3897,14 +3909,14 @@ export default function ProjectViewPage() {
                                   {eStatus && (
                                     <div className="rd-section">
                                       <div className="rd-section-title">Status eligibilitate</div>
-                                      <div className="rd-elig-status">
+                                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                                         <span className={`elig-status-badge ${eStatus.status}`} style={{ fontSize: 12, padding: "4px 14px" }}>
                                           {eStatus.status === "pass" ? "✓ TRECUT" : eStatus.status === "fail" ? "✗ RESPINS" : "⏳ PENDING"}
                                         </span>
                                         {eStatus.notes && (
-                                          <div style={{ marginTop: 8, fontSize: 12, color: "#64748b", fontStyle: "italic" }}>
-                                            Notă: {eStatus.notes}
-                                          </div>
+                                          <span style={{ fontSize: 12, color: "#64748b", fontStyle: "italic" }}>
+                                            {eStatus.notes}
+                                          </span>
                                         )}
                                       </div>
                                     </div>
@@ -3915,7 +3927,7 @@ export default function ProjectViewPage() {
                           );
                         })}
                         {filteredRules.length === 0 && (
-                          <div style={{ textAlign: "center", padding: "40px 0", color: "#94a3b8" }}>
+                          <div style={{ textAlign: "center", padding: "48px 0", color: "#94a3b8" }}>
                             <div style={{ fontSize: 32, opacity: 0.3, marginBottom: 8 }}>🛡</div>
                             <div style={{ fontSize: 13, fontWeight: 600 }}>Nicio regulă găsită</div>
                           </div>

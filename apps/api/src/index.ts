@@ -1,4 +1,12 @@
 import "dotenv/config";
+
+// Normalize FRONTEND_URL — ensure it has a protocol prefix so email
+// links (href) are valid.  Bare domains like "dosar-fonduri.com" would
+// produce broken links in invitation emails.
+if (process.env.FRONTEND_URL && !/^https?:\/\//.test(process.env.FRONTEND_URL)) {
+  process.env.FRONTEND_URL = `https://${process.env.FRONTEND_URL}`;
+}
+
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";

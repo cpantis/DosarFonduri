@@ -89,20 +89,6 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* GAP 15: Alerts */}
-        {!loading && data?.alerts && data.alerts.length > 0 && (
-          <div className="mt-4 p-4 rounded-xl border border-amber-200/80 bg-amber-50/50">
-            <div className="text-sm font-semibold text-amber-800 mb-2">{"\u26A0"} Aten&#539;ie</div>
-            <div className="space-y-1.5">
-              {data.alerts.map((a: any, i: number) => (
-                <div key={i} className="text-[13px] text-amber-700 flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
-                  {a.message || a}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* Content grid */}
         {!loading && (
@@ -119,7 +105,7 @@ export default function DashboardPage() {
                   onAction={() => router.push("/projects")}
                 />
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-4">
                   {data.recentProjects.map(p => (
                     <div
                       key={p.id}

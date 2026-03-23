@@ -397,8 +397,8 @@ providerRoutes.delete("/users/:id", providerAuth, async (c) => {
     return c.json({ error: "Utilizatorul nu aparține cabinetelor dumneavoastră" }, 403);
   }
 
-  await db.delete(users).where(eq(users.id, id));
-  return c.json({ ok: true, deletedEmail: user.email });
+  await db.update(users).set({ status: "disabled" }).where(eq(users.id, id));
+  return c.json({ ok: true, disabledEmail: user.email });
 });
 
 // Revenue stats — only for provider's own cabinets

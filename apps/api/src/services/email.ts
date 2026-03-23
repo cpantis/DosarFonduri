@@ -10,8 +10,10 @@ interface EmailParams {
 }
 
 async function getFromAddress(organizationId: string): Promise<string> {
+  // SENDER_EMAIL env var takes priority — it must match the domain verified in Resend
+  if (process.env.SENDER_EMAIL) return process.env.SENDER_EMAIL;
+
   try {
-    // organizationId might be "system" or invalid UUID — guard the query
     if (organizationId && organizationId !== "system") {
       const config = await db.query.orgConfig.findFirst({
         where: eq(orgConfig.organizationId, organizationId),
@@ -19,9 +21,9 @@ async function getFromAddress(organizationId: string): Promise<string> {
       if (config?.emailFrom) return config.emailFrom;
     }
   } catch {
-    // Invalid UUID or DB error — fall through to defaults
+    // Invalid UUID or DB error — fall through to default
   }
-  return process.env.SENDER_EMAIL || "notificari@dosarfonduri.ro";
+  return "noreply@dosar-fonduri.com";
 }
 
 export async function sendEmail(params: EmailParams) {

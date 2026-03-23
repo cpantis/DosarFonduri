@@ -49,11 +49,20 @@ export const CATEGORY_LABELS: Record<string, string> = {
 };
 
 export const OPERATOR_LABELS: Record<string, string> = {
-  ">=": "≥", "<=": "≤", ">": ">", "<": "<", "=": "=", "!=": "≠",
-  in: "∈", not_in: "∉", between: "↔",
-  contains: "conține", not_contains: "nu conține",
-  exists: "există", not_exists: "nu există",
-  matches: "corespunde", is_true: "= DA", is_false: "= NU",
+  // Symblic forms (from some AI outputs)
+  ">=": "mai mare sau egal cu", "<=": "mai mic sau egal cu",
+  ">": "mai mare decât", "<": "mai mic decât",
+  "=": "egal cu", "!=": "diferit de",
+  // Short-code forms (gte/lte/eq/etc from AI extraction)
+  gte: "mai mare sau egal cu", lte: "mai mic sau egal cu",
+  gt: "mai mare decât", lt: "mai mic decât",
+  eq: "egal cu", neq: "diferit de",
+  // Semantic operators
+  in: "este unul din", not_in: "nu este în",
+  between: "între", contains: "conține", not_contains: "nu conține",
+  exists: "trebuie să existe", not_exists: "nu trebuie să existe",
+  matches: "corespunde cu", is_true: "= DA", is_false: "= NU",
+  min: "minim", max: "maxim",
 };
 
 const SEM_TAG_MAP: Record<string, { label: string; icon: string; color: string; bg: string; border: string }> = {
@@ -70,8 +79,86 @@ const SEM_TAG_MAP: Record<string, { label: string; icon: string; color: string; 
 
 // ── Helpers ──
 
+// Known field translations — maps snake_case DB field names to Romanian
+const FIELD_LABELS: Record<string, string> = {
+  // Company / financial data
+  dimensiune_economica: "Dimensiunea economică",
+  dimensiune_economica_exploatatie: "Dimensiunea economică a exploatației",
+  dimensiune_economica_exploatatie_so: "Dimensiunea economică a exploatației (SO)",
+  dimensiune_economica_minima: "Dimensiunea economică minimă",
+  profit_mediu_anual: "Profitul mediu anual",
+  cifra_afaceri: "Cifra de afaceri",
+  numar_angajati: "Numărul de angajați",
+  rezultat_exploatare: "Rezultatul din exploatare",
+  capitaluri_proprii: "Capitaluri proprii",
+  datorii_totale: "Datorii totale",
+  active_totale: "Active totale",
+  rata_solvabilitate: "Rata de solvabilitate",
+  rata_lichiditate: "Rata de lichiditate curentă",
+  rata_rentabilitate: "Rata de rentabilitate",
+  valoare_productie: "Valoarea producției",
+  venituri_totale: "Venituri totale",
+  cheltuieli_totale: "Cheltuieli totale",
+  profit_net: "Profitul net",
+  profit_brut: "Profitul brut",
+  pierdere_neta: "Pierdere netă",
+  // Project data
+  valoare_proiect: "Valoarea proiectului",
+  valoare_eligibila: "Valoarea eligibilă",
+  cofinantare: "Cofinanțarea proprie",
+  ajutor_solicitat: "Ajutorul solicitat",
+  sprijin_solicitat: "Sprijinul solicitat",
+  durata_implementare: "Durata de implementare",
+  durata_contract: "Durata contractului",
+  intensitate_ajutor: "Intensitatea ajutorului",
+  costuri_generale: "Costurile generale ale proiectului",
+  // Eligibility
+  forma_juridica: "Forma juridică",
+  cod_caen: "Codul CAEN",
+  categoria_beneficiar: "Categoria de beneficiar",
+  tip_beneficiar: "Tipul beneficiarului",
+  varsta_firma: "Vechimea firmei",
+  ani_activitate: "Ani de activitate",
+  localitate: "Localitatea",
+  judet: "Județul",
+  regiune: "Regiunea de dezvoltare",
+  zona_eligibila: "Zona eligibilă",
+  tip_investitie: "Tipul investiției",
+  componenta: "Componenta",
+  sub_masura: "Sub-măsura",
+  masura: "Măsura",
+  axa: "Axa prioritară",
+  // Scoring
+  punctaj_total: "Punctajul total",
+  punctaj_minim: "Punctajul minim",
+  prag_calitate: "Pragul de calitate",
+  prag_selectie: "Pragul de selecție",
+  // Reduceri
+  reducere_maxima: "Reducerea maximă permisă",
+  limitare_profit: "Limitarea profitului",
+};
+
 export function formatFieldName(field: string): string {
-  return field.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+  // Check exact match first
+  const lower = field.toLowerCase();
+  if (FIELD_LABELS[lower]) return FIELD_LABELS[lower];
+  // Check if field starts with a known key (handles suffixed variants)
+  for (const [key, label] of Object.entries(FIELD_LABELS)) {
+    if (lower.startsWith(key + "_") || lower === key) return label;
+  }
+  // Fallback: humanize snake_case
+  return field
+    .replace(/_/g, " ")
+    .replace(/\bso\b/gi, "(SO)")
+    .replace(/\bha\b/gi, "ha")
+    .replace(/\beur\b/gi, "EUR")
+    .replace(/\bron\b/gi, "RON")
+    .replace(/\bcaen\b/gi, "CAEN")
+    .replace(/\bonrc\b/gi, "ONRC")
+    .replace(/\bapia\b/gi, "APIA")
+    .replace(/\bpib\b/gi, "PIB")
+    .toLowerCase()
+    .replace(/^\w/, c => c.toUpperCase());
 }
 
 export function formatConditionValue(val: any): string {
@@ -89,18 +176,37 @@ export function formatConditionText(condition: any): string | null {
 
   const fieldLabel = field ? formatFieldName(field) : "";
   const valLabel = formatConditionValue(value);
+  const opText = operator ? (OPERATOR_LABELS[operator] || operator) : "";
 
   if (operator === "between" && value !== undefined && value2 !== undefined) {
-    return `${fieldLabel} între ${valLabel} și ${formatConditionValue(value2)}`;
+    return `${fieldLabel} trebuie să fie între ${valLabel} și ${formatConditionValue(value2)}`;
   } else if (operator === "in" || operator === "not_in") {
     const listStr = Array.isArray(value) ? value.join(", ") : valLabel;
-    return operator === "in" ? `${fieldLabel} este unul din: ${listStr}` : `${fieldLabel} nu este în: ${listStr}`;
+    return operator === "in"
+      ? `${fieldLabel} trebuie să fie unul din: ${listStr}`
+      : `${fieldLabel} nu trebuie să fie în: ${listStr}`;
   } else if (operator === "exists" || operator === "not_exists") {
     return operator === "exists" ? `${fieldLabel} trebuie să existe` : `${fieldLabel} nu trebuie să existe`;
   } else if (operator === "is_true" || operator === "is_false") {
-    return `${fieldLabel} = ${operator === "is_true" ? "DA" : "NU"}`;
+    return `${fieldLabel} trebuie să fie ${operator === "is_true" ? "DA" : "NU"}`;
+  } else if ((operator === "gte" || operator === ">=") && field && value !== undefined) {
+    return `${fieldLabel} trebuie să fie cel puțin ${valLabel}`;
+  } else if ((operator === "lte" || operator === "<=") && field && value !== undefined) {
+    return `${fieldLabel} nu trebuie să depășească ${valLabel}`;
+  } else if ((operator === "gt" || operator === ">") && field && value !== undefined) {
+    return `${fieldLabel} trebuie să fie mai mare decât ${valLabel}`;
+  } else if ((operator === "lt" || operator === "<") && field && value !== undefined) {
+    return `${fieldLabel} trebuie să fie mai mic decât ${valLabel}`;
+  } else if ((operator === "eq" || operator === "=") && field && value !== undefined) {
+    return `${fieldLabel} trebuie să fie ${valLabel}`;
+  } else if ((operator === "neq" || operator === "!=") && field && value !== undefined) {
+    return `${fieldLabel} nu trebuie să fie ${valLabel}`;
+  } else if (operator === "min" && field && value !== undefined) {
+    return `${fieldLabel} — minim ${valLabel}`;
+  } else if (operator === "max" && field && value !== undefined) {
+    return `${fieldLabel} — maxim ${valLabel}`;
   } else if (field && operator && value !== undefined) {
-    return `${fieldLabel} ${OPERATOR_LABELS[operator] || operator} ${valLabel}`;
+    return `${fieldLabel} ${opText} ${valLabel}`;
   } else if (field && value !== undefined) {
     return `${fieldLabel}: ${valLabel}`;
   }

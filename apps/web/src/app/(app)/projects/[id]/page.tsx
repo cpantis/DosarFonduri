@@ -220,57 +220,11 @@ function mapGuideRules(grouped: any[]): GuideRule[] {
   return rules;
 }
 
-// ─── HUMAN-READABLE CONDITION FORMATTING (shared with Biblioteca) ───
-
-const OPERATOR_LABELS: Record<string, string> = {
-  eq: "=", neq: "\u2260", gt: ">", gte: "\u2265", lt: "<", lte: "\u2264",
-  in: "\u2208", not_in: "\u2209", between: "\u2194",
-  contains: "conține", not_contains: "nu conține",
-  exists: "există", not_exists: "nu există",
-  matches: "corespunde", is_true: "= DA", is_false: "= NU",
-};
-
-function formatFieldName(field: string): string {
-  return field.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
-}
-
-function formatConditionValue(val: any): string {
-  if (val === null || val === undefined) return "—";
-  if (typeof val === "boolean") return val ? "DA" : "NU";
-  if (typeof val === "number") return val.toLocaleString("ro-RO");
-  if (Array.isArray(val)) return val.join(", ");
-  return String(val);
-}
-
-function formatConditionText(condition: any): string | null {
-  if (!condition || typeof condition !== "object") return null;
-  const { field, operator, value, value2 } = condition;
-  if (!field && !operator) return null;
-
-  const fieldLabel = field ? formatFieldName(field) : "";
-  const valLabel = formatConditionValue(value);
-
-  if (operator === "between" && value !== undefined && value2 !== undefined) {
-    return `${fieldLabel} între ${valLabel} și ${formatConditionValue(value2)}`;
-  }
-  if (operator === "in" || operator === "not_in") {
-    const listStr = Array.isArray(value) ? value.join(", ") : valLabel;
-    return operator === "in" ? `${fieldLabel} este unul din: ${listStr}` : `${fieldLabel} nu este în: ${listStr}`;
-  }
-  if (operator === "exists" || operator === "not_exists") {
-    return operator === "exists" ? `${fieldLabel} trebuie să existe` : `${fieldLabel} nu trebuie să existe`;
-  }
-  if (operator === "is_true" || operator === "is_false") {
-    return `${fieldLabel} = ${operator === "is_true" ? "DA" : "NU"}`;
-  }
-  if (field && operator && value !== undefined) {
-    return `${fieldLabel} ${OPERATOR_LABELS[operator] || operator} ${valLabel}`;
-  }
-  if (field && value !== undefined) {
-    return `${fieldLabel}: ${valLabel}`;
-  }
-  return null;
-}
+// ─── Use shared formatting from RuleCard ───
+const OPERATOR_LABELS = RC_OP_LABELS;
+const formatFieldName = rcFormatFieldName;
+const formatConditionValue = rcFormatConditionValue;
+const formatConditionText = rcFormatConditionText;
 
 const SOURCE_MAP: Record<string, string> = {
   onrc: "ONRC",

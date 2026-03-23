@@ -324,6 +324,7 @@ apiDelete<T>(path)                 // DELETE
 | C3 | `DELETE /companies/:id` | Ștergerea firmei cascade-delete proiectele, dar fișierele R2 generate de Neemia (`projectDocuments.generatedFileId`) **rămân orfane** | Pre-delete: query `projectDocuments` prin `projects.companyId`, `deleteFile()` pe fiecare |
 | C4 | `DELETE /folders/:id` | Folder delete curăță R2 pt documente, dar **NU** pt `projectDocuments.generatedFileId` ale proiectelor din folder (cascade-deleted) | Pre-delete: query `projects` din folder → `projectDocuments` → `deleteFile()` |
 | C5 | `POST /:id/lock/release` (projects.ts:1157) | Ruta de sendBeacon **nu verifică organizationId** — leak existență proiect cross-org | Adaugă check org (din JWT payload extras din body.token) |
+| C6 | Migrare 0111 (liniile 34-38) | `ALTER TABLE "documents" ALTER COLUMN "created_by"` — coloana **nu există** pe tabelul `documents` (are `uploaded_by`, nu `created_by`). Migrarea eșuează pe fresh DB. | Elimină liniile 34-38 din 0111, sau adaugă `IF EXISTS` guard |
 
 #### MEDII
 

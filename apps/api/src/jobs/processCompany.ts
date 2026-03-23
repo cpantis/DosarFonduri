@@ -64,6 +64,9 @@ export type ProcessCompanyPayload =
   | CompanyOnrcUpdatePayload
   | CompanyBilantPayload;
 
+/** Check if value is present (not undefined/null, but 0/"" are valid) */
+const has = (v: any): boolean => v !== undefined && v !== null;
+
 // --- Handlers ---
 
 async function handleOnrcExtract(job: Job<CompanyExtractPayload>) {
@@ -102,13 +105,15 @@ async function handleOnrcExtract(job: Job<CompanyExtractPayload>) {
     throw new Error("Nu s-au putut extrage date din documentul ONRC");
   }
 
-  // Update company with extracted data
+  // Update company with extracted data (ONRC PDF is authoritative — overwrite all fields)
   const updateData: Record<string, any> = {
     processingStatus: "done",
     processingError: null,
+    lastSyncedAt: new Date(),
+    updatedAt: new Date(),
   };
-  if (companyData.denumire) updateData.denumire = companyData.denumire;
-  if (companyData.cui) {
+  if (has(companyData.denumire)) updateData.denumire = companyData.denumire;
+  if (has(companyData.cui)) {
     // FIX F1.1: Check for CUI collision before updating
     const existing = await db.query.companies.findFirst({
       where: and(
@@ -121,20 +126,20 @@ async function handleOnrcExtract(job: Job<CompanyExtractPayload>) {
     }
     updateData.cui = companyData.cui;
   }
-  if (companyData.regCom) updateData.regCom = companyData.regCom;
-  if (companyData.euid) updateData.euid = companyData.euid;
-  if (companyData.adresa) updateData.adresa = companyData.adresa;
-  if (companyData.localitate) updateData.localitate = companyData.localitate;
-  if (companyData.judet) updateData.judet = companyData.judet;
-  if (companyData.telefon) updateData.telefon = companyData.telefon;
-  if (companyData.email) updateData.email = companyData.email;
-  if (companyData.formaJuridica) updateData.formaJuridica = mapFormaToCode(companyData.formaJuridica) as any;
-  if (companyData.stare) updateData.stare = normalizeStare(companyData.stare);
-  if (companyData.durata) updateData.durata = companyData.durata;
-  if (companyData.anInfiintare) updateData.anInfiintare = companyData.anInfiintare;
-  if (companyData.capitalSocial) updateData.capitalSocial = companyData.capitalSocial.toString();
-  if (companyData.moneda) updateData.moneda = companyData.moneda;
-  if (companyData.partiSociale) updateData.partiSociale = companyData.partiSociale;
+  if (has(companyData.regCom)) updateData.regCom = companyData.regCom;
+  if (has(companyData.euid)) updateData.euid = companyData.euid;
+  if (has(companyData.adresa)) updateData.adresa = companyData.adresa;
+  if (has(companyData.localitate)) updateData.localitate = companyData.localitate;
+  if (has(companyData.judet)) updateData.judet = companyData.judet;
+  if (has(companyData.telefon)) updateData.telefon = companyData.telefon;
+  if (has(companyData.email)) updateData.email = companyData.email;
+  if (has(companyData.formaJuridica)) updateData.formaJuridica = mapFormaToCode(companyData.formaJuridica) as any;
+  if (has(companyData.stare)) updateData.stare = normalizeStare(companyData.stare);
+  if (has(companyData.durata)) updateData.durata = companyData.durata;
+  if (has(companyData.anInfiintare)) updateData.anInfiintare = companyData.anInfiintare;
+  if (has(companyData.capitalSocial)) updateData.capitalSocial = String(companyData.capitalSocial);
+  if (has(companyData.moneda)) updateData.moneda = companyData.moneda;
+  if (has(companyData.partiSociale)) updateData.partiSociale = companyData.partiSociale;
   if (companyData.naturaCapital && typeof companyData.naturaCapital === "object") {
     updateData.naturaCapital = {
       privatAutohton: Number(companyData.naturaCapital.privatAutohton) || 0,
@@ -142,12 +147,13 @@ async function handleOnrcExtract(job: Job<CompanyExtractPayload>) {
       stat: Number(companyData.naturaCapital.stat) || 0,
     };
   }
-  if (companyData.caenPrincipal) updateData.caen = companyData.caenPrincipal;
+  if (has(companyData.caenPrincipal)) updateData.caen = companyData.caenPrincipal;
   updateData.onrcRawData = companyData;
 
   await db.update(companies).set(updateData).where(eq(companies.id, companyId));
 
-  // Insert associates
+  // Replace associates (delete old, insert new — ONRC PDF is authoritative)
+  await db.delete(companyAssociates).where(eq(companyAssociates.companyId, companyId));
   if (companyData.asociati?.length > 0) {
     await db.insert(companyAssociates).values(
       companyData.asociati.map((a: any) => ({
@@ -165,7 +171,8 @@ async function handleOnrcExtract(job: Job<CompanyExtractPayload>) {
     );
   }
 
-  // Insert administrators
+  // Replace administrators (delete old, insert new)
+  await db.delete(companyAdministrators).where(eq(companyAdministrators.companyId, companyId));
   if (companyData.administratori?.length > 0) {
     await db.insert(companyAdministrators).values(
       companyData.administratori.map((a: any) => ({
@@ -179,18 +186,25 @@ async function handleOnrcExtract(job: Job<CompanyExtractPayload>) {
     );
   }
 
-  // Insert financials
+  // Insert/update financials (upsert per year)
   if (companyData.financials?.length > 0) {
-    await db.insert(companyFinancials).values(
-      companyData.financials.map((f: any) => ({
-        companyId,
-        year: f.year,
+    for (const f of companyData.financials as any[]) {
+      const existingFin = await db.query.companyFinancials.findFirst({
+        where: and(eq(companyFinancials.companyId, companyId), eq(companyFinancials.year, f.year)),
+      });
+      const finData = {
         source: "onrc" as const,
         f10: { capitaluriProprii: f.capitaluriProprii, activeImobilizate: { total: f.activeImobilizate }, activeCirculante: { total: f.activeCirculante } },
         f20: { cifraAfaceriNeta: f.cifraAfaceri, profitBrut: f.profitBrut, profitNet: f.profitNet },
         f30: { numarMediuSalariati: f.angajati, numarEfectivSalariati: f.angajatiEfectiv },
-      }))
-    );
+        processedAt: new Date(),
+      };
+      if (existingFin) {
+        await db.update(companyFinancials).set(finData).where(eq(companyFinancials.id, existingFin.id));
+      } else {
+        await db.insert(companyFinancials).values({ companyId, year: f.year, ...finData });
+      }
+    }
   }
 
   // Materialize company elements for pre-eligibility
@@ -243,26 +257,28 @@ async function handleOnrcUpdate(job: Job<CompanyOnrcUpdatePayload>) {
     throw new Error("Nu s-au putut extrage date din documentul ONRC");
   }
 
+  // ONRC PDF upload is authoritative — overwrite all company fields
   const updateData: Record<string, any> = {
     processingStatus: "done",
     processingError: null,
     lastSyncedAt: new Date(),
+    updatedAt: new Date(),
   };
-  if (companyData.denumire) updateData.denumire = companyData.denumire;
-  if (companyData.regCom) updateData.regCom = companyData.regCom;
-  if (companyData.euid) updateData.euid = companyData.euid;
-  if (companyData.adresa) updateData.adresa = companyData.adresa;
-  if (companyData.localitate) updateData.localitate = companyData.localitate;
-  if (companyData.judet) updateData.judet = companyData.judet;
-  if (companyData.telefon) updateData.telefon = companyData.telefon;
-  if (companyData.email) updateData.email = companyData.email;
-  if (companyData.formaJuridica) updateData.formaJuridica = mapFormaToCode(companyData.formaJuridica) as any;
-  if (companyData.stare) updateData.stare = normalizeStare(companyData.stare);
-  if (companyData.durata) updateData.durata = companyData.durata;
-  if (companyData.anInfiintare) updateData.anInfiintare = companyData.anInfiintare;
-  if (companyData.capitalSocial) updateData.capitalSocial = companyData.capitalSocial.toString();
-  if (companyData.moneda) updateData.moneda = companyData.moneda;
-  if (companyData.partiSociale) updateData.partiSociale = companyData.partiSociale;
+  if (has(companyData.denumire)) updateData.denumire = companyData.denumire;
+  if (has(companyData.regCom)) updateData.regCom = companyData.regCom;
+  if (has(companyData.euid)) updateData.euid = companyData.euid;
+  if (has(companyData.adresa)) updateData.adresa = companyData.adresa;
+  if (has(companyData.localitate)) updateData.localitate = companyData.localitate;
+  if (has(companyData.judet)) updateData.judet = companyData.judet;
+  if (has(companyData.telefon)) updateData.telefon = companyData.telefon;
+  if (has(companyData.email)) updateData.email = companyData.email;
+  if (has(companyData.formaJuridica)) updateData.formaJuridica = mapFormaToCode(companyData.formaJuridica) as any;
+  if (has(companyData.stare)) updateData.stare = normalizeStare(companyData.stare);
+  if (has(companyData.durata)) updateData.durata = companyData.durata;
+  if (has(companyData.anInfiintare)) updateData.anInfiintare = companyData.anInfiintare;
+  if (has(companyData.capitalSocial)) updateData.capitalSocial = String(companyData.capitalSocial);
+  if (has(companyData.moneda)) updateData.moneda = companyData.moneda;
+  if (has(companyData.partiSociale)) updateData.partiSociale = companyData.partiSociale;
   if (companyData.naturaCapital && typeof companyData.naturaCapital === "object") {
     updateData.naturaCapital = {
       privatAutohton: Number(companyData.naturaCapital.privatAutohton) || 0,
@@ -270,14 +286,14 @@ async function handleOnrcUpdate(job: Job<CompanyOnrcUpdatePayload>) {
       stat: Number(companyData.naturaCapital.stat) || 0,
     };
   }
-  if (companyData.caenPrincipal) updateData.caen = companyData.caenPrincipal;
+  if (has(companyData.caenPrincipal)) updateData.caen = companyData.caenPrincipal;
   updateData.onrcRawData = companyData;
 
   await db.update(companies).set(updateData).where(eq(companies.id, companyId));
 
-  // Replace associates
+  // Replace associates (ONRC PDF is authoritative — always delete+insert)
+  await db.delete(companyAssociates).where(eq(companyAssociates.companyId, companyId));
   if (companyData.asociati?.length > 0) {
-    await db.delete(companyAssociates).where(eq(companyAssociates.companyId, companyId));
     await db.insert(companyAssociates).values(
       companyData.asociati.map((a: any) => ({
         companyId,
@@ -294,9 +310,9 @@ async function handleOnrcUpdate(job: Job<CompanyOnrcUpdatePayload>) {
     );
   }
 
-  // Replace administrators
+  // Replace administrators (ONRC PDF is authoritative — always delete+insert)
+  await db.delete(companyAdministrators).where(eq(companyAdministrators.companyId, companyId));
   if (companyData.administratori?.length > 0) {
-    await db.delete(companyAdministrators).where(eq(companyAdministrators.companyId, companyId));
     await db.insert(companyAdministrators).values(
       companyData.administratori.map((a: any) => ({
         companyId,

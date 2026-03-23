@@ -558,13 +558,13 @@ export default function DocumentsPage() {
       await apiDelete(`/api/documents/documents/${docId}`);
       setDocs(prev => prev.filter(d => d.id !== docId));
       if (selectedDoc === docId) setSelectedDoc(null);
-      setDeleteConfirm(null);
       toast("success", "Document șters cu succes.");
     } catch (err) {
       console.error("Failed to delete document:", err);
       toast("error", "Nu s-a putut șterge documentul. Încearcă din nou.");
     } finally {
       setDeleteLoading(false);
+      setDeleteConfirm(null);
     }
   }, [deleteConfirm, selectedDoc, toast]);
 

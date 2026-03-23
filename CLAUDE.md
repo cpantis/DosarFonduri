@@ -90,7 +90,7 @@ Fiecare pagină are un prototip JSX care definește **exact** cum arată:
 - **Culori** — folosește CSS custom properties din prototip (--bg-deep, --accent-blue, etc.)
 - **Layout** — respectă structura (sidebar, split pane, grids) din prototip
 - **Spacing** — respectă padding, gap, margin din prototip
-- **Tipografie** — DM Sans + JetBrains Mono, weights, sizes din prototip
+- **Tipografie** — Inter + JetBrains Mono, weights, sizes din prototip
 - **Componente** — structura HTML/JSX, class names, comportament
 - **Interacțiuni** — hover states, transitions, animations din prototip
 
@@ -146,7 +146,7 @@ Fiecare fază are un **CHECKLIST** la final — bifează fiecare item implementa
 --accent-yellow: #fbbf24;
 --accent-purple: #a78bfa;
 --accent-orange: #fb923c;
---font-sans: 'DM Sans', system-ui, sans-serif;
+--font-sans: 'Inter', system-ui, sans-serif;
 --font-mono: 'JetBrains Mono', monospace;
 --r-sm: 6px;
 --r-md: 10px;

@@ -3,6 +3,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api";
 import { getCaenDescription } from "@/lib/caen";
+import { RuleCard, RuleCardList, RuleCardData, CATEGORY_COLORS as RC_CAT_COLORS, CATEGORY_LABELS as RC_CAT_LABELS, OPERATOR_LABELS as RC_OP_LABELS, formatFieldName as rcFormatFieldName, formatConditionValue as rcFormatConditionValue, formatConditionText as rcFormatConditionText } from "@/components/shared/RuleCard";
 import { useToast } from "@/components/shared/Toast";
 import { useSSE } from "@/hooks/useSSE";
 import FormOnDocument from "@/components/documents/FormOnDocument";
@@ -3018,9 +3019,9 @@ export default function ProjectViewPage() {
         .fod-field.confirmed{background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.3)}
         .fod-field.confirmed.hovered{background:rgba(52,211,153,.14);border-color:#34d399}
         .fod-field.editing{border:2px solid #4d8bff;background:rgba(255,255,255,.95);z-index:10;overflow:visible;box-shadow:0 2px 12px rgba(77,139,255,.25)}
-        .fod-field-value{font-size:10px;font-family:'DM Sans',system-ui,sans-serif;color:#1a1e28;padding:1px 3px;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%}
+        .fod-field-value{font-size:10px;font-family:'Inter',system-ui,sans-serif;color:#1a1e28;padding:1px 3px;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%}
         .fod-field-editor{display:flex;flex-direction:column;gap:4px;min-width:200px;position:relative}
-        .fod-input{width:100%;padding:4px 6px;font-size:12px;font-family:'DM Sans',system-ui,sans-serif;border:1px solid #4d8bff;border-radius:3px;background:#ffffff;outline:none;color:#1a1e28;line-height:1.3}
+        .fod-input{width:100%;padding:4px 6px;font-size:12px;font-family:'Inter',system-ui,sans-serif;border:1px solid #4d8bff;border-radius:3px;background:#ffffff;outline:none;color:#1a1e28;line-height:1.3}
         .fod-input:focus{box-shadow:0 0 0 2px rgba(77,139,255,.2)}
         .fod-field-actions{display:flex;gap:3px;position:absolute;right:0;top:100%;margin-top:2px;z-index:20}
         .fod-save-btn,.fod-cancel-btn{width:24px;height:24px;border-radius:4px;border:none;cursor:pointer;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;transition:background .15s}
@@ -3731,201 +3732,37 @@ export default function ProjectViewPage() {
                         </div>
                       </div>
                       {/* Scrollable rule cards */}
-                      <div style={{ flex: 1, overflowY: "auto", padding: 0 }}>
-                        {filteredRules.map((r, idx) => {
-                          const isOpen = expandedRuleIds.has(r.id);
-                          const eStatus = eligStatusById[r.id];
-                          const catColor = categoryColors[r.category] || "#94a3b8";
-                          return (
-                            <div key={r.id} style={{
-                              borderBottom: idx < filteredRules.length - 1 ? "1px solid rgba(226,232,240,.7)" : "none",
-                              background: isOpen ? "rgba(248,250,252,.5)" : "#fff",
-                              transition: "background .15s",
-                            }}>
-                              {/* Collapsed header */}
-                              <div onClick={() => toggleRuleExpand(r.id)} style={{
-                                display: "flex", alignItems: "flex-start", gap: 12, padding: "14px 24px",
-                                cursor: "pointer", userSelect: "none",
-                              }}
-                              onMouseEnter={(e) => { if (!isOpen) (e.currentTarget.parentElement as HTMLElement).style.background = "#fafbfc"; }}
-                              onMouseLeave={(e) => { if (!isOpen) (e.currentTarget.parentElement as HTMLElement).style.background = "#fff"; }}
-                              >
-                                <span style={{
-                                  fontSize: 9, marginTop: 6, flexShrink: 0, color: isOpen ? "#2563eb" : "#cbd5e1",
-                                  transition: "transform .2s, color .2s", transform: isOpen ? "rotate(90deg)" : "rotate(0deg)",
-                                }}>▶</span>
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 6 }}>
-                                    <span className={`rule-type-badge ${r.type}`} style={{ fontSize: 10, padding: "2px 10px", borderRadius: 4 }}>
-                                      {r.type === "fixed" ? "FIXĂ" : "INTERPRETATĂ"}
-                                    </span>
-                                    <span style={{
-                                      fontSize: 10, fontWeight: 700, padding: "2px 10px", borderRadius: 4, letterSpacing: ".3px",
-                                      background: `color-mix(in srgb, ${catColor} 14%, transparent)`,
-                                      color: catColor, border: `1px solid color-mix(in srgb, ${catColor} 25%, transparent)`,
-                                      textTransform: "uppercase",
-                                    }}>
-                                      {categoryLabels[r.category] || r.category}
-                                    </span>
-                                    {eStatus && (
-                                      <span className={`elig-status-badge ${eStatus.status}`} style={{ fontSize: 10, padding: "2px 10px" }}>
-                                        {eStatus.status === "pass" ? "✓ Trecut" : eStatus.status === "fail" ? "✗ Respins" : "⏳ Pending"}
-                                      </span>
-                                    )}
-                                    {r.needsReview && <span style={{ fontSize: 10, fontWeight: 700, color: "#d97706" }}>⚠ Review</span>}
-                                    {r.validated && <span style={{ fontSize: 10, fontWeight: 700, color: "#059669" }}>✓ Validată</span>}
-                                  </div>
-                                  <div style={{ fontSize: 13, lineHeight: 1.6, color: "#0f172a", fontWeight: 500 }}>{r.text}</div>
-                                </div>
-                                <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, marginTop: 4 }}>
-                                  <span style={{
-                                    fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace",
-                                    color: r.confidence > 0.9 ? "#059669" : r.confidence > 0.8 ? "#2563eb" : "#d97706",
-                                  }}>
-                                    {Math.round(r.confidence * 100)}%
-                                  </span>
-                                  <span style={{
-                                    fontSize: 11, fontWeight: 600, color: "#94a3b8",
-                                  }}>
-                                    p.{r.page}
-                                  </span>
-                                </div>
-                              </div>
-                              {/* Expanded detail */}
-                              {isOpen && (
-                                <div className="rd-content" style={{ padding: "0 24px 20px 46px", animation: "docFadeIn .15s ease-out" }}>
-                                  {/* Confidence bar */}
-                                  <div className="rd-confidence-row" style={{ marginBottom: 16 }}>
-                                    <span className="rd-conf-label">Încredere</span>
-                                    <span className="rd-conf-value" style={{ color: r.confidence > 0.9 ? "#059669" : r.confidence > 0.8 ? "#2563eb" : "#d97706" }}>
-                                      {Math.round(r.confidence * 100)}%
-                                    </span>
-                                    <div className="rd-conf-bar">
-                                      <div className="rd-conf-fill" style={{ width: `${r.confidence * 100}%`, background: r.confidence > 0.9 ? "#34d399" : r.confidence > 0.8 ? "#2563eb" : "#fbbf24" }} />
-                                    </div>
-                                  </div>
-                                  {/* Semantic tags */}
-                                  {r.semanticTags.length > 0 && (
-                                    <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 16 }}>
-                                      {r.semanticTags.map((tag: string) => (
-                                        <span key={tag} className={`rd-sem-tag ${tag.toLowerCase()}`}>
-                                          {semanticTagIcons[tag] || "●"} {semanticTagLabels[tag] || tag}
-                                        </span>
-                                      ))}
-                                    </div>
-                                  )}
-                                  {/* Description */}
-                                  <div className="rd-section">
-                                    <div className="rd-section-title">Descriere regulă</div>
-                                    <div className="rd-description">{r.text}</div>
-                                  </div>
-                                  {/* Source text */}
-                                  {r.sourceText && (
-                                    <div className="rd-section">
-                                      <div className="rd-section-title">
-                                        Text original din ghid
-                                        <span className="rd-page-ref">Pag. {r.page}</span>
-                                      </div>
-                                      <div className="rd-source-text">
-                                        <div className="rd-source-quote">{r.sourceText}</div>
-                                      </div>
-                                    </div>
-                                  )}
-                                  {/* Condition / logic */}
-                                  {r.condition && (
-                                    <div className="rd-section">
-                                      <div className="rd-section-title">
-                                        {r.type === "fixed" ? "Condiție verificare" : "Logică decizională"}
-                                      </div>
-                                      <div className="rd-condition">
-                                        {r.type === "fixed" && r.condition.field && (() => {
-                                          const humanText = formatConditionText(r.condition);
-                                          return (
-                                            <>
-                                              {humanText && (
-                                                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 10, background: "rgba(77,139,255,.04)", border: "1px solid rgba(77,139,255,.15)", marginBottom: 10 }}>
-                                                  <span style={{ fontSize: 16, flexShrink: 0 }}>{"\u{1F9EA}"}</span>
-                                                  <span style={{ fontSize: 14, fontWeight: 700, color: "#0f172a" }}>{humanText}</span>
-                                                </div>
-                                              )}
-                                              <div className="rd-cond-row">
-                                                <span className="rd-cond-field">{formatFieldName(r.condition.field)}</span>
-                                                <span className="rd-cond-op">{OPERATOR_LABELS[r.condition.operator] || r.condition.operator}</span>
-                                                <span className="rd-cond-val">
-                                                  {formatConditionValue(r.condition.value)}
-                                                  {r.condition.value2 != null && ` — ${formatConditionValue(r.condition.value2)}`}
-                                                </span>
-                                              </div>
-                                            </>
-                                          );
-                                        })()}
-                                        {r.type === "interpreted" && (
-                                          <>
-                                            {r.condition.type && (
-                                              <div className="rd-logic-type">
-                                                <span className="rd-logic-badge">{r.condition.type.replace(/_/g, " ")}</span>
-                                              </div>
-                                            )}
-                                            {r.condition.logic && (
-                                              <div className="rd-logic-desc">{r.condition.logic}</div>
-                                            )}
-                                            {r.condition.factors && r.condition.factors.length > 0 && (
-                                              <div className="rd-factors">
-                                                <span className="rd-factors-label">Factori:</span>
-                                                {r.condition.factors.map((f: string, i: number) => (
-                                                  <span key={i} className="rd-factor-chip">{f}</span>
-                                                ))}
-                                              </div>
-                                            )}
-                                            {r.condition.outcomes && r.condition.outcomes.length > 0 && (
-                                              <div className="rd-outcomes">
-                                                {r.condition.outcomes.map((o: any, i: number) => (
-                                                  <div key={i} className="rd-outcome-row">
-                                                    <span className="rd-outcome-if">DACĂ</span>
-                                                    <span className="rd-outcome-cond">{o.if}</span>
-                                                    <span className="rd-outcome-then">→</span>
-                                                    <span className="rd-outcome-result">{o.then}</span>
-                                                  </div>
-                                                ))}
-                                              </div>
-                                            )}
-                                          </>
-                                        )}
-                                      </div>
-                                    </div>
-                                  )}
-                                  {/* Source document */}
-                                  {r.sourceDocument && (
-                                    <div className="rd-section">
-                                      <div className="rd-section-title">Sursă document</div>
-                                      <div className="rd-doc-ref">
-                                        <span className="rd-doc-icon">{r.sourceDocument.fileType === "pdf" ? "📕" : r.sourceDocument.fileType === "docx" ? "📘" : "📗"}</span>
-                                        <span className="rd-doc-name">{r.sourceDocument.name}</span>
-                                        <span className="rd-doc-page">Pag. {r.page}</span>
-                                      </div>
-                                    </div>
-                                  )}
-                                  {/* Eligibility status */}
-                                  {eStatus && (
-                                    <div className="rd-section">
-                                      <div className="rd-section-title">Status eligibilitate</div>
-                                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                                        <span className={`elig-status-badge ${eStatus.status}`} style={{ fontSize: 12, padding: "4px 14px" }}>
-                                          {eStatus.status === "pass" ? "✓ TRECUT" : eStatus.status === "fail" ? "✗ RESPINS" : "⏳ PENDING"}
-                                        </span>
-                                        {eStatus.notes && (
-                                          <span style={{ fontSize: 12, color: "#64748b", fontStyle: "italic" }}>
-                                            {eStatus.notes}
-                                          </span>
-                                        )}
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
+                      <div style={{ flex: 1, overflowY: "auto", padding: "12px 16px" }}>
+                        <RuleCardList>
+                          {filteredRules.map(r => {
+                            const eStatus = eligStatusById[r.id];
+                            const cardData: RuleCardData = {
+                              id: r.id,
+                              type: r.type,
+                              text: r.text,
+                              confidence: r.confidence,
+                              page: r.page,
+                              category: r.category,
+                              sourceText: r.sourceText,
+                              condition: r.condition,
+                              semanticTags: r.semanticTags,
+                              validated: r.validated,
+                              needsReview: r.needsReview,
+                              sourceDocument: r.sourceDocument,
+                              eligStatus: eStatus ? { status: eStatus.status as "pass" | "fail" | "pending", notes: eStatus.notes ?? undefined } : null,
+                            };
+                            return (
+                              <RuleCard
+                                key={r.id}
+                                rule={cardData}
+                                isOpen={expandedRuleIds.has(r.id)}
+                                onToggle={() => toggleRuleExpand(r.id)}
+                                categoryColor={categoryColors[r.category] || "#94a3b8"}
+                                categoryLabel={categoryLabels[r.category] || r.category}
+                              />
+                            );
+                          })}
+                        </RuleCardList>
                         {filteredRules.length === 0 && (
                           <div style={{ textAlign: "center", padding: "48px 0", color: "#94a3b8" }}>
                             <div style={{ fontSize: 32, opacity: 0.3, marginBottom: 8 }}>🛡</div>

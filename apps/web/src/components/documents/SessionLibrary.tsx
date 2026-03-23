@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api";
 import { Tabs } from "@/components/ui/Tabs";
+import { RuleCard, RuleCardList, RuleCardData, CATEGORY_COLORS as RC_COLORS, CATEGORY_LABELS as RC_LABELS } from "@/components/shared/RuleCard";
 
 /* ══════════════════════════════════════════
    TYPES (matching GET /api/documents/session/:folderId/library)
@@ -188,15 +189,28 @@ function RulesTab({ rules }: { rules: LibraryData["rules"] }) {
     });
   };
 
-  const CATEGORY_COLORS: Record<string, string> = {
-    eligibilitate: "#2563eb", financiar: "#059669", tehnic: "#7c3aed", administrativ: "#64748b",
-    achizitii: "#ea580c", documente: "#d97706", selectie: "#dc2626", intensitate: "#0891b2",
-    eligibilitate_complexa: "#2563eb", documentare: "#d97706", ajutor_stat: "#7c3aed",
-  };
-
   const displayRules = filter === "_fixed" ? rules.items.filter(r => r.type === "fixed")
     : filter === "_interpreted" ? rules.items.filter(r => r.type === "interpreted")
     : filtered;
+
+  // Normalize LibRule → RuleCardData
+  const normalizedRules: RuleCardData[] = useMemo(() => displayRules.map(rule => {
+    const rc = typeof rule.condition === "string" ? (() => { try { return JSON.parse(rule.condition); } catch { return rule.condition; } })() : rule.condition;
+    return {
+      id: rule.id,
+      type: rule.type,
+      text: rule.description,
+      confidence: parseFloat(rule.confidence || "0"),
+      page: rule.sourcePage,
+      category: rule.category,
+      sourceText: rule.sourceText,
+      condition: rc,
+      semanticTags: (rc && typeof rc === "object" && rc.semantic_tags) ? rc.semantic_tags : [],
+      validated: rule.validated,
+      needsReview: rule.needsReview,
+      sourceDocument: rule.sourceDocument,
+    };
+  }), [displayRules]);
 
   return (
     <div className="flex flex-col gap-3">
@@ -212,200 +226,18 @@ function RulesTab({ rules }: { rules: LibraryData["rules"] }) {
       </div>
 
       {/* Rule cards */}
-      <div style={{ borderRadius: 12, border: "1px solid rgba(226,232,240,.7)", overflow: "hidden", background: "#fff" }}>
-      {displayRules.map((rule, idx) => {
-        const isOpen = expanded.has(rule.id);
-        const conf = parseFloat(rule.confidence || "0");
-        const rc = typeof rule.condition === "string" ? (() => { try { return JSON.parse(rule.condition); } catch { return rule.condition; } })() : rule.condition;
-        const rTags: string[] = rc?.semantic_tags || [];
-        const catColor = CATEGORY_COLORS[rule.category || ""] || "#94a3b8";
-
-        return (
-          <div key={rule.id} style={{
-            borderBottom: idx < displayRules.length - 1 ? "1px solid rgba(226,232,240,.7)" : "none",
-            background: isOpen ? "rgba(248,250,252,.5)" : "#fff",
-            transition: "background .15s",
-          }}>
-            {/* Header — always visible */}
-            <button className="w-full text-left" onClick={() => toggle(rule.id)}
-              onMouseEnter={(e) => { if (!isOpen) e.currentTarget.parentElement!.style.background = "#fafbfc"; }}
-              onMouseLeave={(e) => { if (!isOpen) e.currentTarget.parentElement!.style.background = "#fff"; }}
-              style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "14px 24px", cursor: "pointer", border: "none", font: "inherit", width: "100%" }}>
-              <span style={{
-                fontSize: 9, marginTop: 6, flexShrink: 0,
-                color: isOpen ? "#2563eb" : "#cbd5e1",
-                transition: "transform .2s, color .2s",
-                transform: isOpen ? "rotate(90deg)" : "rotate(0deg)",
-              }}>{"\u25B6"}</span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 6 }}>
-                  <TypeBadge type={rule.type} />
-                  {rule.category && (
-                    <span style={{
-                      fontSize: 10, fontWeight: 700, padding: "2px 10px", borderRadius: 4, letterSpacing: ".3px",
-                      background: `color-mix(in srgb, ${catColor} 14%, transparent)`,
-                      color: catColor, border: `1px solid color-mix(in srgb, ${catColor} 25%, transparent)`,
-                      textTransform: "uppercase",
-                    }}>
-                      {rule.category.replace(/_/g, ". ").toUpperCase()}
-                    </span>
-                  )}
-                  {rule.needsReview && <span style={{ fontSize: 10, fontWeight: 700, color: "#d97706" }}>{"\u26A0"} Review</span>}
-                  {rule.validated && <span style={{ fontSize: 10, fontWeight: 700, color: "#059669" }}>{"\u2713"} Validată</span>}
-                </div>
-                <div style={{ fontSize: 13, lineHeight: 1.6, color: "#0f172a", fontWeight: 500 }}>{rule.description}</div>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, marginTop: 4 }}>
-                <span style={{
-                  fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace",
-                  color: conf > 0.9 ? "#059669" : conf > 0.8 ? "#2563eb" : "#d97706",
-                }}>
-                  {Math.round(conf * 100)}%
-                </span>
-                {rule.sourcePage != null && (
-                  <span style={{ fontSize: 11, fontWeight: 600, color: "#94a3b8" }}>p.{rule.sourcePage}</span>
-                )}
-              </div>
-            </button>
-
-            {/* Expanded detail */}
-            {isOpen && (
-              <div style={{ padding: "0 24px 20px 46px", animation: "docFadeIn .15s ease-out" }}>
-                {/* Confidence bar */}
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
-                  <span style={{ fontSize: 11, fontWeight: 600, color: "#94a3b8", textTransform: "uppercase", letterSpacing: ".5px" }}>Încredere</span>
-                  <span style={{ fontSize: 20, fontWeight: 800, fontFamily: "'JetBrains Mono', monospace", color: conf > 0.9 ? "#059669" : conf > 0.8 ? "#2563eb" : "#d97706", fontVariantNumeric: "tabular-nums" }}>
-                    {Math.round(conf * 100)}%
-                  </span>
-                  <div style={{ flex: 1, height: 6, background: "#f8fafc", borderRadius: 3, overflow: "hidden", maxWidth: 200 }}>
-                    <div style={{ height: "100%", borderRadius: 3, width: `${conf * 100}%`, background: conf > 0.9 ? "#34d399" : conf > 0.8 ? "#2563eb" : "#fbbf24", transition: "all .15s" }} />
-                  </div>
-                </div>
-
-                {/* Semantic tags */}
-                {rTags.length > 0 && (
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 16 }}>
-                    {rTags.map((tag: string) => (
-                      <span key={tag} style={{
-                        fontSize: 10, fontWeight: 700, letterSpacing: ".4px", padding: "3px 10px",
-                        borderRadius: 20, display: "inline-flex", alignItems: "center", gap: 4,
-                        textTransform: "uppercase", fontFamily: "'Inter',system-ui,sans-serif",
-                        ...semanticTagStyle(tag),
-                      }}>
-                        {semanticTagIcon(tag)} {semanticTagLabel(tag)}
-                      </span>
-                    ))}
-                  </div>
-                )}
-
-                {/* Description */}
-                <div style={{ marginBottom: 20 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".8px", color: "#94a3b8", marginBottom: 10 }}>Descriere regulă</div>
-                  <div style={{ fontSize: 14, lineHeight: 1.7, color: "#0f172a", padding: "14px 18px", background: "#fff", border: "1px solid rgba(226,232,240,.8)", borderRadius: 12 }}>
-                    {rule.description}
-                  </div>
-                </div>
-
-                {/* Source text from guide */}
-                {rule.sourceText && (
-                  <div style={{ marginBottom: 20 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".8px", color: "#94a3b8", marginBottom: 10, display: "flex", alignItems: "center", gap: 8 }}>
-                      Text original din ghid
-                      {rule.sourcePage != null && (
-                        <span style={{ fontSize: 10, fontWeight: 600, color: "#2563eb", background: "rgba(37,99,235,.08)", padding: "2px 8px", borderRadius: 6, marginLeft: "auto" }}>Pag. {rule.sourcePage}</span>
-                      )}
-                    </div>
-                    <div style={{ background: "#fff", border: "1px solid rgba(226,232,240,.8)", borderRadius: 12, overflow: "hidden" }}>
-                      <div style={{ fontSize: 13, lineHeight: 1.8, color: "#0f172a", padding: "16px 20px", borderLeft: "3px solid #2563eb", fontStyle: "italic", background: "rgba(37,99,235,.03)" }}>
-                        {rule.sourceText}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Condition / Decision logic */}
-                {rc && typeof rc === "object" && (
-                  <div style={{ marginBottom: 20 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".8px", color: "#94a3b8", marginBottom: 10 }}>
-                      {rule.type === "fixed" ? "Condiție verificare" : "Logică decizională"}
-                    </div>
-                    <div style={{ background: "#fff", border: "1px solid rgba(226,232,240,.8)", borderRadius: 12, padding: "14px 18px" }}>
-                      {rule.type === "fixed" && rc.field && (() => {
-                        const parsed = formatCondition(rc);
-                        return (
-                          <>
-                            {parsed && (
-                              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 10, background: "rgba(77,139,255,.04)", border: "1px solid rgba(77,139,255,.15)", marginBottom: 10 }}>
-                                <span style={{ fontSize: 16, flexShrink: 0 }}>{"\u{1F9EA}"}</span>
-                                <span style={{ fontSize: 14, fontWeight: 700, color: "#0f172a" }}>{parsed.text}</span>
-                              </div>
-                            )}
-                            <div style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: "'JetBrains Mono', monospace", fontSize: 13 }}>
-                              <span style={{ fontWeight: 700, color: "#2563eb" }}>{formatFieldName(rc.field)}</span>
-                              <span style={{ fontWeight: 600, color: "#94a3b8" }}>{OPERATOR_LABELS[rc.operator] || rc.operator}</span>
-                              <span style={{ fontWeight: 600, color: "#059669" }}>
-                                {formatConditionValue(rc.value)}
-                                {rc.value2 != null && ` — ${formatConditionValue(rc.value2)}`}
-                              </span>
-                            </div>
-                          </>
-                        );
-                      })()}
-                      {rule.type === "interpreted" && (
-                        <>
-                          {rc.type && (
-                            <div style={{ marginBottom: 10 }}>
-                              <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".5px", padding: "4px 12px", borderRadius: 4, background: "rgba(167,139,250,.12)", color: "#7c3aed", border: "1px solid rgba(167,139,250,.25)" }}>
-                                {rc.type.replace(/_/g, " ")}
-                              </span>
-                            </div>
-                          )}
-                          {rc.logic && (
-                            <div style={{ fontSize: 13, lineHeight: 1.7, color: "#0f172a", marginBottom: 12 }}>{rc.logic}</div>
-                          )}
-                          {rc.factors && rc.factors.length > 0 && (
-                            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
-                              <span style={{ fontSize: 11, fontWeight: 600, color: "#94a3b8", textTransform: "uppercase", letterSpacing: ".5px" }}>Factori:</span>
-                              {rc.factors.map((f: string, i: number) => (
-                                <span key={i} style={{ fontSize: 11, padding: "3px 10px", borderRadius: 12, background: "#f8fafc", border: "1px solid rgba(226,232,240,.8)", color: "#64748b", fontFamily: "'JetBrains Mono', monospace" }}>{f}</span>
-                              ))}
-                            </div>
-                          )}
-                          {rc.outcomes && rc.outcomes.length > 0 && (
-                            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                              {rc.outcomes.map((o: any, i: number) => (
-                                <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 6, fontSize: 12, lineHeight: 1.6, padding: "6px 10px", background: "#f8fafc", borderRadius: 6 }}>
-                                  <span style={{ fontSize: 10, fontWeight: 700, color: "#2563eb", padding: "1px 6px", borderRadius: 3, background: "rgba(37,99,235,.1)", flexShrink: 0, marginTop: 1 }}>DACĂ</span>
-                                  <span style={{ color: "#0f172a", flex: 1 }}>{o.if}</span>
-                                  <span style={{ color: "#94a3b8", flexShrink: 0 }}>{"\u2192"}</span>
-                                  <span style={{ color: "#059669", fontWeight: 600, flex: 1 }}>{o.then}</span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Source document */}
-                {rule.sourceDocument && (
-                  <div style={{ marginBottom: 10 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".8px", color: "#94a3b8", marginBottom: 10 }}>Sursă document</div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: "#fff", border: "1px solid rgba(226,232,240,.8)", borderRadius: 12 }}>
-                      <span>{rule.sourceDocument.fileType === "pdf" ? "📕" : rule.sourceDocument.fileType === "docx" ? "📘" : "📗"}</span>
-                      <span style={{ fontSize: 13, fontWeight: 600, color: "#0f172a" }}>{rule.sourceDocument.name}</span>
-                      {rule.sourcePage != null && <span style={{ fontSize: 11, color: "#94a3b8", marginLeft: "auto" }}>Pag. {rule.sourcePage}</span>}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        );
-      })}
-      </div>
+      <RuleCardList>
+        {normalizedRules.map(rule => (
+          <RuleCard
+            key={rule.id}
+            rule={rule}
+            isOpen={expanded.has(rule.id)}
+            onToggle={() => toggle(rule.id)}
+            categoryColor={RC_COLORS[rule.category || ""] || "#94a3b8"}
+            categoryLabel={RC_LABELS[rule.category || ""] || (rule.category || "").replace(/_/g, ". ").toUpperCase()}
+          />
+        ))}
+      </RuleCardList>
 
       {displayRules.length === 0 && <EmptyTab icon="\u{1F6E1}" message="Nicio regulă extrasă încă" />}
     </div>

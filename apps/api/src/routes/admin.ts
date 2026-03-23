@@ -5,6 +5,7 @@ import { db } from "../db";
 import { users, organizations, projects, aiUsageLog, auditLog } from "../db/schema";
 import { eq, and, sql, desc, count, sum, gte, lte, ilike } from "drizzle-orm";
 import type { AuthContext } from "../middleware/auth";
+import { sendEmail } from "../services/email";
 
 // HTML escape to prevent XSS in email templates
 function escapeHtml(str: string): string {
@@ -115,52 +116,36 @@ adminRoutes.post("/users", async (c) => {
     .returning();
 
   // Send invitation email via Resend
-  const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.SENDER_EMAIL || "noreply@dosar-fonduri.com";
-  if (apiKey) {
-    const signupUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"}/login?invited=1&email=${encodeURIComponent(body.email)}`;
-    try {
-      await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          from: `DosarFonduri <${from}>`,
-          to: body.email,
-          subject: `Ai fost invitat în cabinetul ${org.name} pe DosarFonduri`,
-          html: [
-            `<div style="font-family:'DM Sans',system-ui,sans-serif;max-width:560px;margin:0 auto;padding:32px">`,
-            `<div style="background:linear-gradient(135deg,#a78bfa 0%,#8b5cf6 100%);border-radius:12px;padding:24px 32px;margin-bottom:24px">`,
-            `<h1 style="color:#fff;margin:0;font-size:22px">DosarFonduri</h1>`,
-            `</div>`,
-            `<h2 style="color:#1a1e28;margin:0 0 16px">Bine ai venit!</h2>`,
-            `<p style="color:#5a6478;font-size:15px;line-height:1.6">`,
-            `Ai fost invitat să te alături cabinetului <strong>${escapeHtml(org.name)}</strong> cu rolul de <strong>${escapeHtml(body.role)}</strong>.`,
-            `</p>`,
-            `<p style="color:#5a6478;font-size:15px;line-height:1.6">`,
-            `Pentru a-ți activa contul, creează-ți un cont folosind adresa de email <strong>${escapeHtml(body.email)}</strong>:`,
-            `</p>`,
-            `<div style="text-align:center;margin:28px 0">`,
-            `<a href="${signupUrl}" style="display:inline-block;padding:14px 36px;background:#a78bfa;color:#fff;text-decoration:none;border-radius:10px;font-weight:700;font-size:15px">Creează cont</a>`,
-            `</div>`,
-            `<p style="color:#8892a8;font-size:13px;line-height:1.5">`,
-            `După înregistrare vei avea acces direct la cabinetul ${escapeHtml(org.name)} fără a fi nevoie de un cod de activare.`,
-            `</p>`,
-            `<hr style="border:none;border-top:1px solid #e0e4ea;margin:24px 0"/>`,
-            `<p style="color:#8892a8;font-size:12px">DosarFonduri &copy; ${new Date().getFullYear()}</p>`,
-            `</div>`,
-          ].join(""),
-        }),
-      });
-    } catch (emailErr: any) {
-      console.warn("[admin/invite] Email send failed:", emailErr.message);
-      // Don't fail the invite if email fails
-    }
-  }
+  const signupUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"}/login?invited=1&email=${encodeURIComponent(body.email)}`;
+  const emailResult = await sendEmail({
+    organizationId: auth.organizationId!,
+    to: body.email,
+    subject: `Ai fost invitat în cabinetul ${org.name} pe DosarFonduri`,
+    html: [
+      `<div style="font-family:'DM Sans',system-ui,sans-serif;max-width:560px;margin:0 auto;padding:32px">`,
+      `<div style="background:linear-gradient(135deg,#a78bfa 0%,#8b5cf6 100%);border-radius:12px;padding:24px 32px;margin-bottom:24px">`,
+      `<h1 style="color:#fff;margin:0;font-size:22px">DosarFonduri</h1>`,
+      `</div>`,
+      `<h2 style="color:#1a1e28;margin:0 0 16px">Bine ai venit!</h2>`,
+      `<p style="color:#5a6478;font-size:15px;line-height:1.6">`,
+      `Ai fost invitat să te alături cabinetului <strong>${escapeHtml(org.name)}</strong> cu rolul de <strong>${escapeHtml(body.role)}</strong>.`,
+      `</p>`,
+      `<p style="color:#5a6478;font-size:15px;line-height:1.6">`,
+      `Pentru a-ți activa contul, creează-ți un cont folosind adresa de email <strong>${escapeHtml(body.email)}</strong>:`,
+      `</p>`,
+      `<div style="text-align:center;margin:28px 0">`,
+      `<a href="${signupUrl}" style="display:inline-block;padding:14px 36px;background:#a78bfa;color:#fff;text-decoration:none;border-radius:10px;font-weight:700;font-size:15px">Creează cont</a>`,
+      `</div>`,
+      `<p style="color:#8892a8;font-size:13px;line-height:1.5">`,
+      `După înregistrare vei avea acces direct la cabinetul ${escapeHtml(org.name)} fără a fi nevoie de un cod de activare.`,
+      `</p>`,
+      `<hr style="border:none;border-top:1px solid #e0e4ea;margin:24px 0"/>`,
+      `<p style="color:#8892a8;font-size:12px">DosarFonduri &copy; ${new Date().getFullYear()}</p>`,
+      `</div>`,
+    ].join(""),
+  });
 
-  return c.json(newUser, 201);
+  return c.json({ ...newUser, emailSent: emailResult.sent, emailError: emailResult.sent ? undefined : emailResult.reason }, 201);
 });
 
 // ─── POST /users/:id/resend-invite ───
@@ -179,45 +164,33 @@ adminRoutes.post("/users/:id/resend-invite", async (c) => {
   });
   if (!org) return c.json({ error: "Organization not found" }, 404);
 
-  const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.SENDER_EMAIL || "noreply@dosar-fonduri.com";
-  if (!apiKey) return c.json({ error: "Email service not configured" }, 503);
-
   const signupUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"}/login?invited=1&email=${encodeURIComponent(user.email)}`;
-  try {
-    await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: `DosarFonduri <${from}>`,
-        to: user.email,
-        subject: `Reminder: Ai fost invitat în cabinetul ${org.name} pe DosarFonduri`,
-        html: [
-          `<div style="font-family:'DM Sans',system-ui,sans-serif;max-width:560px;margin:0 auto;padding:32px">`,
-          `<div style="background:linear-gradient(135deg,#a78bfa 0%,#8b5cf6 100%);border-radius:12px;padding:24px 32px;margin-bottom:24px">`,
-          `<h1 style="color:#fff;margin:0;font-size:22px">DosarFonduri</h1>`,
-          `</div>`,
-          `<h2 style="color:#1a1e28;margin:0 0 16px">Reminder invitație</h2>`,
-          `<p style="color:#5a6478;font-size:15px;line-height:1.6">`,
-          `Ai fost invitat să te alături cabinetului <strong>${escapeHtml(org.name)}</strong> cu rolul de <strong>${escapeHtml(user.role)}</strong>.`,
-          `</p>`,
-          `<div style="text-align:center;margin:28px 0">`,
-          `<a href="${signupUrl}" style="display:inline-block;padding:14px 36px;background:#a78bfa;color:#fff;text-decoration:none;border-radius:10px;font-weight:700;font-size:15px">Creează cont</a>`,
-          `</div>`,
-          `<hr style="border:none;border-top:1px solid #e0e4ea;margin:24px 0"/>`,
-          `<p style="color:#8892a8;font-size:12px">DosarFonduri &copy; ${new Date().getFullYear()}</p>`,
-          `</div>`,
-        ].join(""),
-      }),
-    });
-    return c.json({ ok: true, email: user.email });
-  } catch (emailErr: any) {
-    console.error("[admin/resend-invite] Email send failed:", emailErr.message);
-    return c.json({ error: "Trimiterea email-ului a eșuat" }, 500);
+  const emailResult = await sendEmail({
+    organizationId: auth.organizationId!,
+    to: user.email,
+    subject: `Reminder: Ai fost invitat în cabinetul ${org.name} pe DosarFonduri`,
+    html: [
+      `<div style="font-family:'DM Sans',system-ui,sans-serif;max-width:560px;margin:0 auto;padding:32px">`,
+      `<div style="background:linear-gradient(135deg,#a78bfa 0%,#8b5cf6 100%);border-radius:12px;padding:24px 32px;margin-bottom:24px">`,
+      `<h1 style="color:#fff;margin:0;font-size:22px">DosarFonduri</h1>`,
+      `</div>`,
+      `<h2 style="color:#1a1e28;margin:0 0 16px">Reminder invitație</h2>`,
+      `<p style="color:#5a6478;font-size:15px;line-height:1.6">`,
+      `Ai fost invitat să te alături cabinetului <strong>${escapeHtml(org.name)}</strong> cu rolul de <strong>${escapeHtml(user.role)}</strong>.`,
+      `</p>`,
+      `<div style="text-align:center;margin:28px 0">`,
+      `<a href="${signupUrl}" style="display:inline-block;padding:14px 36px;background:#a78bfa;color:#fff;text-decoration:none;border-radius:10px;font-weight:700;font-size:15px">Creează cont</a>`,
+      `</div>`,
+      `<hr style="border:none;border-top:1px solid #e0e4ea;margin:24px 0"/>`,
+      `<p style="color:#8892a8;font-size:12px">DosarFonduri &copy; ${new Date().getFullYear()}</p>`,
+      `</div>`,
+    ].join(""),
+  });
+
+  if (!emailResult.sent) {
+    return c.json({ error: `Trimiterea email-ului a eșuat: ${emailResult.reason}`, detail: emailResult }, 500);
   }
+  return c.json({ ok: true, email: user.email });
 });
 
 // ─── PUT /users/:id ───

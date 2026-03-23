@@ -739,6 +739,13 @@ documentRoutes.post("/documents/:id/process", async (c) => {
   const auth = c.get("auth") as AuthContext;
   const id = c.req.param("id");
 
+  // Parse optional body — mode: "smart" does diff/merge instead of full replace
+  let mode: "full" | "smart" = "full";
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    if (body.mode === "smart") mode = "smart";
+  } catch { /* no body is fine */ }
+
   const doc = await db.query.documents.findFirst({
     where: and(eq(documents.id, id), eq(documents.organizationId, auth.organizationId!)),
   });
@@ -758,7 +765,7 @@ documentRoutes.post("/documents/:id/process", async (c) => {
   await db.update(documents).set({ status: "processing", processingError: null }).where(eq(documents.id, id));
 
   try {
-    const jobPayload = { documentId: doc.id, organizationId: auth.organizationId! };
+    const jobPayload = { documentId: doc.id, organizationId: auth.organizationId!, reprocessMode: mode };
     const dedup = { jobId: `reprocess-${doc.id}-${Date.now()}` };
     if (doc.processingType === "ghid") {
       await processGuideQueue.add("process-guide", jobPayload, { priority: JOB_PRIORITY.GUIDE, ...dedup });
@@ -775,7 +782,7 @@ documentRoutes.post("/documents/:id/process", async (c) => {
     return c.json({ error: "Procesarea nu a pornit — Redis indisponibil. Reîncearcă mai târziu." }, 503);
   }
 
-  return c.json({ ok: true, message: "Procesare pornită" });
+  return c.json({ ok: true, message: mode === "smart" ? "Reactualizare pornită (mod inteligent)" : "Procesare pornită" });
 });
 
 // --- TEMPLATE ELEMENTS FOR DOCUMENT ---

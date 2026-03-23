@@ -575,6 +575,205 @@ function sanitizeKey(key: string): string {
   return key.replace(/[^a-z0-9_]/gi, "_").toLowerCase().slice(0, 255);
 }
 
+// ─── SMART MERGE (diff/merge for guide re-processing) ───
+
+interface SmartMergeResult {
+  fixedCount: number;
+  interpCount: number;
+  scoringCount: number;
+  elemDefCount: number;
+  added: number;
+  updated: number;
+  unchanged: number;
+}
+
+async function smartMergeGuideData(
+  newFixed: any[],
+  newInterpreted: any[],
+  newScoring: any[],
+  newElementDefs: any[],
+  documentId: string,
+  organizationId: string,
+): Promise<SmartMergeResult> {
+  let added = 0, updated = 0, unchanged = 0;
+
+  // ── 1. SMART MERGE RULES ──
+  // Load existing rules for this document
+  const existingRules = await db.query.rules.findMany({
+    where: and(eq(rules.documentId, documentId), eq(rules.organizationId, organizationId)),
+  });
+
+  // Build lookup map by ruleKey
+  const existingByKey = new Map<string, typeof existingRules[number]>();
+  for (const r of existingRules) {
+    if (r.ruleKey) existingByKey.set(r.ruleKey, r);
+  }
+
+  // Process new fixed rules
+  let fixedCount = 0;
+  for (const r of newFixed) {
+    const ruleKey = r.rule_key || r.ruleKey || generateRuleKey(r.category || "eligibilitate", r.description || "");
+    const existing = existingByKey.get(ruleKey);
+    const condition = r.condition ? { ...r.condition } : {};
+    if (Array.isArray(r.semantic_tags) && r.semantic_tags.length > 0) {
+      condition.semantic_tags = r.semantic_tags;
+    }
+
+    if (!existing) {
+      // New rule — insert
+      await db.insert(rules).values({
+        documentId,
+        organizationId,
+        type: "fixed",
+        ruleKey,
+        category: r.category || "eligibilitate",
+        description: r.description,
+        condition,
+        sourcePage: r.source_page,
+        sourceText: r.source_text,
+        confidence: String(Number(r.confidence) || 0.90),
+      });
+      added++;
+      fixedCount++;
+    } else if (!existing.validated) {
+      // Existing but not validated — update with new extraction
+      const newConfidence = Number(r.confidence) || 0.90;
+      const existingConfidence = Number(existing.confidence) || 0;
+      if (newConfidence >= existingConfidence || r.description !== existing.description) {
+        await db.update(rules).set({
+          description: r.description,
+          condition,
+          sourcePage: r.source_page,
+          sourceText: r.source_text,
+          confidence: String(newConfidence),
+        }).where(eq(rules.id, existing.id));
+        updated++;
+      } else {
+        unchanged++;
+      }
+      fixedCount++;
+    } else {
+      // Existing and validated — keep as-is
+      unchanged++;
+      fixedCount++;
+    }
+  }
+
+  // Process new interpreted rules
+  let interpCount = 0;
+  for (const r of newInterpreted) {
+    const ruleKey = r.rule_key || r.ruleKey || generateRuleKey(r.category || "selectie", r.description || "");
+    const existing = existingByKey.get(ruleKey);
+    const condition = r.condition ? { ...r.condition } : {};
+    if (Array.isArray(r.semantic_tags) && r.semantic_tags.length > 0) {
+      condition.semantic_tags = r.semantic_tags;
+    }
+
+    if (!existing) {
+      await db.insert(rules).values({
+        documentId,
+        organizationId,
+        type: "interpreted",
+        ruleKey,
+        category: r.category || "selectie",
+        description: r.description,
+        condition,
+        sourcePage: r.source_page,
+        sourceText: r.source_text,
+        confidence: String(Number(r.confidence) || 0.75),
+        needsReview: r.needs_review ?? (Number(r.confidence || 0.75) < 0.85),
+        validated: false,
+      });
+      added++;
+      interpCount++;
+    } else if (!existing.validated) {
+      const newConfidence = Number(r.confidence) || 0.75;
+      const existingConfidence = Number(existing.confidence) || 0;
+      if (newConfidence >= existingConfidence || r.description !== existing.description) {
+        await db.update(rules).set({
+          description: r.description,
+          condition,
+          sourcePage: r.source_page,
+          sourceText: r.source_text,
+          confidence: String(newConfidence),
+          needsReview: r.needs_review ?? (newConfidence < 0.85),
+        }).where(eq(rules.id, existing.id));
+        updated++;
+      } else {
+        unchanged++;
+      }
+      interpCount++;
+    } else {
+      unchanged++;
+      interpCount++;
+    }
+  }
+
+  // ── 2. SMART MERGE SCORING CRITERIA ──
+  const existingScoring = await db.query.scoringCriteria.findMany({
+    where: and(eq(scoringCriteria.documentId, documentId), eq(scoringCriteria.organizationId, organizationId)),
+  });
+  const existingScoringByCode = new Map<string, typeof existingScoring[number]>();
+  for (const s of existingScoring) {
+    existingScoringByCode.set((s.code || "").toLowerCase(), s);
+  }
+
+  let scoringCount = 0;
+  for (let idx = 0; idx < newScoring.length; idx++) {
+    const c = newScoring[idx];
+    const code = (c.code || `CS${idx + 1}`).toLowerCase();
+    const existing = existingScoringByCode.get(code);
+
+    const evaluationLogic = (() => {
+      if (!c.evaluationLogic || typeof c.evaluationLogic !== "object") return null;
+      const parsed = evaluationLogicSchema.safeParse(c.evaluationLogic);
+      return parsed.success ? parsed.data : null;
+    })();
+
+    if (!existing) {
+      await db.insert(scoringCriteria).values({
+        documentId,
+        organizationId,
+        code: c.code || `CS${idx + 1}`,
+        name: c.name || "Criteriu neprecizat",
+        description: c.description || null,
+        maxPoints: String(Number(c.maxPoints) || 0),
+        evaluationLogic,
+        category: c.category || null,
+        sortOrder: idx,
+        sourcePage: c.sourcePage || null,
+      });
+      added++;
+      scoringCount++;
+    } else {
+      // Update if maxPoints or evaluation logic changed
+      const existingMaxPts = Number(existing.maxPoints) || 0;
+      const newMaxPts = Number(c.maxPoints) || 0;
+      if (newMaxPts !== existingMaxPts || c.name !== existing.name || JSON.stringify(evaluationLogic) !== JSON.stringify(existing.evaluationLogic)) {
+        await db.update(scoringCriteria).set({
+          name: c.name || existing.name,
+          description: c.description || existing.description,
+          maxPoints: String(newMaxPts),
+          evaluationLogic: evaluationLogic || existing.evaluationLogic,
+          category: c.category || existing.category,
+          sortOrder: idx,
+        }).where(eq(scoringCriteria.id, existing.id));
+        updated++;
+      } else {
+        unchanged++;
+      }
+      scoringCount++;
+    }
+  }
+
+  // ── 3. ELEMENT DEFINITIONS — already uses upsert, just call as-is ──
+  const elemDefCount = await saveElementDefinitions(newElementDefs, documentId, organizationId);
+  // Element definitions upsert adds or updates, so count them all
+  added += elemDefCount;
+
+  return { fixedCount, interpCount, scoringCount, elemDefCount, added, updated, unchanged };
+}
+
 // ─── AUTO-LINKING ───
 
 async function autoLinkRulesAndReferences(
@@ -902,12 +1101,14 @@ function splitStructuredText(structuredText: string): string[] {
 interface ProcessGuidePayload {
   documentId: string;
   organizationId: string;
+  reprocessMode?: "full" | "smart";
 }
 
 export const processGuideWorker = new Worker<ProcessGuidePayload>(
   "process-guide",
   async (job: Job<ProcessGuidePayload>) => {
-    const { documentId, organizationId } = job.data;
+    const { documentId, organizationId, reprocessMode } = job.data;
+    const isSmartMerge = reprocessMode === "smart";
     const startTime = Date.now();
 
     // ─── DB PREFLIGHT CHECK (before any AI calls) ───
@@ -1091,17 +1292,33 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         message: `Salvare: ${allFixed.length} reguli fixe, ${allInterpreted.length} interpretate, ${allScoring.length} criterii, ${allElementDefs.length} elemente...`,
       }).catch((e: any) => console.warn("[processGuide] sse save progress:", e.message));
 
-      // Clean up old data before re-insert (handles guide re-processing)
-      // elementRuleLinks and ruleReferenceLinks cascade from rules, but clean elementDefinitions separately
-      await db.delete(rules).where(and(eq(rules.documentId, documentId), eq(rules.organizationId, organizationId)));
-      await db.delete(elementDefinitions).where(and(eq(elementDefinitions.guideDocumentId, documentId), eq(elementDefinitions.organizationId, organizationId)));
+      let fixedCount: number, interpCount: number, scoringCount: number, elemDefCount: number;
 
-      const [fixedCount, interpCount, scoringCount, elemDefCount] = await Promise.all([
-        saveFixedRules(allFixed, documentId, organizationId),
-        saveInterpretedRules(allInterpreted, documentId, organizationId),
-        saveScoringCriteria(allScoring, documentId, organizationId),
-        saveElementDefinitions(allElementDefs, documentId, organizationId),
-      ]);
+      if (isSmartMerge) {
+        // ─── SMART MERGE: compare with existing, add/update only new or changed ───
+        console.log(`[processGuide] SMART MERGE mode for "${doc.name}"`);
+        const mergeResult = await smartMergeGuideData(
+          allFixed, allInterpreted, allScoring, allElementDefs,
+          documentId, organizationId,
+        );
+        fixedCount = mergeResult.fixedCount;
+        interpCount = mergeResult.interpCount;
+        scoringCount = mergeResult.scoringCount;
+        elemDefCount = mergeResult.elemDefCount;
+        console.log(`[processGuide] Smart merge result: +${mergeResult.added} added, ~${mergeResult.updated} updated, =${mergeResult.unchanged} unchanged`);
+      } else {
+        // ─── FULL REPLACE: delete old data, re-insert (original behavior) ───
+        // elementRuleLinks and ruleReferenceLinks cascade from rules, but clean elementDefinitions separately
+        await db.delete(rules).where(and(eq(rules.documentId, documentId), eq(rules.organizationId, organizationId)));
+        await db.delete(elementDefinitions).where(and(eq(elementDefinitions.guideDocumentId, documentId), eq(elementDefinitions.organizationId, organizationId)));
+
+        [fixedCount, interpCount, scoringCount, elemDefCount] = await Promise.all([
+          saveFixedRules(allFixed, documentId, organizationId),
+          saveInterpretedRules(allInterpreted, documentId, organizationId),
+          saveScoringCriteria(allScoring, documentId, organizationId),
+          saveElementDefinitions(allElementDefs, documentId, organizationId),
+        ]);
+      }
 
       // ─── STEP 4.5 (Faza 3.5): Verify extraction completeness ───
       const completenessReport = verifyExtractionCompleteness(

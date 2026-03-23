@@ -225,29 +225,76 @@ function RulesTab({ rules }: { rules: LibraryData["rules"] }) {
               </div>
             </div>
           </button>
-          {expanded.has(rule.id) && (
-            <div className="px-4 pb-3 pt-0 border-t border-slate-100 mt-0">
-              <div className="grid grid-cols-2 gap-2 mt-2">
-                {rule.sourceDocument && (
-                  <DetailCell label="Sursa" value={rule.sourceDocument.name} />
-                )}
-                {rule.sourceText && (
-                  <div className="col-span-2">
-                    <DetailCell label="Text sursa" value={rule.sourceText} mono />
+          {expanded.has(rule.id) && (() => {
+            const parsed = formatCondition(rule.condition);
+            return (
+              <div className="px-4 pb-3 pt-0 border-t border-slate-100 mt-0">
+                {/* Human-readable condition */}
+                {parsed && (
+                  <div className="mt-2 mb-2 flex items-center gap-2 px-3 py-2.5 rounded-lg border" style={{ background: "rgba(77,139,255,.04)", borderColor: "rgba(77,139,255,.15)" }}>
+                    <span style={{ fontSize: 14, flexShrink: 0 }}>{"\u{1F9EA}"}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[10px] font-semibold uppercase tracking-wider mb-0.5" style={{ color: "#4d8bff" }}>Condiție verificare</div>
+                      <div className="text-[13px] font-semibold text-slate-800 leading-snug">{parsed.text}</div>
+                    </div>
                   </div>
                 )}
-                {rule.condition && (
-                  <div className="col-span-2">
-                    <DetailCell label="Conditie" value={JSON.stringify(rule.condition, null, 2)} mono />
-                  </div>
+
+                <div className="grid grid-cols-2 gap-2 mt-2">
+                  {rule.sourceDocument && (
+                    <DetailCell label="Sursa" value={rule.sourceDocument.name} />
+                  )}
+                  {rule.sourcePage != null && (
+                    <DetailCell label="Pagina" value={`${rule.sourcePage}`} />
+                  )}
+                  {rule.sourceText && (
+                    <div className="col-span-2">
+                      <div className="bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">
+                        <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1">Text original din ghid</div>
+                        <div className="text-[11px] text-slate-600 leading-relaxed italic" style={{ fontFamily: "var(--font-sans, 'DM Sans', system-ui, sans-serif)" }}>
+                          &ldquo;{rule.sourceText}&rdquo;
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Structured condition details (collapsible, for advanced users) */}
+                {rule.condition && rule.condition.field && (
+                  <details className="mt-2">
+                    <summary className="text-[10px] font-semibold text-slate-400 cursor-pointer hover:text-slate-600 select-none">
+                      Detalii structurate
+                    </summary>
+                    <div className="mt-1.5 grid grid-cols-3 gap-2">
+                      {rule.condition.field && (
+                        <div className="bg-slate-50 rounded-lg px-2.5 py-1.5 border border-slate-100">
+                          <div className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Câmp</div>
+                          <div className="text-[11px] font-mono text-slate-700">{rule.condition.field}</div>
+                        </div>
+                      )}
+                      {rule.condition.operator && (
+                        <div className="bg-slate-50 rounded-lg px-2.5 py-1.5 border border-slate-100">
+                          <div className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Operator</div>
+                          <div className="text-[11px] font-mono text-slate-700">{OPERATOR_LABELS[rule.condition.operator] || rule.condition.operator}</div>
+                        </div>
+                      )}
+                      {rule.condition.value !== undefined && (
+                        <div className="bg-slate-50 rounded-lg px-2.5 py-1.5 border border-slate-100">
+                          <div className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Valoare</div>
+                          <div className="text-[11px] font-mono text-slate-700">{formatConditionValue(rule.condition.value)}</div>
+                        </div>
+                      )}
+                    </div>
+                  </details>
                 )}
+
+                <div className="flex items-center gap-2 mt-2">
+                  {rule.validated && <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">{"\u2713"} Validata</span>}
+                  {rule.needsReview && <span className="text-[10px] font-semibold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">Necesita revizuire</span>}
+                </div>
               </div>
-              <div className="flex items-center gap-2 mt-2">
-                {rule.validated && <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">{"\u2713"} Validata</span>}
-                {rule.needsReview && <span className="text-[10px] font-semibold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">Necesita revizuire</span>}
-              </div>
-            </div>
-          )}
+            );
+          })()}
         </div>
       ))}
 
@@ -601,6 +648,74 @@ function ChecklistTab({ checklist, folderId, onRefresh }: { checklist: LibraryDa
 /* ══════════════════════════════════════════
    SEMANTIC TAG HELPERS
    ══════════════════════════════════════════ */
+
+const OPERATOR_LABELS: Record<string, string> = {
+  eq: "=",
+  neq: "\u2260",
+  gt: ">",
+  gte: "\u2265",
+  lt: "<",
+  lte: "\u2264",
+  in: "\u2208",
+  not_in: "\u2209",
+  between: "\u2194",
+  contains: "conține",
+  not_contains: "nu conține",
+  exists: "există",
+  not_exists: "nu există",
+  matches: "corespunde",
+  is_true: "= DA",
+  is_false: "= NU",
+};
+
+function formatFieldName(field: string): string {
+  return field
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function formatConditionValue(val: any): string {
+  if (val === null || val === undefined) return "—";
+  if (typeof val === "boolean") return val ? "DA" : "NU";
+  if (typeof val === "number") return val.toLocaleString("ro-RO");
+  if (Array.isArray(val)) return val.join(", ");
+  return String(val);
+}
+
+/** Convert a condition JSONB object into a human-readable description */
+function formatCondition(condition: any): { text: string; field?: string; operator?: string; value?: string; value2?: string } | null {
+  if (!condition || typeof condition !== "object") return null;
+
+  const { field, operator, value, value2, semantic_tags, ...rest } = condition;
+  if (!field && !operator) return null;
+
+  const fieldLabel = field ? formatFieldName(field) : "";
+  const opLabel = operator ? (OPERATOR_LABELS[operator] || operator) : "";
+  const valLabel = formatConditionValue(value);
+  const val2Label = value2 !== undefined ? formatConditionValue(value2) : "";
+
+  let text: string;
+  if (operator === "between" && value !== undefined && value2 !== undefined) {
+    text = `${fieldLabel} între ${valLabel} și ${val2Label}`;
+  } else if (operator === "in" || operator === "not_in") {
+    const listStr = Array.isArray(value) ? value.join(", ") : valLabel;
+    text = operator === "in"
+      ? `${fieldLabel} este unul din: ${listStr}`
+      : `${fieldLabel} nu este în: ${listStr}`;
+  } else if (operator === "exists" || operator === "not_exists") {
+    text = operator === "exists" ? `${fieldLabel} trebuie să existe` : `${fieldLabel} nu trebuie să existe`;
+  } else if (operator === "is_true" || operator === "is_false") {
+    text = `${fieldLabel} = ${operator === "is_true" ? "DA" : "NU"}`;
+  } else if (field && operator && value !== undefined) {
+    text = `${fieldLabel} ${opLabel} ${valLabel}`;
+  } else if (field && value !== undefined) {
+    text = `${fieldLabel}: ${valLabel}`;
+  } else {
+    return null;
+  }
+
+  return { text, field: fieldLabel, operator: opLabel, value: valLabel, value2: val2Label || undefined };
+}
 
 const SEM_TAG_MAP: Record<string, { label: string; color: string; bg: string; border: string }> = {
   THRESHOLD:      { label: "Prag",         color: "#0369a1", bg: "rgba(14,165,233,.1)",  border: "rgba(14,165,233,.25)" },

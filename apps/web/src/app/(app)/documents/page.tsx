@@ -624,6 +624,22 @@ export default function DocumentsPage() {
     }
   }, [selectedFolder, fetchDocs, toast]);
 
+  const handleDocSmartReprocess = useCallback(async (docId: string) => {
+    if (!confirm("Reactualizezi documentul? Regulile validate rămân, se adaugă doar cele noi sau modificate.")) return;
+    try {
+      setDocs(prev => prev.map(d => d.id === docId ? { ...d, status: "procesare" as const } : d));
+      await apiPost(`/api/documents/documents/${docId}/process`, { mode: "smart" });
+      toast("success", "Reactualizare pornită (mod inteligent)");
+      if (selectedFolder) {
+        setTimeout(() => fetchDocs(selectedFolder), 2000);
+      }
+    } catch (err: any) {
+      console.error("Failed to trigger smart reprocess:", err);
+      setDocs(prev => prev.map(d => d.id === docId ? { ...d, status: "eroare" as const } : d));
+      toast("error", err.message || "Reactualizarea nu a putut fi pornită.");
+    }
+  }, [selectedFolder, fetchDocs, toast]);
+
   // Filtered documents
   const filteredDocs = docs.filter(d => {
     if (!search) return true;
@@ -1111,6 +1127,14 @@ export default function DocumentsPage() {
                   )}
                   {/* Action buttons */}
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {(d.status === "procesat" || d.status === "template" || d.status === "referință") && d.processingType && ["ghid", "template", "reference_data", "client_doc"].includes(d.processingType) && (
+                      <button className="doc-detail-btn" style={{ color: "#fbbf24", borderColor: "rgba(251,191,36,.25)" }} onClick={(e) => { e.stopPropagation(); handleDocSmartReprocess(d.id); }}>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+                        </svg>
+                        Reactualizează
+                      </button>
+                    )}
                     {d.processingType === "template" && d.status === "template" && (
                       <a
                         href={`/documents/template/${d.id}`}

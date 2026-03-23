@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api";
 import { Tabs } from "@/components/ui/Tabs";
-import { RuleCard, RuleCardList, RuleCardData, CATEGORY_COLORS as RC_COLORS, CATEGORY_LABELS as RC_LABELS } from "@/components/shared/RuleCard";
+import { RuleCard, RuleCardList, RuleCardData, CATEGORY_COLORS as RC_COLORS, CATEGORY_LABELS as RC_LABELS, OPERATOR_LABELS as RC_OP_LABELS } from "@/components/shared/RuleCard";
 
 /* ══════════════════════════════════════════
    TYPES (matching GET /api/documents/session/:folderId/library)
@@ -596,24 +596,8 @@ function ChecklistTab({ checklist, folderId, onRefresh }: { checklist: LibraryDa
    SEMANTIC TAG HELPERS
    ══════════════════════════════════════════ */
 
-const OPERATOR_LABELS: Record<string, string> = {
-  eq: "=",
-  neq: "\u2260",
-  gt: ">",
-  gte: "\u2265",
-  lt: "<",
-  lte: "\u2264",
-  in: "\u2208",
-  not_in: "\u2209",
-  between: "\u2194",
-  contains: "conține",
-  not_contains: "nu conține",
-  exists: "există",
-  not_exists: "nu există",
-  matches: "corespunde",
-  is_true: "= DA",
-  is_false: "= NU",
-};
+// Re-export shared OPERATOR_LABELS for local legacy helpers
+const OPERATOR_LABELS = RC_OP_LABELS;
 
 function formatFieldName(field: string): string {
   return field

@@ -188,6 +188,16 @@ function RulesTab({ rules }: { rules: LibraryData["rules"] }) {
     });
   };
 
+  const CATEGORY_COLORS: Record<string, string> = {
+    eligibilitate: "#2563eb", financiar: "#059669", tehnic: "#7c3aed", administrativ: "#64748b",
+    achizitii: "#ea580c", documente: "#d97706", selectie: "#dc2626", intensitate: "#0891b2",
+    eligibilitate_complexa: "#2563eb", documentare: "#d97706", ajutor_stat: "#7c3aed",
+  };
+
+  const displayRules = filter === "_fixed" ? rules.items.filter(r => r.type === "fixed")
+    : filter === "_interpreted" ? rules.items.filter(r => r.type === "interpreted")
+    : filtered;
+
   return (
     <div className="flex flex-col gap-3">
       {/* Summary pills */}
@@ -201,104 +211,185 @@ function RulesTab({ rules }: { rules: LibraryData["rules"] }) {
         ))}
       </div>
 
-      {/* Cards */}
-      {(filter === "_fixed" ? rules.items.filter(r => r.type === "fixed")
-        : filter === "_interpreted" ? rules.items.filter(r => r.type === "interpreted")
-        : filtered
-      ).map(rule => (
-        <div key={rule.id} className="rounded-xl border border-slate-200 bg-white transition-all hover:border-slate-300" style={{ animation: "docSlideIn .25s ease both" }}>
-          <button className="w-full text-left px-4 py-3 flex items-start gap-3" onClick={() => toggle(rule.id)}>
-            <span className="text-[10px] text-slate-400 mt-1 flex-shrink-0 transition-transform" style={{ transform: expanded.has(rule.id) ? "rotate(90deg)" : "none" }}>{"\u25B6"}</span>
-            <div className="flex-1 min-w-0">
-              <div className="text-[13px] font-semibold text-slate-900 leading-snug">{rule.description}</div>
-              <div className="flex items-center gap-2 mt-1 flex-wrap">
-                <TypeBadge type={rule.type} />
-                {rule.category && <span className="text-[10px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">{rule.category}</span>}
-                {rule.sourcePage != null && <span className="text-[10px] font-mono text-slate-400">p.{rule.sourcePage}</span>}
-                {rule.confidence && <ConfidenceBar value={parseFloat(rule.confidence)} />}
-                {/* Semantic tags inline */}
-                {Array.isArray(rule.condition?.semantic_tags) && rule.condition.semantic_tags.length > 0 && (
-                  rule.condition.semantic_tags.map((tag: string) => (
-                    <span key={tag} className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full" style={semanticTagStyle(tag)}>{semanticTagLabel(tag)}</span>
-                  ))
+      {/* Rule cards */}
+      {displayRules.map(rule => {
+        const isOpen = expanded.has(rule.id);
+        const conf = parseFloat(rule.confidence || "0");
+        const rc = typeof rule.condition === "string" ? (() => { try { return JSON.parse(rule.condition); } catch { return rule.condition; } })() : rule.condition;
+        const rTags: string[] = rc?.semantic_tags || [];
+        const catColor = CATEGORY_COLORS[rule.category || ""] || "#94a3b8";
+
+        return (
+          <div key={rule.id} className="rounded-xl border border-slate-200 bg-white transition-all hover:border-slate-300 overflow-hidden" style={{ animation: "docSlideIn .25s ease both" }}>
+            {/* Header — always visible */}
+            <button className="w-full text-left px-4 py-3 flex items-start gap-3" onClick={() => toggle(rule.id)}
+              style={{ background: isOpen ? "rgba(77,139,255,.03)" : "transparent" }}>
+              <span className="text-[10px] text-slate-400 mt-1 flex-shrink-0 transition-transform" style={{ transform: isOpen ? "rotate(90deg)" : "none" }}>{"\u25B6"}</span>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                  <TypeBadge type={rule.type} />
+                  {rule.category && (
+                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide" style={{
+                      background: `color-mix(in srgb, ${catColor} 12%, transparent)`,
+                      color: catColor,
+                      border: `1px solid color-mix(in srgb, ${catColor} 25%, transparent)`,
+                    }}>
+                      {rule.category}
+                    </span>
+                  )}
+                  {rule.needsReview && <span className="text-[9px] font-bold text-amber-600">{"\u26A0"} Review</span>}
+                  {rule.validated && <span className="text-[9px] font-bold text-emerald-600">{"\u2713"} Validată</span>}
+                </div>
+                <div className="text-[12px] font-medium text-slate-900 leading-snug">{rule.description}</div>
+              </div>
+              <div className="flex items-center gap-1.5 flex-shrink-0 mt-1">
+                <span className="text-[11px] font-bold font-mono" style={{
+                  color: conf > 0.9 ? "#059669" : conf > 0.8 ? "#2563eb" : "#d97706",
+                }}>
+                  {Math.round(conf * 100)}%
+                </span>
+                {rule.sourcePage != null && (
+                  <span className="text-[9px] font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-lg">p.{rule.sourcePage}</span>
                 )}
               </div>
-            </div>
-          </button>
-          {expanded.has(rule.id) && (() => {
-            const parsed = formatCondition(rule.condition);
-            return (
-              <div className="px-4 pb-3 pt-0 border-t border-slate-100 mt-0">
-                {/* Human-readable condition */}
-                {parsed && (
-                  <div className="mt-2 mb-2 flex items-center gap-2 px-3 py-2.5 rounded-lg border" style={{ background: "rgba(77,139,255,.04)", borderColor: "rgba(77,139,255,.15)" }}>
-                    <span style={{ fontSize: 14, flexShrink: 0 }}>{"\u{1F9EA}"}</span>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-[10px] font-semibold uppercase tracking-wider mb-0.5" style={{ color: "#4d8bff" }}>Condiție verificare</div>
-                      <div className="text-[13px] font-semibold text-slate-800 leading-snug">{parsed.text}</div>
+            </button>
+
+            {/* Expanded detail */}
+            {isOpen && (
+              <div className="px-4 pb-4 pt-0 border-t border-slate-100" style={{ paddingLeft: 34, animation: "docFadeIn .15s ease-out" }}>
+                {/* Confidence bar */}
+                <div className="flex items-center gap-2.5 mt-3 mb-3">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Încredere</span>
+                  <span className="text-lg font-extrabold font-mono" style={{
+                    color: conf > 0.9 ? "#059669" : conf > 0.8 ? "#2563eb" : "#d97706",
+                  }}>
+                    {Math.round(conf * 100)}%
+                  </span>
+                  <div className="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden" style={{ maxWidth: 200 }}>
+                    <div className="h-full rounded-full transition-all" style={{
+                      width: `${conf * 100}%`,
+                      background: conf > 0.9 ? "#34d399" : conf > 0.8 ? "#2563eb" : "#fbbf24",
+                    }} />
+                  </div>
+                </div>
+
+                {/* Semantic tags */}
+                {rTags.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mb-3">
+                    {rTags.map((tag: string) => (
+                      <span key={tag} className="text-[9px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full inline-flex items-center gap-1" style={semanticTagStyle(tag)}>
+                        {semanticTagIcon(tag)} {semanticTagLabel(tag)}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {/* Description */}
+                <div className="mb-3">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Descriere regulă</div>
+                  <div className="text-[13px] leading-relaxed text-slate-800 px-3.5 py-3 rounded-xl border border-slate-200 bg-white">
+                    {rule.description}
+                  </div>
+                </div>
+
+                {/* Source text from guide */}
+                {rule.sourceText && (
+                  <div className="mb-3">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center gap-2">
+                      Text original din ghid
+                      {rule.sourcePage != null && (
+                        <span className="text-[9px] font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-lg ml-auto">Pag. {rule.sourcePage}</span>
+                      )}
+                    </div>
+                    <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+                      <div className="text-[12px] leading-relaxed text-slate-700 px-4 py-3 border-l-[3px] border-blue-500 italic" style={{ background: "rgba(37,99,235,.02)" }}>
+                        {rule.sourceText}
+                      </div>
                     </div>
                   </div>
                 )}
 
-                <div className="grid grid-cols-2 gap-2 mt-2">
-                  {rule.sourceDocument && (
-                    <DetailCell label="Sursa" value={rule.sourceDocument.name} />
-                  )}
-                  {rule.sourcePage != null && (
-                    <DetailCell label="Pagina" value={`${rule.sourcePage}`} />
-                  )}
-                  {rule.sourceText && (
-                    <div className="col-span-2">
-                      <div className="bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">
-                        <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1">Text original din ghid</div>
-                        <div className="text-[11px] text-slate-600 leading-relaxed italic" style={{ fontFamily: "var(--font-sans, 'DM Sans', system-ui, sans-serif)" }}>
-                          &ldquo;{rule.sourceText}&rdquo;
-                        </div>
-                      </div>
+                {/* Condition / Decision logic */}
+                {rc && typeof rc === "object" && (
+                  <div className="mb-3">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                      {rule.type === "fixed" ? "Condiție verificare" : "Logică decizională"}
                     </div>
-                  )}
-                </div>
-
-                {/* Structured condition details (collapsible, for advanced users) */}
-                {rule.condition && rule.condition.field && (
-                  <details className="mt-2">
-                    <summary className="text-[10px] font-semibold text-slate-400 cursor-pointer hover:text-slate-600 select-none">
-                      Detalii structurate
-                    </summary>
-                    <div className="mt-1.5 grid grid-cols-3 gap-2">
-                      {rule.condition.field && (
-                        <div className="bg-slate-50 rounded-lg px-2.5 py-1.5 border border-slate-100">
-                          <div className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Câmp</div>
-                          <div className="text-[11px] font-mono text-slate-700">{rule.condition.field}</div>
-                        </div>
-                      )}
-                      {rule.condition.operator && (
-                        <div className="bg-slate-50 rounded-lg px-2.5 py-1.5 border border-slate-100">
-                          <div className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Operator</div>
-                          <div className="text-[11px] font-mono text-slate-700">{OPERATOR_LABELS[rule.condition.operator] || rule.condition.operator}</div>
-                        </div>
-                      )}
-                      {rule.condition.value !== undefined && (
-                        <div className="bg-slate-50 rounded-lg px-2.5 py-1.5 border border-slate-100">
-                          <div className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Valoare</div>
-                          <div className="text-[11px] font-mono text-slate-700">{formatConditionValue(rule.condition.value)}</div>
-                        </div>
+                    <div className="rounded-xl border border-slate-200 bg-white px-3.5 py-3">
+                      {/* Fixed rules: human-readable condition + structured breakdown */}
+                      {rule.type === "fixed" && rc.field && (() => {
+                        const parsed = formatCondition(rc);
+                        return (
+                          <>
+                            {parsed && (
+                              <div className="flex items-center gap-2 px-3 py-2 rounded-lg border mb-2.5" style={{ background: "rgba(77,139,255,.04)", borderColor: "rgba(77,139,255,.15)" }}>
+                                <span style={{ fontSize: 14, flexShrink: 0 }}>{"\u{1F9EA}"}</span>
+                                <span className="text-[13px] font-bold text-slate-800">{parsed.text}</span>
+                              </div>
+                            )}
+                            <div className="flex items-center gap-2 font-mono text-[12px]">
+                              <span className="font-bold text-blue-600">{formatFieldName(rc.field)}</span>
+                              <span className="font-semibold text-slate-400">{OPERATOR_LABELS[rc.operator] || rc.operator}</span>
+                              <span className="font-semibold text-emerald-600">
+                                {formatConditionValue(rc.value)}
+                                {rc.value2 != null && ` — ${formatConditionValue(rc.value2)}`}
+                              </span>
+                            </div>
+                          </>
+                        );
+                      })()}
+                      {/* Interpreted rules: logic type, description, factors, outcomes */}
+                      {rule.type === "interpreted" && (
+                        <>
+                          {rc.type && (
+                            <div className="mb-2.5">
+                              <span className="text-[11px] font-bold uppercase tracking-wide px-3 py-1 rounded" style={{
+                                background: "rgba(167,139,250,.12)", color: "#7c3aed", border: "1px solid rgba(167,139,250,.25)",
+                              }}>
+                                {rc.type.replace(/_/g, " ")}
+                              </span>
+                            </div>
+                          )}
+                          {rc.logic && (
+                            <div className="text-[13px] leading-relaxed text-slate-800 mb-3">{rc.logic}</div>
+                          )}
+                          {rc.factors && rc.factors.length > 0 && (
+                            <div className="flex items-center gap-1.5 flex-wrap mb-2.5">
+                              <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Factori:</span>
+                              {rc.factors.map((f: string, i: number) => (
+                                <span key={i} className="text-[11px] font-mono text-slate-500 bg-slate-50 border border-slate-200 px-2.5 py-0.5 rounded-full">{f}</span>
+                              ))}
+                            </div>
+                          )}
+                          {rc.outcomes && rc.outcomes.length > 0 && (
+                            <div className="flex flex-col gap-1.5">
+                              {rc.outcomes.map((o: any, i: number) => (
+                                <div key={i} className="flex items-start gap-1.5 text-[12px] leading-relaxed px-2.5 py-1.5 bg-slate-50 rounded-lg">
+                                  <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded flex-shrink-0 mt-px">DACĂ</span>
+                                  <span className="text-slate-800 flex-1">{o.if}</span>
+                                  <span className="text-slate-400 flex-shrink-0">{"\u2192"}</span>
+                                  <span className="text-emerald-600 font-semibold flex-1">{o.then}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </>
                       )}
                     </div>
-                  </details>
+                  </div>
                 )}
 
-                <div className="flex items-center gap-2 mt-2">
-                  {rule.validated && <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">{"\u2713"} Validata</span>}
-                  {rule.needsReview && <span className="text-[10px] font-semibold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">Necesita revizuire</span>}
-                </div>
+                {/* Source document */}
+                {rule.sourceDocument && (
+                  <div className="text-[10px] text-slate-400 mt-1">Din: {rule.sourceDocument.name}{rule.sourcePage != null ? `, pag. ${rule.sourcePage}` : ""}</div>
+                )}
               </div>
-            );
-          })()}
-        </div>
-      ))}
+            )}
+          </div>
+        );
+      })}
 
-      {filtered.length === 0 && <EmptyTab icon="\u{1F6E1}" message="Nicio regula extrasa inca" />}
+      {displayRules.length === 0 && <EmptyTab icon="\u{1F6E1}" message="Nicio regulă extrasă încă" />}
     </div>
   );
 }
@@ -737,6 +828,16 @@ function semanticTagStyle(tag: string): React.CSSProperties {
   const m = SEM_TAG_MAP[tag];
   if (!m) return { color: "#64748b", background: "#f1f5f9", border: "1px solid #e2e8f0" };
   return { color: m.color, background: m.bg, border: `1px solid ${m.border}` };
+}
+
+const SEM_TAG_ICONS: Record<string, string> = {
+  THRESHOLD: "●", SCORING: "★", TEMPORAL: "◷",
+  DOCUMENT_BASED: "◩", DEPENDENCY: "⇄", EXCLUSION: "⊘",
+  EXCEPTION: "⚑", PROPORTIONAL: "%", CLASSIFICATION: "◈",
+};
+
+function semanticTagIcon(tag: string): string {
+  return SEM_TAG_ICONS[tag] || "●";
 }
 
 /* ══════════════════════════════════════════

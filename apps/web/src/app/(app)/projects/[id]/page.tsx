@@ -3495,7 +3495,7 @@ export default function ProjectViewPage() {
                 EXCEPTION: "Excepție", PROPORTIONAL: "Proporțional", CLASSIFICATION: "Clasificare",
               };
               const semanticTagIcons: Record<string, string> = {
-                THRESHOLD: "⊞", SCORING: "★", TEMPORAL: "◷",
+                THRESHOLD: "●", SCORING: "★", TEMPORAL: "◷",
                 DOCUMENT_BASED: "◩", DEPENDENCY: "⇄", EXCLUSION: "⊘",
                 EXCEPTION: "⚑", PROPORTIONAL: "%", CLASSIFICATION: "◈",
               };

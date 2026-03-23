@@ -300,69 +300,42 @@ authRoutes.post("/forgot-password", async (c) => {
       expiresAt: new Date(Date.now() + 60 * 60 * 1000),
     });
 
-    // Send reset email — call Resend directly (same pattern as admin.ts invite which works)
+    // Send reset email via shared sendEmail service
     const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
     const resetUrl = `${frontendUrl}/reset-password?token=${rawToken}`;
 
-    const apiKey = process.env.RESEND_API_KEY;
-    const from = process.env.SENDER_EMAIL || "noreply@dosar-fonduri.com";
-    let emailSent = false;
-
-    if (apiKey) {
-      try {
-        const res = await fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            from: `DosarFonduri <${from}>`,
-            to: user.email,
-            subject: "Resetare parola — DosarFonduri",
-            html: [
-              `<div style="font-family:'DM Sans',system-ui,sans-serif;max-width:560px;margin:0 auto;padding:32px">`,
-              `<div style="background:linear-gradient(135deg,#4d8bff 0%,#34d399 100%);border-radius:12px;padding:24px 32px;margin-bottom:24px">`,
-              `<h1 style="color:#fff;margin:0;font-size:22px">DosarFonduri</h1>`,
-              `</div>`,
-              `<h2 style="color:#1a1e28;margin:0 0 16px">Resetare parola</h2>`,
-              `<p style="color:#5a6478;font-size:15px;line-height:1.6">`,
-              `Salut, <strong>${user.name}</strong>!`,
-              `</p>`,
-              `<p style="color:#5a6478;font-size:15px;line-height:1.6">`,
-              `Ai solicitat resetarea parolei. Apasa pe butonul de mai jos pentru a seta o parola noua:`,
-              `</p>`,
-              `<div style="text-align:center;margin:28px 0">`,
-              `<a href="${resetUrl}" style="display:inline-block;padding:14px 36px;background:#4d8bff;color:#fff;text-decoration:none;border-radius:10px;font-weight:700;font-size:15px">Reseteaza parola</a>`,
-              `</div>`,
-              `<p style="color:#8892a8;font-size:13px;line-height:1.5">`,
-              `Link-ul expira in 1 ora. Daca nu ai solicitat resetarea, ignora acest email.`,
-              `</p>`,
-              `<hr style="border:none;border-top:1px solid #e0e4ea;margin:24px 0"/>`,
-              `<p style="color:#8892a8;font-size:12px">DosarFonduri &copy; ${new Date().getFullYear()}</p>`,
-              `</div>`,
-            ].join(""),
-          }),
-        });
-
-        const body = await res.json().catch(() => null);
-        if (res.ok) {
-          emailSent = true;
-          console.log("[forgot-password] Email sent to", user.email, "id:", body?.id);
-        } else {
-          console.error("[forgot-password] Resend error:", res.status, JSON.stringify(body));
-        }
-      } catch (emailErr: any) {
-        console.error("[forgot-password] Email send failed:", emailErr.message);
-      }
-    } else {
-      console.warn("[forgot-password] RESEND_API_KEY not set");
-    }
+    const emailResult = await sendEmail({
+      organizationId: user.organizationId || "system",
+      to: user.email,
+      subject: "Resetare parola — DosarFonduri",
+      html: [
+        `<div style="font-family:'DM Sans',system-ui,sans-serif;max-width:560px;margin:0 auto;padding:32px">`,
+        `<div style="background:linear-gradient(135deg,#4d8bff 0%,#34d399 100%);border-radius:12px;padding:24px 32px;margin-bottom:24px">`,
+        `<h1 style="color:#fff;margin:0;font-size:22px">DosarFonduri</h1>`,
+        `</div>`,
+        `<h2 style="color:#1a1e28;margin:0 0 16px">Resetare parola</h2>`,
+        `<p style="color:#5a6478;font-size:15px;line-height:1.6">`,
+        `Salut, <strong>${user.name}</strong>!`,
+        `</p>`,
+        `<p style="color:#5a6478;font-size:15px;line-height:1.6">`,
+        `Ai solicitat resetarea parolei. Apasa pe butonul de mai jos pentru a seta o parola noua:`,
+        `</p>`,
+        `<div style="text-align:center;margin:28px 0">`,
+        `<a href="${resetUrl}" style="display:inline-block;padding:14px 36px;background:#4d8bff;color:#fff;text-decoration:none;border-radius:10px;font-weight:700;font-size:15px">Reseteaza parola</a>`,
+        `</div>`,
+        `<p style="color:#8892a8;font-size:13px;line-height:1.5">`,
+        `Link-ul expira in 1 ora. Daca nu ai solicitat resetarea, ignora acest email.`,
+        `</p>`,
+        `<hr style="border:none;border-top:1px solid #e0e4ea;margin:24px 0"/>`,
+        `<p style="color:#8892a8;font-size:12px">DosarFonduri &copy; ${new Date().getFullYear()}</p>`,
+        `</div>`,
+      ].join(""),
+    });
 
     return c.json({
       ok: true,
-      emailSent,
-      ...(!emailSent ? { resetUrl } : {}),
+      emailSent: emailResult.sent,
+      ...(!emailResult.sent ? { resetUrl } : {}),
     });
   } catch (err: any) {
     console.error("[forgot-password] Error:", err.message);

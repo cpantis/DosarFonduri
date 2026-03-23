@@ -181,7 +181,7 @@ adminRoutes.post("/users", async (c) => {
   }
 
   // Send invitation email via Resend
-  const signupUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"}/login?invited=1&email=${encodeURIComponent(body.email)}`;
+  const signupUrl = `${process.env.FRONTEND_URL || "https://localhost:3000"}/login?invited=1&email=${encodeURIComponent(body.email)}`;
   const emailResult = await sendEmail({
     organizationId: auth.organizationId!,
     to: body.email,
@@ -215,7 +215,7 @@ adminRoutes.post("/users/:id/resend-invite", async (c) => {
   });
   if (!org) return c.json({ error: "Organization not found" }, 404);
 
-  const signupUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"}/login?invited=1&email=${encodeURIComponent(user.email)}`;
+  const signupUrl = `${process.env.FRONTEND_URL || "https://localhost:3000"}/login?invited=1&email=${encodeURIComponent(user.email)}`;
   const emailResult = await sendEmail({
     organizationId: auth.organizationId!,
     to: user.email,

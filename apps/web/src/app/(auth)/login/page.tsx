@@ -209,7 +209,7 @@ function LoginForm({ onGo, onForgot }: { onGo: () => void; onForgot: () => void 
 function ForgotPasswordForm({ onBack }: { onBack: () => void }) {
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
-  const [sent, setSent] = useState(false);
+  const [result, setResult] = useState<{ emailSent?: boolean; resetUrl?: string } | null>(null);
   const [error, setError] = useState("");
 
   const go = async () => {
@@ -217,8 +217,8 @@ function ForgotPasswordForm({ onBack }: { onBack: () => void }) {
     setBusy(true);
     setError("");
     try {
-      await apiPost("/api/auth/forgot-password", { email });
-      setSent(true);
+      const data = await apiPost("/api/auth/forgot-password", { email });
+      setResult(data);
     } catch (err: any) {
       setError(err.message || "Eroare la trimitere");
     } finally {
@@ -226,16 +226,45 @@ function ForgotPasswordForm({ onBack }: { onBack: () => void }) {
     }
   };
 
-  if (sent) {
+  if (result) {
     return (
       <>
-        <h2 className="f-title">Verifica email-ul</h2>
-        <p className="f-sub">Daca exista un cont cu adresa <strong style={{ color: "#0f172a" }}>{email}</strong>, vei primi un email cu instructiuni de resetare.</p>
-        <div className="cui-ok" style={{ marginBottom: 20, marginTop: 16 }}>
-          <div className="cn">Email trimis</div>
-          <div className="cr">Verifica inbox-ul si folderul Spam.</div>
-          <div className="cr">Link-ul expira in 1 ora.</div>
-        </div>
+        {result.emailSent ? (
+          <>
+            <h2 className="f-title">Verifica email-ul</h2>
+            <p className="f-sub">Daca exista un cont cu adresa <strong style={{ color: "#0f172a" }}>{email}</strong>, vei primi un email cu instructiuni de resetare.</p>
+            <div className="cui-ok" style={{ marginBottom: 20, marginTop: 16 }}>
+              <div className="cn">Email trimis</div>
+              <div className="cr">Verifica inbox-ul si folderul Spam.</div>
+              <div className="cr">Link-ul expira in 1 ora.</div>
+            </div>
+          </>
+        ) : result.resetUrl ? (
+          <>
+            <h2 className="f-title">Resetare parola</h2>
+            <p className="f-sub">Serviciul de email nu este configurat. Foloseste link-ul de mai jos pentru a-ti reseta parola.</p>
+            <div style={{ marginBottom: 20, marginTop: 16, padding: 16, borderRadius: 10, border: "1px solid #fbbf24", background: "rgba(251,191,36,.04)" }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "#b45309", marginBottom: 8 }}>Link de resetare</div>
+              <div style={{ fontSize: 13, color: "#64748b", marginBottom: 10 }}>Link-ul expira in 1 ora. Deschide-l pentru a seta o parola noua:</div>
+              <a
+                href={result.resetUrl}
+                style={{ display: "inline-block", padding: "10px 20px", background: "#4d8bff", color: "#fff", borderRadius: 8, textDecoration: "none", fontWeight: 700, fontSize: 14 }}
+              >
+                Reseteaza parola
+              </a>
+            </div>
+          </>
+        ) : (
+          <>
+            <h2 className="f-title">Verifica email-ul</h2>
+            <p className="f-sub">Daca exista un cont cu adresa <strong style={{ color: "#0f172a" }}>{email}</strong>, vei primi un email cu instructiuni de resetare.</p>
+            <div className="cui-ok" style={{ marginBottom: 20, marginTop: 16 }}>
+              <div className="cn">Cerere procesata</div>
+              <div className="cr">Verifica inbox-ul si folderul Spam.</div>
+              <div className="cr">Link-ul expira in 1 ora.</div>
+            </div>
+          </>
+        )}
         <button className="btn-s" onClick={onBack}>
           Inapoi la autentificare
         </button>

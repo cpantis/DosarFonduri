@@ -97,23 +97,38 @@ adminRoutes.post("/users", async (c) => {
   const existing = await db.query.users.findFirst({
     where: eq(users.email, body.email),
   });
-  if (existing) {
-    return c.json({ error: "Email deja utilizat" }, 400);
-  }
 
-  // Pre-register user (invited status, placeholder password)
-  const [newUser] = await db
-    .insert(users)
-    .values({
-      email: body.email,
-      name: body.name || body.email.split("@")[0],
-      passwordHash: "INVITED_NO_PASSWORD",
-      organizationId: auth.organizationId,
-      role: body.role,
-      status: "invited",
-      invitedBy: auth.userId,
-    })
-    .returning();
+  let newUser;
+
+  if (existing && existing.status === "disabled" && existing.organizationId === auth.organizationId) {
+    // Re-invite a previously disabled user from the same org
+    [newUser] = await db
+      .update(users)
+      .set({
+        status: "invited",
+        role: body.role,
+        passwordHash: "INVITED_NO_PASSWORD",
+        invitedBy: auth.userId,
+      })
+      .where(eq(users.id, existing.id))
+      .returning();
+  } else if (existing) {
+    return c.json({ error: "Email deja utilizat" }, 400);
+  } else {
+    // Pre-register user (invited status, placeholder password)
+    [newUser] = await db
+      .insert(users)
+      .values({
+        email: body.email,
+        name: body.name || body.email.split("@")[0],
+        passwordHash: "INVITED_NO_PASSWORD",
+        organizationId: auth.organizationId,
+        role: body.role,
+        status: "invited",
+        invitedBy: auth.userId,
+      })
+      .returning();
+  }
 
   // Send invitation email via Resend
   const signupUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"}/login?invited=1&email=${encodeURIComponent(body.email)}`;

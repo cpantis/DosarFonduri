@@ -184,7 +184,7 @@ export function RuleCard({ rule, isOpen, onToggle, categoryColor, categoryLabel 
         {/* Right side: confidence + page */}
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, marginTop: 4 }}>
           <span style={{
-            fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace",
+            fontSize: 13, fontWeight: 700,
             color: conf > 0.9 ? "#059669" : conf > 0.8 ? "#2563eb" : "#d97706",
           }}>
             {Math.round(conf * 100)}%
@@ -202,9 +202,8 @@ export function RuleCard({ rule, isOpen, onToggle, categoryColor, categoryLabel 
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 16, marginBottom: 16 }}>
             <span style={{ fontSize: 11, fontWeight: 600, color: "#94a3b8", textTransform: "uppercase", letterSpacing: ".5px" }}>Încredere</span>
             <span style={{
-              fontSize: 20, fontWeight: 800, fontFamily: "'JetBrains Mono', monospace",
+              fontSize: 20, fontWeight: 800,
               color: conf > 0.9 ? "#059669" : conf > 0.8 ? "#2563eb" : "#d97706",
-              fontVariantNumeric: "tabular-nums",
             }}>
               {Math.round(conf * 100)}%
             </span>

@@ -2254,7 +2254,7 @@ export default function ProjectViewPage() {
         .lock-banner .lb-retry{margin-left:auto;padding:4px 12px;border-radius:6px;border:1px solid #fbbf24;background:#fef3c7;color:#92400e;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s}
         .lock-banner .lb-retry:hover{background:#fde68a;border-color:#f59e0b}
         .lock-banner .lb-retry:disabled{opacity:.5;cursor:not-allowed}
-        .lock-banner .lb-time{font-size:11px;color:#94a3b8;font-family:'JetBrains Mono',monospace}
+        .lock-banner .lb-time{font-size:11px;color:#94a3b8;font-weight:600}
         .pv-container{display:flex;flex-direction:column;height:100vh;overflow:hidden;background:#ffffff}
 
         .pv-project-header{padding:10px 24px;background:#ffffff;display:flex;align-items:center;gap:8px;border-bottom:1px solid rgba(226,232,240,.8);flex-shrink:0;min-height:44px}
@@ -2270,7 +2270,7 @@ export default function ProjectViewPage() {
         .pv-tab{padding:12px 18px;font-size:14px;font-weight:600;color:#64748b;cursor:pointer;border-bottom:2.5px solid transparent;transition:all .15s cubic-bezier(.4,0,.2,1);background:none;border-top:none;border-left:none;border-right:none;font-family:'Inter',system-ui,sans-serif;white-space:nowrap;display:flex;align-items:center;gap:6px;position:relative}
         .pv-tab:hover{color:#0f172a}
         .pv-tab.active{color:#2563eb;border-bottom-color:#2563eb}
-        .pv-tab-badge{font-size:11px;font-weight:700;padding:1px 7px;border-radius:10px;font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums}
+        .pv-tab-badge{font-size:11px;font-weight:700;padding:1px 7px;border-radius:10px;font-variant-numeric:tabular-nums}
         .pv-tab-badge.neutral{background:#f1f5f9;color:#94a3b8}
         .pv-tab-badge.blue{background:rgba(37,99,235,.1);color:#2563eb}
         .pv-tab-badge.green{background:rgba(52,211,153,.12);color:#059669}
@@ -2307,7 +2307,7 @@ export default function ProjectViewPage() {
         .elig-panel{padding:24px 32px;max-width:960px;overflow-y:auto;flex:1;min-height:0}
         .elig-summary{display:flex;gap:16px;margin-bottom:24px}
         .elig-stat{padding:16px 20px;border-radius:12px;border:1px solid rgba(226,232,240,.8);background:#ffffff;flex:1;text-align:center}
-        .elig-stat .number{font-size:28px;font-weight:800;font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums}
+        .elig-stat .number{font-size:28px;font-weight:800;font-variant-numeric:tabular-nums}
         .elig-stat .label{font-size:12px;color:#64748b;margin-top:4px;font-weight:500}
         .elig-rule{display:flex;align-items:flex-start;gap:12px;padding:14px 20px;border-radius:10px;margin-bottom:8px;transition:all .15s cubic-bezier(.4,0,.2,1);cursor:pointer;border:none}
         .elig-rule.pass-bg{background:rgba(52,211,153,.08)}
@@ -2322,7 +2322,7 @@ export default function ProjectViewPage() {
         .elig-name.pass-text{color:#059669}
         .elig-name.fail-text{color:#dc2626}
         .elig-name.pending-text{color:#d97706}
-        .elig-detail{font-size:12px;color:#64748b;font-family:'JetBrains Mono',monospace;max-width:300px;text-align:right}
+        .elig-detail{font-size:12px;color:#64748b;max-width:300px;text-align:right}
         .elig-type-badge{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:2px 8px;border-radius:4px;border:1px solid transparent;flex-shrink:0}
         .elig-type-badge.fixed{background:rgba(52,211,153,.1);color:#059669;border-color:#a7f3d0}
         .elig-type-badge.interpreted{background:rgba(251,191,36,.1);color:#d97706;border-color:#fed7aa}
@@ -2339,7 +2339,7 @@ export default function ProjectViewPage() {
         .rcf-chip{padding:4px 12px;border-radius:20px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid rgba(226,232,240,.8);background:#ffffff;color:#64748b;font-family:'Inter',system-ui,sans-serif;transition:all .15s cubic-bezier(.4,0,.2,1);display:inline-flex;align-items:center;gap:4px}
         .rcf-chip:hover{border-color:#cbd5e1;color:#0f172a;box-shadow:0 1px 2px rgba(0,0,0,.04)}
         .rcf-chip.active{border-color:#2563eb;background:#eff6ff;color:#2563eb}
-        .rcf-count{font-size:10px;font-family:'JetBrains Mono',monospace;opacity:.7}
+        .rcf-count{font-size:10px;font-weight:600;opacity:.7}
         .rules-scroll{flex:1;overflow-y:auto;padding:12px 16px}
         .rule-card{padding:12px 14px;border-radius:12px;border:1px solid rgba(226,232,240,.8);margin-bottom:8px;cursor:pointer;transition:all .15s cubic-bezier(.4,0,.2,1);background:#ffffff}
         .rule-card:hover{border-color:#cbd5e1;box-shadow:0 1px 3px rgba(0,0,0,.05)}
@@ -2357,7 +2357,7 @@ export default function ProjectViewPage() {
         .elig-status-badge.fail{color:#dc2626;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.2)}
         .elig-status-badge.pending{color:#d97706;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.25)}
         .rule-text{font-size:13px;line-height:1.5;color:#0f172a}
-        .rule-meta{font-size:11px;color:#94a3b8;margin-top:6px;font-family:'JetBrains Mono',monospace;display:flex;gap:12px;align-items:center}
+        .rule-meta{font-size:11px;color:#94a3b8;margin-top:6px;display:flex;gap:12px;align-items:center}
         .rule-doc-ref{font-size:10px;color:#94a3b8;margin-left:auto;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
         .confidence-bar{width:48px;height:4px;background:#f0f2f5;border-radius:2px;overflow:hidden;display:inline-block;vertical-align:middle;margin-left:4px}
         .confidence-fill{height:100%;border-radius:2px}
@@ -2372,7 +2372,7 @@ export default function ProjectViewPage() {
         .rd-needs-review{font-size:11px;color:#d97706;font-weight:700;display:flex;align-items:center;gap:3px}
         .rd-confidence-row{display:flex;align-items:center;gap:10px}
         .rd-conf-label{font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px}
-        .rd-conf-value{font-size:20px;font-weight:800;font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums}
+        .rd-conf-value{font-size:20px;font-weight:800;font-variant-numeric:tabular-nums}
         .rd-conf-bar{flex:1;height:6px;background:#f8fafc;border-radius:3px;overflow:hidden;max-width:200px}
         .rd-conf-fill{height:100%;border-radius:3px;transition:all .15s cubic-bezier(.4,0,.2,1)}
         .rd-section{margin-bottom:20px}
@@ -2401,7 +2401,7 @@ export default function ProjectViewPage() {
         .rd-doc-ref{display:flex;align-items:center;gap:8px;padding:10px 14px;background:#ffffff;border:1px solid rgba(226,232,240,.8);border-radius:12px}
         .rd-doc-icon{font-size:18px}
         .rd-doc-name{font-size:13px;font-weight:600;color:#0f172a;flex:1}
-        .rd-doc-page{font-size:11px;font-family:'JetBrains Mono',monospace;color:#94a3b8;padding:2px 8px;background:#f8fafc;border-radius:4px}
+        .rd-doc-page{font-size:11px;font-weight:600;color:#94a3b8;padding:2px 8px;background:#f8fafc;border-radius:4px}
         .rd-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#94a3b8;gap:12px;padding:40px}
         .rd-empty-icon{font-size:48px;opacity:.4}
         .rd-empty-title{font-size:16px;font-weight:700;color:#64748b}
@@ -2486,7 +2486,7 @@ export default function ProjectViewPage() {
         .pdf-page-mock{width:480px;background:#ffffff;border-radius:4px;box-shadow:0 1px 3px rgba(0,0,0,.1);padding:48px 40px;min-height:620px;color:#0f172a;position:relative}
         .pdf-page-mock h3{font-size:16px;font-weight:700;margin-bottom:16px;color:#0f172a}
         .pdf-text-line{height:10px;background:#cbd5e1;border-radius:2px;margin:8px 0}
-        .pdf-page-num{position:absolute;bottom:16px;right:24px;font-size:12px;color:#94a3b8;font-family:'JetBrains Mono',monospace}
+        .pdf-page-num{position:absolute;bottom:16px;right:24px;font-size:12px;color:#94a3b8;font-weight:600}
 
         /* Elemente — redesigned to match prototype */
         .el-shell{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden}
@@ -2494,7 +2494,7 @@ export default function ProjectViewPage() {
         .el-header-top{display:flex;align-items:center;justify-content:space-between}
         .el-stats{display:flex;gap:20px}
         .el-stat{text-align:center}
-        .el-stat-val{font-size:22px;font-weight:700;font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums}
+        .el-stat-val{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
         .el-stat-lbl{font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em}
         .el-progress-wrap{}
         .el-progress{height:6px;background:#e2e8f0;border-radius:3px;overflow:hidden}
@@ -2591,14 +2591,14 @@ export default function ProjectViewPage() {
         .check-progress{display:flex;align-items:center;gap:20px;margin-bottom:24px;padding:22px;border-radius:12px;border:1px solid rgba(226,232,240,.8);background:#ffffff}
         .check-ring{width:80px;height:80px;position:relative;flex-shrink:0}
         .check-ring svg{transform:rotate(-90deg)}
-        .check-ring-text{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;font-family:'JetBrains Mono',monospace;color:#0f172a;font-variant-numeric:tabular-nums}
+        .check-ring-text{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;color:#0f172a;font-variant-numeric:tabular-nums}
         .check-info{flex:1}
         .check-info .ci-title{font-size:16px;font-weight:700;margin-bottom:4px;color:#0f172a}
         .check-info .ci-sub{font-size:13px;color:#64748b}
         .check-category{margin-bottom:16px}
         .check-cat-header{display:flex;align-items:center;gap:8px;padding:8px 0;cursor:pointer;font-size:14px;font-weight:700;color:#64748b}
         .check-cat-header:hover{color:#0f172a}
-        .check-cat-count{font-size:11px;color:#94a3b8;font-family:'JetBrains Mono',monospace}
+        .check-cat-count{font-size:11px;color:#94a3b8;font-weight:600}
         .check-item{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;margin-bottom:4px;transition:all .15s cubic-bezier(.4,0,.2,1)}
         .check-item:hover{background:#f1f5f9}
         .check-box{width:18px;height:18px;border-radius:5px;border:2px solid #cbd5e1;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s cubic-bezier(.4,0,.2,1);flex-shrink:0;font-size:11px}
@@ -2672,7 +2672,7 @@ export default function ProjectViewPage() {
         @keyframes statusPulse{0%,100%{opacity:1}50%{opacity:.4}}
         @keyframes bounce{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-6px)}}
         .model-selector{display:flex;gap:3px;background:#f0f2f5;padding:3px;border-radius:8px;margin-left:auto}
-        .model-btn{padding:5px 12px;font-size:12px;font-weight:600;border-radius:6px;border:none;cursor:pointer;background:transparent;color:#64748b;font-family:'JetBrains Mono',monospace;transition:all .15s cubic-bezier(.4,0,.2,1)}
+        .model-btn{padding:5px 12px;font-size:12px;font-weight:600;border-radius:6px;border:none;cursor:pointer;background:transparent;color:#64748b;transition:all .15s cubic-bezier(.4,0,.2,1)}
         .model-btn.active{background:#2563eb;color:#ffffff}
         .model-btn:hover:not(.active){color:#0f172a;background:#f1f5f9}
         .et-toggle{display:flex;align-items:center;gap:5px;font-size:11px;color:#64748b;cursor:pointer;padding:5px 10px;border-radius:8px;border:1px solid rgba(226,232,240,.8);background:transparent;font-family:'Inter',system-ui,sans-serif;transition:all .15s cubic-bezier(.4,0,.2,1)}
@@ -2739,7 +2739,7 @@ export default function ProjectViewPage() {
         .sep-header{padding:16px 16px 12px;border-bottom:1px solid rgba(226,232,240,.8);display:flex;flex-direction:column;gap:8px}
         .sep-header-top{display:flex;align-items:center;justify-content:space-between}
         .sep-header-title{font-size:14px;font-weight:700;color:#0f172a}
-        .sep-count{font-size:13px;font-weight:700;color:#2563eb;font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums}
+        .sep-count{font-size:13px;font-weight:700;color:#2563eb;font-variant-numeric:tabular-nums}
         .sep-progress-bar{height:4px;background:#f0f2f5;border-radius:2px;overflow:hidden}
         .sep-progress-fill{height:100%;background:#2563eb;border-radius:2px;transition:width .3s}
         .sep-scroll{flex:1;overflow-y:auto;padding:8px 10px;display:flex;flex-direction:column;gap:2px}
@@ -2782,7 +2782,7 @@ export default function ProjectViewPage() {
         .template-card:hover{border-color:#cbd5e1;box-shadow:0 1px 3px rgba(0,0,0,.05)}
         .template-card.active{border-color:#2563eb;background:rgba(37,99,235,.03);box-shadow:0 0 0 1px rgba(37,99,235,.15)}
         .template-card .tc-name{font-size:14px;font-weight:600;display:flex;align-items:center;gap:6px;margin-bottom:4px}
-        .tc-badge{font-size:10px;font-weight:700;padding:1px 5px;border-radius:3px;background:#f1f5f9;color:#94a3b8;font-family:'JetBrains Mono',monospace}
+        .tc-badge{font-size:10px;font-weight:700;padding:1px 5px;border-radius:3px;background:#f1f5f9;color:#94a3b8}
         .template-card .tc-info{font-size:12px;color:#64748b}
         .template-card .tc-progress{height:3px;background:#f0f2f5;border-radius:2px;margin-top:8px;overflow:hidden}
         .tc-progress-fill{height:100%;border-radius:2px;transition:all .15s cubic-bezier(.4,0,.2,1)}
@@ -2790,7 +2790,7 @@ export default function ProjectViewPage() {
         .neemia-page-nav{padding:10px 20px;display:flex;align-items:center;gap:8px;border-bottom:1px solid rgba(226,232,240,.8);background:#ffffff}
         .neemia-page-nav .nav-label{font-size:13px;font-weight:600;color:#64748b;margin-right:4px;white-space:nowrap;max-width:160px;overflow:hidden;text-overflow:ellipsis}
         .nav-pages-scroll{display:flex;gap:4px;overflow-x:auto;flex:1;padding:2px 0}
-        .page-thumb{min-width:32px;height:32px;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:12px;font-weight:700;cursor:pointer;border:2px solid transparent;transition:all .15s cubic-bezier(.4,0,.2,1);font-family:'JetBrains Mono',monospace;padding:2px 6px;font-variant-numeric:tabular-nums}
+        .page-thumb{min-width:32px;height:32px;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:12px;font-weight:700;cursor:pointer;border:2px solid transparent;transition:all .15s cubic-bezier(.4,0,.2,1);padding:2px 6px;font-variant-numeric:tabular-nums}
         .pt-num{font-size:12px;line-height:1}
         .pt-dot{width:4px;height:4px;border-radius:50%}
         .pt-dot.complete{background:#34d399}
@@ -2801,8 +2801,8 @@ export default function ProjectViewPage() {
         .page-thumb.empty{background:rgba(248,113,113,.1);color:#dc2626}
         .page-thumb.active{border-color:#2563eb;box-shadow:0 0 0 2px rgba(37,99,235,.25)}
         .nav-stats{display:flex;align-items:center;gap:6px;margin-left:auto;white-space:nowrap}
-        .nav-stat-filled{font-size:12px;font-weight:600;color:#64748b;font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums}
-        .nav-stat-pct{font-size:14px;font-weight:800;font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums}
+        .nav-stat-filled{font-size:12px;font-weight:600;color:#64748b;font-variant-numeric:tabular-nums}
+        .nav-stat-pct{font-size:14px;font-weight:800;font-variant-numeric:tabular-nums}
         .download-btn{display:flex;align-items:center;gap:6px;padding:6px 14px;border-radius:8px;border:none;background:#34d399;color:#ffffff;font-size:12px;font-weight:700;cursor:pointer;font-family:'Inter',system-ui,sans-serif;transition:all .15s cubic-bezier(.4,0,.2,1);white-space:nowrap;box-shadow:0 1px 3px rgba(5,150,105,.3)}
         .download-btn:hover{background:#059669;box-shadow:0 2px 6px rgba(5,150,105,.4)}
         .neemia-preview-area{flex:1;display:flex;overflow:hidden}
@@ -2881,7 +2881,7 @@ export default function ProjectViewPage() {
         .neemia-checklist-ok{background:rgba(52,211,153,.06);border:1px solid rgba(52,211,153,.2);color:#059669;font-weight:600}
         .neemia-checklist-critical{background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.25);color:#92400e}
         .neemia-checklist-critical .ncb-header{display:flex;align-items:center;justify-content:space-between;font-weight:700;font-size:12px;margin-bottom:4px}
-        .neemia-checklist-critical .ncb-pct{font-size:11px;font-weight:600;color:#d97706;font-family:'JetBrains Mono',monospace}
+        .neemia-checklist-critical .ncb-pct{font-size:11px;font-weight:600;color:#d97706}
         .neemia-checklist-critical .ncb-list{font-size:11px;color:#b45309;margin-bottom:4px}
         .neemia-checklist-critical .ncb-optional{font-size:10px;color:#92400e;opacity:.7;margin-bottom:6px}
         .neemia-checklist-critical .ncb-actions{display:flex;gap:6px}
@@ -2994,7 +2994,7 @@ export default function ProjectViewPage() {
         .fod-container{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden}
         .fod-topbar{display:flex;align-items:center;gap:12px;padding:8px 12px;border-bottom:1px solid rgba(226,232,240,.8);background:#ffffff;flex-shrink:0}
         .fod-page-nav{display:flex;gap:3px;flex:1;overflow-x:auto}
-        .fod-page-btn{padding:4px 10px;font-size:11px;font-weight:600;border-radius:6px;border:1px solid rgba(226,232,240,.8);background:#ffffff;cursor:pointer;transition:all .15s;white-space:nowrap;font-family:'JetBrains Mono',monospace}
+        .fod-page-btn{padding:4px 10px;font-size:11px;font-weight:600;border-radius:6px;border:1px solid rgba(226,232,240,.8);background:#ffffff;cursor:pointer;transition:all .15s;white-space:nowrap}
         .fod-page-btn.active{background:#4d8bff;color:#fff;border-color:#4d8bff}
         .fod-page-btn.complete{border-color:rgba(52,211,153,.4);color:#059669}
         .fod-page-btn.partial{border-color:rgba(251,191,36,.4);color:#d97706}
@@ -3007,7 +3007,7 @@ export default function ProjectViewPage() {
         .fod-zoom{display:flex;align-items:center;gap:4px;flex-shrink:0}
         .fod-zoom-btn{width:26px;height:26px;border-radius:6px;border:1px solid rgba(226,232,240,.8);background:#fff;cursor:pointer;font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:center;transition:background .15s}
         .fod-zoom-btn:hover{background:#f1f5f9}
-        .fod-zoom-label{font-size:11px;font-weight:600;font-family:'JetBrains Mono',monospace;min-width:36px;text-align:center;color:#64748b}
+        .fod-zoom-label{font-size:11px;font-weight:600;min-width:36px;text-align:center;color:#64748b}
         .fod-scroll{flex:1;overflow:auto;display:flex;justify-content:center;padding:24px;background:#e2e8f0}
         .fod-page-wrapper{position:relative;background:#ffffff;box-shadow:0 4px 24px rgba(0,0,0,.12);flex-shrink:0}
         .fod-page-image{display:block;width:100%;height:100%;object-fit:contain;pointer-events:none;user-select:none}
@@ -3192,7 +3192,7 @@ export default function ProjectViewPage() {
                     <h3>Scor estimat</h3>
                     <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
                       <span style={{
-                        fontSize: 28, fontWeight: 800, fontFamily: "'JetBrains Mono', monospace",
+                        fontSize: 28, fontWeight: 800,
                         color: projectScores.percentage >= 80 ? "#059669" : projectScores.percentage >= 60 ? "#d97706" : "#dc2626",
                       }}>
                         {projectScores.totalPoints}/{projectScores.maxTotalPoints}
@@ -3398,7 +3398,7 @@ export default function ProjectViewPage() {
                       <span style={{ fontSize: 13 }}>{"\u{1F3E2}"}</span>
                       <span style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", textTransform: "uppercase", letterSpacing: ".5px" }}>Pre-eligibilitate firmă</span>
                       <span style={{ fontSize: 10, color: "#64748b", fontWeight: 500 }}>— date ONRC & financiare</span>
-                      <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", color: "#059669" }}>
+                      <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 700, color: "#059669" }}>
                         {preEligRules.filter(r => r.status === "pass").length}/{preEligRules.length}
                       </span>
                     </div>
@@ -3438,7 +3438,7 @@ export default function ProjectViewPage() {
                         <span style={{ fontSize: 13 }}>{"\u{1F4CB}"}</span>
                         <span style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", textTransform: "uppercase", letterSpacing: ".5px" }}>Eligibilitate proiect</span>
                         <span style={{ fontSize: 10, color: "#64748b", fontWeight: 500 }}>— date proiect & AI</span>
-                        <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", color: "#059669" }}>
+                        <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 700, color: "#059669" }}>
                           {projectRules.filter(r => r.status === "pass").length}/{projectRules.length}
                         </span>
                       </div>
@@ -3569,7 +3569,6 @@ export default function ProjectViewPage() {
                       padding: "2px 8px",
                       borderRadius: 4,
                       fontWeight: 700,
-                      fontFamily: "'JetBrains Mono', monospace",
                       fontSize: 11,
                       background: guideTrustScore >= 0.8 ? "rgba(52,211,153,.15)" : guideTrustScore >= 0.6 ? "rgba(251,191,36,.15)" : "rgba(248,113,113,.15)",
                       color: guideTrustScore >= 0.8 ? "#059669" : guideTrustScore >= 0.6 ? "#d97706" : "#dc2626",
@@ -4438,7 +4437,7 @@ export default function ProjectViewPage() {
                       <div style={{ marginTop: 8, height: 6, background: "#f0f2f5", borderRadius: 3, overflow: "hidden" }}>
                         <div style={{ height: "100%", borderRadius: 3, width: `${percentage}%`, background: percentage >= 80 ? "#34d399" : percentage >= 50 ? "#2563eb" : "#fbbf24", transition: "width .3s" }} />
                       </div>
-                      <div style={{ marginTop: 4, fontSize: 11, color: "#94a3b8", fontFamily: "'JetBrains Mono', monospace" }}>{Math.round(percentage)}%</div>
+                      <div style={{ marginTop: 4, fontSize: 11, color: "#94a3b8", fontWeight: 600 }}>{Math.round(percentage)}%</div>
                     </div>
                     <div style={{ flex: 1, minWidth: 160, padding: "16px 20px", background: "#fff", border: "1px solid rgba(226,232,240,.8)", borderRadius: 12 }}>
                       <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".6px", color: "#94a3b8", marginBottom: 6 }}>Criterii evaluate</div>

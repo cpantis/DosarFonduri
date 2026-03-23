@@ -1,12 +1,24 @@
 "use client";
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { apiPost } from "@/lib/api";
 import { setToken } from "@/lib/auth";
 import { Spinner } from "@/components/shared/Spinner";
 
 export default function LoginPage() {
-  const [view, setView] = useState<"login" | "signup">("login");
+  return (
+    <Suspense>
+      <LoginPageInner />
+    </Suspense>
+  );
+}
+
+function LoginPageInner() {
+  const searchParams = useSearchParams();
+  const invited = searchParams.get("invited");
+  const invitedEmail = searchParams.get("email");
+
+  const [view, setView] = useState<"login" | "signup">(invited === "1" ? "signup" : "login");
 
   return (
     <>
@@ -103,7 +115,7 @@ export default function LoginPage() {
             {view === "login" ? (
               <LoginForm onGo={() => setView("signup")} />
             ) : (
-              <SignupWizard onGo={() => setView("login")} />
+              <SignupWizard onGo={() => setView("login")} invitedEmail={invitedEmail} />
             )}
           </div>
           <div className="auth-foot">DosarFonduri &middot; &copy; 2026</div>
@@ -192,12 +204,12 @@ function LoginForm({ onGo }: { onGo: () => void }) {
   );
 }
 
-function SignupWizard({ onGo }: { onGo: () => void }) {
+function SignupWizard({ onGo, invitedEmail }: { onGo: () => void; invitedEmail?: string | null }) {
   const router = useRouter();
   const [step, setStep] = useState(1);
   const [nume, setNume] = useState("");
   const [prenume, setPrenume] = useState("");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(invitedEmail || "");
   const [pw, setPw] = useState("");
   const [show, setShow] = useState(false);
   const [wantCo, setWantCo] = useState<boolean | null>(null);
@@ -211,6 +223,11 @@ function SignupWizard({ onGo }: { onGo: () => void }) {
   const [error, setError] = useState("");
   const [isInvited, setIsInvited] = useState(false);
   const [inviteInfo, setInviteInfo] = useState<any>(null);
+
+  // Auto-check invited status when email comes pre-filled from invitation link
+  useEffect(() => {
+    if (invitedEmail) checkInvited();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Check if email belongs to an invited user
   const checkInvited = async () => {

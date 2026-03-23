@@ -285,6 +285,9 @@ console.log(`  REDIS_URL: ${process.env.REDIS_URL ? "✅ set" : "⚠️ default"
       // 0019: solomon_knowledge nullable org + compose_section_versions
       `ALTER TABLE "solomon_knowledge" ALTER COLUMN "organization_id" DROP NOT NULL`,
       `CREATE TABLE IF NOT EXISTS "compose_section_versions" (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), project_document_id UUID NOT NULL REFERENCES project_documents(id) ON DELETE CASCADE, section_marker VARCHAR(255) NOT NULL, version INTEGER NOT NULL DEFAULT 1, content TEXT NOT NULL, source VARCHAR(50) NOT NULL, edited_by UUID REFERENCES users(id), created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
+      // 0115: password reset tokens
+      `CREATE TABLE IF NOT EXISTS "password_reset_tokens" (id UUID PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL, user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE, token_hash VARCHAR(64) NOT NULL, expires_at TIMESTAMP NOT NULL, used_at TIMESTAMP, created_at TIMESTAMP DEFAULT NOW() NOT NULL)`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS "prt_token_hash_idx" ON "password_reset_tokens" ("token_hash")`,
     ];
     for (const stmt of stmts) {
       try { await database.execute(sqlTag.raw(stmt)); } catch { /* ignore individual failures */ }

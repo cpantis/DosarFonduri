@@ -274,48 +274,104 @@ authRoutes.post("/forgot-password", async (c) => {
     return c.json({ ok: true });
   }
 
-  // Generate secure token
-  const rawToken = crypto.randomBytes(32).toString("hex");
-  const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+  try {
+    // Ensure password_reset_tokens table exists (may not if migration hasn't run)
+    await db.execute(sql.raw(`CREATE TABLE IF NOT EXISTS "password_reset_tokens" (
+      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+      "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+      "token_hash" varchar(64) NOT NULL,
+      "expires_at" timestamp NOT NULL,
+      "used_at" timestamp,
+      "created_at" timestamp DEFAULT now() NOT NULL
+    )`));
+    await db.execute(sql.raw(`CREATE UNIQUE INDEX IF NOT EXISTS "prt_token_hash_idx" ON "password_reset_tokens" ("token_hash")`));
 
-  // Invalidate any existing tokens for this user
-  await db.delete(passwordResetTokens).where(eq(passwordResetTokens.userId, user.id));
+    // Generate secure token
+    const rawToken = crypto.randomBytes(32).toString("hex");
+    const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
 
-  // Store hashed token (expires in 1 hour)
-  await db.insert(passwordResetTokens).values({
-    userId: user.id,
-    tokenHash,
-    expiresAt: new Date(Date.now() + 60 * 60 * 1000),
-  });
+    // Invalidate any existing tokens for this user
+    await db.delete(passwordResetTokens).where(eq(passwordResetTokens.userId, user.id));
 
-  // Send reset email
-  const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
-  const resetUrl = `${frontendUrl}/reset-password?token=${rawToken}`;
+    // Store hashed token (expires in 1 hour)
+    await db.insert(passwordResetTokens).values({
+      userId: user.id,
+      tokenHash,
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+    });
 
-  const emailResult = await sendEmail({
-    organizationId: user.organizationId || "system",
-    to: user.email,
-    subject: "Resetare parola — DosarFonduri",
-    html: `
-      <h2>Resetare parola</h2>
-      <p>Salut, <strong>${user.name}</strong>!</p>
-      <p>Ai solicitat resetarea parolei. Apasa pe link-ul de mai jos:</p>
-      <p><a href="${resetUrl}" style="display:inline-block;padding:12px 24px;background:#4d8bff;color:#fff;border-radius:8px;text-decoration:none;font-weight:bold;">Reseteaza parola</a></p>
-      <p style="color:#64748b;font-size:13px;">Link-ul expira in 1 ora. Daca nu ai solicitat resetarea, ignora acest email.</p>
-    `,
-  });
+    // Send reset email — call Resend directly (same pattern as admin.ts invite which works)
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+    const resetUrl = `${frontendUrl}/reset-password?token=${rawToken}`;
 
-  const emailSent = !!(emailResult && emailResult.sent);
-  if (!emailSent) {
-    console.warn("[forgot-password] Email not sent to", user.email, "reason:", emailResult?.reason, emailResult?.detail || "");
+    const apiKey = process.env.RESEND_API_KEY;
+    const from = process.env.SENDER_EMAIL || "noreply@dosar-fonduri.com";
+    let emailSent = false;
+
+    if (apiKey) {
+      try {
+        const res = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            from: `DosarFonduri <${from}>`,
+            to: user.email,
+            subject: "Resetare parola — DosarFonduri",
+            html: [
+              `<div style="font-family:'DM Sans',system-ui,sans-serif;max-width:560px;margin:0 auto;padding:32px">`,
+              `<div style="background:linear-gradient(135deg,#4d8bff 0%,#34d399 100%);border-radius:12px;padding:24px 32px;margin-bottom:24px">`,
+              `<h1 style="color:#fff;margin:0;font-size:22px">DosarFonduri</h1>`,
+              `</div>`,
+              `<h2 style="color:#1a1e28;margin:0 0 16px">Resetare parola</h2>`,
+              `<p style="color:#5a6478;font-size:15px;line-height:1.6">`,
+              `Salut, <strong>${user.name}</strong>!`,
+              `</p>`,
+              `<p style="color:#5a6478;font-size:15px;line-height:1.6">`,
+              `Ai solicitat resetarea parolei. Apasa pe butonul de mai jos pentru a seta o parola noua:`,
+              `</p>`,
+              `<div style="text-align:center;margin:28px 0">`,
+              `<a href="${resetUrl}" style="display:inline-block;padding:14px 36px;background:#4d8bff;color:#fff;text-decoration:none;border-radius:10px;font-weight:700;font-size:15px">Reseteaza parola</a>`,
+              `</div>`,
+              `<p style="color:#8892a8;font-size:13px;line-height:1.5">`,
+              `Link-ul expira in 1 ora. Daca nu ai solicitat resetarea, ignora acest email.`,
+              `</p>`,
+              `<hr style="border:none;border-top:1px solid #e0e4ea;margin:24px 0"/>`,
+              `<p style="color:#8892a8;font-size:12px">DosarFonduri &copy; ${new Date().getFullYear()}</p>`,
+              `</div>`,
+            ].join(""),
+          }),
+        });
+
+        const body = await res.json().catch(() => null);
+        if (res.ok) {
+          emailSent = true;
+          console.log("[forgot-password] Email sent to", user.email, "id:", body?.id);
+        } else {
+          console.error("[forgot-password] Resend error:", res.status, JSON.stringify(body));
+        }
+      } catch (emailErr: any) {
+        console.error("[forgot-password] Email send failed:", emailErr.message);
+      }
+    } else {
+      console.warn("[forgot-password] RESEND_API_KEY not set");
+    }
+
+    return c.json({
+      ok: true,
+      emailSent,
+      ...(!emailSent ? { resetUrl } : {}),
+    });
+  } catch (err: any) {
+    console.error("[forgot-password] Error:", err.message);
+    return c.json({
+      ok: true,
+      emailSent: false,
+      error: err.message?.substring(0, 150),
+    });
   }
-
-  // Return resetUrl as fallback when email service is not configured (admin can share the link manually)
-  return c.json({
-    ok: true,
-    emailSent,
-    ...(!emailSent ? { resetUrl } : {}),
-  });
 });
 
 // --- RESET PASSWORD ---
@@ -327,28 +383,31 @@ authRoutes.post("/reset-password", async (c) => {
 
   const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
 
-  const resetToken = await db.query.passwordResetTokens.findFirst({
-    where: eq(passwordResetTokens.tokenHash, tokenHash),
-  });
+  // Use raw SQL to avoid Drizzle query builder issues if table doesn't exist in schema cache
+  const rows = await db.execute(sql`
+    SELECT id, user_id, expires_at, used_at FROM password_reset_tokens
+    WHERE token_hash = ${tokenHash} LIMIT 1
+  `);
+  const resetToken = (rows as any)?.[0] || (rows as any)?.rows?.[0];
 
   if (!resetToken) {
     return c.json({ error: "Link invalid sau expirat" }, 400);
   }
 
-  if (resetToken.usedAt) {
+  if (resetToken.used_at) {
     return c.json({ error: "Link-ul a fost deja folosit" }, 400);
   }
 
-  if (new Date() > resetToken.expiresAt) {
+  if (new Date() > new Date(resetToken.expires_at)) {
     return c.json({ error: "Link-ul a expirat. Solicita un nou link de resetare." }, 400);
   }
 
   // Update password
-  const passwordHash = await bcrypt.hash(password, 12);
-  await db.update(users).set({ passwordHash }).where(eq(users.id, resetToken.userId));
+  const newPasswordHash = await bcrypt.hash(password, 12);
+  await db.execute(sql`UPDATE users SET password_hash = ${newPasswordHash} WHERE id = ${resetToken.user_id}::uuid`);
 
   // Mark token as used
-  await db.update(passwordResetTokens).set({ usedAt: new Date() }).where(eq(passwordResetTokens.id, resetToken.id));
+  await db.execute(sql`UPDATE password_reset_tokens SET used_at = NOW() WHERE id = ${resetToken.id}::uuid`);
 
   return c.json({ ok: true });
 });

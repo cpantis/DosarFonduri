@@ -250,10 +250,10 @@ export default function AdminPage() {
               return (
                 <div key={u.id}>
                   <div
-                    className={`flex items-center gap-4 px-5 py-4 rounded-xl mb-2 cursor-pointer transition-all border bg-white ${
+                    className={`flex items-center gap-4 px-5 py-4 rounded-[12px] mb-2 cursor-pointer transition-all border bg-white ${
                       isActive
                         ? "border-blue-500"
-                        : "border-slate-200/80 hover:border-slate-300 hover:bg-slate-50"
+                        : "border-slate-200/70 hover:border-slate-300 hover:bg-slate-50"
                     }`}
                     onClick={() => setSelectedUser(isActive ? null : u.id)}
                   >
@@ -294,19 +294,19 @@ export default function AdminPage() {
                   </div>
 
                   {isActive && (
-                    <div className="p-5 rounded-xl mt-2 mb-2 border border-blue-500 bg-white">
+                    <div className="p-5 rounded-[12px] mt-2 mb-2 border border-blue-500 bg-white">
                       <div className="text-lg font-extrabold mb-1 text-slate-900">{u.name}</div>
                       <div className="text-[13px] mb-3 font-mono text-slate-500">{u.email}</div>
                       <div className="grid grid-cols-3 gap-2.5 mb-4">
-                        <div className="p-2.5 rounded-md bg-slate-50 border border-slate-200/80">
+                        <div className="p-2.5 rounded-md bg-slate-50 border border-slate-200/70">
                           <div className="text-[11px] uppercase tracking-wide font-medium mb-0.5 text-slate-500">Rol</div>
                           <div className="text-[13px] font-semibold" style={{ color: role.color }}>{role.label}</div>
                         </div>
-                        <div className="p-2.5 rounded-md bg-slate-50 border border-slate-200/80">
+                        <div className="p-2.5 rounded-md bg-slate-50 border border-slate-200/70">
                           <div className="text-[11px] uppercase tracking-wide font-medium mb-0.5 text-slate-500">Proiecte active</div>
                           <div className="text-[13px] font-semibold text-slate-900">{u.projectCount}</div>
                         </div>
-                        <div className="p-2.5 rounded-md bg-slate-50 border border-slate-200/80">
+                        <div className="p-2.5 rounded-md bg-slate-50 border border-slate-200/70">
                           <div className="text-[11px] uppercase tracking-wide font-medium mb-0.5 text-slate-500">Ultima activitate</div>
                           <div className="text-xs font-semibold text-slate-900">{timeAgo(u.lastActiveAt)}</div>
                         </div>
@@ -318,7 +318,7 @@ export default function AdminPage() {
                         {role.perms.map((p, i) => (
                           <span
                             key={i}
-                            className="text-[11px] px-2.5 py-1 rounded-md bg-slate-50 border border-slate-200/80 text-slate-500"
+                            className="text-[11px] px-2.5 py-1 rounded-md bg-slate-50 border border-slate-200/70 text-slate-500"
                           >
                             {p}
                           </span>
@@ -378,7 +378,7 @@ export default function AdminPage() {
           <>
             {/* Summary cards */}
             <div className="grid grid-cols-5 gap-3 mb-6">
-              <div className="rounded-xl p-5 bg-white border border-slate-200/80">
+              <div className="rounded-[12px] p-5 bg-white border border-slate-200/70">
                 <div className="text-[11px] uppercase tracking-wide font-medium mb-1.5 text-slate-500">Total luna curenta</div>
                 <div className="text-2xl font-bold font-mono tracking-tight text-slate-900">
                   ${(costs?.totalMonth || 0).toFixed(2)}
@@ -397,7 +397,7 @@ export default function AdminPage() {
                 return (
                   <div
                     key={agent}
-                    className="rounded-xl p-5 bg-white border border-slate-200/80"
+                    className="rounded-[12px] p-5 bg-white border border-slate-200/70"
                   >
                     <div className="text-[11px] uppercase tracking-wide font-medium mb-1.5 text-slate-500">
                       {labels[agent] || agent}
@@ -495,7 +495,7 @@ export default function AdminPage() {
             {costs?.byProject && costs.byProject.length > 0 && (
               <>
                 <div className="text-[11px] uppercase tracking-wide font-medium mb-2.5 text-slate-500">Cost detaliat per proiect</div>
-                <div className="rounded-xl overflow-hidden border border-slate-200/80 bg-white">
+                <div className="rounded-[12px] overflow-hidden border border-slate-200/70 bg-white">
                   <table className="w-full border-collapse text-[13px]">
                     <thead>
                       <tr className="bg-slate-50">
@@ -583,7 +583,7 @@ export default function AdminPage() {
                     key={a.id}
                     className="flex items-start gap-3 px-4 py-3 rounded-md transition-colors border-b border-slate-200 hover:bg-slate-100"
                   >
-                    <div className="w-8 h-8 flex items-center justify-center text-sm flex-shrink-0 rounded-md bg-slate-50 border border-slate-200/80">
+                    <div className="w-8 h-8 flex items-center justify-center text-sm flex-shrink-0 rounded-md bg-slate-50 border border-slate-200/70">
                       {h.icon}
                     </div>
                     <div className="flex-1 min-w-0">
@@ -624,7 +624,7 @@ export default function AdminPage() {
                   key={item.href}
                   href={item.href}
                   download
-                  className="p-4 rounded-xl border border-slate-200/80 bg-white hover:shadow-sm hover:border-slate-300/80 transition-all cursor-pointer group"
+                  className="p-4 rounded-[12px] border border-slate-200/70 bg-white hover:border-slate-300 transition-all cursor-pointer group"
                 >
                   <div className="text-sm font-semibold text-slate-800 group-hover:text-blue-600 transition-colors">{"\u{1F4E5}"} {item.label}</div>
                   <div className="text-xs text-slate-400 mt-1">{item.desc}</div>
@@ -641,7 +641,7 @@ export default function AdminPage() {
           className="fixed inset-0 backdrop-blur-sm flex items-center justify-center z-[100] animate-[fadeIn_0.2s] bg-black/40"
           onClick={(e) => e.target === e.currentTarget && setShowInvite(false)}
         >
-          <div className="rounded-xl p-6 w-[460px] animate-[slideUp_0.3s_ease] bg-white border border-slate-200/80">
+          <div className="rounded-xl p-6 w-[460px] animate-[slideUp_0.3s_ease] bg-white border border-slate-200/70">
             <div className="flex justify-between items-center mb-1">
               <div className="text-xl font-extrabold text-slate-900">Invita consultant</div>
               <button

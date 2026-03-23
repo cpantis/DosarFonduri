@@ -261,18 +261,20 @@ function ScoringTab({ scoring }: { scoring: LibraryData["scoring"] }) {
       </div>
 
       {scoring.items.map(cr => (
-        <div key={cr.id} className="rounded-xl border border-slate-200 bg-white p-4 hover:border-slate-300 transition-all">
+        <div key={cr.id} style={{ borderRadius: 12, border: "1px solid rgba(226,232,240,.7)", background: "#fff", padding: "14px 20px", transition: "all .2s" }}
+          onMouseEnter={e => e.currentTarget.style.borderColor = "#cbd5e1"}
+          onMouseLeave={e => e.currentTarget.style.borderColor = "rgba(226,232,240,.7)"}>
           <div className="flex items-start justify-between gap-3">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-1">
-                <span className="text-[11px] font-bold font-mono text-blue-600 bg-blue-50 px-2 py-0.5 rounded">{cr.code}</span>
-                <span className="text-[13px] font-semibold text-slate-900">{cr.name}</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "#2563eb", background: "rgba(37,99,235,.08)", padding: "2px 8px", borderRadius: 4, fontFamily: "'JetBrains Mono', monospace" }}>{cr.code}</span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: "#0f172a" }}>{cr.name}</span>
               </div>
-              {cr.description && <p className="text-[12px] text-slate-500 leading-relaxed">{cr.description}</p>}
+              {cr.description && <p style={{ fontSize: 12, color: "#64748b", lineHeight: 1.6 }}>{cr.description}</p>}
             </div>
             <div className="flex flex-col items-end flex-shrink-0">
-              <span className="text-lg font-extrabold font-mono text-slate-900">{cr.maxPoints}</span>
-              <span className="text-[10px] text-slate-400">puncte max</span>
+              <span style={{ fontSize: 18, fontWeight: 800, color: "#0f172a", fontFamily: "'JetBrains Mono', monospace" }}>{cr.maxPoints}</span>
+              <span style={{ fontSize: 10, color: "#94a3b8" }}>puncte max</span>
             </div>
           </div>
 
@@ -341,7 +343,9 @@ function ElementsTab({ elements }: { elements: LibraryData["elements"] }) {
 
       {/* Element rows */}
       {displayItems.map(el => (
-        <div key={el.id} className="rounded-xl border border-slate-200 bg-white p-3.5 hover:border-slate-300 transition-all">
+        <div key={el.id} style={{ borderRadius: 12, border: "1px solid rgba(226,232,240,.7)", background: "#fff", padding: "14px 20px", transition: "all .2s" }}
+          onMouseEnter={e => e.currentTarget.style.borderColor = "#cbd5e1"}
+          onMouseLeave={e => e.currentTarget.style.borderColor = "rgba(226,232,240,.7)"}>
           <div className="flex items-start justify-between gap-3">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-0.5">
@@ -409,8 +413,10 @@ function TablesTab({ tables }: { tables: LibraryData["tables"] }) {
   return (
     <div className="flex flex-col gap-3">
       {tables.items.map(tbl => (
-        <div key={tbl.id} className="rounded-xl border border-slate-200 bg-white transition-all hover:border-slate-300">
-          <button className="w-full text-left px-4 py-3 flex items-start gap-3" onClick={() => toggle(tbl.id)}>
+        <div key={tbl.id} style={{ borderRadius: 12, border: "1px solid rgba(226,232,240,.7)", background: "#fff", transition: "all .2s", overflow: "hidden" }}
+          onMouseEnter={e => e.currentTarget.style.borderColor = "#cbd5e1"}
+          onMouseLeave={e => e.currentTarget.style.borderColor = "rgba(226,232,240,.7)"}>
+          <button className="w-full text-left" style={{ padding: "14px 20px", display: "flex", alignItems: "flex-start", gap: 12, cursor: "pointer", border: "none", font: "inherit", background: "transparent" }} onClick={() => toggle(tbl.id)}>
             <span className="text-[10px] text-slate-400 mt-1 flex-shrink-0 transition-transform" style={{ transform: expanded.has(tbl.id) ? "rotate(90deg)" : "none" }}>{"\u25B6"}</span>
             <div className="flex-1 min-w-0">
               <div className="text-[13px] font-semibold text-slate-900">{tbl.name}</div>
@@ -523,7 +529,7 @@ function ChecklistTab({ checklist, folderId, onRefresh }: { checklist: LibraryDa
 
       {/* Add form */}
       {adding && (
-        <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-3 flex flex-col gap-2">
+        <div style={{ borderRadius: 12, border: "1px solid rgba(147,197,253,.5)", background: "rgba(239,246,255,.5)", padding: "14px 20px", display: "flex", flexDirection: "column", gap: 8 }}>
           <input
             className="px-3 py-2 rounded-lg border border-slate-200 bg-white text-[13px] text-slate-900 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
             placeholder="Nume document necesar..."

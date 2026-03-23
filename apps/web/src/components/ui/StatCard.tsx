@@ -18,7 +18,7 @@ export function StatCard({ icon, label, value, color = "blue", trend }: StatCard
   const ic = iconColorMap[color] || iconColorMap.blue;
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200/80 p-5 shadow-[0_1px_3px_rgba(0,0,0,.04),0_1px_2px_rgba(0,0,0,.06)] hover:shadow-[0_4px_12px_rgba(0,0,0,.06),0_1px_3px_rgba(0,0,0,.04)] hover:border-slate-300/80 transition-all group">
+    <div className="bg-white rounded-[12px] border border-slate-200/70 p-5 hover:border-slate-300 transition-all group">
       <div className="flex items-start justify-between">
         <div className={`w-10 h-10 rounded-xl ${ic.bg} ring-1 ${ic.ring} flex items-center justify-center text-[18px]`}>{icon}</div>
         {trend && (

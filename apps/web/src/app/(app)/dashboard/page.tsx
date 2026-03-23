@@ -109,7 +109,7 @@ export default function DashboardPage() {
                   {data.recentProjects.map(p => (
                     <div
                       key={p.id}
-                      className="bg-white rounded-xl border border-slate-200/80 p-4 shadow-[0_1px_2px_rgba(0,0,0,.03)] hover:shadow-[0_3px_8px_rgba(0,0,0,.06)] hover:border-slate-300/80 transition-all cursor-pointer group flex items-center justify-between overflow-hidden"
+                      className="bg-white rounded-[12px] border border-slate-200/70 p-4 hover:border-slate-300 transition-all cursor-pointer group flex items-center justify-between overflow-hidden"
                       onClick={() => router.push(`/projects/${p.id}`)}
                     >
                       <div className="min-w-0 flex-1">
@@ -142,7 +142,7 @@ export default function DashboardPage() {
               {/* Deadlines */}
               <div>
                 <SectionTitle>Termene apropiate</SectionTitle>
-                <div className="bg-white rounded-xl border border-slate-200/80 shadow-[0_1px_3px_rgba(0,0,0,.04)] overflow-hidden">
+                <div className="bg-white rounded-[12px] border border-slate-200/70 overflow-hidden">
                   {(!data?.deadlines || data.deadlines.length === 0) ? (
                     <div className="text-[13px] text-slate-400 text-center py-8">Niciun termen apropiat</div>
                   ) : (
@@ -164,7 +164,7 @@ export default function DashboardPage() {
               {/* Activity */}
               <div>
                 <SectionTitle>Activitate recentă</SectionTitle>
-                <div className="bg-white rounded-xl border border-slate-200/80 shadow-[0_1px_3px_rgba(0,0,0,.04)] overflow-hidden">
+                <div className="bg-white rounded-[12px] border border-slate-200/70 overflow-hidden">
                   {(!data?.activity || data.activity.length === 0) ? (
                     <div className="text-[13px] text-slate-400 text-center py-8">Nicio activitate</div>
                   ) : (

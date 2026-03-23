@@ -12,6 +12,56 @@ function escapeHtml(str: string): string {
   return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
+// ─── Email template builder for invitations ───
+// Uses bulletproof table-based button + plaintext fallback URL
+// so Yahoo/Gmail/Outlook always show a clickable link.
+function buildInviteEmailHtml(opts: {
+  orgName: string;
+  role: string;
+  email: string;
+  signupUrl: string;
+  heading: string;
+  showEmailHint: boolean;
+}): string {
+  const { orgName, role, email, signupUrl, heading, showEmailHint } = opts;
+  return [
+    `<div style="font-family:'DM Sans',Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;padding:32px">`,
+    // Header
+    `<div style="background:linear-gradient(135deg,#a78bfa 0%,#8b5cf6 100%);border-radius:12px;padding:24px 32px;margin-bottom:24px">`,
+    `<h1 style="color:#fff;margin:0;font-size:22px">DosarFonduri</h1>`,
+    `</div>`,
+    // Heading
+    `<h2 style="color:#1a1e28;margin:0 0 16px">${escapeHtml(heading)}</h2>`,
+    // Body
+    `<p style="color:#5a6478;font-size:15px;line-height:1.6">`,
+    `Ai fost invitat să te alături cabinetului <strong>${escapeHtml(orgName)}</strong> cu rolul de <strong>${escapeHtml(role)}</strong>.`,
+    `</p>`,
+    showEmailHint
+      ? `<p style="color:#5a6478;font-size:15px;line-height:1.6">Pentru a-ți activa contul, creează-ți un cont folosind adresa de email <strong>${escapeHtml(email)}</strong>:</p>`
+      : "",
+    // Bulletproof button (table-based — works in Yahoo, Gmail, Outlook)
+    `<div style="text-align:center;margin:28px 0">`,
+    `<table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin:auto">`,
+    `<tr><td style="border-radius:10px;background:#a78bfa">`,
+    `<a href="${signupUrl}" target="_blank" style="display:inline-block;padding:14px 36px;color:#ffffff;text-decoration:none;font-weight:700;font-size:15px;font-family:'DM Sans',Helvetica,Arial,sans-serif;border-radius:10px">Creează cont</a>`,
+    `</td></tr>`,
+    `</table>`,
+    `</div>`,
+    // Plaintext URL fallback (always visible — ensures link is accessible)
+    `<p style="color:#8892a8;font-size:12px;line-height:1.5;word-break:break-all">`,
+    `Dacă butonul nu funcționează, copiază acest link în browser:<br/>`,
+    `<a href="${signupUrl}" style="color:#7c3aed;text-decoration:underline">${signupUrl}</a>`,
+    `</p>`,
+    // Footer
+    `<p style="color:#8892a8;font-size:13px;line-height:1.5">`,
+    `După înregistrare vei avea acces direct la cabinetul ${escapeHtml(orgName)} fără a fi nevoie de un cod de activare.`,
+    `</p>`,
+    `<hr style="border:none;border-top:1px solid #e0e4ea;margin:24px 0"/>`,
+    `<p style="color:#8892a8;font-size:12px">DosarFonduri &copy; ${new Date().getFullYear()}</p>`,
+    `</div>`,
+  ].join("");
+}
+
 export const adminRoutes = new Hono<AppEnv>();
 
 // Helper: require admin role
@@ -136,28 +186,14 @@ adminRoutes.post("/users", async (c) => {
     organizationId: auth.organizationId!,
     to: body.email,
     subject: `Ai fost invitat în cabinetul ${org.name} pe DosarFonduri`,
-    html: [
-      `<div style="font-family:'DM Sans',system-ui,sans-serif;max-width:560px;margin:0 auto;padding:32px">`,
-      `<div style="background:linear-gradient(135deg,#a78bfa 0%,#8b5cf6 100%);border-radius:12px;padding:24px 32px;margin-bottom:24px">`,
-      `<h1 style="color:#fff;margin:0;font-size:22px">DosarFonduri</h1>`,
-      `</div>`,
-      `<h2 style="color:#1a1e28;margin:0 0 16px">Bine ai venit!</h2>`,
-      `<p style="color:#5a6478;font-size:15px;line-height:1.6">`,
-      `Ai fost invitat să te alături cabinetului <strong>${escapeHtml(org.name)}</strong> cu rolul de <strong>${escapeHtml(body.role)}</strong>.`,
-      `</p>`,
-      `<p style="color:#5a6478;font-size:15px;line-height:1.6">`,
-      `Pentru a-ți activa contul, creează-ți un cont folosind adresa de email <strong>${escapeHtml(body.email)}</strong>:`,
-      `</p>`,
-      `<div style="text-align:center;margin:28px 0">`,
-      `<a href="${signupUrl}" style="display:inline-block;padding:14px 36px;background:#a78bfa;color:#fff;text-decoration:none;border-radius:10px;font-weight:700;font-size:15px">Creează cont</a>`,
-      `</div>`,
-      `<p style="color:#8892a8;font-size:13px;line-height:1.5">`,
-      `După înregistrare vei avea acces direct la cabinetul ${escapeHtml(org.name)} fără a fi nevoie de un cod de activare.`,
-      `</p>`,
-      `<hr style="border:none;border-top:1px solid #e0e4ea;margin:24px 0"/>`,
-      `<p style="color:#8892a8;font-size:12px">DosarFonduri &copy; ${new Date().getFullYear()}</p>`,
-      `</div>`,
-    ].join(""),
+    html: buildInviteEmailHtml({
+      orgName: org.name,
+      role: body.role,
+      email: body.email,
+      signupUrl,
+      heading: "Bine ai venit!",
+      showEmailHint: true,
+    }),
   });
 
   return c.json({ ...newUser, emailSent: emailResult.sent, emailError: emailResult.sent ? undefined : emailResult.reason }, 201);
@@ -184,22 +220,14 @@ adminRoutes.post("/users/:id/resend-invite", async (c) => {
     organizationId: auth.organizationId!,
     to: user.email,
     subject: `Reminder: Ai fost invitat în cabinetul ${org.name} pe DosarFonduri`,
-    html: [
-      `<div style="font-family:'DM Sans',system-ui,sans-serif;max-width:560px;margin:0 auto;padding:32px">`,
-      `<div style="background:linear-gradient(135deg,#a78bfa 0%,#8b5cf6 100%);border-radius:12px;padding:24px 32px;margin-bottom:24px">`,
-      `<h1 style="color:#fff;margin:0;font-size:22px">DosarFonduri</h1>`,
-      `</div>`,
-      `<h2 style="color:#1a1e28;margin:0 0 16px">Reminder invitație</h2>`,
-      `<p style="color:#5a6478;font-size:15px;line-height:1.6">`,
-      `Ai fost invitat să te alături cabinetului <strong>${escapeHtml(org.name)}</strong> cu rolul de <strong>${escapeHtml(user.role)}</strong>.`,
-      `</p>`,
-      `<div style="text-align:center;margin:28px 0">`,
-      `<a href="${signupUrl}" style="display:inline-block;padding:14px 36px;background:#a78bfa;color:#fff;text-decoration:none;border-radius:10px;font-weight:700;font-size:15px">Creează cont</a>`,
-      `</div>`,
-      `<hr style="border:none;border-top:1px solid #e0e4ea;margin:24px 0"/>`,
-      `<p style="color:#8892a8;font-size:12px">DosarFonduri &copy; ${new Date().getFullYear()}</p>`,
-      `</div>`,
-    ].join(""),
+    html: buildInviteEmailHtml({
+      orgName: org.name,
+      role: user.role,
+      email: user.email,
+      signupUrl,
+      heading: "Reminder invitație",
+      showEmailHint: false,
+    }),
   });
 
   if (!emailResult.sent) {
@@ -208,7 +236,7 @@ adminRoutes.post("/users/:id/resend-invite", async (c) => {
       : `Trimiterea email-ului a eșuat: ${emailResult.reason}`;
     return c.json({ error: reason, detail: emailResult }, 422);
   }
-  return c.json({ ok: true, email: user.email });
+  return c.json({ ok: true, email: user.email, emailSent: emailResult.sent });
 });
 
 // ─── PUT /users/:id ───

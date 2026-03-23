@@ -63,6 +63,7 @@ type EligibilityRule = {
   page?: number;
   section?: string;
   category?: string;
+  condition?: any;
   needsReview?: boolean;
   sourceDocument?: { id: string; name: string; fileType: string } | null;
   hasReferenceData?: boolean;
@@ -182,6 +183,7 @@ function mapEligibilityRules(flat: any[]): EligibilityRule[] {
       page: item.rule?.sourcePage ?? item.rule?.page,
       section: item.rule?.section,
       category: item.rule?.category || "",
+      condition: item.rule?.condition || null,
       needsReview: item.rule?.needsReview ?? (conf != null && conf < 0.85),
       sourceDocument: item.rule?.sourceDocument || null,
       isPreEligibility: typeof notes === "string" && notes.startsWith("[Pre-elig]"),
@@ -215,6 +217,58 @@ function mapGuideRules(grouped: any[]): GuideRule[] {
     }
   }
   return rules;
+}
+
+// ─── HUMAN-READABLE CONDITION FORMATTING (shared with Biblioteca) ───
+
+const OPERATOR_LABELS: Record<string, string> = {
+  eq: "=", neq: "\u2260", gt: ">", gte: "\u2265", lt: "<", lte: "\u2264",
+  in: "\u2208", not_in: "\u2209", between: "\u2194",
+  contains: "conține", not_contains: "nu conține",
+  exists: "există", not_exists: "nu există",
+  matches: "corespunde", is_true: "= DA", is_false: "= NU",
+};
+
+function formatFieldName(field: string): string {
+  return field.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function formatConditionValue(val: any): string {
+  if (val === null || val === undefined) return "—";
+  if (typeof val === "boolean") return val ? "DA" : "NU";
+  if (typeof val === "number") return val.toLocaleString("ro-RO");
+  if (Array.isArray(val)) return val.join(", ");
+  return String(val);
+}
+
+function formatConditionText(condition: any): string | null {
+  if (!condition || typeof condition !== "object") return null;
+  const { field, operator, value, value2 } = condition;
+  if (!field && !operator) return null;
+
+  const fieldLabel = field ? formatFieldName(field) : "";
+  const valLabel = formatConditionValue(value);
+
+  if (operator === "between" && value !== undefined && value2 !== undefined) {
+    return `${fieldLabel} între ${valLabel} și ${formatConditionValue(value2)}`;
+  }
+  if (operator === "in" || operator === "not_in") {
+    const listStr = Array.isArray(value) ? value.join(", ") : valLabel;
+    return operator === "in" ? `${fieldLabel} este unul din: ${listStr}` : `${fieldLabel} nu este în: ${listStr}`;
+  }
+  if (operator === "exists" || operator === "not_exists") {
+    return operator === "exists" ? `${fieldLabel} trebuie să existe` : `${fieldLabel} nu trebuie să existe`;
+  }
+  if (operator === "is_true" || operator === "is_false") {
+    return `${fieldLabel} = ${operator === "is_true" ? "DA" : "NU"}`;
+  }
+  if (field && operator && value !== undefined) {
+    return `${fieldLabel} ${OPERATOR_LABELS[operator] || operator} ${valLabel}`;
+  }
+  if (field && value !== undefined) {
+    return `${fieldLabel}: ${valLabel}`;
+  }
+  return null;
 }
 
 const SOURCE_MAP: Record<string, string> = {
@@ -2252,12 +2306,12 @@ export default function ProjectViewPage() {
         .elig-stat{padding:16px 20px;border-radius:12px;border:1px solid rgba(226,232,240,.8);background:#ffffff;flex:1;text-align:center}
         .elig-stat .number{font-size:28px;font-weight:800;font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums}
         .elig-stat .label{font-size:12px;color:#64748b;margin-top:4px;font-weight:500}
-        .elig-rule{display:flex;align-items:center;gap:12px;padding:14px 20px;border-radius:10px;margin-bottom:8px;transition:all .15s cubic-bezier(.4,0,.2,1);cursor:pointer;border:none}
+        .elig-rule{display:flex;align-items:flex-start;gap:12px;padding:14px 20px;border-radius:10px;margin-bottom:8px;transition:all .15s cubic-bezier(.4,0,.2,1);cursor:pointer;border:none}
         .elig-rule.pass-bg{background:rgba(52,211,153,.08)}
         .elig-rule.fail-bg{background:rgba(248,113,113,.08)}
         .elig-rule.pending-bg{background:rgba(251,191,36,.08)}
         .elig-rule:hover{box-shadow:0 1px 4px rgba(0,0,0,.06)}
-        .elig-icon{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:11px;font-weight:700}
+        .elig-icon{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:11px;font-weight:700;margin-top:2px}
         .elig-icon.pass{background:transparent;color:#059669}
         .elig-icon.fail{background:transparent;color:#dc2626}
         .elig-icon.pending{background:transparent;color:#d97706}
@@ -3346,19 +3400,29 @@ export default function ProjectViewPage() {
                       </span>
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-                      {preEligRules.map(rule => (
+                      {preEligRules.map(rule => {
+                        const ct = rule.condition?.field ? formatConditionText(rule.condition) : null;
+                        return (
                         <div className={`elig-rule ${rule.status}-bg`} key={rule.id}>
                           <div className={`elig-icon ${rule.status}`}>
                             {eligStatusIcons[rule.status]}
                           </div>
-                          <span className={`elig-name ${rule.status}-text`}>
-                            {rule.name}
-                            {rule.detail && (
-                              <span style={{ fontWeight: 400, fontSize: 11, color: "#64748b" }}> — {rule.detail.replace("[Pre-elig] ", "")}</span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <span className={`elig-name ${rule.status}-text`}>
+                              {rule.name}
+                              {rule.detail && (
+                                <span style={{ fontWeight: 400, fontSize: 11, color: "#64748b" }}> — {rule.detail.replace("[Pre-elig] ", "")}</span>
+                              )}
+                            </span>
+                            {ct && (
+                              <div style={{ marginTop: 4, fontSize: 11, fontWeight: 600, color: "#2563eb", display: "flex", alignItems: "center", gap: 4 }}>
+                                <span>{"\u{1F9EA}"}</span> {ct}
+                              </div>
                             )}
-                          </span>
+                          </div>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </>
                 )}
@@ -3377,19 +3441,29 @@ export default function ProjectViewPage() {
                       </div>
                     )}
                     <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-                      {projectRules.map(rule => (
+                      {projectRules.map(rule => {
+                        const ct = rule.condition?.field ? formatConditionText(rule.condition) : null;
+                        return (
                         <div className={`elig-rule ${rule.status}-bg`} key={rule.id}>
                           <div className={`elig-icon ${rule.status}`}>
                             {eligStatusIcons[rule.status]}
                           </div>
-                          <span className={`elig-name ${rule.status}-text`}>
-                            {rule.name}
-                            {rule.status === "pending" && rule.detail && (
-                              <span style={{ fontWeight: 400 }}> — {rule.detail}</span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <span className={`elig-name ${rule.status}-text`}>
+                              {rule.name}
+                              {rule.status === "pending" && rule.detail && (
+                                <span style={{ fontWeight: 400 }}> — {rule.detail}</span>
+                              )}
+                            </span>
+                            {ct && (
+                              <div style={{ marginTop: 4, fontSize: 11, fontWeight: 600, color: "#2563eb", display: "flex", alignItems: "center", gap: 4 }}>
+                                <span>{"\u{1F9EA}"}</span> {ct}
+                              </div>
                             )}
-                          </span>
+                          </div>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </>
                 )}
@@ -3642,6 +3716,21 @@ export default function ProjectViewPage() {
                                 {r.validated && <span className="rule-validated-flag">✓</span>}
                               </div>
                               <div className="rule-text">{r.text}</div>
+                              {/* Human-readable condition preview */}
+                              {r.type === "fixed" && r.condition?.field && (() => {
+                                const ct = formatConditionText(r.condition);
+                                return ct ? (
+                                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, padding: "4px 10px", borderRadius: 8, background: "rgba(77,139,255,.05)", border: "1px solid rgba(77,139,255,.12)", fontSize: 11, fontWeight: 600, color: "#2563eb" }}>
+                                    <span style={{ flexShrink: 0 }}>{"\u{1F9EA}"}</span>
+                                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ct}</span>
+                                  </div>
+                                ) : null;
+                              })()}
+                              {r.type === "interpreted" && r.condition?.logic && (
+                                <div style={{ marginTop: 6, padding: "4px 10px", borderRadius: 8, background: "rgba(167,139,250,.05)", border: "1px solid rgba(167,139,250,.12)", fontSize: 11, color: "#7c3aed", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                  {r.condition.logic}
+                                </div>
+                              )}
                               {r.semanticTags.length > 0 && (
                                 <div className="rule-card-tags">
                                   {r.semanticTags.map((tag: string) => (
@@ -3723,16 +3812,29 @@ export default function ProjectViewPage() {
                                   {sel.type === "fixed" ? "Condiție verificare" : "Logică decizională"}
                                 </div>
                                 <div className="rd-condition">
-                                  {sel.type === "fixed" && sel.condition.field && (
-                                    <div className="rd-cond-row">
-                                      <span className="rd-cond-field">{sel.condition.field}</span>
-                                      <span className="rd-cond-op">{sel.condition.operator}</span>
-                                      <span className="rd-cond-val">
-                                        {Array.isArray(sel.condition.value) ? sel.condition.value.join(", ") : String(sel.condition.value)}
-                                        {sel.condition.value2 && ` — ${sel.condition.value2}`}
-                                      </span>
-                                    </div>
-                                  )}
+                                  {sel.type === "fixed" && sel.condition.field && (() => {
+                                    const humanText = formatConditionText(sel.condition);
+                                    return (
+                                      <>
+                                        {/* Human-readable summary */}
+                                        {humanText && (
+                                          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 10, background: "rgba(77,139,255,.04)", border: "1px solid rgba(77,139,255,.15)", marginBottom: 10 }}>
+                                            <span style={{ fontSize: 16, flexShrink: 0 }}>{"\u{1F9EA}"}</span>
+                                            <span style={{ fontSize: 14, fontWeight: 700, color: "#0f172a" }}>{humanText}</span>
+                                          </div>
+                                        )}
+                                        {/* Structured breakdown */}
+                                        <div className="rd-cond-row">
+                                          <span className="rd-cond-field">{formatFieldName(sel.condition.field)}</span>
+                                          <span className="rd-cond-op">{OPERATOR_LABELS[sel.condition.operator] || sel.condition.operator}</span>
+                                          <span className="rd-cond-val">
+                                            {formatConditionValue(sel.condition.value)}
+                                            {sel.condition.value2 != null && ` — ${formatConditionValue(sel.condition.value2)}`}
+                                          </span>
+                                        </div>
+                                      </>
+                                    );
+                                  })()}
                                   {sel.type === "interpreted" && (
                                     <>
                                       {sel.condition.type && (

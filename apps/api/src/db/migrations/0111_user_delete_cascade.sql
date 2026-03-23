@@ -31,11 +31,9 @@ ALTER TABLE "projects" DROP CONSTRAINT IF EXISTS "projects_locked_by_users_id_fk
 ALTER TABLE "projects" ADD CONSTRAINT "projects_locked_by_users_id_fk"
   FOREIGN KEY ("locked_by") REFERENCES "users"("id") ON DELETE SET NULL;
 
--- documents.created_by: make nullable + SET NULL
-ALTER TABLE "documents" ALTER COLUMN "created_by" DROP NOT NULL;
-ALTER TABLE "documents" DROP CONSTRAINT IF EXISTS "documents_created_by_users_id_fk";
-ALTER TABLE "documents" ADD CONSTRAINT "documents_created_by_users_id_fk"
-  FOREIGN KEY ("created_by") REFERENCES "users"("id") ON DELETE SET NULL;
+-- documents does NOT have a created_by column (it has uploaded_by).
+-- Lines previously here were a bug — documents.created_by was never created.
+-- The uploaded_by FK is already correctly SET NULL via the initial migration.
 
 -- document_folders.created_by: make nullable + SET NULL
 ALTER TABLE "document_folders" ALTER COLUMN "created_by" DROP NOT NULL;

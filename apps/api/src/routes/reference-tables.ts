@@ -3,8 +3,8 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { db } from "../db";
 import { updateRefTableSchema, createRuleRefLinkSchema, createElementRuleLinkSchema, validateElementSchema } from "@dosarfonduri/shared";
-import { guideReferenceTables, ruleReferenceLinks, elementRuleLinks, rules, templateElements, documents } from "../db/schema";
-import { eq, and } from "drizzle-orm";
+import { guideReferenceTables, ruleReferenceLinks, elementRuleLinks, rules, templateElements, documents, elementDefinitions } from "../db/schema";
+import { eq, and, count } from "drizzle-orm";
 import { AuthContext } from "../middleware/auth";
 
 export const referenceTableRoutes = new Hono<AppEnv>();
@@ -143,6 +143,23 @@ referenceTableRoutes.put("/tables/:id", async (c) => {
 referenceTableRoutes.delete("/tables/:id", async (c) => {
   const auth = c.get("auth") as AuthContext;
   const id = c.req.param("id");
+  const force = c.req.query("force") === "true";
+
+  // Check if table is referenced by rules or element definitions
+  if (!force) {
+    const [ruleLinks] = await db.select({ cnt: count() }).from(ruleReferenceLinks)
+      .where(eq(ruleReferenceLinks.referenceTableId, id));
+    const [elemDefs] = await db.select({ cnt: count() }).from(elementDefinitions)
+      .where(eq(elementDefinitions.lookupTableId, id));
+    const refs = (ruleLinks?.cnt || 0) + (elemDefs?.cnt || 0);
+    if (refs > 0) {
+      return c.json({
+        error: `Tabelul este referențiat de ${ruleLinks?.cnt || 0} reguli și ${elemDefs?.cnt || 0} definiții de elemente. Adaugă ?force=true pentru a șterge oricum.`,
+        ruleLinks: ruleLinks?.cnt || 0,
+        elementDefLinks: elemDefs?.cnt || 0,
+      }, 409);
+    }
+  }
 
   await db.delete(guideReferenceTables).where(
     and(eq(guideReferenceTables.id, id), eq(guideReferenceTables.organizationId, auth.organizationId!))

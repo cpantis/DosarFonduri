@@ -4,7 +4,7 @@ import { z } from "zod";
 import { createHash } from "crypto";
 import { updateDocElementSchema, validatePageSchema, createDocElementSchema } from "@dosarfonduri/shared";
 import { db } from "../db";
-import { documentFolders, documents, files, templateElements, rules, scoringCriteria, elementDefinitions, templatePlaceholderMapping, users, guideReferenceTables, elementRuleLinks, ruleReferenceLinks, sessionChecklist } from "../db/schema";
+import { documentFolders, documents, files, templateElements, rules, scoringCriteria, elementDefinitions, templatePlaceholderMapping, users, guideReferenceTables, elementRuleLinks, ruleReferenceLinks, sessionChecklist, projects, projectDocuments } from "../db/schema";
 import { eq, and, isNull, sql, inArray } from "drizzle-orm";
 import { uploadFile, getFileUrl, deleteFile, createPresignedUploadUrl, verifyFileUploaded, isLocalStorage } from "../services/storage";
 import { AuthContext } from "../middleware/auth";
@@ -123,13 +123,30 @@ documentRoutes.delete("/folders/:id", async (c) => {
   const auth = c.get("auth") as AuthContext;
   const id = c.req.param("id");
 
-  // Delete R2 files for all documents in this folder (and sub-folders recursively)
+  // Delete R2 files for all documents and Neemia outputs in this folder tree
   async function deleteFilesInFolder(folderId: string) {
     const docs = await db.query.documents.findMany({
       where: and(eq(documents.folderId, folderId), eq(documents.organizationId, auth.organizationId!)),
     });
     for (const doc of docs) {
       await deleteFile(doc.fileId).catch((e: any) => console.warn("[documents] folder file cleanup:", e.message));
+    }
+
+    // Delete R2 files for Neemia-generated docs of projects in this folder
+    const folderProjects = await db.query.projects.findMany({
+      where: and(eq(projects.folderId, folderId), eq(projects.organizationId, auth.organizationId!)),
+      columns: { id: true },
+    });
+    for (const proj of folderProjects) {
+      const generatedDocs = await db.query.projectDocuments.findMany({
+        where: eq(projectDocuments.projectId, proj.id),
+        columns: { generatedFileId: true },
+      });
+      for (const gd of generatedDocs) {
+        if (gd.generatedFileId) {
+          await deleteFile(gd.generatedFileId).catch((e: any) => console.warn("[documents] neemia file cleanup:", e.message));
+        }
+      }
     }
 
     // Recurse into child folders

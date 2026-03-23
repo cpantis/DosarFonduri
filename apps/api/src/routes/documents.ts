@@ -177,7 +177,7 @@ documentRoutes.get("/folders/:folderId/documents", async (c) => {
 
   // Enrich with processing summary counts for processed documents
   const enriched = await Promise.all(docs.map(async (doc) => {
-    const base = { ...doc, _uploadedByName: uploaderMap.get(doc.uploadedBy) || null };
+    const base = { ...doc, _uploadedByName: doc.uploadedBy ? uploaderMap.get(doc.uploadedBy) || null : null };
     if (doc.status !== "processed") return base;
 
     try {

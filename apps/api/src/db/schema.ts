@@ -135,7 +135,7 @@ export const companies = pgTable("companies", {
   lastSyncedAt: timestamp("last_synced_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull().$onUpdate(() => new Date()),
-  createdBy: uuid("created_by").references(() => users.id).notNull(),
+  createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
 }, (table) => ({
   cuiOrgIdx: uniqueIndex("cui_org_idx").on(table.cui, table.organizationId),
   orgIdx: index("company_org_idx").on(table.organizationId),
@@ -218,7 +218,7 @@ export const documentFolders = pgTable("document_folders", {
   type: folderTypeEnum("type").notNull(),
   position: integer("position").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-  createdBy: uuid("created_by").references(() => users.id).notNull(),
+  createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
 }, (table) => ({
   orgIdx: index("folder_org_idx").on(table.organizationId),
   parentIdx: index("folder_parent_idx").on(table.parentId),
@@ -287,7 +287,7 @@ export const documents = pgTable("documents", {
     processing_time_ms: number;
   } | Record<string, unknown>>(),
   tags: text("tags").array(),
-  uploadedBy: uuid("uploaded_by").references(() => users.id).notNull(),
+  uploadedBy: uuid("uploaded_by").references(() => users.id, { onDelete: "set null" }),
   uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
   processedAt: timestamp("processed_at"),
   processingError: text("processing_error"),
@@ -320,7 +320,7 @@ export const rules = pgTable("rules", {
   confidence: decimal("confidence", { precision: 3, scale: 2 }),
   needsReview: boolean("needs_review").notNull().default(false),
   validated: boolean("validated").notNull().default(false),
-  validatedBy: uuid("validated_by").references(() => users.id),
+  validatedBy: uuid("validated_by").references(() => users.id, { onDelete: "set null" }),
   validatedAt: timestamp("validated_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -381,7 +381,7 @@ export const guideReferenceTables = pgTable("guide_reference_tables", {
   sourceText: text("source_text"),
   extractedBy: refExtractedByEnum("extracted_by").notNull().default("ai"),
   validated: boolean("validated").notNull().default(false),
-  validatedBy: uuid("validated_by").references(() => users.id),
+  validatedBy: uuid("validated_by").references(() => users.id, { onDelete: "set null" }),
   validatedAt: timestamp("validated_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
@@ -412,7 +412,7 @@ export const templatePlaceholderMapping = pgTable("template_placeholder_mapping"
   mappedBy: placeholderMappedByEnum("mapped_by").notNull().default("auto"),
   confidence: decimal("confidence", { precision: 3, scale: 2 }),
   validated: boolean("validated").notNull().default(false),
-  validatedBy: uuid("validated_by").references(() => users.id),
+  validatedBy: uuid("validated_by").references(() => users.id, { onDelete: "set null" }),
   validatedAt: timestamp("validated_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
@@ -451,7 +451,7 @@ export const templateElements = pgTable("template_elements", {
   rowIndex: integer("row_index"),
   detected: boolean("detected").notNull().default(true),
   validated: boolean("validated").notNull().default(false),
-  validatedBy: uuid("validated_by").references(() => users.id),
+  validatedBy: uuid("validated_by").references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
   docIdx: index("template_el_doc_idx").on(table.documentId),
@@ -475,8 +475,8 @@ export const projects = pgTable("projects", {
   codMysmis: varchar("cod_mysmis", { length: 100 }),
   structuraDosar: text("structura_dosar"),
   deadline: timestamp("deadline"),
-  consultantId: uuid("consultant_id").references(() => users.id).notNull(),
-  lockedBy: uuid("locked_by").references(() => users.id),
+  consultantId: uuid("consultant_id").references(() => users.id, { onDelete: "set null" }),
+  lockedBy: uuid("locked_by").references(() => users.id, { onDelete: "set null" }),
   lockedAt: timestamp("locked_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull().$onUpdate(() => new Date()),
@@ -496,7 +496,7 @@ export const projectElements = pgTable("project_elements", {
   source: elementSourceEnum("source").notNull().default("manual"),
   sourceDocumentId: uuid("source_document_id").references(() => documents.id),
   confirmed: boolean("confirmed").notNull().default(false),
-  confirmedBy: uuid("confirmed_by").references(() => users.id),
+  confirmedBy: uuid("confirmed_by").references(() => users.id, { onDelete: "set null" }),
   validationStatus: validationStatusEnum("validation_status").notNull().default("pending"),
   validationDetails: jsonb("validation_details").$type<{
     typeCheck?: { passed: boolean; message: string };
@@ -520,7 +520,7 @@ export const projectEligibility = pgTable("project_eligibility", {
   status: eligibilityStatusEnum("status").notNull().default("pending"),
   autoResult: boolean("auto_result"),
   overrideResult: boolean("override_result"),
-  overrideBy: uuid("override_by").references(() => users.id),
+  overrideBy: uuid("override_by").references(() => users.id, { onDelete: "set null" }),
   notes: text("notes"),
   checkedAt: timestamp("checked_at").defaultNow().notNull(),
 }, (table) => ({
@@ -561,8 +561,8 @@ export const projectDocuments = pgTable("project_documents", {
     aiModel?: string;
     generatedAt?: string;
   }>(),
-  generatedBy: uuid("generated_by").references(() => users.id),
-  validatedBy: uuid("validated_by").references(() => users.id),
+  generatedBy: uuid("generated_by").references(() => users.id, { onDelete: "set null" }),
+  validatedBy: uuid("validated_by").references(() => users.id, { onDelete: "set null" }),
   validatedAt: timestamp("validated_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -575,7 +575,7 @@ export const composeSectionVersions = pgTable("compose_section_versions", {
   version: integer("version").notNull().default(1),
   content: text("content").notNull(),
   source: varchar("source", { length: 50 }).notNull(), // "neemia_ai" or "consultant_edit"
-  editedBy: uuid("edited_by").references(() => users.id),
+  editedBy: uuid("edited_by").references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -619,7 +619,7 @@ export const elementAuditLog = pgTable("element_audit_log", {
   newValue: text("new_value"),
   oldValidationStatus: validationStatusEnum("old_validation_status"),
   newValidationStatus: validationStatusEnum("new_validation_status"),
-  changedBy: uuid("changed_by").references(() => users.id),
+  changedBy: uuid("changed_by").references(() => users.id, { onDelete: "set null" }),
   changeSource: elementSourceEnum("change_source").notNull().default("manual"),
   changedAt: timestamp("changed_at").defaultNow().notNull(),
 }, (table) => ({
@@ -670,7 +670,7 @@ export const projectScores = pgTable("project_scores", {
 export const solomonConversations = pgTable("solomon_conversations", {
   id: uuid("id").defaultRandom().primaryKey(),
   projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
-  userId: uuid("user_id").references(() => users.id).notNull(),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
   model: varchar("model", { length: 100 }).notNull(),
   status: varchar("status", { length: 20 }).notNull().default("active"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -715,7 +715,7 @@ export const aiUsageLog = pgTable("ai_usage_log", {
 export const auditLog = pgTable("audit_log", {
   id: uuid("id").defaultRandom().primaryKey(),
   organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
-  userId: uuid("user_id").references(() => users.id).notNull(),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
   action: varchar("action", { length: 100 }).notNull(),
   entityType: varchar("entity_type", { length: 50 }),
   entityId: uuid("entity_id"),
@@ -759,7 +759,7 @@ export const solomonKnowledge = pgTable("solomon_knowledge", {
   validUntil: timestamp("valid_until"), // when it expires (null = still valid)
   priority: integer("priority").default(0), // higher = shown first
   enabled: boolean("enabled").default(true),
-  createdBy: uuid("created_by").references(() => users.id),
+  createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull().$onUpdate(() => new Date()),
 });

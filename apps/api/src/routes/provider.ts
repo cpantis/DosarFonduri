@@ -3,7 +3,7 @@ import { sign, verify } from "hono/jwt";
 import { z } from "zod";
 import { db } from "../db";
 import { providerUsers, cabinetCodes, organizations, users } from "../db/schema";
-import { eq, and, isNull, inArray, sql } from "drizzle-orm";
+import { eq, and, not, isNull, inArray, sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { lookupCUI_ListaFirme, searchCompany_ListaFirme } from "../services/listafirme";
 import type { AppEnv } from "../types/hono";
@@ -358,8 +358,11 @@ providerRoutes.get("/users", providerAuth, async (c) => {
   const orgIds = await getProviderOrgIds(providerId);
   if (orgIds.length === 0) return c.json([]);
 
+  const statusFilter = c.req.query("includeDisabled") === "1" ? undefined : "active_only";
   const allUsers = await db.query.users.findMany({
-    where: inArray(users.organizationId, orgIds),
+    where: statusFilter
+      ? and(inArray(users.organizationId, orgIds), not(eq(users.status, "disabled")))
+      : inArray(users.organizationId, orgIds),
     orderBy: (u, { desc }) => [desc(u.createdAt)],
   });
 

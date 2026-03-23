@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { db } from "../db";
 import { users, organizations, projects, aiUsageLog, auditLog } from "../db/schema";
-import { eq, and, sql, desc, count, sum, gte, lte, ilike } from "drizzle-orm";
+import { eq, and, not, sql, desc, count, sum, gte, lte, ilike } from "drizzle-orm";
 import type { AuthContext } from "../middleware/auth";
 import { sendEmail } from "../services/email";
 
@@ -87,7 +87,7 @@ adminRoutes.post("/users", async (c) => {
   const [{ count: currentCount }] = await db
     .select({ count: count() })
     .from(users)
-    .where(eq(users.organizationId, auth.organizationId));
+    .where(and(eq(users.organizationId, auth.organizationId), not(eq(users.status, "disabled"))));
 
   if (currentCount >= org.maxUsers) {
     return c.json({ error: `Limita de ${org.maxUsers} utilizatori atinsă` }, 400);

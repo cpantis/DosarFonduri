@@ -349,6 +349,7 @@ export default function DocumentsPage() {
   const [docElements, setDocElements] = useState<Record<string, any[]>>({});
   const [tplElements, setTplElements] = useState<Record<string, { elements: any[]; total: number; mapped: number; unmapped: number } | null>>({});
   const [expandedTab, setExpandedTab] = useState<Record<string, string>>({});
+  const [expandedRuleIds, setExpandedRuleIds] = useState<Record<string, boolean>>({});
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
   const [pdfPreviewName, setPdfPreviewName] = useState<string>("");
   const [deleteConfirm, setDeleteConfirm] = useState<{ doc: DocItem } | null>(null);
@@ -1357,6 +1358,367 @@ export default function DocumentsPage() {
                           )}
                         </div>
                       )}
+                      {/* ─── RULES LIST ─── */}
+                      {(() => {
+                        const rules = docRules[d.id];
+                        const loading = docRulesLoading[d.id];
+                        if (loading) return (
+                          <div style={{ padding: "16px", textAlign: "center", color: "#94a3b8", fontSize: 12 }}>
+                            Se încarcă regulile...
+                          </div>
+                        );
+                        if (!rules || rules.length === 0) return null;
+
+                        const CATEGORY_LABELS: Record<string, string> = {
+                          eligibilitate: "Eligibilitate", financiar: "Financiar", tehnic: "Tehnic", administrativ: "Administrativ",
+                          achizitii: "Achiziții", documente: "Documente", selectie: "Selecție", intensitate: "Intensitate",
+                          eligibilitate_complexa: "Elig. complexă", documentare: "Documentare", ajutor_stat: "Ajutor stat",
+                        };
+                        const CATEGORY_COLORS: Record<string, string> = {
+                          eligibilitate: "#2563eb", financiar: "#059669", tehnic: "#7c3aed", administrativ: "#64748b",
+                          achizitii: "#ea580c", documente: "#d97706", selectie: "#dc2626", intensitate: "#0891b2",
+                          eligibilitate_complexa: "#2563eb", documentare: "#d97706", ajutor_stat: "#7c3aed",
+                        };
+                        const SEM_TAG_LABELS: Record<string, string> = {
+                          THRESHOLD: "Prag", SCORING: "Punctaj", TEMPORAL: "Temporal",
+                          DOCUMENT_BASED: "Document", DEPENDENCY: "Dependență", EXCLUSION: "Excludere",
+                          EXCEPTION: "Excepție", PROPORTIONAL: "Proporțional", CLASSIFICATION: "Clasificare",
+                        };
+                        const SEM_TAG_ICONS: Record<string, string> = {
+                          THRESHOLD: "⊞", SCORING: "★", TEMPORAL: "◷",
+                          DOCUMENT_BASED: "◩", DEPENDENCY: "⇄", EXCLUSION: "⊘",
+                          EXCEPTION: "⚑", PROPORTIONAL: "%", CLASSIFICATION: "◈",
+                        };
+                        const OP_LABELS: Record<string, string> = {
+                          eq: "=", neq: "\u2260", gt: ">", gte: "\u2265", lt: "<", lte: "\u2264",
+                          in: "\u2208", not_in: "\u2209", between: "\u2194",
+                          contains: "conține", not_contains: "nu conține",
+                          exists: "există", not_exists: "nu există",
+                          matches: "corespunde", is_true: "= DA", is_false: "= NU",
+                        };
+                        const fmtField = (f: string) => f.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+                        const fmtVal = (v: any): string => {
+                          if (v === null || v === undefined) return "—";
+                          if (typeof v === "boolean") return v ? "DA" : "NU";
+                          if (typeof v === "number") return v.toLocaleString("ro-RO");
+                          if (Array.isArray(v)) return v.join(", ");
+                          return String(v);
+                        };
+                        const fmtCondText = (c: any): string | null => {
+                          if (!c || typeof c !== "object") return null;
+                          const { field, operator, value, value2 } = c;
+                          if (!field && !operator) return null;
+                          const fl = field ? fmtField(field) : "";
+                          const vl = fmtVal(value);
+                          if (operator === "between" && value !== undefined && value2 !== undefined) return `${fl} între ${vl} și ${fmtVal(value2)}`;
+                          if (operator === "in" || operator === "not_in") {
+                            const ls = Array.isArray(value) ? value.join(", ") : vl;
+                            return operator === "in" ? `${fl} este unul din: ${ls}` : `${fl} nu este în: ${ls}`;
+                          }
+                          if (operator === "exists" || operator === "not_exists") return operator === "exists" ? `${fl} trebuie să existe` : `${fl} nu trebuie să existe`;
+                          if (operator === "is_true" || operator === "is_false") return `${fl} = ${operator === "is_true" ? "DA" : "NU"}`;
+                          if (field && operator && value !== undefined) return `${fl} ${OP_LABELS[operator] || operator} ${vl}`;
+                          if (field && value !== undefined) return `${fl}: ${vl}`;
+                          return null;
+                        };
+
+                        const cond = (r: any) => typeof r.condition === "string" ? (() => { try { return JSON.parse(r.condition); } catch { return null; } })() : r.condition;
+                        const tags = (r: any): string[] => {
+                          const c = cond(r);
+                          return c?.semantic_tags || c?.semanticTags || r.semanticTags || [];
+                        };
+
+                        const fixedRules = rules.filter((r: any) => r.type === "fixed");
+                        const interpRules = rules.filter((r: any) => r.type === "interpreted");
+
+                        const renderRuleCard = (r: any) => {
+                          const isOpen = expandedRuleIds[r.id] || false;
+                          const rc = cond(r);
+                          const rTags = tags(r);
+                          const conf = parseFloat(r.confidence?.toString() || "0");
+                          const catColor = CATEGORY_COLORS[r.category] || "#94a3b8";
+
+                          return (
+                            <div key={r.id} style={{
+                              border: "1px solid rgba(226,232,240,.8)",
+                              borderRadius: 10,
+                              background: "#ffffff",
+                              overflow: "hidden",
+                              transition: "border-color .15s",
+                            }}>
+                              {/* Rule header — always visible, clickable */}
+                              <div
+                                onClick={() => setExpandedRuleIds(prev => ({ ...prev, [r.id]: !prev[r.id] }))}
+                                style={{
+                                  display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 14px",
+                                  cursor: "pointer", userSelect: "none",
+                                  background: isOpen ? "rgba(77,139,255,.03)" : "transparent",
+                                  transition: "background .15s",
+                                }}
+                              >
+                                <span style={{
+                                  fontSize: 10, marginTop: 3, flexShrink: 0, color: "#94a3b8",
+                                  transition: "transform .2s",
+                                  transform: isOpen ? "rotate(90deg)" : "rotate(0deg)",
+                                }}>▶</span>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 4 }}>
+                                    <span style={{
+                                      fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 3, letterSpacing: ".3px",
+                                      background: r.type === "fixed" ? "rgba(52,211,153,.12)" : "rgba(251,191,36,.12)",
+                                      color: r.type === "fixed" ? "#059669" : "#d97706",
+                                    }}>
+                                      {r.type === "fixed" ? "FIXĂ" : "INTERPRETATĂ"}
+                                    </span>
+                                    <span style={{
+                                      fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 3, letterSpacing: ".3px",
+                                      background: `color-mix(in srgb, ${catColor} 12%, transparent)`,
+                                      color: catColor,
+                                      border: `1px solid color-mix(in srgb, ${catColor} 25%, transparent)`,
+                                      textTransform: "uppercase",
+                                    }}>
+                                      {CATEGORY_LABELS[r.category] || r.category}
+                                    </span>
+                                    {r.needsReview && (
+                                      <span style={{ fontSize: 9, fontWeight: 700, color: "#d97706" }}>⚠ Review</span>
+                                    )}
+                                    {r.validated && (
+                                      <span style={{ fontSize: 9, fontWeight: 700, color: "#059669" }}>✓ Validată</span>
+                                    )}
+                                  </div>
+                                  <div style={{ fontSize: 12, lineHeight: 1.5, color: "#0f172a", fontWeight: 500 }}>
+                                    {r.description}
+                                  </div>
+                                </div>
+                                <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, marginTop: 2 }}>
+                                  <span style={{
+                                    fontSize: 11, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace",
+                                    color: conf > 0.9 ? "#059669" : conf > 0.8 ? "#2563eb" : "#d97706",
+                                  }}>
+                                    {Math.round(conf * 100)}%
+                                  </span>
+                                  {r.sourcePage && (
+                                    <span style={{
+                                      fontSize: 9, fontWeight: 600, color: "#2563eb", background: "rgba(37,99,235,.08)",
+                                      padding: "1px 5px", borderRadius: 8,
+                                    }}>
+                                      p.{r.sourcePage}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              {/* Expanded detail */}
+                              {isOpen && (
+                                <div style={{
+                                  padding: "0 14px 14px 34px",
+                                  borderTop: "1px solid rgba(226,232,240,.5)",
+                                  animation: "docFadeIn .15s ease-out",
+                                }}>
+                                  {/* Confidence bar */}
+                                  <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "12px 0" }}>
+                                    <span style={{ fontSize: 10, fontWeight: 600, color: "#94a3b8", textTransform: "uppercase", letterSpacing: ".5px" }}>Încredere</span>
+                                    <span style={{
+                                      fontSize: 18, fontWeight: 800, fontFamily: "'JetBrains Mono', monospace",
+                                      color: conf > 0.9 ? "#059669" : conf > 0.8 ? "#2563eb" : "#d97706",
+                                    }}>
+                                      {Math.round(conf * 100)}%
+                                    </span>
+                                    <div style={{ flex: 1, height: 6, background: "#f1f5f9", borderRadius: 3, overflow: "hidden", maxWidth: 200 }}>
+                                      <div style={{
+                                        height: "100%", borderRadius: 3, width: `${conf * 100}%`,
+                                        background: conf > 0.9 ? "#34d399" : conf > 0.8 ? "#2563eb" : "#fbbf24",
+                                      }} />
+                                    </div>
+                                  </div>
+
+                                  {/* Semantic tags */}
+                                  {rTags.length > 0 && (
+                                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 12 }}>
+                                      {rTags.map((tag: string) => (
+                                        <span key={tag} className={`brd-sem-tag ${tag.toLowerCase()}`}>
+                                          {SEM_TAG_ICONS[tag] || "●"} {SEM_TAG_LABELS[tag] || tag}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
+
+                                  {/* Description */}
+                                  <div style={{ marginBottom: 16 }}>
+                                    <div className="brd-section-title">Descriere regulă</div>
+                                    <div style={{
+                                      fontSize: 13, lineHeight: 1.7, color: "#0f172a", padding: "12px 16px",
+                                      background: "#ffffff", border: "1px solid rgba(226,232,240,.8)", borderRadius: 10,
+                                    }}>
+                                      {r.description}
+                                    </div>
+                                  </div>
+
+                                  {/* Source text */}
+                                  {r.sourceText && (
+                                    <div style={{ marginBottom: 16 }}>
+                                      <div className="brd-section-title">
+                                        Text original din ghid
+                                        {r.sourcePage && (
+                                          <span style={{
+                                            fontSize: 10, fontWeight: 600, color: "#2563eb", background: "rgba(37,99,235,.1)",
+                                            padding: "2px 8px", borderRadius: 10, marginLeft: "auto",
+                                          }}>
+                                            Pag. {r.sourcePage}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div style={{
+                                        background: "#ffffff", border: "1px solid rgba(226,232,240,.8)", borderRadius: 10, overflow: "hidden",
+                                      }}>
+                                        <div style={{
+                                          fontSize: 12, lineHeight: 1.8, color: "#0f172a", padding: "14px 18px",
+                                          borderLeft: "3px solid #2563eb", fontStyle: "italic", background: "rgba(37,99,235,.03)",
+                                        }}>
+                                          {r.sourceText}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Condition / Decision logic */}
+                                  {rc && (
+                                    <div style={{ marginBottom: 16 }}>
+                                      <div className="brd-section-title">
+                                        {r.type === "fixed" ? "Condiție verificare" : "Logică decizională"}
+                                      </div>
+                                      <div style={{
+                                        background: "#ffffff", border: "1px solid rgba(226,232,240,.8)", borderRadius: 10,
+                                        padding: "12px 16px",
+                                      }}>
+                                        {r.type === "fixed" && rc.field && (() => {
+                                          const humanText = fmtCondText(rc);
+                                          return (
+                                            <>
+                                              {humanText && (
+                                                <div style={{
+                                                  display: "flex", alignItems: "center", gap: 10, padding: "8px 12px",
+                                                  borderRadius: 8, background: "rgba(77,139,255,.04)", border: "1px solid rgba(77,139,255,.15)", marginBottom: 10,
+                                                }}>
+                                                  <span style={{ fontSize: 14, flexShrink: 0 }}>🧪</span>
+                                                  <span style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>{humanText}</span>
+                                                </div>
+                                              )}
+                                              <div style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: "'JetBrains Mono', monospace", fontSize: 12 }}>
+                                                <span style={{ fontWeight: 700, color: "#2563eb" }}>{fmtField(rc.field)}</span>
+                                                <span style={{ color: "#94a3b8", fontWeight: 600 }}>{OP_LABELS[rc.operator] || rc.operator}</span>
+                                                <span style={{ fontWeight: 600, color: "#059669" }}>
+                                                  {fmtVal(rc.value)}
+                                                  {rc.value2 != null && ` — ${fmtVal(rc.value2)}`}
+                                                </span>
+                                              </div>
+                                            </>
+                                          );
+                                        })()}
+                                        {r.type === "interpreted" && (
+                                          <>
+                                            {rc.type && (
+                                              <div style={{ marginBottom: 10 }}>
+                                                <span style={{
+                                                  fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".5px",
+                                                  padding: "4px 12px", borderRadius: 4,
+                                                  background: "rgba(167,139,250,.12)", color: "#7c3aed",
+                                                  border: "1px solid rgba(167,139,250,.25)",
+                                                }}>
+                                                  {rc.type.replace(/_/g, " ")}
+                                                </span>
+                                              </div>
+                                            )}
+                                            {rc.logic && (
+                                              <div style={{ fontSize: 13, lineHeight: 1.7, color: "#0f172a", marginBottom: 12 }}>
+                                                {rc.logic}
+                                              </div>
+                                            )}
+                                            {rc.factors && rc.factors.length > 0 && (
+                                              <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+                                                <span style={{ fontSize: 11, fontWeight: 600, color: "#94a3b8", textTransform: "uppercase", letterSpacing: ".5px" }}>Factori:</span>
+                                                {rc.factors.map((f: string, i: number) => (
+                                                  <span key={i} style={{
+                                                    fontSize: 11, padding: "3px 10px", borderRadius: 12,
+                                                    background: "#f8fafc", border: "1px solid rgba(226,232,240,.8)",
+                                                    color: "#64748b", fontFamily: "'JetBrains Mono', monospace",
+                                                  }}>
+                                                    {f}
+                                                  </span>
+                                                ))}
+                                              </div>
+                                            )}
+                                            {rc.outcomes && rc.outcomes.length > 0 && (
+                                              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                                                {rc.outcomes.map((o: any, i: number) => (
+                                                  <div key={i} style={{
+                                                    display: "flex", alignItems: "flex-start", gap: 6,
+                                                    fontSize: 12, lineHeight: 1.6, padding: "6px 10px",
+                                                    background: "#f8fafc", borderRadius: 6,
+                                                  }}>
+                                                    <span style={{
+                                                      fontSize: 10, fontWeight: 700, color: "#2563eb",
+                                                      padding: "1px 6px", borderRadius: 3, background: "rgba(37,99,235,.1)",
+                                                      flexShrink: 0, marginTop: 1,
+                                                    }}>DACĂ</span>
+                                                    <span style={{ color: "#0f172a", flex: 1 }}>{o.if}</span>
+                                                    <span style={{ color: "#94a3b8", flexShrink: 0 }}>→</span>
+                                                    <span style={{ color: "#059669", fontWeight: 600, flex: 1 }}>{o.then}</span>
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            )}
+                                          </>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        };
+
+                        return (
+                          <div style={{ padding: "0 14px 14px", borderTop: "1px solid rgba(226,232,240,.6)" }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".5px", color: "#94a3b8", margin: "12px 0 8px" }}>
+                              Reguli extrase ({rules.length})
+                            </div>
+                            {/* Filter tabs */}
+                            <div style={{ display: "flex", gap: 4, marginBottom: 10 }}>
+                              {[
+                                { key: "all", label: `Toate (${rules.length})` },
+                                ...(fixedRules.length > 0 ? [{ key: "fixed", label: `Fixe (${fixedRules.length})` }] : []),
+                                ...(interpRules.length > 0 ? [{ key: "interpreted", label: `Interpretate (${interpRules.length})` }] : []),
+                              ].map(tab => {
+                                const currentFilter = expandedTab[`${d.id}_ruleFilter`] || "all";
+                                return (
+                                  <button
+                                    key={tab.key}
+                                    onClick={(e) => { e.stopPropagation(); setExpandedTab(prev => ({ ...prev, [`${d.id}_ruleFilter`]: tab.key })); }}
+                                    style={{
+                                      fontSize: 10, fontWeight: 600, padding: "3px 10px", borderRadius: 12, border: "1px solid",
+                                      cursor: "pointer", transition: "all .15s",
+                                      background: currentFilter === tab.key ? "rgba(77,139,255,.1)" : "transparent",
+                                      borderColor: currentFilter === tab.key ? "rgba(77,139,255,.3)" : "rgba(226,232,240,.8)",
+                                      color: currentFilter === tab.key ? "#2563eb" : "#94a3b8",
+                                    }}
+                                  >
+                                    {tab.label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            {/* Rules list */}
+                            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                              {(() => {
+                                const filter = expandedTab[`${d.id}_ruleFilter`] || "all";
+                                const filtered = filter === "fixed" ? fixedRules : filter === "interpreted" ? interpRules : rules;
+                                return filtered.map((r: any) => renderRuleCard(r));
+                              })()}
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   );
                 }
@@ -1705,6 +2067,19 @@ export default function DocumentsPage() {
         .doc-tree-scroll::-webkit-scrollbar-thumb:hover,
         .doc-list-scroll::-webkit-scrollbar-thumb:hover,
         .doc-detail::-webkit-scrollbar-thumb:hover { background: rgba(226,232,240,1); }
+
+        /* ─── Rule detail in document card ─── */
+        .brd-section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#94a3b8;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+        .brd-sem-tag{font-size:10px;font-weight:700;letter-spacing:.4px;padding:3px 10px;border-radius:20px;display:inline-flex;align-items:center;gap:4px;text-transform:uppercase}
+        .brd-sem-tag.threshold{color:#0369a1;background:rgba(14,165,233,.1);border:1px solid rgba(14,165,233,.25)}
+        .brd-sem-tag.scoring{color:#7c3aed;background:rgba(167,139,250,.1);border:1px solid rgba(167,139,250,.25)}
+        .brd-sem-tag.temporal{color:#0891b2;background:rgba(6,182,212,.1);border:1px solid rgba(6,182,212,.25)}
+        .brd-sem-tag.document_based{color:#b45309;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.25)}
+        .brd-sem-tag.dependency{color:#6d28d9;background:rgba(139,92,246,.1);border:1px solid rgba(139,92,246,.25)}
+        .brd-sem-tag.exclusion{color:#dc2626;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.2)}
+        .brd-sem-tag.exception{color:#ea580c;background:rgba(249,115,22,.1);border:1px solid rgba(249,115,22,.2)}
+        .brd-sem-tag.proportional{color:#059669;background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.25)}
+        .brd-sem-tag.classification{color:#2563eb;background:rgba(37,99,235,.1);border:1px solid rgba(37,99,235,.2)}
       `}</style>
 
       {/* ─── TOPBAR ─── */}

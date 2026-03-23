@@ -292,7 +292,7 @@ authRoutes.post("/forgot-password", async (c) => {
   const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
   const resetUrl = `${frontendUrl}/reset-password?token=${rawToken}`;
 
-  await sendEmail({
+  const result = await sendEmail({
     organizationId: user.organizationId || "system",
     to: user.email,
     subject: "Resetare parola — DosarFonduri",
@@ -304,6 +304,10 @@ authRoutes.post("/forgot-password", async (c) => {
       <p style="color:#64748b;font-size:13px;">Link-ul expira in 1 ora. Daca nu ai solicitat resetarea, ignora acest email.</p>
     `,
   });
+
+  if (result && !result.sent) {
+    console.warn("[forgot-password] Email not sent to", user.email, "reason:", result.reason, result.detail || "");
+  }
 
   return c.json({ ok: true });
 });

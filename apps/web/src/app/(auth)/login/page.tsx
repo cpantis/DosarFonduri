@@ -18,7 +18,7 @@ function LoginPageInner() {
   const invited = searchParams.get("invited");
   const invitedEmail = searchParams.get("email");
 
-  const [view, setView] = useState<"login" | "signup">(invited === "1" ? "signup" : "login");
+  const [view, setView] = useState<"login" | "signup" | "forgot">(invited === "1" ? "signup" : "login");
 
   return (
     <>
@@ -113,7 +113,9 @@ function LoginPageInner() {
         <div className={`auth-right ${view === "signup" ? "wide" : ""}`}>
           <div className="auth-wrap" key={view}>
             {view === "login" ? (
-              <LoginForm onGo={() => setView("signup")} />
+              <LoginForm onGo={() => setView("signup")} onForgot={() => setView("forgot")} />
+            ) : view === "forgot" ? (
+              <ForgotPasswordForm onBack={() => setView("login")} />
             ) : (
               <SignupWizard onGo={() => setView("login")} invitedEmail={invitedEmail} />
             )}
@@ -125,7 +127,7 @@ function LoginPageInner() {
   );
 }
 
-function LoginForm({ onGo }: { onGo: () => void }) {
+function LoginForm({ onGo, onForgot }: { onGo: () => void; onForgot: () => void }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [pw, setPw] = useState("");
@@ -189,7 +191,7 @@ function LoginForm({ onGo }: { onGo: () => void }) {
         <label className="remember">
           <input type="checkbox" defaultChecked /> Tine-ma minte
         </label>
-        <span className="f-link">Am uitat parola</span>
+        <span className="f-link" onClick={onForgot}>Am uitat parola</span>
       </div>
       <button className="btn-p" disabled={busy || !email || !pw} onClick={go}>
         {busy ? <Spinner light /> : "Autentificare"}
@@ -200,6 +202,71 @@ function LoginForm({ onGo }: { onGo: () => void }) {
           Creare cont
         </span>
       </div>
+    </>
+  );
+}
+
+function ForgotPasswordForm({ onBack }: { onBack: () => void }) {
+  const [email, setEmail] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState("");
+
+  const go = async () => {
+    if (!email) return;
+    setBusy(true);
+    setError("");
+    try {
+      await apiPost("/api/auth/forgot-password", { email });
+      setSent(true);
+    } catch (err: any) {
+      setError(err.message || "Eroare la trimitere");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (sent) {
+    return (
+      <>
+        <h2 className="f-title">Verifica email-ul</h2>
+        <p className="f-sub">Daca exista un cont cu adresa <strong style={{ color: "#0f172a" }}>{email}</strong>, vei primi un email cu instructiuni de resetare.</p>
+        <div className="cui-ok" style={{ marginBottom: 20, marginTop: 16 }}>
+          <div className="cn">Email trimis</div>
+          <div className="cr">Verifica inbox-ul si folderul Spam.</div>
+          <div className="cr">Link-ul expira in 1 ora.</div>
+        </div>
+        <button className="btn-s" onClick={onBack}>
+          Inapoi la autentificare
+        </button>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <h2 className="f-title">Resetare parola</h2>
+      <p className="f-sub">Introdu adresa de email asociata contului tau</p>
+
+      {error && <div className="cui-err" style={{ marginBottom: 16, marginTop: 0 }}>{error}</div>}
+
+      <div className="fg">
+        <label className="fl">Email</label>
+        <input
+          className="fi"
+          type="email"
+          placeholder="consultant@firma.ro"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && go()}
+        />
+      </div>
+      <button className="btn-p" disabled={busy || !email.includes("@")} onClick={go} style={{ marginBottom: 12 }}>
+        {busy ? <Spinner light /> : "Trimite link de resetare"}
+      </button>
+      <button className="btn-s" onClick={onBack}>
+        Inapoi la autentificare
+      </button>
     </>
   );
 }

@@ -118,7 +118,7 @@ adminRoutes.post("/users", async (c) => {
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.SENDER_EMAIL || "noreply@dosar-fonduri.com";
   if (apiKey) {
-    const signupUrl = `${process.env.APP_URL || "https://app.dosarfonduri.ro"}/login?invited=1&email=${encodeURIComponent(body.email)}`;
+    const signupUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"}/login?invited=1&email=${encodeURIComponent(body.email)}`;
     try {
       await fetch("https://api.resend.com/emails", {
         method: "POST",
@@ -183,7 +183,7 @@ adminRoutes.post("/users/:id/resend-invite", async (c) => {
   const from = process.env.SENDER_EMAIL || "noreply@dosar-fonduri.com";
   if (!apiKey) return c.json({ error: "Email service not configured" }, 503);
 
-  const signupUrl = `${process.env.APP_URL || "https://app.dosarfonduri.ro"}/login?invited=1&email=${encodeURIComponent(user.email)}`;
+  const signupUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"}/login?invited=1&email=${encodeURIComponent(user.email)}`;
   try {
     await fetch("https://api.resend.com/emails", {
       method: "POST",

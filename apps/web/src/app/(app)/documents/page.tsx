@@ -351,6 +351,10 @@ export default function DocumentsPage() {
   const [expandedTab, setExpandedTab] = useState<Record<string, string>>({});
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
   const [pdfPreviewName, setPdfPreviewName] = useState<string>("");
+  const [deleteConfirm, setDeleteConfirm] = useState<{ doc: DocItem } | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const replaceFileRef = useRef<HTMLInputElement>(null);
+  const [replaceDocId, setReplaceDocId] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
@@ -541,17 +545,57 @@ export default function DocumentsPage() {
     setCtxMenu({ x: e.clientX, y: e.clientY, nodeId });
   }, []);
 
-  const handleDocDelete = useCallback(async (docId: string) => {
-    if (!confirm("Sigur vrei sa stergi acest document?")) return;
+  const handleDocDeleteRequest = useCallback((doc: DocItem) => {
+    setDeleteConfirm({ doc });
+  }, []);
+
+  const handleDocDeleteConfirm = useCallback(async () => {
+    if (!deleteConfirm) return;
+    const docId = deleteConfirm.doc.id;
+    setDeleteLoading(true);
     try {
       await apiDelete(`/api/documents/documents/${docId}`);
       setDocs(prev => prev.filter(d => d.id !== docId));
       if (selectedDoc === docId) setSelectedDoc(null);
+      setDeleteConfirm(null);
+      toast("success", "Document șters cu succes.");
     } catch (err) {
       console.error("Failed to delete document:", err);
-      alert("Nu s-a putut sterge documentul. Incearca din nou.");
+      toast("error", "Nu s-a putut șterge documentul. Încearcă din nou.");
+    } finally {
+      setDeleteLoading(false);
     }
-  }, [selectedDoc]);
+  }, [deleteConfirm, selectedDoc, toast]);
+
+  const handleDocReplace = useCallback((docId: string) => {
+    setReplaceDocId(docId);
+    setTimeout(() => replaceFileRef.current?.click(), 0);
+  }, []);
+
+  const handleReplaceFileSelected = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !replaceDocId) return;
+    const formData = new FormData();
+    formData.append("file", file);
+    try {
+      setDocs(prev => prev.map(d => d.id === replaceDocId ? { ...d, status: "procesare" as const } : d));
+      await api(`/api/documents/documents/${replaceDocId}/replace`, {
+        method: "POST",
+        body: formData,
+      });
+      toast("success", "Fișier înlocuit — procesare pornită.");
+      if (selectedFolder) {
+        setTimeout(() => fetchDocs(selectedFolder), 2000);
+      }
+    } catch (err: any) {
+      console.error("Failed to replace document:", err);
+      toast("error", err.message || "Înlocuirea fișierului a eșuat.");
+      setDocs(prev => prev.map(d => d.id === replaceDocId ? { ...d, status: "eroare" as const } : d));
+    } finally {
+      setReplaceDocId(null);
+      e.target.value = "";
+    }
+  }, [replaceDocId, selectedFolder, fetchDocs, toast]);
 
   const handleDocDownload = useCallback(async (docId: string) => {
     try {
@@ -1160,7 +1204,15 @@ export default function DocumentsPage() {
                       </svg>
                       Previzualizare
                     </button>
-                    <button className="doc-detail-btn danger" onClick={(e) => { e.stopPropagation(); handleDocDelete(d.id); }}>
+                    {d.processingType && ["ghid", "template", "reference_data"].includes(d.processingType) && (d.status === "procesat" || d.status === "template" || d.status === "referință") && (
+                      <button className="doc-detail-btn" style={{ color: "#a78bfa", borderColor: "rgba(167,139,250,.25)" }} onClick={(e) => { e.stopPropagation(); handleDocReplace(d.id); }}>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+                        </svg>
+                        Actualizează
+                      </button>
+                    )}
+                    <button className="doc-detail-btn danger" onClick={(e) => { e.stopPropagation(); handleDocDeleteRequest(d); }}>
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                         <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
                       </svg>
@@ -1783,6 +1835,131 @@ export default function DocumentsPage() {
           </div>
         </div>
       )}
+
+      {/* Hidden file input for document replace */}
+      <input
+        ref={replaceFileRef}
+        type="file"
+        accept=".pdf,.doc,.docx,.xls,.xlsx"
+        style={{ display: "none" }}
+        onChange={handleReplaceFileSelected}
+      />
+
+      {/* Delete confirmation modal */}
+      {deleteConfirm && (() => {
+        const d = deleteConfirm.doc;
+        const isGuide = d.processingType === "ghid";
+        const rulesCount = d.summary?.rulesCount || 0;
+        const scoringCount = d.summary?.scoringCount || 0;
+        const elementsCount = d.summary?.elementsCount || 0;
+        return (
+          <div
+            style={{
+              position: "fixed", inset: 0, zIndex: 9999,
+              background: "rgba(0,0,0,.5)", backdropFilter: "blur(4px)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              animation: "docFadeIn .15s ease-out",
+            }}
+            onClick={() => !deleteLoading && setDeleteConfirm(null)}
+          >
+            <div
+              style={{
+                width: 440, background: "#fff", borderRadius: 14,
+                boxShadow: "0 24px 80px rgba(0,0,0,.25)",
+                animation: "docSlideUp .2s ease both",
+                overflow: "hidden",
+              }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div style={{ padding: "20px 24px 0" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+                  <div style={{
+                    width: 36, height: 36, borderRadius: 10,
+                    background: "rgba(248,113,113,.1)", display: "flex",
+                    alignItems: "center", justifyContent: "center", fontSize: 18,
+                  }}>
+                    ⚠️
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 15, color: "#1a1e28" }}>Șterge document</div>
+                    <div style={{ fontSize: 12, color: "#94a3b8" }}>{d.name}</div>
+                  </div>
+                </div>
+
+                <p style={{ fontSize: 13, color: "#64748b", lineHeight: 1.6, margin: "0 0 14px" }}>
+                  Documentul va fi șters permanent din storage.
+                  {isGuide && (rulesCount > 0 || scoringCount > 0 || elementsCount > 0) && (
+                    <> Toate datele extrase din acest ghid vor fi de asemenea șterse:</>
+                  )}
+                </p>
+
+                {isGuide && (rulesCount > 0 || scoringCount > 0 || elementsCount > 0) && (
+                  <div style={{
+                    display: "flex", gap: 8, marginBottom: 16,
+                    flexWrap: "wrap",
+                  }}>
+                    {rulesCount > 0 && (
+                      <div style={{
+                        padding: "6px 12px", borderRadius: 8,
+                        background: "rgba(5,150,105,.06)", border: "1px solid rgba(5,150,105,.15)",
+                        fontSize: 12, color: "#059669", fontWeight: 600,
+                      }}>
+                        🛡 {rulesCount} reguli
+                      </div>
+                    )}
+                    {scoringCount > 0 && (
+                      <div style={{
+                        padding: "6px 12px", borderRadius: 8,
+                        background: "rgba(124,58,237,.06)", border: "1px solid rgba(124,58,237,.15)",
+                        fontSize: 12, color: "#7c3aed", fontWeight: 600,
+                      }}>
+                        📊 {scoringCount} criterii
+                      </div>
+                    )}
+                    {elementsCount > 0 && (
+                      <div style={{
+                        padding: "6px 12px", borderRadius: 8,
+                        background: "rgba(37,99,235,.06)", border: "1px solid rgba(37,99,235,.15)",
+                        fontSize: 12, color: "#2563eb", fontWeight: 600,
+                      }}>
+                        📋 {elementsCount} elemente
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div style={{
+                padding: "14px 24px", borderTop: "1px solid rgba(226,232,240,.8)",
+                display: "flex", justifyContent: "flex-end", gap: 8, background: "#fafbfc",
+              }}>
+                <button
+                  disabled={deleteLoading}
+                  onClick={() => setDeleteConfirm(null)}
+                  style={{
+                    padding: "8px 18px", borderRadius: 8,
+                    border: "1px solid rgba(226,232,240,.8)", background: "#fff",
+                    fontSize: 13, fontWeight: 600, cursor: "pointer", color: "#64748b",
+                  }}
+                >
+                  Anulează
+                </button>
+                <button
+                  disabled={deleteLoading}
+                  onClick={handleDocDeleteConfirm}
+                  style={{
+                    padding: "8px 18px", borderRadius: 8, border: "none",
+                    background: deleteLoading ? "#fca5a5" : "#ef4444", color: "#fff",
+                    fontSize: 13, fontWeight: 700, cursor: deleteLoading ? "wait" : "pointer",
+                  }}
+                >
+                  {deleteLoading ? "Se șterge..." : "Șterge definitiv"}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
     </div>
   );

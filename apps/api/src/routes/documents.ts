@@ -734,6 +734,93 @@ documentRoutes.delete("/documents/:id", async (c) => {
   return c.json({ ok: true });
 });
 
+// --- REPLACE DOCUMENT FILE (re-upload) ---
+// Keeps the same document record but swaps the underlying file,
+// clears all extracted data (rules, elements, criteria), and re-queues processing.
+documentRoutes.post("/documents/:id/replace", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  if (!auth.organizationId) return c.json({ error: "No organization" }, 403);
+  const id = c.req.param("id");
+
+  const doc = await db.query.documents.findFirst({
+    where: and(eq(documents.id, id), eq(documents.organizationId, auth.organizationId)),
+  });
+  if (!doc) return c.json({ error: "Not found" }, 404);
+
+  // Only allow replacing processable document types
+  const replaceableTypes = ["ghid", "template", "reference_data"];
+  if (!replaceableTypes.includes(doc.processingType || "")) {
+    return c.json({ error: `Tipul "${doc.processingType}" nu suportă înlocuire.` }, 400);
+  }
+
+  // Expect multipart/form-data with a single "file" field
+  const formData = await c.req.formData();
+  const file = formData.get("file");
+  if (!file || !(file instanceof File)) {
+    return c.json({ error: "Fișier lipsă. Trimite un câmp 'file' în form-data." }, 400);
+  }
+
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const hash = createHash("sha256").update(buffer).digest("hex");
+  const ext = file.name.split(".").pop() || "pdf";
+  const mimeType = file.type || "application/octet-stream";
+
+  // 1. Delete old file from storage
+  await deleteFile(doc.fileId).catch(() => {});
+
+  // 2. Upload new file
+  const fileId = await uploadFile(buffer, file.name, mimeType, auth.organizationId!, auth.userId, "docs");
+
+  // 3. Clear extracted data — delete from child tables that reference this document.
+  //    CASCADE handles nested children (ruleReferenceLinks, elementRuleLinks, etc.)
+  await Promise.all([
+    db.delete(rules).where(eq(rules.documentId, id)),
+    db.delete(elementDefinitions).where(eq(elementDefinitions.guideDocumentId, id)),
+    db.delete(scoringCriteria).where(eq(scoringCriteria.documentId, id)),
+    db.delete(guideReferenceTables).where(eq(guideReferenceTables.documentId, id)),
+    db.delete(templateElements).where(eq(templateElements.documentId, id)),
+  ]);
+
+  // 4. Update document record with new file info
+  await db.update(documents).set({
+    fileId,
+    fileSize: buffer.length,
+    fileType: ext as "pdf" | "docx" | "xlsx" | "doc" | "png" | "jpg",
+    mimeType,
+    fileHash: hash,
+    name: file.name.replace(/\.[^.]+$/, ""),
+    status: "processing",
+    processingError: null,
+    processingResult: null,
+    trustScore: null,
+    completenessReport: null,
+    pageCount: null,
+  }).where(eq(documents.id, id));
+
+  // 5. Dispatch processing
+  try {
+    if (!isRedisReady()) {
+      await db.update(documents).set({ status: "uploaded" }).where(eq(documents.id, id));
+      return c.json({ ok: true, documentId: id, warning: "Fișier înlocuit, dar procesarea nu a pornit (Redis indisponibil)." });
+    }
+    const jobPayload = { documentId: id, organizationId: auth.organizationId };
+    const dedup = { jobId: `replace-${id}-${Date.now()}` };
+    if (doc.processingType === "ghid") {
+      await processGuideQueue.add("process-guide", jobPayload, { priority: JOB_PRIORITY.GUIDE, ...dedup });
+    } else if (doc.processingType === "template") {
+      await processTemplateQueue.add("process-template", jobPayload, { priority: JOB_PRIORITY.TEMPLATE, ...dedup });
+    } else if (doc.processingType === "reference_data") {
+      await processReferenceDataQueue.add("process-reference-data", jobPayload, { priority: JOB_PRIORITY.REFERENCE_DATA, ...dedup });
+    }
+  } catch (queueErr: any) {
+    console.error(`[replace] Queue dispatch failed for ${id}:`, queueErr.message);
+    await db.update(documents).set({ status: "uploaded" }).where(eq(documents.id, id));
+    return c.json({ ok: true, documentId: id, warning: "Fișier înlocuit, dar procesarea nu a pornit." });
+  }
+
+  return c.json({ ok: true, documentId: id, message: "Fișier înlocuit și procesare pornită." });
+});
+
 // --- MANUAL PROCESS ---
 documentRoutes.post("/documents/:id/process", async (c) => {
   const auth = c.get("auth") as AuthContext;

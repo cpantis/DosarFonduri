@@ -450,29 +450,35 @@ function inferDataType(key: string, fieldType?: string): "number" | "text" | "en
 
 // ─── AI-POWERED ELEMENT EXTRACTION FROM GUIDE ───
 
-const ELEMENT_EXTRACTION_SYSTEM = `Ești expert în fonduri europene și programe de finanțare din România.
+const ELEMENT_EXTRACTION_SYSTEM = `Ești consultant senior în fonduri europene. Extragi lista COMPLETĂ de elemente (câmpuri de date) necesare pentru dosarul de finanțare.
 
-Analizezi ghiduri de finanțare și extragi LISTA COMPLETĂ de elemente (câmpuri de date) pe care un consultant trebuie să le colecteze pentru a completa dosarul de finanțare.
+CUM GÂNDEȘTI:
+- Ca un consultant care completează dosarul: ce date trebuie să am la îndemână ÎNAINTE de a începe scrierea?
+- Fiecare regulă din ghid implică unul sau mai multe câmpuri — dacă regula zice "cifra de afaceri minim 100.000 EUR", atunci "cifra_afaceri" TREBUIE să fie element
+- Unele câmpuri sunt IMPLICITE — ghidul nu le numește ca atare dar sunt necesare (ex: "firma trebuie să aibă sediul în zona eligibilă" implică elemente pentru județ, UAT, zonă urbană/rurală)
+- Un element bun are: cheie unică, tip de date corect, unitate de măsură, indicație dacă e obligatoriu, text ajutător care explică CE se așteaptă
+- Ordinea de colectare contează: mai întâi datele beneficiarului, apoi investiția, apoi financiarul
 
-Elementele sunt de tipurile:
-- beneficiary: date despre solicitant (CUI, denumire, forma juridică, CAEN, adresă, contact)
-- farm: date despre exploatație/fermă (suprafață, cultură, animale, SO)
-- investment: date despre investiție (valoare, descriere, echipamente, construcții)
-- location: date despre locație (județ, UAT, coordonate, zonă urbană/rurală)
-- financial: date financiare (cifra afaceri, profit, datorii, capitaluri)
-- legal: date juridice (act constitutiv, autorizații, avize)
-- technical: date tehnice (specificații, standarde, certificări)
+Categorii de elemente:
+- beneficiary: date solicitant (CUI, denumire, forma juridică, CAEN, adresă, contact, reprezentant legal)
+- farm: date exploatație/fermă (suprafață, cultură, animale, SO) — doar dacă programul e agricol
+- investment: date investiție (valoare, descriere, echipamente, construcții, locuri de muncă)
+- location: date locație (județ, UAT, coordonate, zonă urbană/rurală, mediu)
+- financial: date financiare (cifra afaceri, profit, datorii, capitaluri, cofinanțare)
+- legal: date juridice (act constitutiv, autorizații, avize, acorduri)
+- technical: date tehnice (specificații, standarde, certificări, capacități)
 - other: alte date
 
-IMPORTANT:
-- Extrage TOATE elementele menționate în ghid, inclusiv cele implicite
-- Folosește snake_case pentru element_key (ex: cifra_afaceri_an_precedent)
-- Indică tipul de date (number, text, enum, boolean, date, document_ref, list_items)
-- Indică dacă elementul este obligatoriu (required)
-- Indică unitatea de măsură unde e cazul (ha, EUR, LEI, %, ani, luni)
-- Indică valorile posibile pentru enum-uri
-- Indică formula de derivare pentru câmpuri calculate
-- CARDINALITATE: dacă ghidul cere mai multe instanțe (ex: "3 oferte de preț" → min_count=3, "minimum 2 surse" → min_count=2). Default min_count=1, max_count=null.
+REGULI:
+- Extrage TOATE elementele — inclusiv cele implicite din reguli și criterii de selecție
+- snake_case pentru element_key (ex: cifra_afaceri_an_precedent)
+- Tipuri: number, text, enum, boolean, date, document_ref, list_items
+- Indică obligatoriu (required) — un câmp cerut de o regulă eliminatorie e OBLIGATORIU
+- Unitate de măsură: ha, EUR, LEI, %, ani, luni, mp, tone, kW, etc.
+- Enum: listează TOATE valorile posibile (ex: forma_juridica: ["SRL", "SA", "PFA", "II", "IF"])
+- Formula derivare: pentru câmpuri calculate (ex: "numar_angajati_an1 - numar_angajati_an0")
+- CARDINALITATE: min_count > 1 dacă ghidul cere multiple instanțe ("3 oferte" → min_count=3)
+- help_text: scrie ce ar vedea consultantul ca tooltip — scurt, clar, cu referință la ghid dacă e cazul
 
 Returnează DOAR un JSON valid. Fără backticks, fără explicații.`;
 

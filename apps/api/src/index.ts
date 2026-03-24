@@ -85,6 +85,10 @@ app.use("*", cors({
 // Rate limiting on public auth routes (brute-force protection)
 app.use("/api/auth/*", rateLimit({ windowMs: 60_000, max: 20, keyPrefix: "rl:auth" }));
 app.use("/api/provider/*", rateLimit({ windowMs: 60_000, max: 15, keyPrefix: "rl:provider" }));
+// Rate limiting on AI-heavy endpoints (cost protection)
+app.use("/api/solomon/*", rateLimit({ windowMs: 60_000, max: 10, keyPrefix: "rl:solomon" }));
+app.use("/api/neemia/*", rateLimit({ windowMs: 60_000, max: 10, keyPrefix: "rl:neemia" }));
+app.use("/api/projects/*/check-eligibility", rateLimit({ windowMs: 60_000, max: 5, keyPrefix: "rl:eligibility" }));
 
 // Public routes
 app.route("/api/auth", authRoutes);

@@ -445,7 +445,7 @@ companyRoutes.post("/", async (c) => {
   }
 });
 
-// --- SYNC ONRC ---
+// --- SYNC / ACTUALIZARE CUI ---
 companyRoutes.post("/:id/sync-onrc", async (c) => {
   const auth = c.get("auth") as AuthContext;
   const id = c.req.param("id");
@@ -455,8 +455,137 @@ companyRoutes.post("/:id/sync-onrc", async (c) => {
   });
   if (!company) return c.json({ error: "Not found" }, 404);
 
-  const onrcData = await lookupCUI(company.cui, auth.organizationId!);
-  if (!onrcData) return c.json({ error: "CUI negăsit la ONRC" }, 404);
+  // Try ListaFirme first, then ONRC as fallback
+  let lfData = null;
+  try {
+    lfData = await lookupCUI_ListaFirme(company.cui, auth.organizationId!);
+  } catch (e: any) {
+    console.log("[sync] ListaFirme unavailable:", e.message);
+  }
+
+  if (lfData) {
+    // Update from ListaFirme
+    const formaRaw = (lfData.legalForm || "").toUpperCase();
+    const syncFormaCode = Object.entries(FORMA_MAP).find(([k]) => formaRaw.includes(k))?.[1];
+    const stareRaw = (lfData.status || "").toLowerCase();
+    const syncStare = stareRaw.includes("radia") ? "radiata" as const
+      : stareRaw.includes("dizolv") ? "dizolvata" as const
+      : stareRaw.includes("lichid") ? "lichidare" as const
+      : "functiune" as const;
+    const foundedYear = lfData.foundedDate ? parseInt(lfData.foundedDate.slice(0, 4)) : undefined;
+    const balance = lfData.balance || {};
+    const capitalSocial = balance.CapitalSocial || balance.capitalSocial || balance.Capital || undefined;
+    const statusLower = stareRaw;
+
+    await db.update(companies).set({
+      denumire: lfData.name || company.denumire,
+      regCom: lfData.regNo || company.regCom,
+      ...(syncFormaCode ? { formaJuridica: syncFormaCode as any } : {}),
+      adresa: lfData.address || company.adresa,
+      localitate: lfData.city || company.localitate,
+      judet: lfData.county || company.judet,
+      codPostal: lfData.townCode || company.codPostal,
+      telefon: lfData.phone || company.telefon,
+      email: lfData.email || company.email,
+      website: lfData.web || company.website,
+      caen: lfData.nace || company.caen,
+      stare: syncStare,
+      anInfiintare: foundedYear || company.anInfiintare,
+      capitalSocial: capitalSocial?.toString() || company.capitalSocial,
+      onrcRawData: {
+        ...lfData.raw,
+        source: "listafirme",
+        caenDesc: lfData.naceDescription || "",
+        activitatiSecundare: lfData.naceSecondary || [],
+        insolventa: statusLower.includes("insolv"),
+        dizolvare: statusLower.includes("dizolv"),
+        lichidare: statusLower.includes("lichid"),
+        restrictii: false,
+        vat: lfData.vat || "",
+        foundedDate: lfData.foundedDate || "",
+        townCode: lfData.townCode || "",
+        balance: lfData.balance || null,
+      },
+      lastSyncedAt: new Date(),
+      updatedAt: new Date(),
+    }).where(eq(companies.id, id));
+
+    // Replace associates + administrators
+    await db.transaction(async (tx) => {
+      if (lfData!.shareholders?.length) {
+        await tx.delete(companyAssociates).where(eq(companyAssociates.companyId, id));
+        await tx.insert(companyAssociates).values(
+          lfData!.shareholders.map((s) => ({
+            companyId: id,
+            type: "pf" as const,
+            name: s.name,
+            role: "Asociat",
+            contribution: s.value || undefined,
+            shares: s.shares ? parseInt(s.shares) || undefined : undefined,
+          }))
+        );
+      }
+      if (lfData!.administrators?.length) {
+        await tx.delete(companyAdministrators).where(eq(companyAdministrators.companyId, id));
+        await tx.insert(companyAdministrators).values(
+          lfData!.administrators.map((a) => ({
+            companyId: id,
+            name: a.name,
+            role: a.role || "Administrator",
+            appointmentDate: a.since || undefined,
+          }))
+        );
+      }
+    });
+
+    // Update financials
+    if (lfData.turnover != null || lfData.profit != null || lfData.employees != null || lfData.balance) {
+      const year = new Date().getFullYear() - 1;
+      const f20: Record<string, any> = {};
+      const f30: Record<string, any> = {};
+      const f10: Record<string, any> = {};
+      if (lfData.turnover != null) f20.cifraAfaceriNeta = lfData.turnover;
+      if (lfData.profit != null) f20.profitNet = lfData.profit;
+      if (lfData.employees != null) f30.numarMediuSalariati = lfData.employees;
+      if (lfData.balance) {
+        const b = lfData.balance;
+        if (b.CapitaluriProprii || b.capitaluriProprii) f10.capitaluriProprii = b.CapitaluriProprii || b.capitaluriProprii;
+        if (b.ActiveImobilizate || b.activeImobilizate) f10.activeImobilizate = b.ActiveImobilizate || b.activeImobilizate;
+        if (b.ActiveCirculante || b.activeCirculante) f10.activeCirculante = b.ActiveCirculante || b.activeCirculante;
+        if (b.DatoriiTotal || b.datoriiTotal) f10.datoriiTotal = b.DatoriiTotal || b.datoriiTotal;
+        if (b.Venituri || b.venituri) f20.venituri = b.Venituri || b.venituri;
+        if (b.Cheltuieli || b.cheltuieli) f20.cheltuieli = b.Cheltuieli || b.cheltuieli;
+      }
+      const existingFin = await db.query.companyFinancials.findFirst({
+        where: and(eq(companyFinancials.companyId, id), eq(companyFinancials.year, year)),
+      });
+      const finData = {
+        source: "onrc" as const,
+        ...(Object.keys(f20).length > 0 ? { f20 } : {}),
+        ...(Object.keys(f30).length > 0 ? { f30 } : {}),
+        ...(Object.keys(f10).length > 0 ? { f10 } : {}),
+      };
+      if (existingFin) {
+        await db.update(companyFinancials).set(finData).where(eq(companyFinancials.id, existingFin.id));
+      } else {
+        await db.insert(companyFinancials).values({ companyId: id, year, ...finData });
+      }
+    }
+
+    populateCompanyElements(id, auth.organizationId!).catch((e: any) =>
+      console.warn("[companies/sync-lf] companyElements:", e.message));
+
+    return c.json({ ok: true, message: "Sincronizare completă (ListaFirme)" });
+  }
+
+  // Fallback: ONRC
+  let onrcData = null;
+  try {
+    onrcData = await lookupCUI(company.cui, auth.organizationId!);
+  } catch (e: any) {
+    console.log("[sync] ONRC unavailable:", e.message);
+  }
+  if (!onrcData) return c.json({ error: "Nu s-au putut actualiza datele. Verifică integrările API în Configurări." }, 404);
 
   // Determine forma juridica + stare
   const syncFormaCode = Object.entries(FORMA_MAP).find(([k]) => (onrcData.formaJuridica || "").includes(k))?.[1];
@@ -479,7 +608,7 @@ companyRoutes.post("/:id/sync-onrc", async (c) => {
     telefon: onrcData.telefon,
     email: onrcData.email,
     website: onrcData.website || company.website,
-    caen: company.caen, // ONRC API doesn't return CAEN
+    caen: company.caen,
     stare: syncStare,
     durata: onrcData.durata || company.durata,
     anInfiintare: onrcData.anInfiintare || company.anInfiintare,
@@ -579,7 +708,7 @@ companyRoutes.post("/:id/sync-onrc", async (c) => {
   populateCompanyElements(id, auth.organizationId!).catch((e: any) =>
     console.warn("[companies/sync-onrc] companyElements:", e.message));
 
-  return c.json({ ok: true, message: "Sincronizare completă" });
+  return c.json({ ok: true, message: "Sincronizare completă (ONRC)" });
 });
 
 // --- UPLOAD ANAF BALANCE SHEET ---

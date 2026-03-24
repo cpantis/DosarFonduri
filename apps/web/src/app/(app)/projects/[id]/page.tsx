@@ -2734,7 +2734,7 @@ export default function ProjectViewPage() {
         .chat-attach-btn:hover{color:#2563eb;background:rgba(37,99,235,.06)}
         .chat-attach-btn:disabled{opacity:.4;cursor:not-allowed}
         .chat-input-row{display:flex;flex-direction:column;background:#ffffff;border:1px solid rgba(226,232,240,.8);border-radius:16px;padding:4px 12px 4px 4px;transition:border-color .15s;flex:1;min-width:0}
-        .chat-input-row:focus-within{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.1)}
+        .chat-input-row:focus-within{border-color:rgba(226,232,240,.8)}
         .chat-input-toolbar{display:flex;align-items:center;gap:4px;padding:0 4px 4px 8px}
         .chat-input{flex:1;padding:10px 12px 4px 12px;border-radius:8px;border:none;background:transparent;color:#0f172a;font-size:14px;font-family:'Inter',system-ui,sans-serif;line-height:1.5;resize:none;outline:none;min-height:68px;max-height:200px;overflow-y:auto}
         .chat-input::placeholder{color:#94a3b8}

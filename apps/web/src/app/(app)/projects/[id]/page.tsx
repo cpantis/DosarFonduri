@@ -807,6 +807,17 @@ export default function ProjectViewPage() {
     return opusPatterns.some(p => p.test(lower));
   };
 
+  // Ask Solomon about a specific element — prefill chat input and switch to Solomon tab
+  const askSolomonAbout = (el: { key: string; label: string; value?: string | null; status: string }) => {
+    setActiveLeaf("solomon");
+    const valueInfo = el.value ? `Valoarea curentă: "${el.value}"` : "Nu are valoare completată";
+    const statusHint = el.status === "conflict" ? " (are conflict)" : el.status === "propus_ai" ? " (propus de AI, neconfirmat)" : "";
+    setSolomonInput(`Ajută-mă cu elementul "${el.label}" (${el.key})${statusHint}. ${valueInfo}. Ce valoare ar trebui completată și de unde o obțin?`);
+    setTimeout(() => {
+      (document.querySelector("[data-solomon-input]") as HTMLTextAreaElement)?.focus();
+    }, 150);
+  };
+
   const handleSolomonSend = async () => {
     if (readOnly || !solomonInput.trim() || !solomonConvId || solomonStreaming) return;
     const userText = solomonInput;
@@ -2644,27 +2655,27 @@ export default function ProjectViewPage() {
         .et-toggle.on{border-color:#7c3aed;color:#7c3aed;background:rgba(167,139,250,.08)}
         .chat-messages{flex:1;overflow-y:auto;overflow-x:hidden;padding:24px 20px;min-height:0}
         .chat-messages-inner{max-width:720px;margin:0 auto;width:100%;display:flex;flex-direction:column;gap:24px}
-        .solomon-msg{display:flex;gap:12px}
-        .solomon-msg-avatar{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0}
-        .solomon-msg-avatar.ai{background:linear-gradient(135deg,#f59e0b,#ea580c);color:#ffffff}
-        .solomon-msg-avatar.user{background:#e2e8f0;color:#475569}
+        .solomon-msg{display:flex;max-width:85%}
+        .solomon-msg.solomon-msg-left{align-self:flex-start}
+        .solomon-msg.solomon-msg-right{align-self:flex-end}
         .solomon-msg-body{flex:1;min-width:0}
-        .solomon-msg-name{font-size:13px;font-weight:600;color:#0f172a;margin-bottom:4px}
-        .solomon-msg-name span{font-weight:400;color:#94a3b8;margin-left:8px;font-size:12px}
-        .solomon-msg-text{font-size:15px;line-height:1.5;color:#475569;font-family:'Inter',system-ui,sans-serif}
+        .solomon-msg-right .solomon-msg-body{text-align:right}
+        .solomon-msg-right .solomon-msg-text{background:rgba(77,139,255,0.06);border-radius:14px 14px 2px 14px;padding:10px 14px;display:inline-block;text-align:left}
+        .solomon-msg-left .solomon-msg-text{padding:10px 0}
+        .solomon-msg-text{font-size:14.5px;line-height:1.7;color:#475569;font-family:'Inter',system-ui,sans-serif}
         .solomon-msg-text strong{color:#0f172a;font-weight:600}
         .chat-msg .msg-bold{font-weight:600;color:#0f172a}
 
         /* Solomon Markdown Rich Content */
         .solomon-md-content{display:flex;flex-direction:column;gap:4px}
-        .solomon-md-p{margin:0;padding:0;font-size:15px;line-height:1.5;color:#475569;max-width:640px}
+        .solomon-md-p{margin:0;padding:0;font-size:14.5px;line-height:1.7;color:#475569;max-width:640px}
         .solomon-md-h2{margin:16px 0 6px;padding:0;font-size:16px;font-weight:700;color:#0f172a;line-height:1.4;display:flex;align-items:center;gap:6px;letter-spacing:-0.01em}
         .solomon-md-h3{margin:12px 0 4px;padding:0;font-size:15px;font-weight:600;color:#1e293b;line-height:1.4;display:flex;align-items:center;gap:6px}
         .solomon-md-bold{color:#0f172a;font-weight:600}
         .solomon-md-italic{font-style:italic;color:#64748b}
         .solomon-md-code{background:#f1f5f9;color:#7c3aed;padding:1px 5px;border-radius:4px;font-size:13px;font-family:'JetBrains Mono','SF Mono',monospace}
         .solomon-md-list{margin:4px 0;padding-left:20px;display:flex;flex-direction:column;gap:3px;list-style:none}
-        .solomon-md-list li{position:relative;font-size:15px;line-height:1.5;color:#475569;padding-left:12px}
+        .solomon-md-list li{position:relative;font-size:14.5px;line-height:1.7;color:#475569;padding-left:12px}
         .solomon-md-list li::before{content:'';position:absolute;left:0;top:9px;width:5px;height:5px;border-radius:50%;background:#94a3b8}
         .solomon-md-hr{border:none;height:1px;background:linear-gradient(90deg,transparent,#e2e8f0 20%,#e2e8f0 80%,transparent);margin:12px 0}
         .extraction-cards{margin-top:12px;display:flex;flex-direction:column;gap:8px}
@@ -2689,13 +2700,14 @@ export default function ProjectViewPage() {
         .chat-timestamp{font-size:10px;color:#94a3b8;margin-top:4px}
         .chat-input-area{padding:16px 20px;border-top:1px solid rgba(226,232,240,.8);background:#ffffff}
         .chat-input-inner{max-width:760px;margin:0 auto}
-        .chat-input-wrapper{display:flex;gap:10px;align-items:flex-end;max-width:720px;margin:0 auto;width:100%}
-        .chat-attach-btn{width:36px;height:36px;border-radius:50%;border:1px solid rgba(226,232,240,.8);background:#ffffff;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#94a3b8;transition:all .15s cubic-bezier(.4,0,.2,1);flex-shrink:0}
-        .chat-attach-btn:hover{color:#475569;border-color:#cbd5e1;background:#f8fafc}
+        .chat-input-wrapper{display:flex;gap:8px;align-items:flex-end;max-width:720px;margin:0 auto;width:100%}
+        .chat-hint{text-align:center;font-size:11px;color:#94a3b8;margin-top:8px;font-family:'Inter',system-ui,sans-serif}
+        .chat-attach-btn{width:36px;height:36px;border-radius:0;border:none;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#2563eb;transition:all .15s cubic-bezier(.4,0,.2,1);flex-shrink:0;padding:0}
+        .chat-attach-btn:hover{color:#1d4ed8}
         .chat-attach-btn:disabled{opacity:.4;cursor:not-allowed}
         .chat-input-row{display:flex;gap:8px;align-items:flex-end;background:#ffffff;border:1px solid rgba(226,232,240,.8);border-radius:20px;padding:10px 12px 10px 16px;transition:border-color .15s;flex:1;min-width:0}
         .chat-input-row:focus-within{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.1)}
-        .chat-input{flex:1;padding:8px 10px;border-radius:8px;border:none;background:transparent;color:#0f172a;font-size:14px;font-family:'Inter',system-ui,sans-serif;line-height:1.5;resize:none;outline:none;min-height:36px;max-height:160px;overflow-y:auto}
+        .chat-input{flex:1;padding:8px 10px;border-radius:8px;border:none;background:transparent;color:#0f172a;font-size:14px;font-family:'Inter',system-ui,sans-serif;line-height:1.5;resize:none;outline:none;min-height:52px;max-height:160px;overflow-y:auto}
         .chat-input::placeholder{color:#94a3b8}
         .chat-btn{width:36px;height:36px;border-radius:50%;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s cubic-bezier(.4,0,.2,1);flex-shrink:0}
         .chat-btn.send{background:#2563eb;color:#ffffff;font-size:16px}
@@ -2707,10 +2719,10 @@ export default function ProjectViewPage() {
         .sep-count{font-size:13px;font-weight:700;color:#2563eb;font-variant-numeric:tabular-nums}
         .sep-progress-bar{height:4px;background:#f0f2f5;border-radius:2px;overflow:hidden}
         .sep-progress-fill{height:100%;background:#2563eb;border-radius:2px;transition:width .3s}
-        .sep-scroll{flex:1;overflow-y:auto;padding:8px 10px;display:flex;flex-direction:column;gap:2px}
+        .sep-scroll{flex:1;overflow-y:auto;padding:8px 10px;display:flex;flex-direction:column;gap:4px}
         .sep-category-group{margin-bottom:8px}
         .sep-category-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#94a3b8;padding:10px 8px 4px;font-family:'Inter',system-ui,sans-serif}
-        .sep-row{display:flex;align-items:flex-start;justify-content:space-between;padding:6px 8px;border-radius:8px;transition:background .1s}
+        .sep-row{display:flex;align-items:flex-start;justify-content:space-between;padding:8px 8px;border-radius:8px;transition:background .1s}
         .sep-row:hover{background:rgba(0,0,0,.03)}
         .sep-row-left{display:flex;align-items:flex-start;gap:8px;flex:1;min-width:0}
         .sep-row-icon{font-size:12px;flex-shrink:0;width:16px;text-align:center;margin-top:1px}
@@ -2719,8 +2731,8 @@ export default function ProjectViewPage() {
         .sep-row-icon.conflict{color:#dc2626}
         .sep-row-icon.gol{color:#cbd5e1;font-size:10px}
         .sep-row-info{flex:1;min-width:0}
-        .sep-row-label{font-size:12px;color:#64748b;line-height:1.3}
-        .sep-row-value{font-size:13px;font-weight:600;color:#0f172a;line-height:1.3;word-break:break-word}
+        .sep-row-label{font-size:12.5px;color:#64748b;line-height:1.4}
+        .sep-row-value{font-size:13px;font-weight:600;color:#0f172a;line-height:1.4;word-break:break-word}
         .sep-row-value.confirmat{color:#059669}
         .sep-row-value.propus_ai{color:#d97706}
         .sep-row-value.proposed{color:#d97706}
@@ -4118,6 +4130,7 @@ export default function ProjectViewPage() {
                                     <button className="el-btn el-btn-ghost el-btn-sm" onClick={(ev) => { ev.stopPropagation(); setEditingElementId(el.id); setEditingElementValue(el.value || ""); }}>{"\u270E"}</button>
                                   )}
                                   <button className="el-btn el-btn-ghost el-btn-sm" onClick={(ev) => { ev.stopPropagation(); openDetailPanel(el.id); }}>{"\u22EF"}</button>
+                                  <button className="el-btn el-btn-ghost el-btn-sm" title="Întreabă Solomon" onClick={(ev) => { ev.stopPropagation(); askSolomonAbout(el); }}>{"\uD83D\uDCAC"}</button>
                                 </div>
                               </div>
                             ))}
@@ -4200,6 +4213,10 @@ export default function ProjectViewPage() {
                               </div>
                             </div>
                           )}
+                          {/* Ask Solomon */}
+                          <div style={{ marginTop: 12 }}>
+                            <button className="el-btn el-btn-sec" onClick={() => { setDetailPanelId(null); askSolomonAbout(el); }}>{"\uD83D\uDCAC"} Întreabă Solomon</button>
+                          </div>
                           {/* History */}
                           <div className="dp-history">
                             <div className="dp-history-title">Istoric modificări</div>
@@ -4604,15 +4621,8 @@ export default function ProjectViewPage() {
                   <div className="chat-messages" ref={chatRef} onScroll={handleChatScroll} onMouseUp={handleTextSelect}>
                     <div className="chat-messages-inner">
                     {solomonMessages.map((msg, msgIdx) => (
-                      <div key={msgIdx} className="solomon-msg">
-                        <div className={`solomon-msg-avatar ${msg.role === "assistant" ? "ai" : "user"}`}>
-                          {msg.role === "assistant" ? "S" : (typeof window !== "undefined" && localStorage.getItem("df-user-initials")) || "U"}
-                        </div>
+                      <div key={msgIdx} className={`solomon-msg ${msg.role === "assistant" ? "solomon-msg-left" : "solomon-msg-right"}`}>
                         <div className="solomon-msg-body">
-                          <div className="solomon-msg-name">
-                            {msg.role === "assistant" ? orgLabels.solomonLabel : "Tu"}
-                            <span>{new Date().toLocaleTimeString("ro-RO", { hour: "2-digit", minute: "2-digit" })}</span>
-                          </div>
                           <div className="solomon-msg-text">
                           {renderMsgText(msg.text)}
                           {msg.extractions && (() => {
@@ -4793,20 +4803,17 @@ export default function ProjectViewPage() {
                         }}
                       />
                       <div className="chat-input-wrapper">
-                        <button className="chat-attach-btn" title="Atașează document sau imagine" onClick={() => solomonFileRef.current?.click()} disabled={solomonStreaming || readOnly}>
-                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
-                        </button>
                         <div className="chat-input-row">
                           <textarea
                             className="chat-input"
                             data-solomon-input
                             placeholder="Scrie detalii despre proiect, lipește date sau poze, sau întreabă..."
                             value={solomonInput}
-                            rows={1}
+                            rows={2}
                             onChange={e => {
                               setSolomonInput(e.target.value);
                               e.target.style.height = "auto";
-                              e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
+                              e.target.style.height = Math.min(e.target.scrollHeight, 160) + "px";
                             }}
                             onKeyDown={e => {
                               if (e.key === "Enter" && !e.shiftKey) {
@@ -4832,6 +4839,9 @@ export default function ProjectViewPage() {
                               }
                             }}
                           />
+                          <button className="chat-attach-btn" title="Atașează document sau imagine" onClick={() => solomonFileRef.current?.click()} disabled={solomonStreaming || readOnly}>
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                          </button>
                           {solomonStreaming ? (
                             <button className="chat-btn send" onClick={handleSolomonStop} title="Oprește generarea" style={{ background: "#64748b" }}>
                               <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="1" y="1" width="12" height="12" rx="2.5"/></svg>
@@ -4843,6 +4853,7 @@ export default function ProjectViewPage() {
                           )}
                         </div>
                       </div>
+                      <div className="chat-hint">Scrie „analiză detaliată" sau „opus" pentru gândire aprofundată</div>
                     </div>
                   </div>
                 </div>

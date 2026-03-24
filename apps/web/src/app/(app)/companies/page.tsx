@@ -167,7 +167,7 @@ export default function CompaniesPage() {
         .co-mode-btn.on{background:#ffffff;color:#0f172a;box-shadow:0 1px 3px rgba(0,0,0,.06);font-weight:600}
       `}</style>
 
-      <div className="max-w-6xl mx-auto px-8 py-6">
+      <div className="px-6 py-6">
         {/* Search + filter bar + action */}
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
           {!loading && companies.length > 0 && (

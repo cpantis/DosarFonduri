@@ -167,7 +167,7 @@ export default function ProjectsPage() {
 
   return (
     <div className="animate-[fadeIn_.2s_ease-out]">
-      <div className="max-w-6xl mx-auto px-8 py-6">
+      <div className="px-6 py-6">
         {/* Search + filters + action */}
         <div className="flex items-center gap-3 mb-4 flex-wrap">
           {!loading && projects.length > 0 && (

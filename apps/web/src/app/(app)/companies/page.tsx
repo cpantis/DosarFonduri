@@ -34,8 +34,8 @@ export default function CompaniesPage() {
   const fetchCompanies = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await apiGet<any[]>("/api/companies");
-      setCompanies(data);
+      const data = await apiGet<any>("/api/companies");
+      setCompanies(Array.isArray(data) ? data : data.data || []);
       setError(null);
     } catch (err: any) {
       setError(err.message || "Eroare la încărcarea firmelor");

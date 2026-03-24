@@ -53,8 +53,17 @@ healthRoutes.get("/db", async (c) => {
   }, allReady && redisOk ? 200 : 503);
 });
 
+// Verify admin secret for dangerous health operations
+function requireAdminSecret(c: any): boolean {
+  const secret = c.req.query("secret") || c.req.header("x-admin-secret");
+  const expected = process.env.ADMIN_SECRET || process.env.JWT_SECRET;
+  if (!expected || secret !== expected) return false;
+  return true;
+}
+
 // POST /api/health/invalidate-cache — force re-check after migration
 healthRoutes.post("/invalidate-cache", async (c) => {
+  if (!requireAdminSecret(c)) return c.json({ error: "Unauthorized" }, 401);
   invalidatePreflightCache();
   return c.json({ message: "Preflight cache invalidated" });
 });
@@ -62,6 +71,7 @@ healthRoutes.post("/invalidate-cache", async (c) => {
 // POST /api/health/run-migrations — execute pending extra migrations
 // Reads SQL files from migrations/ and runs any not yet in _extra_migrations
 healthRoutes.post("/run-migrations", async (c) => {
+  if (!requireAdminSecret(c)) return c.json({ error: "Unauthorized" }, 401);
   const results: Array<{ file: string; status: string; error?: string }> = [];
 
   try {

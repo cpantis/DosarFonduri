@@ -584,7 +584,7 @@ export async function generateDocument(params: GenerateDocParams): Promise<Reada
           tokensOutput: 0,
           action: "neemia_fill",
           projectId,
-        }).catch(() => {});
+        }).catch((e: any) => console.error("[neemia] AI usage log failed:", e.message));
 
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({
           type: "complete",

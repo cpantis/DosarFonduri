@@ -7,7 +7,7 @@ import {
   companyFinancials, companyIfMembers, documentFolders, rules, documents,
   projects, projectDocuments,
 } from "../db/schema";
-import { eq, and, sql, inArray } from "drizzle-orm";
+import { eq, and, sql, inArray, count } from "drizzle-orm";
 import { lookupCUI, FORMA_MAP } from "../services/onrc";
 import { lookupCUI_ListaFirme, searchCompany_ListaFirme } from "../services/listafirme";
 import { uploadFile, deleteFile } from "../services/storage";
@@ -44,12 +44,22 @@ companyRoutes.get("/", async (c) => {
   const auth = c.get("auth") as AuthContext;
   if (!auth.organizationId) return c.json({ error: "No organization" }, 403);
 
-  const result = await db.query.companies.findMany({
-    where: eq(companies.organizationId, auth.organizationId),
-    orderBy: (companies, { desc }) => [desc(companies.updatedAt)],
-  });
+  const page = Math.max(1, parseInt(c.req.query("page") || "1", 10));
+  const limit = Math.min(100, Math.max(1, parseInt(c.req.query("limit") || "50", 10)));
+  const offset = (page - 1) * limit;
 
-  return c.json(result);
+  const [result, totalResult] = await Promise.all([
+    db.query.companies.findMany({
+      where: eq(companies.organizationId, auth.organizationId),
+      orderBy: (companies, { desc }) => [desc(companies.updatedAt)],
+      limit,
+      offset,
+    }),
+    db.select({ count: count() }).from(companies).where(eq(companies.organizationId, auth.organizationId)),
+  ]);
+
+  const total = totalResult[0]?.count ?? 0;
+  return c.json({ data: result, total, page, limit });
 });
 
 // --- COMPANY DETAILS ---

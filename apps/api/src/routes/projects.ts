@@ -103,12 +103,22 @@ projectRoutes.get("/", async (c) => {
   const auth = c.get("auth") as AuthContext;
   if (!auth.organizationId) return c.json({ error: "No organization" }, 403);
 
-  const result = await db.query.projects.findMany({
-    where: eq(projects.organizationId, auth.organizationId),
-    orderBy: (p, { desc }) => [desc(p.updatedAt)],
-  });
+  const page = Math.max(1, parseInt(c.req.query("page") || "1", 10));
+  const limit = Math.min(100, Math.max(1, parseInt(c.req.query("limit") || "50", 10)));
+  const offset = (page - 1) * limit;
 
-  if (result.length === 0) return c.json([]);
+  const [result, totalResult] = await Promise.all([
+    db.query.projects.findMany({
+      where: eq(projects.organizationId, auth.organizationId),
+      orderBy: (p, { desc }) => [desc(p.updatedAt)],
+      limit,
+      offset,
+    }),
+    db.select({ count: count() }).from(projects).where(eq(projects.organizationId, auth.organizationId)),
+  ]);
+  const total = totalResult[0]?.count ?? 0;
+
+  if (result.length === 0) return c.json({ data: [], total, page, limit });
 
   const projectIds = result.map(p => p.id);
   const companyIds = [...new Set(result.map(p => p.companyId))];
@@ -193,7 +203,7 @@ projectRoutes.get("/", async (c) => {
     };
   });
 
-  return c.json(enriched);
+  return c.json({ data: enriched, total, page, limit });
 });
 
 // ─── CREATE PROJECT ───
@@ -489,19 +499,24 @@ projectRoutes.get("/:id", async (c) => {
     where: eq(projectElements.projectId, id),
   });
 
-  // Enrich elements with template element AND element definition data
-  const enrichedElements = await Promise.all(elements.map(async (el) => {
-    const templateEl = el.templateElementId ? await db.query.templateElements.findFirst({
-      where: eq(templateElements.id, el.templateElementId),
-    }) : null;
+  // Batch-fetch template elements and element definitions to avoid N+1
+  const templateElIds = [...new Set(elements.map(el => el.templateElementId).filter(Boolean))] as string[];
+  const elemDefIds = [...new Set(elements.map(el => el.elementDefId).filter(Boolean))] as string[];
 
-    // Also resolve element_definition (the new canonical anchor)
-    let elemDef = null;
-    if (el.elementDefId) {
-      elemDef = await db.query.elementDefinitions.findFirst({
-        where: eq(elementDefinitions.id, el.elementDefId),
-      });
-    }
+  const templateElsList = templateElIds.length > 0
+    ? await db.query.templateElements.findMany({ where: inArray(templateElements.id, templateElIds) })
+    : [];
+  const templateElMap = Object.fromEntries(templateElsList.map(te => [te.id, te]));
+
+  const elemDefsList = elemDefIds.length > 0
+    ? await db.query.elementDefinitions.findMany({ where: inArray(elementDefinitions.id, elemDefIds) })
+    : [];
+  const elemDefMap = Object.fromEntries(elemDefsList.map(ed => [ed.id, ed]));
+
+  // Enrich elements with template element AND element definition data
+  const enrichedElements = elements.map((el) => {
+    const templateEl = el.templateElementId ? templateElMap[el.templateElementId] ?? null : null;
+    const elemDef = el.elementDefId ? elemDefMap[el.elementDefId] ?? null : null;
 
     // GDPR: Decrypt sensitive PII fields + mask for display
     const elementKey = elemDef?.elementKey || templateEl?.key || "";
@@ -522,7 +537,7 @@ projectRoutes.get("/:id", async (c) => {
     }
 
     return { ...el, value, templateElement: templateEl, elementDefinition: elemDef };
-  }));
+  });
 
   const eligibility = await db.query.projectEligibility.findMany({
     where: eq(projectEligibility.projectId, id),
@@ -753,7 +768,11 @@ projectRoutes.put("/:id/elements/:eid", async (c) => {
   });
 
   // 4. Re-check eligibility
-  await checkEligibility(id, auth.organizationId!);
+  try {
+    await checkEligibility(id, auth.organizationId!);
+  } catch (e: any) {
+    console.error("[projects] checkEligibility failed after element update:", e.message);
+  }
 
   // Get eligibility summary for SSE
   const eligibility = await db.query.projectEligibility.findMany({
@@ -896,7 +915,12 @@ projectRoutes.post("/:id/check-eligibility", async (c) => {
     return c.json({ error: "Not found" }, 404);
   }
 
-  await checkEligibility(id, auth.organizationId!);
+  try {
+    await checkEligibility(id, auth.organizationId!);
+  } catch (e: any) {
+    console.error("[projects] checkEligibility failed:", e.message);
+    return c.json({ error: "Eligibility check failed: " + e.message }, 500);
+  }
 
   return c.json({ ok: true });
 });
@@ -1067,6 +1091,10 @@ projectRoutes.delete("/:id/checklist/:itemId", async (c) => {
   const id = c.req.param("id");
   const { itemId } = c.req.param();
 
+  if (!await verifyProjectOwnership(id, auth.organizationId!)) {
+    return c.json({ error: "Not found" }, 404);
+  }
+
   const lockErr = await requireLock(id, auth.userId);
   if (lockErr) return c.json({ error: lockErr }, 423);
 
@@ -1194,11 +1222,12 @@ projectRoutes.post("/:id/lock/release", async (c) => {
     organizationId = user?.organizationId ?? null;
   }
 
+  // Require organizationId to prevent cross-org access
+  if (!organizationId) return c.json({ error: "Unauthorized" }, 401);
+
   // Verify project belongs to user's organization (prevent cross-org access)
   const project = await db.query.projects.findFirst({
-    where: organizationId
-      ? and(eq(projects.id, id), eq(projects.organizationId, organizationId))
-      : eq(projects.id, id),
+    where: and(eq(projects.id, id), eq(projects.organizationId, organizationId)),
     columns: { id: true, lockedBy: true },
   });
   if (!project) return c.json({ error: "Not found" }, 404);
@@ -1264,7 +1293,7 @@ projectRoutes.delete("/:id", async (c) => {
   }
 
   // Cascade deletes handle elements, eligibility, checklist, conversations, messages, projectDocuments
-  await db.delete(projects).where(eq(projects.id, id));
+  await db.delete(projects).where(and(eq(projects.id, id), eq(projects.organizationId, auth.organizationId!)));
   return c.json({ ok: true });
 });
 

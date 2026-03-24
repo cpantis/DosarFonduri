@@ -76,7 +76,7 @@ export default function ProjectsPage() {
   useEffect(() => {
     setLoading(true);
     apiGet("/api/projects")
-      .then((data: any) => { setProjects(Array.isArray(data) ? data : data.projects || []); })
+      .then((data: any) => { setProjects(Array.isArray(data) ? data : data.data || data.projects || []); })
       .catch((err) => { console.warn("[projects] load failed:", err.message); setProjects([]); })
       .finally(() => setLoading(false));
   }, []);
@@ -84,7 +84,7 @@ export default function ProjectsPage() {
   useEffect(() => {
     if (!showCreate) return;
     apiGet("/api/companies").then((data: any) => {
-      const list = Array.isArray(data) ? data : data.companies || [];
+      const list = Array.isArray(data) ? data : data.data || data.companies || [];
       setCompanies(list.map((c: any) => ({ id: c.id, name: c.denumire || c.name })));
     }).catch((err) => { console.warn("[projects] companies load:", err.message); setCompanies([]); });
     apiGet("/api/documents/folders").then((data: any) => {

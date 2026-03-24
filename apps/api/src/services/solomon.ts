@@ -233,7 +233,7 @@ async function buildSystemPrompt(projectId: string, organizationId: string): Pro
       const valHint = valRules ? ` [${valRules.min !== undefined ? `min: ${valRules.min}` : ""}${valRules.max !== undefined ? `${valRules.min !== undefined ? ", " : ""}max: ${valRules.max}` : ""}${valRules.pattern ? `, pattern: ${valRules.pattern}` : ""}]` : "";
       emptyElements.push(`- ${label} (key: ${key}, tip: ${dataType}, categorie: ${category})${valHint}${helpHint}`);
     } else {
-      filledElements.push(`- ${label}: ${el.value} [${el.confirmed ? "✓ confirmat" : "neconfirmat"}, sursa: ${el.source || "necunoscută"}]`);
+      filledElements.push(`- ${label} (key: ${key}): ${el.value} [${el.confirmed ? "✓ confirmat" : "neconfirmat"}, sursa: ${el.source || "necunoscută"}]`);
     }
   }
 
@@ -409,6 +409,8 @@ Ești echivalentul unui consultant senior cu 15+ ani experiență în fonduri eu
 
 ### Evoluție financiară (ultimii ani)
 ${financialHistory || "Nu sunt disponibile date financiare multi-an."}
+
+**ACȚIUNE AUTOMATĂ:** Dacă în lista CÂMPURI DE COMPLETAT există elemente financiare (cifra de afaceri, profit net, capitaluri proprii, număr angajați, etc.) și datele de mai sus conțin valorile corespunzătoare, completează-le AUTOMAT în ELEMENTS_JSON la PRIMUL mesaj fără a fi întrebat. Acestea sunt date oficiale ANAF — confidence 0.95.
 
 ═══════════════════════════════════════════
 ## REGULI DIN GHIDUL DE FINANȚARE (PRIORITARE)

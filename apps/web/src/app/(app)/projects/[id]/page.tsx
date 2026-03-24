@@ -807,6 +807,17 @@ export default function ProjectViewPage() {
     return opusPatterns.some(p => p.test(lower));
   };
 
+  // Ask Solomon about a specific element — prefill chat input and switch to Solomon tab
+  const askSolomonAbout = (el: { key: string; label: string; value?: string | null; status: string }) => {
+    setActiveLeaf("solomon");
+    const valueInfo = el.value ? `Valoarea curentă: "${el.value}"` : "Nu are valoare completată";
+    const statusHint = el.status === "conflict" ? " (are conflict)" : el.status === "propus_ai" ? " (propus de AI, neconfirmat)" : "";
+    setSolomonInput(`Ajută-mă cu elementul "${el.label}" (${el.key})${statusHint}. ${valueInfo}. Ce valoare ar trebui completată și de unde o obțin?`);
+    setTimeout(() => {
+      (document.querySelector("[data-solomon-input]") as HTMLTextAreaElement)?.focus();
+    }, 150);
+  };
+
   const handleSolomonSend = async () => {
     if (readOnly || !solomonInput.trim() || !solomonConvId || solomonStreaming) return;
     const userText = solomonInput;
@@ -4118,6 +4129,7 @@ export default function ProjectViewPage() {
                                     <button className="el-btn el-btn-ghost el-btn-sm" onClick={(ev) => { ev.stopPropagation(); setEditingElementId(el.id); setEditingElementValue(el.value || ""); }}>{"\u270E"}</button>
                                   )}
                                   <button className="el-btn el-btn-ghost el-btn-sm" onClick={(ev) => { ev.stopPropagation(); openDetailPanel(el.id); }}>{"\u22EF"}</button>
+                                  <button className="el-btn el-btn-ghost el-btn-sm" title="Întreabă Solomon" onClick={(ev) => { ev.stopPropagation(); askSolomonAbout(el); }}>{"\uD83D\uDCAC"}</button>
                                 </div>
                               </div>
                             ))}
@@ -4200,6 +4212,10 @@ export default function ProjectViewPage() {
                               </div>
                             </div>
                           )}
+                          {/* Ask Solomon */}
+                          <div style={{ marginTop: 12 }}>
+                            <button className="el-btn el-btn-sec" onClick={() => { setDetailPanelId(null); askSolomonAbout(el); }}>{"\uD83D\uDCAC"} Întreabă Solomon</button>
+                          </div>
                           {/* History */}
                           <div className="dp-history">
                             <div className="dp-history-title">Istoric modificări</div>

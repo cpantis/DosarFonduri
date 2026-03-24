@@ -2740,6 +2740,7 @@ export default function ProjectViewPage() {
         .sep-row-icon.gol{color:#cbd5e1;font-size:10px}
         .sep-row-info{flex:1;min-width:0}
         .sep-row-label{font-size:12.5px;color:#64748b;line-height:1.4}
+        .sep-row-key{font-size:10px;font-family:'JetBrains Mono',monospace;color:#94a3b8;line-height:1.3;opacity:.7}
         .sep-row-value{font-size:13px;font-weight:600;color:#0f172a;line-height:1.4;word-break:break-word}
         .sep-row-value.confirmat{color:#059669}
         .sep-row-value.propus_ai{color:#d97706}
@@ -4944,6 +4945,7 @@ export default function ProjectViewPage() {
                                 </span>
                                 <div className="sep-row-info">
                                   <div className="sep-row-label">{el.label}</div>
+                                  <div className="sep-row-key">{el.key}</div>
                                   {el.value ? (
                                     <div className={`sep-row-value ${el.status}`}>{el.value}</div>
                                   ) : (

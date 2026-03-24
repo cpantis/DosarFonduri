@@ -67,7 +67,7 @@ const mapDetail = (d: any) => {
   }));
   return {
     ...d, forma: d.formaJuridica || "SRL",
-    caenDesc: raw.caenDesc || raw.caen_desc || "\u2014",
+    caenDesc: raw.caenDesc || raw.caen_desc || raw.NACEDescription || "\u2014",
     activitatiSecundare: (raw.activitatiSecundare || raw.activitati_secundare || (raw.caenSecundare || []).map((c: string) => ({ cod: c, den: "" }))),
     sediiSecundare: raw.sediiSecundare || raw.sedii_secundare || [],
     insolventa: raw.insolventa ?? false, dizolvare: raw.dizolvare ?? false,
@@ -75,6 +75,8 @@ const mapDetail = (d: any) => {
     titular: raw.titular || null, cenzori: raw.cenzori || null,
     ultimaMentiune: raw.ultimaMentiune || raw.ultima_mentiune || "\u2014",
     natura: d.naturaCapital || null,
+    platitorTVA: raw.vat || raw.VAT || null,
+    dataInfiintare: raw.foundedDate || raw.Date || null,
     situatiiFinanciare, asociatiPF, asociatiPJ, administratori, membriIF,
   };
 };
@@ -108,7 +110,6 @@ export default function CompanyDetailPage() {
   const [preEligResult, setPreEligResult] = useState<any>(null);
   const [preEligLoading, setPreEligLoading] = useState(false);
   const [preEligError, setPreEligError] = useState<string | null>(null);
-  const [includeInterpreted, setIncludeInterpreted] = useState(false);
 
   const fetchDetail = useCallback(async () => {
     try {
@@ -206,7 +207,7 @@ export default function CompanyDetailPage() {
 
   // Fetch available sessions when tab activates
   useEffect(() => {
-    if (activeTab === "Pre-eligibilitate" && sessions.length === 0) {
+    if (activeTab === "Preeligibilitate" && sessions.length === 0) {
       apiGet("/api/companies/sessions/list")
         .then((data: any[]) => setSessions(data))
         .catch(() => setSessions([]));
@@ -221,7 +222,6 @@ export default function CompanyDetailPage() {
     try {
       const result = await apiPost(`/api/companies/${id}/pre-eligibility`, {
         sessionFolderId: selectedSession,
-        includeInterpreted,
       });
       setPreEligResult(result);
     } catch (err: any) {
@@ -430,6 +430,18 @@ export default function CompanyDetailPage() {
                 <div className="cd-info">
                   <div className="cd-info-label">EUID</div>
                   <div className="cd-info-value" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13 }}>{sel.euid}</div>
+                </div>
+              )}
+              {sel.platitorTVA && (
+                <div className="cd-info">
+                  <div className="cd-info-label">Platitor TVA</div>
+                  <div className="cd-info-value">{sel.platitorTVA}</div>
+                </div>
+              )}
+              {sel.dataInfiintare && (
+                <div className="cd-info">
+                  <div className="cd-info-label">Data infiintare</div>
+                  <div className="cd-info-value">{sel.dataInfiintare}</div>
                 </div>
               )}
             </div>
@@ -962,13 +974,13 @@ export default function CompanyDetailPage() {
           </>)}
 
           {/* PRE-ELIGIBILITATE */}
-          {activeTab === "Pre-eligibilitate" && (<>
-            <SectionTitle>Pre-eligibilitate</SectionTitle>
+          {activeTab === "Preeligibilitate" && (<>
+            <SectionTitle>Preeligibilitate</SectionTitle>
             <p style={{ fontSize: 13, color: "#64748b", marginBottom: 20, lineHeight: 1.6 }}>
               Verifica rapid daca firma indeplineste criteriile de eligibilitate pentru o sesiune de finantare, fara a crea un proiect.
             </p>
 
-            {/* Session picker + options */}
+            {/* Session picker */}
             <div className="cd-card" style={{ marginBottom: 20 }}>
               <div style={{ display: "flex", gap: 16, alignItems: "flex-end", flexWrap: "wrap" }}>
                 <div style={{ flex: "1 1 320px", minWidth: 200 }}>
@@ -987,20 +999,11 @@ export default function CompanyDetailPage() {
                     ))}
                   </select>
                 </div>
-                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#475569", cursor: "pointer", paddingBottom: 2 }}>
-                  <input
-                    type="checkbox"
-                    checked={includeInterpreted}
-                    onChange={e => setIncludeInterpreted(e.target.checked)}
-                    style={{ width: 16, height: 16, accentColor: "#4d8bff" }}
-                  />
-                  Include reguli interpretate (AI)
-                </label>
                 <BtnPrimary
                   onClick={handlePreEligibility}
                   disabled={!selectedSession || preEligLoading}
                 >
-                  {preEligLoading ? "Se verifica..." : "Verifica eligibilitate"}
+                  {preEligLoading ? "Se verifica..." : "Verifica preeligibilitate"}
                 </BtnPrimary>
               </div>
             </div>
@@ -1052,7 +1055,6 @@ export default function CompanyDetailPage() {
                     <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
                       <th style={{ padding: "10px 16px", textAlign: "left", fontWeight: 600, color: "#475569", fontSize: 11, textTransform: "uppercase", letterSpacing: ".05em" }}>Status</th>
                       <th style={{ padding: "10px 16px", textAlign: "left", fontWeight: 600, color: "#475569", fontSize: 11, textTransform: "uppercase", letterSpacing: ".05em" }}>Regula</th>
-                      <th style={{ padding: "10px 16px", textAlign: "left", fontWeight: 600, color: "#475569", fontSize: 11, textTransform: "uppercase", letterSpacing: ".05em" }}>Tip</th>
                       <th style={{ padding: "10px 16px", textAlign: "left", fontWeight: 600, color: "#475569", fontSize: 11, textTransform: "uppercase", letterSpacing: ".05em" }}>Detalii</th>
                     </tr>
                   </thead>
@@ -1074,15 +1076,10 @@ export default function CompanyDetailPage() {
                               {statusLabels[rule.status] || rule.status}
                             </span>
                           </td>
-                          <td style={{ padding: "10px 16px", color: "#0f172a", lineHeight: 1.5, maxWidth: 400 }}>
+                          <td style={{ padding: "10px 16px", color: "#0f172a", lineHeight: 1.5, maxWidth: 500 }}>
                             {rule.description}
                           </td>
-                          <td style={{ padding: "10px 16px", whiteSpace: "nowrap" }}>
-                            <span style={{ fontSize: 11, fontWeight: 500, padding: "2px 8px", borderRadius: 6, background: rule.type === "fixed" ? "#eff6ff" : "#faf5ff", color: rule.type === "fixed" ? "#2563eb" : "#7c3aed" }}>
-                              {rule.type === "fixed" ? "Automat" : "AI"}
-                            </span>
-                          </td>
-                          <td style={{ padding: "10px 16px", color: "#64748b", fontSize: 12, maxWidth: 300 }}>
+                          <td style={{ padding: "10px 16px", color: "#64748b", fontSize: 12, maxWidth: 350 }}>
                             {rule.notes || "\u2014"}
                           </td>
                         </tr>
@@ -1092,20 +1089,18 @@ export default function CompanyDetailPage() {
                 </table>
               </div>
 
-              {/* Sub-summary: fixed vs interpreted */}
+              {/* Sub-summary */}
               <div style={{ display: "flex", gap: 16, marginTop: 16, fontSize: 12, color: "#64748b" }}>
-                <span>Reguli fixe: {preEligResult.summary.fixed.passed}/{preEligResult.summary.fixed.total} indeplinite</span>
-                <span>|</span>
-                <span>Reguli interpretate: {preEligResult.summary.interpreted.passed}/{preEligResult.summary.interpreted.total} indeplinite</span>
+                <span>Reguli verificate: {preEligResult.summary.passed + preEligResult.summary.failed}/{preEligResult.summary.total}</span>
               </div>
             </>)}
 
             {/* Empty state when no check done yet */}
             {!preEligResult && !preEligLoading && !preEligError && (
               <EmptyState
-                icon="\ud83d\udee1\ufe0f"
+                icon="&#x2714;"
                 title="Selecteaza o sesiune de finantare"
-                description="Alege o sesiune pentru a verifica rapid eligibilitatea firmei contra regulilor din ghidul de finantare."
+                description="Alege o sesiune pentru a verifica rapid preeligibilitatea firmei contra regulilor din ghidul de finantare."
               />
             )}
           </>)}

@@ -731,6 +731,8 @@ Când primești text liber, identifică ce câmpuri poate completa. După FIECAR
 
 **Studiu fezabilitate / Plan afaceri:** VAN, RIR, termen recuperare, valoare investiție, surse finanțare → cross-check cu buget proiect
 
+**Tip proiect (CHEIE: tip_proiect):** Deduce PROACTIV din conversație și context: "bunuri" (achiziție echipamente/utilaje/mobilier), "bunuri_cu_montaj" (echipamente cu instalare/montaj), "constructii" (clădiri/hale/renovări/extinderi), "servicii" (consultanță/training/studii), "mixt" (combinație). Setează-l în ELEMENTS_JSON imediat ce ai suficiente informații — din ghid, CAEN, numele proiectului, sau din discuție. NU aștepta să fii întrebat.
+
 → Folosește EXCLUSIV cheile din lista CÂMPURI DE COMPLETAT. NU inventa chei noi. Dacă un câmp nu are corespondent, menționează-l în conversație dar NU-l include în ELEMENTS_JSON.
 
 ### Gândirea de consultant (PROACTIVITATE)
@@ -1151,6 +1153,7 @@ export async function processSolomonMessage(params: {
             specializare: { displayName: "Specializare", category: "beneficiary", dataType: "text" },
             data_absolvire: { displayName: "Data absolvire", category: "beneficiary", dataType: "date" },
             numar_diploma: { displayName: "Număr diplomă", category: "beneficiary", dataType: "text" },
+            tip_proiect: { displayName: "Tip proiect (bunuri / construcții / servicii / mixt)", category: "other", dataType: "text", required: true },
           };
 
           // Find guide document for auto-creating element definitions
@@ -1379,6 +1382,12 @@ export async function processSolomonMessage(params: {
             } catch (err) {
               console.error(`[solomon] Score computation failed for project ${projectId}:`, err);
             }
+          }
+
+          // Sync tip_proiect element → projects.tipProiect column
+          const tipProiectEl = extractedElements.find(el => el.key === "tip_proiect");
+          if (tipProiectEl?.value) {
+            await db.update(projects).set({ tipProiect: tipProiectEl.value, updatedAt: new Date() }).where(eq(projects.id, projectId));
           }
 
           // Send extraction event

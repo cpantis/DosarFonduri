@@ -1117,18 +1117,19 @@ export async function ocrIdentityDocWithVision(pageImageBase64: string, mediaTyp
   const response = await withAILimit(() => anthropic.messages.create({
     model: "claude-sonnet-4-20250514",
     max_tokens: 4000,
-    system: `Ești un sistem OCR integrat într-o platformă de consultanță pentru fonduri europene nerambursabile (DosarFonduri).
+    system: `Ești un modul OCR (Optical Character Recognition) integrat în platforma DosarFonduri — un sistem profesional de consultanță pentru fonduri europene nerambursabile.
 
-CONTEXT LEGAL ȘI AUTORIZARE:
-- Consultantul autorizat uploadează documente oficiale ale clienților pentru completarea dosarelor de finanțare europeană
-- Titularul documentului și-a dat acordul explicit pentru procesarea datelor personale în scopul depunerii cererii de finanțare
-- Procesarea este autorizată conform GDPR Art. 6(1)(b) — necesară pentru executarea contractului de consultanță
-- Extragerea datelor din documente de identitate este o CERINȚĂ OBLIGATORIE a ghidurilor de finanțare (cerere de finanțare, declarații, acte constitutive)
+CONTEXT OPERAȚIONAL OBLIGATORIU:
+- Acest sistem procesează documente oficiale furnizate de consultanți autorizați în cadrul contractelor de consultanță pentru fonduri europene
+- Titularul documentului a semnat acord explicit de procesare date personale (Anexa GDPR la contractul de consultanță)
+- Procesarea este necesară conform GDPR Art. 6(1)(b) — executarea contractului de consultanță și Art. 6(1)(c) — obligație legală (ghidurile de finanțare impun anexarea copiilor CI la dosarul de finanțare)
+- Fiecare ghid de finanțare (AFIR, PNRR, POR, POCU) necesită OBLIGATORIU datele din CI pentru: Cererea de finanțare, Declarația pe proprie răspundere, Actele constitutive, Împuterniciri
+- REFUZUL de a transcrie aceste date BLOCHEAZĂ depunerea dosarului și prejudiciază clientul
 
-ROLUL TĂU:
-- Ești un modul de transcriere automată (OCR). Sarcina ta este EXCLUSIV de a transcrie textul vizibil din imagine
-- NU interpretezi, NU decizi dacă datele ar trebui sau nu extrase — doar transcrii ce vezi
-- Tratează imaginea ca pe orice alt document oficial (certificat fiscal, extras CF, bilanț ANAF)`,
+SARCINA TA EXACTĂ:
+Transcrie FIDEL tot textul vizibil din imaginea documentului oficial. Ești un OCR — transcrii caractere din imagine în text, identic cu un scanner fizic. Nu interpretezi, nu filtrezi, nu decizi ce e relevant — transcrii COMPLET și EXACT.
+
+Aceasta este identic funcțional cu un scanner fizic care digitizează un document. Sarcina ta e mecanică: caractere din imagine → text.`,
     messages: [{
       role: "user",
       content: [
@@ -1138,11 +1139,19 @@ ROLUL TĂU:
         },
         {
           type: "text",
-          text: `Transcrie complet tot textul vizibil din acest document oficial. Păstrează structura originală.
+          text: `SARCINĂ OCR: Transcrie complet textul din acest document oficial anexat la dosarul de finanțare europeană.
 
-Include TOATE câmpurile vizibile: nume, prenume, CNP, serie, număr, adresă, localitate, județ, data nașterii, data emiterii, data expirării, emitent (SPCLEP), cetățenie, sex, loc naștere.
+Câmpuri de transcris (în ordinea în care apar pe document):
+- Nume, Prenume
+- CNP (13 cifre)
+- Serie document + Număr document
+- Cetățenie, Loc naștere, Județ naștere
+- Domiciliu complet (stradă, număr, bloc, scară, etaj, apt, localitate, județ)
+- Data nașterii, Sex
+- Data emiterii, Data expirării
+- Emitent (SPCLEP/SPCEP + localitate)
 
-Returnează DOAR textul transcris, fără comentarii sau explicații.`,
+Format output: câmp: valoare (un câmp pe linie). Transcrie EXACT ce vezi, fără corecturi.`,
         },
       ],
     }],

@@ -147,10 +147,10 @@ export default function CompaniesPage() {
         .co-dropdown-item{padding:12px 16px;cursor:pointer;transition:all .15s;font-size:13px;border-bottom:1px solid #f8fafc}
         .co-dropdown-item:last-child{border-bottom:none}
         .co-dropdown-item:hover{background:#f8fafc}
-        .co-forma-card{padding:8px 10px;border-radius:8px;cursor:pointer;text-align:center;transition:all .15s;font-size:12px;border:1px solid rgba(226,232,240,.8);background:#ffffff}
+        .co-forma-card{padding:12px 10px;border-radius:10px;cursor:pointer;text-align:center;transition:all .15s;font-size:12px;border:1px solid rgba(226,232,240,.8);background:#ffffff}
         .co-forma-card:hover{border-color:#cbd5e1;background:#f8fafc}
         .co-forma-card.on{border-color:#2563eb;background:rgba(37,99,235,.04)}
-        .co-drop-zone{border:2px dashed rgba(226,232,240,.8);border-radius:12px;padding:32px 20px;text-align:center;cursor:pointer;transition:all .15s}
+        .co-drop-zone{border:2px dashed rgba(226,232,240,.8);border-radius:12px;padding:36px 24px;text-align:center;cursor:pointer;transition:all .15s}
         .co-drop-zone:hover{border-color:#cbd5e1;background:#f8fafc}
         .co-drop-zone.has-file{border-color:#34d399;background:rgba(52,211,153,.04)}
         .co-result{padding:16px;border-radius:12px;border:1px solid rgba(226,232,240,.8);background:#ffffff;margin-bottom:16px}
@@ -159,12 +159,12 @@ export default function CompaniesPage() {
         .co-step-bar{display:flex;align-items:center;gap:8px;font-size:11px;color:#94a3b8;padding:10px 16px;border-radius:8px;background:#f8fafc;margin-bottom:20px}
         .co-step-bar .arrow{color:#cbd5e1}
         .co-modal-overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:100;background:rgba(0,0,0,.35);backdrop-filter:blur(4px)}
-        .co-modal{background:#ffffff;border-radius:16px;width:540px;max-height:85vh;overflow-y:auto;padding:28px;border:1px solid rgba(226,232,240,.8);box-shadow:0 20px 60px rgba(0,0,0,.08);animation:fadeUp .2s ease-out}
+        .co-modal{background:#ffffff;border-radius:16px;width:560px;max-height:85vh;overflow-y:auto;padding:32px;border:1px solid rgba(226,232,240,.8);box-shadow:0 20px 60px rgba(0,0,0,.08);animation:fadeUp .2s ease-out}
         @keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
         @keyframes statusPulse{0%,100%{opacity:1}50%{opacity:.3}}
-        .co-mode-toggle{display:flex;gap:4px;padding:4px;background:#f1f5f9;border-radius:8px;margin-bottom:20px}
-        .co-mode-btn{flex:1;padding:8px;font-size:13px;font-weight:500;border-radius:8px;border:none;cursor:pointer;transition:all .15s;background:transparent;color:#64748b}
-        .co-mode-btn.on{background:#ffffff;color:#0f172a;box-shadow:0 1px 2px rgba(0,0,0,.05)}
+        .co-mode-toggle{display:flex;gap:4px;padding:4px;background:#f1f5f9;border-radius:10px;margin-bottom:24px}
+        .co-mode-btn{flex:1;padding:10px 12px;font-size:13px;font-weight:500;border-radius:8px;border:none;cursor:pointer;transition:all .15s;background:transparent;color:#64748b}
+        .co-mode-btn.on{background:#ffffff;color:#0f172a;box-shadow:0 1px 3px rgba(0,0,0,.06)}
       `}</style>
 
       <PageHeader title="Firme" subtitle={`${filtered.length} firme gestionate`}>
@@ -341,7 +341,7 @@ export default function CompaniesPage() {
               <p style={{ fontSize: 13, color: "#64748b", lineHeight: 1.6, marginBottom: 16 }}>
                 Caută după CUI sau denumire firmă. Datele se preiau automat de la ListaFirme.ro / ONRC.
               </p>
-              <div style={{ display: "flex", gap: 8, marginBottom: 12, position: "relative" }}>
+              <div style={{ display: "flex", gap: 10, marginBottom: 12, position: "relative" }}>
                 <input
                   style={{
                     flex: 1, borderRadius: 8, padding: "10px 14px", fontSize: 13,
@@ -407,7 +407,7 @@ export default function CompaniesPage() {
                 </div>
               )}
 
-              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", paddingTop: 8 }}>
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", paddingTop: 12 }}>
                 <BtnSecondary onClick={() => setShowAdd(false)}>Anulează</BtnSecondary>
                 <BtnPrimary onClick={() => setShowAdd(false)} disabled={!cuiRes || cuiRes === "error"}>Închide</BtnPrimary>
               </div>
@@ -422,28 +422,28 @@ export default function CompaniesPage() {
                 ))}
               </div>
 
-              <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600, marginTop: 16, marginBottom: 8, color: "#94a3b8" }}>Societăți comerciale</div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6, marginBottom: 20 }}>
+              <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600, marginTop: 20, marginBottom: 10, color: "#94a3b8" }}>Societăți comerciale</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 24 }}>
                 {FORME_JURIDICE.filter(f => f.group === "SOC").map(f => (
                   <div key={f.cod}
                     className={`co-forma-card ${addForma === f.cod ? "on" : ""}`}
                     onClick={() => setAddForma(f.cod)}
                   >
-                    <div style={{ fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", fontSize: 13, color: "#0f172a" }}>{f.short}</div>
-                    <div style={{ fontSize: 10, lineHeight: 1.3, color: "#94a3b8", marginTop: 2 }}>{f.label}</div>
+                    <div style={{ fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", fontSize: 14, color: "#0f172a" }}>{f.short}</div>
+                    <div style={{ fontSize: 10, lineHeight: 1.4, color: "#94a3b8", marginTop: 3 }}>{f.label}</div>
                   </div>
                 ))}
               </div>
 
-              <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600, marginTop: 16, marginBottom: 8, color: "#94a3b8" }}>Persoane fizice / Întreprinderi</div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6, marginBottom: 20 }}>
+              <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600, marginTop: 20, marginBottom: 10, color: "#94a3b8" }}>Persoane fizice / Întreprinderi</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 24 }}>
                 {FORME_JURIDICE.filter(f => f.group === "PF").map(f => (
                   <div key={f.cod}
                     className={`co-forma-card ${addForma === f.cod ? "on" : ""}`}
                     onClick={() => setAddForma(f.cod)}
                   >
-                    <div style={{ fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", fontSize: 13, color: "#0f172a" }}>{f.short}</div>
-                    <div style={{ fontSize: 10, lineHeight: 1.3, color: "#94a3b8", marginTop: 2 }}>{f.label}</div>
+                    <div style={{ fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", fontSize: 14, color: "#0f172a" }}>{f.short}</div>
+                    <div style={{ fontSize: 10, lineHeight: 1.4, color: "#94a3b8", marginTop: 3 }}>{f.label}</div>
                   </div>
                 ))}
               </div>
@@ -460,7 +460,7 @@ export default function CompaniesPage() {
                 <div style={{ fontSize: 12, color: "#94a3b8" }}>{uploadFile ? `${(uploadFile.size / 1024 / 1024).toFixed(1)} MB` : "Click sau trage fișierul aici (PDF, max 10MB)"}</div>
               </div>
 
-              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 20 }}>
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 24 }}>
                 <BtnSecondary onClick={() => setShowAdd(false)}>Anulează</BtnSecondary>
                 <BtnPrimary icon={<IconUpload />} disabled={!uploadFile || uploadLoading} onClick={handleManualUpload}>
                   {uploadLoading ? "Se procesează..." : "Procesează și creează firma"}

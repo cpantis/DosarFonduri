@@ -70,8 +70,10 @@ healthRoutes.post("/invalidate-cache", async (c) => {
 
 // POST /api/health/run-migrations — execute pending extra migrations
 // Reads SQL files from migrations/ and runs any not yet in _extra_migrations
+// Query params: ?secret=...&force=FILENAME to re-run a specific migration
 healthRoutes.post("/run-migrations", async (c) => {
   if (!requireAdminSecret(c)) return c.json({ error: "Unauthorized" }, 401);
+  const forceFile = c.req.query("force"); // re-run a specific migration
   const results: Array<{ file: string; status: string; error?: string }> = [];
 
   try {
@@ -111,7 +113,7 @@ healthRoutes.post("/run-migrations", async (c) => {
       .sort();
 
     for (const file of extraFiles) {
-      if (appliedSet.has(file)) {
+      if (appliedSet.has(file) && file !== forceFile) {
         results.push({ file, status: "already_applied" });
         continue;
       }
@@ -127,8 +129,15 @@ healthRoutes.post("/run-migrations", async (c) => {
           await db.execute(sql.raw(stmt));
         } catch (e: any) {
           const msg = e.message || "";
+          // Safe to ignore: idempotent DDL re-runs
           if (msg.includes("already exists") || msg.includes("duplicate")) {
             continue;
+          }
+          // Aborted transaction from stale BEGIN — fatal for remaining stmts
+          if (msg.includes("current transaction is aborted")) {
+            errors.push("Transaction aborted — remaining statements skipped. Re-run migration.");
+            hasError = true;
+            break;
           }
           errors.push(msg.substring(0, 150));
           hasError = true;
@@ -158,7 +167,147 @@ healthRoutes.post("/run-migrations", async (c) => {
   }
 });
 
-/** Split SQL into executable statements, handling DO $$ blocks */
+// GET /api/health/verify — run read-only integrity checks on the database
+healthRoutes.get("/verify", async (c) => {
+  if (!requireAdminSecret(c)) return c.json({ error: "Unauthorized" }, 401);
+
+  const checks: Array<{ check: string; result: string }> = [];
+
+  const queries: Array<{ name: string; query: string }> = [
+    {
+      name: "orphan_project_elements",
+      query: `SELECT COUNT(*) AS cnt FROM project_elements pe LEFT JOIN projects p ON pe.project_id = p.id WHERE p.id IS NULL`,
+    },
+    {
+      name: "orphan_documents",
+      query: `SELECT COUNT(*) AS cnt FROM documents d LEFT JOIN document_folders df ON d.folder_id = df.id WHERE df.id IS NULL`,
+    },
+    {
+      name: "orphan_companies",
+      query: `SELECT COUNT(*) AS cnt FROM companies c LEFT JOIN organizations o ON c.organization_id = o.id WHERE o.id IS NULL`,
+    },
+    {
+      name: "orphan_users",
+      query: `SELECT COUNT(*) AS cnt FROM users u LEFT JOIN organizations o ON u.organization_id = o.id WHERE u.organization_id IS NOT NULL AND o.id IS NULL`,
+    },
+    {
+      name: "orphan_rules",
+      query: `SELECT COUNT(*) AS cnt FROM rules r LEFT JOIN documents d ON r.document_id = d.id WHERE d.id IS NULL`,
+    },
+    {
+      name: "orphan_eligibility",
+      query: `SELECT COUNT(*) AS cnt FROM project_eligibility pe LEFT JOIN rules r ON pe.rule_id = r.id WHERE r.id IS NULL`,
+    },
+    {
+      name: "orphan_conversations",
+      query: `SELECT COUNT(*) AS cnt FROM solomon_conversations sc LEFT JOIN projects p ON sc.project_id = p.id WHERE p.id IS NULL`,
+    },
+    {
+      name: "orphan_projects_no_company",
+      query: `SELECT COUNT(*) AS cnt FROM projects p LEFT JOIN companies c ON p.company_id = c.id WHERE c.id IS NULL`,
+    },
+    {
+      name: "orphan_projects_no_folder",
+      query: `SELECT COUNT(*) AS cnt FROM projects p LEFT JOIN document_folders df ON p.folder_id = df.id WHERE df.id IS NULL`,
+    },
+  ];
+
+  for (const q of queries) {
+    try {
+      const result = await db.execute(sql.raw(q.query));
+      const cnt = Number((result as any)[0]?.cnt ?? 0);
+      checks.push({ check: q.name, result: cnt === 0 ? "OK" : `PROBLEM: ${cnt} orphans` });
+    } catch (e: any) {
+      checks.push({ check: q.name, result: `ERROR: ${e.message?.substring(0, 100)}` });
+    }
+  }
+
+  // Table existence checks
+  const requiredTables = [
+    "organizations", "users", "companies", "company_associates", "company_administrators",
+    "company_financials", "company_if_members", "document_folders", "documents", "files",
+    "rules", "template_elements", "element_definitions", "guide_reference_tables",
+    "template_placeholder_mapping", "element_rule_links", "rule_reference_links",
+    "projects", "project_elements", "project_eligibility", "project_documents",
+    "project_checklist", "solomon_conversations", "solomon_messages", "solomon_knowledge",
+    "compose_section_versions", "scoring_criteria", "project_scores",
+    "cabinet_codes", "org_config", "api_integrations", "ai_usage_log", "audit_log",
+    "element_audit_log", "session_checklist", "password_reset_tokens",
+    "company_elements", "custom_labels",
+  ];
+
+  const missingTables: string[] = [];
+  for (const table of requiredTables) {
+    try {
+      const result = await db.execute(
+        sql.raw(`SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = '${table}'`)
+      );
+      if ((result as any).length === 0) missingTables.push(table);
+    } catch {
+      missingTables.push(table + " (error)");
+    }
+  }
+
+  // FK constraint checks — verify critical constraints exist
+  const requiredConstraints = [
+    { table: "project_elements", constraint: "project_elements_template_element_id_template_elements_id_fk" },
+    { table: "project_elements", constraint: "project_elements_element_def_id_element_definitions_id_fk" },
+    { table: "users", constraint: "users_organization_id_organizations_id_fk" },
+    { table: "projects", constraint: "projects_organization_id_organizations_id_fk" },
+    { table: "companies", constraint: "companies_organization_id_organizations_id_fk" },
+  ];
+
+  const missingConstraints: string[] = [];
+  for (const fk of requiredConstraints) {
+    try {
+      const result = await db.execute(
+        sql.raw(`SELECT 1 FROM information_schema.table_constraints WHERE table_name = '${fk.table}' AND constraint_name = '${fk.constraint}'`)
+      );
+      if ((result as any).length === 0) missingConstraints.push(`${fk.table}.${fk.constraint}`);
+    } catch {
+      missingConstraints.push(`${fk.table}.${fk.constraint} (error)`);
+    }
+  }
+
+  // Table counts
+  let counts: Record<string, number> = {};
+  const countTables = ["organizations", "users", "companies", "projects", "documents", "rules",
+    "element_definitions", "project_elements", "solomon_conversations", "project_documents"];
+  for (const t of countTables) {
+    try {
+      const result = await db.execute(sql.raw(`SELECT COUNT(*) AS cnt FROM "${t}"`));
+      counts[t] = Number((result as any)[0]?.cnt ?? 0);
+    } catch { counts[t] = -1; }
+  }
+
+  // Check extra migrations tracking
+  let appliedMigrations: string[] = [];
+  try {
+    const result = await db.execute(sql.raw(`SELECT filename FROM "_extra_migrations" ORDER BY filename`));
+    appliedMigrations = (result as any).map((r: any) => r.filename);
+  } catch {
+    appliedMigrations = ["_extra_migrations table does not exist"];
+  }
+
+  const hasProblems = checks.some(c => c.result.startsWith("PROBLEM") || c.result.startsWith("ERROR"))
+    || missingTables.length > 0
+    || missingConstraints.length > 0;
+
+  return c.json({
+    status: hasProblems ? "issues_found" : "healthy",
+    checks,
+    missingTables: missingTables.length > 0 ? missingTables : "none",
+    missingConstraints: missingConstraints.length > 0 ? missingConstraints : "none",
+    counts,
+    appliedMigrations,
+    timestamp: new Date().toISOString(),
+  });
+});
+
+/** Split SQL into executable statements, handling DO $$ blocks.
+ *  Strips bare BEGIN/COMMIT/ROLLBACK since we run statements individually
+ *  on a connection pool — transaction wrappers don't work across separate
+ *  db.execute() calls. */
 function splitSqlStatements(content: string): string[] {
   const statements: string[] = [];
   let current = "";
@@ -203,5 +352,12 @@ function splitSqlStatements(content: string): string[] {
 
   const remaining = current.trim();
   if (remaining.length > 0 && remaining !== ";") statements.push(remaining);
-  return statements;
+
+  // Strip bare transaction control statements — they break when run
+  // individually on a connection pool (BEGIN on conn A, statements on conn B,
+  // and if any fail the transaction is aborted on that connection)
+  return statements.filter(s => {
+    const upper = s.replace(/;$/, "").trim().toUpperCase();
+    return upper !== "BEGIN" && upper !== "COMMIT" && upper !== "ROLLBACK";
+  });
 }

@@ -2718,10 +2718,10 @@ export default function ProjectViewPage() {
         .sep-count{font-size:13px;font-weight:700;color:#2563eb;font-variant-numeric:tabular-nums}
         .sep-progress-bar{height:4px;background:#f0f2f5;border-radius:2px;overflow:hidden}
         .sep-progress-fill{height:100%;background:#2563eb;border-radius:2px;transition:width .3s}
-        .sep-scroll{flex:1;overflow-y:auto;padding:8px 10px;display:flex;flex-direction:column;gap:2px}
+        .sep-scroll{flex:1;overflow-y:auto;padding:8px 10px;display:flex;flex-direction:column;gap:4px}
         .sep-category-group{margin-bottom:8px}
         .sep-category-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#94a3b8;padding:10px 8px 4px;font-family:'Inter',system-ui,sans-serif}
-        .sep-row{display:flex;align-items:flex-start;justify-content:space-between;padding:6px 8px;border-radius:8px;transition:background .1s}
+        .sep-row{display:flex;align-items:flex-start;justify-content:space-between;padding:8px 8px;border-radius:8px;transition:background .1s}
         .sep-row:hover{background:rgba(0,0,0,.03)}
         .sep-row-left{display:flex;align-items:flex-start;gap:8px;flex:1;min-width:0}
         .sep-row-icon{font-size:12px;flex-shrink:0;width:16px;text-align:center;margin-top:1px}
@@ -2730,8 +2730,8 @@ export default function ProjectViewPage() {
         .sep-row-icon.conflict{color:#dc2626}
         .sep-row-icon.gol{color:#cbd5e1;font-size:10px}
         .sep-row-info{flex:1;min-width:0}
-        .sep-row-label{font-size:12px;color:#64748b;line-height:1.3}
-        .sep-row-value{font-size:13px;font-weight:600;color:#0f172a;line-height:1.3;word-break:break-word}
+        .sep-row-label{font-size:12.5px;color:#64748b;line-height:1.4}
+        .sep-row-value{font-size:13px;font-weight:600;color:#0f172a;line-height:1.4;word-break:break-word}
         .sep-row-value.confirmat{color:#059669}
         .sep-row-value.propus_ai{color:#d97706}
         .sep-row-value.proposed{color:#d97706}

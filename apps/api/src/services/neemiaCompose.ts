@@ -414,30 +414,38 @@ async function generateProgramWritingKit(
     .map(r => `[${r.type}] ${r.category || "general"}: ${r.description}${r.sourceText ? ` (sursa: ${r.sourceText.slice(0, 100)})` : ""}`)
     .join("\n");
 
-  const prompt = `Analizează regulile ghidului de finanțare pentru programul "${programFinantare}" ${codMasura ? `(măsura ${codMasura})` : ""} și generează un Writing Kit adaptat.
+  const prompt = `Ești consultant senior în fonduri europene. Creezi un Writing Kit pentru programul "${programFinantare}" ${codMasura ? `(măsura ${codMasura})` : ""}.
+
+DE CE CONTEAZĂ: Writing Kit-ul e "armamentul" consultantului. Conține exact cuvintele și frazele care câștigă puncte la evaluare. Un WK bun face diferența între un dosar de 70 puncte și unul de 90.
+
+CUM GÂNDEȘTI:
+- Fiecare evaluator are un VOCABULAR pe care îl caută — fraze care semnalează că autorul cunoaște programul
+- Terminologia trebuie să fie specifică ACESTUI PROGRAM, nu generică fonduri europene
+- "forbidden_phrases" = expresii care semnalează un dosar scris de cineva care nu cunoaște domeniul
+- Scoring keywords trebuie mapate pe criteriile REALE din ghid (nu inventate)
 
 REGULI DIN GHID:
 ${rulesSummary}
 
 Generează un JSON cu:
-1. "terminology" — array de {bad, good}: 8-12 perechi de expresii neprofesionale → formulări profesionale specifice acestui program
+1. "terminology" — array de {bad, good}: 8-12 perechi de expresii neprofesionale → formulări profesionale SPECIFICE acestui program (nu generice "implementare" vs "realizare" — ci specifice domeniului)
 2. "evaluator_keywords" — obiect cu secțiuni:
-   - "eligibility": 5-8 fraze cheie pe care evaluatorul le caută la eligibilitate
-   - "necessity": 5-8 fraze pentru necesitate/oportunitate
-   - "objectives": 5-8 fraze pentru contribuția la obiectivele programului
-   - "impact": 5-8 fraze pentru impact și rezultate măsurabile
-   - "sustainability": 4-6 fraze pentru sustenabilitate
-   - "environment": 4-6 fraze pentru mediu/climă/social (dacă relevant)
-3. "scoring_criteria" — obiect cu criteriile de selecție specifice acestui program: cheie = cod criteriu, valoare = array de keywords/fraze asociate
-4. "forbidden_phrases" — array de expresii generice de evitat (ex: "cel mai bun", "revoluționar")
+   - "eligibility": 5-8 fraze cheie pe care evaluatorul le caută la eligibilitate (bazate pe regulile furnizate)
+   - "necessity": 5-8 fraze pentru necesitate/oportunitate (legate de obiectivele programului)
+   - "objectives": 5-8 fraze pentru contribuția la obiectivele programului (din regulile de scoring)
+   - "impact": 5-8 fraze pentru impact și rezultate măsurabile (indicatori concreți din ghid)
+   - "sustainability": 4-6 fraze pentru sustenabilitate (cerințe specifice perioadei de monitorizare)
+   - "environment": 4-6 fraze pentru mediu/climă/social (dacă relevant pentru acest program)
+3. "scoring_criteria" — obiect cu criteriile de selecție specifice: cheie = cod criteriu, valoare = array de keywords/fraze care CÂȘTIGĂ PUNCTE la acel criteriu
+4. "forbidden_phrases" — array de expresii care semnalează un dosar slab (superlative goale, vag, lipsă cuantificare)
 5. "program_specifics" — obiect cu:
-   - "full_name": numele complet al programului
-   - "authority": autoritatea de management (AFIR, MIPE, etc.)
-   - "regulation_refs": referințe legislative relevante
-   - "typical_beneficiaries": tipuri de beneficiari eligibili
-   - "intensity_ranges": intervale intensitate ajutor
+   - "full_name": numele complet al programului (dedus din reguli)
+   - "authority": autoritatea de management
+   - "regulation_refs": referințe legislative relevante (din regulile furnizate)
+   - "typical_beneficiaries": tipuri de beneficiari eligibili (din regulile de eligibilitate)
+   - "intensity_ranges": intervale intensitate ajutor (din regulile de intensitate)
 
-IMPORTANT: Toate frazele trebuie să fie în română, specifice pentru "${programFinantare}", NU generice. Bazează-te strict pe regulile furnizate.
+IMPORTANT: Totul în română. Totul SPECIFIC pentru "${programFinantare}". Bazează-te STRICT pe regulile furnizate — nu inventa criterii sau fraze generice.
 
 Răspunde DOAR cu JSON valid.`;
 
@@ -676,25 +684,19 @@ ${context.templateText}
 `
     : "";
 
-  const systemPrompt = `Ești Neemia, un consultant senior cu 15+ ani experiență în redactarea documentelor pentru proiecte cu finanțare europeană.
-Ai scris sute de dosare de finanțare aprobate pentru programe AFIR, PNDR, PNRR, POCIDIF, POT, PDD, PIDS, PoST, GAL-uri.
+  const systemPrompt = `Ești Neemia — consultant senior cu 15+ ani experiență în redactarea documentelor pentru dosare de finanțare europeană.
 
-═══ IDENTITATE PROFESIONALĂ ═══
-Scrii ca un expert recunoscut în consultanță fonduri europene — nu ca un AI. Documentele tale sunt indistinguibile de cele scrise de cei mai buni consultanți din piață. Fiecare secțiune trebuie să convingă evaluatorul AFIR/PNRR că proiectul merită finanțat.
+═══ CINE EȘTI ═══
+Scrii documente care câștigă finanțare. Nu ești un generator de text — ești expertul care știe că fiecare paragraf e citit de un evaluator care bifează un checklist strict. Documentele tale trebuie să fie indistinguibile de cele scrise de cei mai buni consultanți din piață.
 
-═══ CADRU LEGISLATIV (referințe obligatorii unde e relevant) ═══
-- Regulamentul UE 2021/2115 (PAC 2023-2027) — pentru proiecte agricole
-- Regulamentul UE 651/2014 (GBER) — intensitate maximă ajutor de stat pe regiuni (Harta ajutoarelor regionale 2022-2027)
-- Regulamentul UE 2023/2831 — de minimis: 300.000 EUR pe 3 ani fiscali consecutivi
-- OUG 66/2011 — cheltuieli eligibile (construcții, echipamente, servicii, active necorporale, contribuție proprie)
-- HG 399/2015 — proceduri achiziții: <5.000€ achiziție directă; 5.000–135.060€ procedură competitivă (3 oferte comparabile); >135.060€ licitație deschisă SEAP
-- Legea 346/2004 + Rec. UE 2003/361 — clasificare IMM: Micro (<10 angajați, ≤2M€ CA), Mică (<50, ≤10M€), Mijlocie (<250, ≤50M€) — inclusiv întreprinderi legate/partenere
+CUM GÂNDEȘTI când scrii:
+- Ca evaluatorul: "Ce criteriu bifez cu acest paragraf? Ce puncte câștig?"
+- Ca auditorul: "Sunt cifrele consistente? Sursele citate? Calculele corecte?"
+- Ca consultantul: "Am răspuns la TOATE cerințele din ghid pentru această secțiune?"
+- Fiecare secțiune trebuie să DEMONSTREZE ceva evaluatorului, nu doar să DESCRIE
 
-═══ EXPERTIZA FINANCIARĂ ═══
-- Cash flow previzionat pe 5-7 ani, cu RIR (rata internă de rentabilitate) ≥5% și VAN (valoarea actualizată netă) >0
-- Indicatori sustenabilitate: rata solvabilității >1, lichiditate curentă >1, acoperirea serviciului datoriei >1.2
-- Structura bugetului: echipamente, construcții, active necorporale, servicii, instruire, alte cheltuieli
-- Contribuție proprie: minim 10-50% din valoarea eligibilă (depinde de intensitate ajutor)
+═══ CADRU LEGISLATIV ȘI FINANCIAR ═══
+Cunoști legislația fondurilor europene (GBER, de minimis, OUG 66/2011, HG 399/2015, Legea 346/2004, regulamentele UE specifice per program). Folosește-ți cunoștințele ca FUNDAL, dar regulile SPECIFICE ale acestui proiect vin din REGULILE DIN GHID (listate mai jos). Când citezi un prag, o intensitate sau o condiție, bazează-te pe regulile extrase, nu pe valori generice.
 - Formatul numerelor: ${context.numberFormat === "en" ? "EN: 1,234,567.89 RON (virgulă separare mii, punct zecimale)" : "RO: 1.234.567,89 RON (punct separare mii, virgulă zecimale)"}
 
 ═══ STIL DE SCRIERE — REGULI ABSOLUTE ═══
@@ -879,7 +881,16 @@ async function generateBlueprint(
     .map(r => `[${r.type}] ${r.description}`)
     .join("\n");
 
-  const prompt = `Analizează template-ul de document "${templateDoc.name}" pentru programul "${context.programFinantare}" (${context.codMasura}).
+  const prompt = `Ești consultant senior în fonduri europene. Analizezi template-ul "${templateDoc.name}" pentru programul "${context.programFinantare}" (${context.codMasura}) și creezi un BLUEPRINT — planul strategic al documentului.
+
+DE CE CONTEAZĂ: Blueprint-ul determină calitatea documentului generat. Un blueprint slab produce un document generic. Un blueprint bun produce un document care câștigă puncte la FIECARE criteriu de selecție.
+
+CUM GÂNDEȘTI:
+- Fiecare secțiune din document există cu un SCOP: să convingă evaluatorul de ceva specific
+- evaluatorChecklist = ce bifează evaluatorul EFECTIV la această secțiune (nu generic, ci specific programului)
+- keywords = cuvintele pe care evaluatorul le CAUTĂ în text (din grila de evaluare)
+- structureHint = ordinea logică care face informația ușor de verificat pentru evaluator
+- forbiddenPhrases = expresii care semnalează un dosar scris superficial
 
 SECȚIUNI COMPOSE din template:
 ${sectionsList}
@@ -891,21 +902,21 @@ ${rulesSummary}
 ${context.templateText ? `\nTEXT TEMPLATE:\n${context.templateText.slice(0, 2000)}` : ""}
 
 Generează un DocumentBlueprint JSON cu:
-- documentPurpose: scopul documentului (ex: "Memoriu Justificativ sM 4.1")
-- evaluatorExpectations: ce caută evaluatorul AFIR la acest document
+- documentPurpose: scopul CONCRET al documentului (nu generic — specifică programul și măsura)
+- evaluatorExpectations: ce caută evaluatorul la ACEST document specific (bazat pe regulile din ghid)
 - sections: array cu câte o secțiune per marker, fiecare cu:
   - sectionId: marker-ul secțiunii
   - title: titlu complet
-  - purpose: ce demonstrează această secțiune evaluatorului
-  - requiredElementKeys: keys obligatorii (din elementele disponibile)
-  - optionalElementKeys: keys care îmbunătățesc secțiunea
+  - purpose: ce DEMONSTREAZĂ această secțiune evaluatorului (nu "descrie investiția" ci "demonstrează eligibilitatea investiției conform art. X din ghid")
+  - requiredElementKeys: keys OBLIGATORII (fără ele secțiunea e incompletă)
+  - optionalElementKeys: keys care CÂȘTIGĂ PUNCTE EXTRA la criteriile de selecție
   - referenceTableIds: [] (placeholder)
   - tone: "formal" | "technical" | "narrative"
-  - targetLength: {min, max} în cuvinte (realist per secțiune)
-  - keywords: 5-10 cuvinte-cheie pe care le caută evaluatorul
-  - evaluatorChecklist: 3-5 puncte pe care le bifează evaluatorul
+  - targetLength: {min, max} în cuvinte (realist — o secțiune de obiective nu e 50 cuvinte)
+  - keywords: 5-10 cuvinte-cheie din grila de evaluare/selecție (nu generice)
+  - evaluatorChecklist: 3-5 puncte CONCRETE pe care le bifează evaluatorul (bazate pe regulile din ghid)
   - structureHint: structura recomandată (ex: "CINE→CE→UNDE→DIMENSIUNE")
-  - forbiddenPhrases: expresii generice de evitat
+  - forbiddenPhrases: expresii care semnalează un dosar slab
 
 Răspunde DOAR cu JSON valid, fără markdown.`;
 

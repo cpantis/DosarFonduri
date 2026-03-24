@@ -139,13 +139,12 @@ CUM GÂNDEȘTI:
 - Regulile ELIMINATORII (eligibilitate) au prioritate absolută peste reguli de punctaj
 - Dacă ghidul lasă loc de interpretare, marchează explicit (needs_review + review_reason)
 
-Extragi SIMULTAN 4 categorii:
+Extragi SIMULTAN 5 categorii:
 
 1. REGULI FIXE — condiții binare verificabile automat (DA/NU):
    - Plafoane numerice, forme juridice, coduri CAEN, vechime, zone geografice
    - Praguri achiziții, nr minim oferte, obligativitate SEAP
    - Categorii cheltuieli eligibile/neeligibile, TVA, flat rate
-   - Documente obligatorii, formate, termene valabilitate
    ATENȚIE: Regulile de eligibilitate care pot ELIMINA dosarul instant trebuie marcate cu confidence ≥ 0.95.
    Dacă o regulă se referă la un tabel/anexă pe care nu o vezi în text, menționează în source_text că depinde de anexa respectivă.
 
@@ -182,8 +181,17 @@ CLASIFICARE SEMANTICĂ — pentru FIECARE regulă atribuie etichete din:
    - CARDINALITATE: câte instanțe (ex: "3 oferte" → min_count=3)
    ATENȚIE: Verifică fiecare regulă extrasă — dacă regula se referă la un câmp care nu e încă în lista de elemente, ADAUGĂ-L.
 
+5. LISTA DOCUMENTE NECESARE (checklist complet al dosarului):
+   Extrage COMPLET lista tuturor documentelor pe care solicitantul trebuie să le depună. Parcurge:
+   - Secțiunea "Documente necesare" / "Conținut dosar" / "Lista documentelor" / "Cerințe documentare"
+   - Tabelul/grila documentelor din ghid sau din anexe (dacă e menționat)
+   - Mențiuni dispersate în tot ghidul de genul "va prezenta...", "va anexa...", "se va depune..."
+   - Documente implicate de reguli (ex: dacă e necesar certificat fiscal → "Certificat fiscal ANAF/local")
+   FIECARE document trebuie extras separat (nu grupat). Ex: "Certificat fiscal ANAF" și "Certificat fiscal local" = 2 documente.
+   ATENȚIE: Aceasta este lista finală pe care consultantul o va vedea ca checklist. Trebuie să fie COMPLETĂ — un document lipsă = dosar respins administrativ.
+
 Fii EXHAUSTIV dar PRECIS — mai bine o regulă marcată cu needs_review decât o regulă omisă.
-Returnează DOAR JSON valid — un singur obiect cu 4 array-uri. Fără backticks, fără explicații.`;
+Returnează DOAR JSON valid — un singur obiect cu 5 array-uri. Fără backticks, fără explicații.`;
 
 // Generated at module load — contains the full field reference for the AI
 const FIELD_LIST_FOR_PROMPT = generateFieldListForPrompt();
@@ -267,6 +275,18 @@ Returnează un singur obiect JSON cu 4 chei:
       "min_count": 1,
       "max_count": null
     }
+  ],
+
+  "document_requirements": [
+    {
+      "name": "Numele documentului (ex: Certificat constatator ONRC)",
+      "category": "juridice|financiare|tehnice|declaratii|oferte|anexe|altele",
+      "required": true,
+      "description": "Detalii suplimentare: format cerut, termen valabilitate, cine emite",
+      "format": "PDF|DOCX|XLSX|original|copie_conforma|orice",
+      "source_page": null,
+      "conditions": "Condiții speciale (ex: doar pentru SRL, doar dacă valoare > 100.000 EUR) sau null"
+    }
   ]
 }
 
@@ -299,6 +319,7 @@ async function unifiedExtraction(
   interpretedRules: any[];
   scoringCriteria: any[];
   elementDefinitions: any[];
+  documentRequirements: any[];
   _meta: { truncated: boolean; continuations: number; totalInputTokens: number; totalOutputTokens: number };
 }> {
   let totalInputTokens = 0;
@@ -382,7 +403,7 @@ async function unifiedExtraction(
       console.warn(`[processGuide] Repaired truncated JSON for ${chunkLabel} — some data may be incomplete`);
     } else {
       console.error(`[processGuide] CRITICAL: Failed to parse unified extraction JSON for ${chunkLabel}. Output length: ${accumulatedText.length} chars. First 200 chars: ${accumulatedText.slice(0, 200)}`);
-      return { fixedRules: [], interpretedRules: [], scoringCriteria: [], elementDefinitions: [], _meta: { ...meta, truncated: true } };
+      return { fixedRules: [], interpretedRules: [], scoringCriteria: [], elementDefinitions: [], documentRequirements: [], _meta: { ...meta, truncated: true } };
     }
   }
 
@@ -391,6 +412,7 @@ async function unifiedExtraction(
     interpretedRules: Array.isArray(parsed.interpreted_rules) ? parsed.interpreted_rules : [],
     scoringCriteria: Array.isArray(parsed.scoring_criteria) ? parsed.scoring_criteria : [],
     elementDefinitions: Array.isArray(parsed.element_definitions) ? parsed.element_definitions : [],
+    documentRequirements: Array.isArray(parsed.document_requirements) ? parsed.document_requirements : [],
     _meta: meta,
   };
 
@@ -1324,6 +1346,7 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
       let allInterpreted: any[] = [];
       let allScoring: any[] = [];
       let allElementDefs: any[] = [];
+      let allDocRequirements: any[] = [];
       let extractionTruncated = false;
       let totalContinuations = 0;
       let totalAIInputTokens = 0;
@@ -1336,6 +1359,7 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         allInterpreted = result.interpretedRules;
         allScoring = result.scoringCriteria;
         allElementDefs = result.elementDefinitions;
+        allDocRequirements = result.documentRequirements;
         extractionTruncated = result._meta.truncated;
         totalContinuations = result._meta.continuations;
         totalAIInputTokens = result._meta.totalInputTokens;
@@ -1374,6 +1398,7 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
           allInterpreted.push(...result.interpretedRules);
           allScoring.push(...result.scoringCriteria);
           allElementDefs.push(...result.elementDefinitions);
+          allDocRequirements.push(...result.documentRequirements);
           if (result._meta.truncated) extractionTruncated = true;
           totalContinuations += result._meta.continuations;
           totalAIInputTokens += result._meta.totalInputTokens;
@@ -1381,16 +1406,24 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         }
 
         // Deduplicate across chunks (overlap pages will produce duplicates)
-        const beforeDedup = { fixed: allFixed.length, interp: allInterpreted.length, scoring: allScoring.length, elemDefs: allElementDefs.length };
+        const beforeDedup = { fixed: allFixed.length, interp: allInterpreted.length, scoring: allScoring.length, elemDefs: allElementDefs.length, docReqs: allDocRequirements.length };
         allFixed = deduplicateRules(allFixed);
         allInterpreted = deduplicateRules(allInterpreted);
         allScoring = deduplicateScoring(allScoring);
         allElementDefs = deduplicateElementDefs(allElementDefs);
-        console.log(`[processGuide] Dedup: fixed ${beforeDedup.fixed}→${allFixed.length}, interp ${beforeDedup.interp}→${allInterpreted.length}, scoring ${beforeDedup.scoring}→${allScoring.length}, elemDefs ${beforeDedup.elemDefs}→${allElementDefs.length}`);
+        // Deduplicate document requirements by name (case-insensitive)
+        const seenDocNames = new Set<string>();
+        allDocRequirements = allDocRequirements.filter(d => {
+          const key = (d.name || "").toLowerCase().trim();
+          if (seenDocNames.has(key)) return false;
+          seenDocNames.add(key);
+          return true;
+        });
+        console.log(`[processGuide] Dedup: fixed ${beforeDedup.fixed}→${allFixed.length}, interp ${beforeDedup.interp}→${allInterpreted.length}, scoring ${beforeDedup.scoring}→${allScoring.length}, elemDefs ${beforeDedup.elemDefs}→${allElementDefs.length}, docReqs ${beforeDedup.docReqs}→${allDocRequirements.length}`);
       }
 
       const opusDuration = Date.now() - opusStart;
-      console.log(`[processGuide] AI + ET extraction: ${opusDuration}ms — ${allFixed.length} fixed, ${allInterpreted.length} interpreted, ${allScoring.length} scoring, ${allElementDefs.length} element defs`);
+      console.log(`[processGuide] AI + ET extraction: ${opusDuration}ms — ${allFixed.length} fixed, ${allInterpreted.length} interpreted, ${allScoring.length} scoring, ${allElementDefs.length} element defs, ${allDocRequirements.length} doc requirements`);
 
       // ─── STEP 4: Save to DB ───
       await job.updateProgress(85);
@@ -1438,16 +1471,24 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         allScoring,
       );
 
-      // Save trust score on document (column added in migration 0019)
+      // Save trust score + document requirements on document
       try {
         await db.update(documents)
           .set({
             trustScore: String(completenessReport.trustScore),
             completenessReport,
+            processingResult: {
+              document_type: "guide",
+              extracted_fields: [],
+              raw_text: "",
+              processing_time_ms: Date.now() - opusStart,
+              document_requirements: allDocRequirements,
+            } as any,
           })
           .where(eq(documents.id, documentId));
+        console.log(`[processGuide] Saved ${allDocRequirements.length} document requirements to processingResult`);
       } catch (trustErr: any) {
-        console.warn(`[processGuide] Could not save trust score (migration 0019 may not have run): ${trustErr.message?.substring(0, 100)}`);
+        console.warn(`[processGuide] Could not save trust score / doc requirements: ${trustErr.message?.substring(0, 100)}`);
       }
 
       // SSE: broadcast trust score

@@ -2,7 +2,8 @@ import type { AppEnv } from "../types/hono";
 import { Hono } from "hono";
 import { z } from "zod";
 import { db } from "../db";
-import { orgConfig, apiIntegrations, solomonKnowledge, organizations } from "../db/schema";
+import { orgConfig, apiIntegrations, solomonKnowledge, organizations, referenceValues } from "../db/schema";
+import { DEFAULT_REFERENCE_VALUES } from "@dosarfonduri/shared";
 import { eq, and } from "drizzle-orm";
 import { encrypt, decrypt } from "../lib/crypto";
 import type { AuthContext } from "../middleware/auth";
@@ -510,3 +511,132 @@ configRoutes.put("/branding", async (c) => {
 
   return c.json(updated.cabinetDocumentStyle || {});
 });
+
+// ============================================================
+// REFERENCE VALUES — dynamic calculation parameters
+// ============================================================
+
+// --- GET all reference values (merged: org overrides + defaults) ---
+configRoutes.get("/reference-values", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  if (!auth.organizationId) return c.json({ error: "No organization" }, 400);
+
+  // Load org-level overrides
+  const overrides = await db.query.referenceValues.findMany({
+    where: eq(referenceValues.organizationId, auth.organizationId),
+  });
+  const overrideMap = new Map(overrides.map(o => [o.key, { value: o.value, updatedAt: o.updatedAt }]));
+
+  // Merge with defaults
+  const merged = DEFAULT_REFERENCE_VALUES.map(def => {
+    const override = overrideMap.get(def.key);
+    return {
+      key: def.key,
+      label: def.label,
+      group: def.group,
+      dataType: def.dataType,
+      unit: def.unit || null,
+      description: def.description || null,
+      defaultValue: def.defaultValue,
+      value: override ? override.value : def.defaultValue,
+      isOverridden: !!override,
+      updatedAt: override?.updatedAt || null,
+      usedInCalculations: def.usedInCalculations || false,
+    };
+  });
+
+  // Add any custom values not in defaults
+  for (const ov of overrides) {
+    if (!DEFAULT_REFERENCE_VALUES.find(d => d.key === ov.key)) {
+      merged.push({
+        key: ov.key,
+        label: ov.key,
+        group: "custom",
+        dataType: "text",
+        unit: null,
+        description: null,
+        defaultValue: "",
+        value: ov.value,
+        isOverridden: true,
+        updatedAt: ov.updatedAt,
+        usedInCalculations: false,
+      });
+    }
+  }
+
+  return c.json({ values: merged, groups: Object.entries(
+    await import("@dosarfonduri/shared").then(m => m.REFERENCE_VALUE_GROUPS)
+  ).map(([k, v]) => ({ key: k, ...v })).sort((a, b) => a.order - b.order) });
+});
+
+// --- PUT a single reference value (upsert) ---
+configRoutes.put("/reference-values", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  if (!auth.organizationId) return c.json({ error: "No organization" }, 400);
+  if (auth.role !== "admin" && auth.role !== "consultant") return c.json({ error: "Forbidden" }, 403);
+
+  const body = await c.req.json();
+  const schema = z.object({
+    key: z.string().min(1).max(100),
+    value: z.string().max(255),
+  });
+  const parsed = schema.safeParse(body);
+  if (!parsed.success) return c.json({ error: "Date invalide" }, 400);
+
+  const existing = await db.query.referenceValues.findFirst({
+    where: and(
+      eq(referenceValues.organizationId, auth.organizationId),
+      eq(referenceValues.key, parsed.data.key),
+    ),
+  });
+
+  if (existing) {
+    await db.update(referenceValues).set({
+      value: parsed.data.value,
+      updatedBy: auth.userId,
+      updatedAt: new Date(),
+    }).where(eq(referenceValues.id, existing.id));
+  } else {
+    await db.insert(referenceValues).values({
+      organizationId: auth.organizationId,
+      key: parsed.data.key,
+      value: parsed.data.value,
+      updatedBy: auth.userId,
+    });
+  }
+
+  return c.json({ ok: true });
+});
+
+// --- DELETE a reference value override (revert to default) ---
+configRoutes.delete("/reference-values/:key", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  if (!auth.organizationId) return c.json({ error: "No organization" }, 400);
+  if (auth.role !== "admin") return c.json({ error: "Forbidden" }, 403);
+
+  const key = c.req.param("key");
+  await db.delete(referenceValues).where(
+    and(
+      eq(referenceValues.organizationId, auth.organizationId),
+      eq(referenceValues.key, key),
+    ),
+  );
+
+  return c.json({ ok: true });
+});
+
+// --- Helper: get reference values as a flat number map (for calculations) ---
+export async function getReferenceValuesMap(organizationId: string): Promise<Record<string, number>> {
+  const overrides = await db.query.referenceValues.findMany({
+    where: eq(referenceValues.organizationId, organizationId),
+  });
+  const overrideMap = new Map(overrides.map(o => [o.key, o.value]));
+
+  const result: Record<string, number> = {};
+  for (const def of DEFAULT_REFERENCE_VALUES) {
+    const val = overrideMap.get(def.key) || def.defaultValue;
+    const num = parseFloat(val);
+    if (!isNaN(num)) result[def.key] = num;
+  }
+  return result;
+}

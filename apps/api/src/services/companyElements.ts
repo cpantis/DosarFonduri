@@ -96,12 +96,79 @@ export async function populateCompanyElements(
     add("numar_administratori", admins.length, "calculated");
   }
 
+  // === Associates detailed ===
+  if (associates.length > 0) {
+    // Find majority shareholder (highest pctBenefits or shares)
+    let maxPct = 0;
+    let maxName = "";
+    let hasStranger = false;
+    for (const a of associates) {
+      const pct = parseFloat(String(a.pctBenefits || 0));
+      if (pct > maxPct) { maxPct = pct; maxName = a.name; }
+      const country = (a.citizenshipOrCountry || "").toLowerCase();
+      if (country && country !== "romania" && country !== "română" && country !== "ro" && country !== "roman") {
+        hasStranger = true;
+      }
+    }
+    if (maxPct > 0) {
+      add("asociat_majoritar_pct", maxPct, "calculated");
+      add("asociat_majoritar_nume", maxName, "onrc");
+    }
+    add("are_asociat_strain", hasStranger ? "da" : "nu", "calculated");
+  }
+
+  // === Administrators detailed ===
+  if (admins.length > 0 && admins[0].appointmentDate) {
+    add("data_numire_administrator", admins[0].appointmentDate, "onrc");
+  }
+
   // === ONRC raw data extras ===
   const raw = (company.onrcRawData || {}) as Record<string, any>;
   if (raw.caenDesc) add("caen_descriere", raw.caenDesc, "onrc");
+
+  // CAEN secundare — expose as comma-separated list of codes
   if (raw.activitatiSecundare?.length > 0) {
     add("numar_activitati_secundare", raw.activitatiSecundare.length, "calculated");
+    const caenCodes = raw.activitatiSecundare
+      .map((a: any) => typeof a === "string" ? a : a.cod || a.code || "")
+      .filter(Boolean);
+    if (caenCodes.length > 0) {
+      add("cod_caen_secundare", caenCodes.join(","), "onrc");
+    }
   }
+
+  // TVA status
+  if (raw.vat || raw.VAT) {
+    const vatStr = String(raw.vat || raw.VAT || "");
+    add("cod_tva", vatStr, "onrc");
+    add("platitor_tva", vatStr && vatStr !== "false" && vatStr !== "0" ? "da" : "nu", "onrc");
+  } else {
+    add("platitor_tva", "nu", "calculated");
+  }
+
+  // Natura capital (ownership structure)
+  const natura = (company.naturaCapital || {}) as Record<string, any>;
+  if (natura.privatAutohton != null) add("capital_privat_autohton_pct", natura.privatAutohton, "onrc");
+  if (natura.privatStrain != null) add("capital_privat_strain_pct", natura.privatStrain, "onrc");
+  if (natura.stat != null) add("capital_stat_pct", natura.stat, "onrc");
+
+  // Sedii secundare
+  if (raw.sediiSecundare?.length > 0) {
+    add("numar_sedii_secundare", raw.sediiSecundare.length, "calculated");
+    // Extract unique judete from addresses
+    const judete = new Set<string>();
+    for (const sediu of raw.sediiSecundare) {
+      const addr = typeof sediu === "string" ? sediu : sediu.adresa || sediu.denumire || "";
+      // Try to extract judet from address (common patterns: "jud. Cluj", "Jud.CLUJ", etc.)
+      const judetMatch = addr.match(/jud[.eț]*\s*([A-ZĂÂÎȘȚa-zăâîșț\s-]+)/i);
+      if (judetMatch) judete.add(judetMatch[1].trim());
+    }
+    if (judete.size > 0) add("judete_sedii_secundare", Array.from(judete).join(","), "calculated");
+  } else {
+    add("numar_sedii_secundare", 0, "calculated");
+  }
+
+  // Status flags
   add("insolventa", raw.insolventa ? "da" : "nu", "onrc");
   add("dizolvare", raw.dizolvare ? "da" : "nu", "onrc");
   add("lichidare", raw.lichidare ? "da" : "nu", "onrc");
@@ -126,10 +193,17 @@ export async function populateCompanyElements(
     add("active_imobilizate", f10.activeImobilizate?.total, finSource);
     add("active_circulante", f10.activeCirculante?.total, finSource);
 
-    // Venituri exploitation (if available from ANAF)
+    // Extended balance sheet fields
+    if (f10.activeCirculante?.stocuri) add("stocuri", f10.activeCirculante.stocuri, finSource);
+    if (f10.activeCirculante?.creante) add("creante", f10.activeCirculante.creante, finSource);
+    if (f10.activeCirculante?.casa != null) add("casa_si_conturi", f10.activeCirculante.casa, finSource);
+    if (f10.datoriiPesteAnul) add("datorii_peste_1an", f10.datoriiPesteAnul, finSource);
+
+    // P&L extended fields
     if (f20.venituriExploatare) add("venituri_exploatare", f20.venituriExploatare, finSource);
     if (f20.cheltuieliExploatare) add("cheltuieli_exploatare", f20.cheltuieliExploatare, finSource);
     if (f20.rezultatExploatare) add("rezultat_exploatare", f20.rezultatExploatare, finSource);
+    if (f20.cheltuieliPersonal) add("cheltuieli_personal", f20.cheltuieliPersonal, finSource);
 
     // Per-year financials (for multi-year rules)
     for (const fin of financials) {

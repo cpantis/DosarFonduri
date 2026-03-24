@@ -558,9 +558,10 @@ export default function DocumentsPage() {
       setDocs(prev => prev.filter(d => d.id !== docId));
       if (selectedDoc === docId) setSelectedDoc(null);
       toast("success", "Document șters cu succes.");
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to delete document:", err);
-      toast("error", "Nu s-a putut șterge documentul. Încearcă din nou.");
+      const msg = err?.response?.error || err?.message || "Eroare necunoscută";
+      toast("error", `Nu s-a putut șterge documentul: ${msg}`);
     } finally {
       setDeleteLoading(false);
       setDeleteConfirm(null);

@@ -850,6 +850,7 @@ async function autoLinkRulesAndReferences(
         fieldsToCheck.push(...aliases);
       }
 
+      let linkedViaTemplate = false;
       for (const f of fieldsToCheck) {
         const matchedElement = elementsByKey.get(f);
         if (matchedElement) {
@@ -866,13 +867,44 @@ async function autoLinkRulesAndReferences(
                 description: `Auto-linked: rule condition.field "${condition.field}" → element "${matchedElement.key}"`,
               });
               elementLinksCreated++;
+              linkedViaTemplate = true;
             } catch (err: any) {
               if (!err?.message?.includes("duplicate") && !err?.message?.includes("unique")) {
                 console.warn(`[autoLink] Failed to create element-rule link:`, err?.message);
               }
             }
+          } else {
+            linkedViaTemplate = true;
           }
           break;
+        }
+      }
+
+      // Fallback: link directly to element_definition if no template element matched
+      if (!linkedViaTemplate) {
+        for (const f of fieldsToCheck) {
+          const matchedElemDef = elemDefByKey.get(f);
+          if (matchedElemDef) {
+            const linkKey = `elemdef:${matchedElemDef.id}:${rule.id}`;
+            if (!existingElemLinks.has(linkKey)) {
+              existingElemLinks.add(linkKey);
+              try {
+                await db.insert(elementRuleLinks).values({
+                  templateElementId: null,
+                  elementDefId: matchedElemDef.id,
+                  ruleId: rule.id,
+                  role: "constraint",
+                  description: `Auto-linked: rule condition.field "${condition.field}" → elemDef "${matchedElemDef.elementKey}"`,
+                });
+                elementLinksCreated++;
+              } catch (err: any) {
+                if (!err?.message?.includes("duplicate") && !err?.message?.includes("unique")) {
+                  console.warn(`[autoLink] Failed to create elemDef-rule link:`, err?.message);
+                }
+              }
+            }
+            break;
+          }
         }
       }
     }
@@ -880,6 +912,7 @@ async function autoLinkRulesAndReferences(
     if (condition?.type === "scoring" || condition?.elementKey) {
       const elementKey = (condition.elementKey || "").toLowerCase();
       if (elementKey) {
+        let linkedScoring = false;
         const matchedElement = elementsByKey.get(elementKey);
         if (matchedElement) {
           const linkKey = `${matchedElement.id}:${rule.id}`;
@@ -895,9 +928,36 @@ async function autoLinkRulesAndReferences(
                 description: `Auto-linked: scoring elementKey "${condition.elementKey}" → element "${matchedElement.key}"`,
               });
               elementLinksCreated++;
+              linkedScoring = true;
             } catch (err: any) {
               if (!err?.message?.includes("duplicate") && !err?.message?.includes("unique")) {
                 console.warn(`[autoLink] Failed to create element-rule link:`, err?.message);
+              }
+            }
+          } else {
+            linkedScoring = true;
+          }
+        }
+        // Fallback: link directly to element_definition
+        if (!linkedScoring) {
+          const matchedElemDef = elemDefByKey.get(elementKey);
+          if (matchedElemDef) {
+            const linkKey = `elemdef:${matchedElemDef.id}:${rule.id}`;
+            if (!existingElemLinks.has(linkKey)) {
+              existingElemLinks.add(linkKey);
+              try {
+                await db.insert(elementRuleLinks).values({
+                  templateElementId: null,
+                  elementDefId: matchedElemDef.id,
+                  ruleId: rule.id,
+                  role: "input",
+                  description: `Auto-linked: scoring elementKey "${condition.elementKey}" → elemDef "${matchedElemDef.elementKey}"`,
+                });
+                elementLinksCreated++;
+              } catch (err: any) {
+                if (!err?.message?.includes("duplicate") && !err?.message?.includes("unique")) {
+                  console.warn(`[autoLink] Failed to create scoring elemDef link:`, err?.message);
+                }
               }
             }
           }
@@ -953,12 +1013,13 @@ async function autoLinkRulesAndReferences(
 
     if (evalLogic.elementKey) {
       const elementKey = String(evalLogic.elementKey).toLowerCase();
-      const matchedElement = elementsByKey.get(elementKey);
-      if (matchedElement) {
-        const matchingRule = docRules.find(r =>
-          r.description?.includes(sc.code) || r.description?.includes(sc.name)
-        );
-        if (matchingRule) {
+      const matchingRule = docRules.find(r =>
+        r.description?.includes(sc.code) || r.description?.includes(sc.name)
+      );
+      if (matchingRule) {
+        let linkedSc = false;
+        const matchedElement = elementsByKey.get(elementKey);
+        if (matchedElement) {
           const linkKey = `${matchedElement.id}:${matchingRule.id}`;
           if (!existingElemLinks.has(linkKey)) {
             existingElemLinks.add(linkKey);
@@ -972,9 +1033,36 @@ async function autoLinkRulesAndReferences(
                 description: `Auto-linked: scoring ${sc.code} elementKey "${evalLogic.elementKey}"`,
               });
               elementLinksCreated++;
+              linkedSc = true;
             } catch (err: any) {
               if (!err?.message?.includes("duplicate") && !err?.message?.includes("unique")) {
                 console.warn(`[autoLink] Failed to create scoring element link:`, err?.message);
+              }
+            }
+          } else {
+            linkedSc = true;
+          }
+        }
+        // Fallback: link directly to element_definition
+        if (!linkedSc) {
+          const matchedElemDef = elemDefByKey.get(elementKey);
+          if (matchedElemDef) {
+            const linkKey = `elemdef:${matchedElemDef.id}:${matchingRule.id}`;
+            if (!existingElemLinks.has(linkKey)) {
+              existingElemLinks.add(linkKey);
+              try {
+                await db.insert(elementRuleLinks).values({
+                  templateElementId: null,
+                  elementDefId: matchedElemDef.id,
+                  ruleId: matchingRule.id,
+                  role: "input",
+                  description: `Auto-linked: scoring ${sc.code} elementKey "${evalLogic.elementKey}" → elemDef "${matchedElemDef.elementKey}"`,
+                });
+                elementLinksCreated++;
+              } catch (err: any) {
+                if (!err?.message?.includes("duplicate") && !err?.message?.includes("unique")) {
+                  console.warn(`[autoLink] Failed to create scoring elemDef link:`, err?.message);
+                }
               }
             }
           }

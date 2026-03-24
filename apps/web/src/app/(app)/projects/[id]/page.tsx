@@ -4989,7 +4989,9 @@ export default function ProjectViewPage() {
                           {group.items.map(el => (
                             <div key={el.id} className={`sep-row ${el.status} clickable`} onClick={() => {
                               if (el.value) {
-                                openDetailPanel(el.id);
+                                // Navigate to Elemente tab and open detail panel
+                                setActiveLeaf("elements");
+                                setTimeout(() => openDetailPanel(el.id), 100);
                               } else {
                                 // Send directly — include key so Solomon can emit ELEMENTS_JSON
                                 const prompt = `Completează elementul "${el.label}" (cheie: ${el.key}). Propune o valoare bazată pe datele firmei, ghidul de finanțare și conversația anterioară. Salvează valoarea în ELEMENTS_JSON.`;

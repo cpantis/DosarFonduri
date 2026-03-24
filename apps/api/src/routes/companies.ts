@@ -724,8 +724,10 @@ companyRoutes.post("/:id/upload-bilant", async (c) => {
 
   const formData = await c.req.formData();
   const file = formData.get("file") as File;
-  const year = parseInt(formData.get("year") as string);
-  if (!file || !year) return c.json({ error: "Fișier și an sunt obligatorii" }, 400);
+  if (!file) return c.json({ error: "Fișier obligatoriu" }, 400);
+  // Year is optional — AI will detect it from PDF if not provided
+  const yearRaw = formData.get("year") as string | null;
+  const year = yearRaw ? parseInt(yearRaw) : 0;
 
   const buffer = Buffer.from(await file.arrayBuffer());
   const fileId = await uploadFile(buffer, file.name, file.type, auth.organizationId!, auth.userId);
@@ -742,11 +744,11 @@ companyRoutes.post("/:id/upload-bilant", async (c) => {
   await dispatchCompanyJob("bilant-parse", {
     companyId: id,
     fileId,
-    year,
+    year, // 0 = auto-detect from PDF
     organizationId: auth.organizationId,
   });
 
-  return c.json({ ok: true, year, processingStatus: "processing", message: "Fișier încărcat, se procesează în fundal..." });
+  return c.json({ ok: true, year: year || "auto", processingStatus: "processing", message: "Fișier încărcat, se procesează în fundal..." });
 });
 
 // --- SEARCH CUI (ListaFirme.ro) ---

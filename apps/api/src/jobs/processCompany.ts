@@ -365,7 +365,7 @@ async function handleOnrcUpdate(job: Job<CompanyOnrcUpdatePayload>) {
 }
 
 async function handleBilantParse(job: Job<CompanyBilantPayload>) {
-  const { companyId, fileId, year, organizationId } = job.data;
+  const { companyId, fileId, year: providedYear, organizationId } = job.data;
 
   const { buffer } = await getFileBuffer(fileId);
   await job.updateProgress(10);
@@ -373,11 +373,16 @@ async function handleBilantParse(job: Job<CompanyBilantPayload>) {
   const pdfResult = await extractTextFromPDF(buffer);
   await job.updateProgress(40);
 
-  const parsed = await parseBilantPDF(pdfResult.text, year);
+  // Pass year=0 as undefined so AI auto-detects from PDF
+  const parsed = await parseBilantPDF(pdfResult.text, providedYear || undefined);
   await job.updateProgress(80);
 
+  // Use AI-detected year (parsed.year is always set by parseBilantPDF)
+  const finalYear = parsed.year;
+  console.log(`[processCompany] Bilant year: provided=${providedYear || "auto"}, final=${finalYear}`);
+
   const existing = await db.query.companyFinancials.findFirst({
-    where: and(eq(companyFinancials.companyId, companyId), eq(companyFinancials.year, year)),
+    where: and(eq(companyFinancials.companyId, companyId), eq(companyFinancials.year, finalYear)),
   });
 
   if (existing) {
@@ -393,7 +398,7 @@ async function handleBilantParse(job: Job<CompanyBilantPayload>) {
   } else {
     await db.insert(companyFinancials).values({
       companyId,
-      year,
+      year: finalYear,
       source: "anaf_upload",
       fileId,
       f10: parsed.f10,
@@ -420,11 +425,11 @@ async function handleBilantParse(job: Job<CompanyBilantPayload>) {
   await publishEvent(`org:${organizationId}:uploads`, "company_processed", {
     companyId,
     status: "done",
-    year,
-    message: `Bilanț ${year} procesat pentru ${company?.denumire || "firmă"}`,
+    year: finalYear,
+    message: `Bilanț ${finalYear} procesat pentru ${company?.denumire || "firmă"}`,
   }).catch((e: any) => console.warn("[processCompany] sse bilant processed:", e.message));
 
-  return { companyId, status: "done", year };
+  return { companyId, status: "done", year: finalYear };
 }
 
 // --- Worker ---

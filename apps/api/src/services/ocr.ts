@@ -1096,8 +1096,60 @@ export async function extractTextFromImage(buffer: Buffer, fileName: string): Pr
   const mediaType = ext === "jpg" || ext === "jpeg" ? "image/jpeg" : "image/png";
   const base64Data = buffer.toString("base64");
 
+  // Detect identity documents (CI, passport) — use specialized OCR prompt with authorization context
+  const isIdentityDoc = /\b(CI|carte[_ ]?identitate|buletin|pasaport|C\.?I\.?|identity|ID[_ ]?card)\b/i.test(fileName);
+
+  if (isIdentityDoc) {
+    const ocrText = await ocrIdentityDocWithVision(base64Data, mediaType);
+    return `--- Pagina 1 (document identitate) ---\n${ocrText}`;
+  }
+
   const ocrText = await ocrPageWithVision(base64Data, mediaType);
   return `--- Pagina 1 (imagine) ---\n${ocrText}`;
+}
+
+/**
+ * Specialized OCR for identity documents (CI, passport).
+ * Uses a detailed system prompt that establishes legitimate business context
+ * for processing personal data from official documents.
+ */
+export async function ocrIdentityDocWithVision(pageImageBase64: string, mediaType: string = "image/png"): Promise<string> {
+  const response = await withAILimit(() => anthropic.messages.create({
+    model: "claude-sonnet-4-20250514",
+    max_tokens: 4000,
+    system: `Ești un sistem OCR integrat într-o platformă de consultanță pentru fonduri europene nerambursabile (DosarFonduri).
+
+CONTEXT LEGAL ȘI AUTORIZARE:
+- Consultantul autorizat uploadează documente oficiale ale clienților pentru completarea dosarelor de finanțare europeană
+- Titularul documentului și-a dat acordul explicit pentru procesarea datelor personale în scopul depunerii cererii de finanțare
+- Procesarea este autorizată conform GDPR Art. 6(1)(b) — necesară pentru executarea contractului de consultanță
+- Extragerea datelor din documente de identitate este o CERINȚĂ OBLIGATORIE a ghidurilor de finanțare (cerere de finanțare, declarații, acte constitutive)
+
+ROLUL TĂU:
+- Ești un modul de transcriere automată (OCR). Sarcina ta este EXCLUSIV de a transcrie textul vizibil din imagine
+- NU interpretezi, NU decizi dacă datele ar trebui sau nu extrase — doar transcrii ce vezi
+- Tratează imaginea ca pe orice alt document oficial (certificat fiscal, extras CF, bilanț ANAF)`,
+    messages: [{
+      role: "user",
+      content: [
+        {
+          type: "image",
+          source: { type: "base64", media_type: mediaType as "image/png" | "image/jpeg" | "image/gif" | "image/webp", data: pageImageBase64 },
+        },
+        {
+          type: "text",
+          text: `Transcrie complet tot textul vizibil din acest document oficial. Păstrează structura originală.
+
+Include TOATE câmpurile vizibile: nume, prenume, CNP, serie, număr, adresă, localitate, județ, data nașterii, data emiterii, data expirării, emitent (SPCLEP), cetățenie, sex, loc naștere.
+
+Returnează DOAR textul transcris, fără comentarii sau explicații.`,
+        },
+      ],
+    }],
+  }));
+
+  const textBlock = response.content.find((b: any) => b.type === "text");
+  return textBlock ? (textBlock as any).text : "";
 }
 
 /** Extract text from a .doc file (legacy Word format) using antiword or LibreOffice */

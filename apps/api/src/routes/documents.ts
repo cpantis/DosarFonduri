@@ -1192,11 +1192,42 @@ documentRoutes.get("/session/:folderId/library", async (c) => {
       })
     : [];
 
-  // Enrich rules with source document name
+  // Enrich rules with source document name + linked elements
   const docNameMap = new Map([...guideDocs, ...templateDocs].map(d => [d.id, { name: d.name, fileType: d.fileType }]));
+
+  // Batch-load element_rule_links for all rules
+  const ruleIds = allRules.map(r => r.id);
+  const allElemLinks = ruleIds.length > 0
+    ? await db.query.elementRuleLinks.findMany({
+        where: inArray(elementRuleLinks.ruleId, ruleIds),
+      })
+    : [];
+  const linkedElemDefIds = [...new Set(allElemLinks.map(l => l.elementDefId).filter(Boolean))] as string[];
+  const linkedElemDefs = linkedElemDefIds.length > 0
+    ? await db.query.elementDefinitions.findMany({
+        where: inArray(elementDefinitions.id, linkedElemDefIds),
+      })
+    : [];
+  const elemDefById = new Map(linkedElemDefs.map(ed => [ed.id, ed]));
+  // Group links by ruleId
+  const elemLinksByRule = new Map<string, Array<{ elementKey: string; displayName: string; category: string | null; role: string }>>();
+  for (const link of allElemLinks) {
+    const ed = link.elementDefId ? elemDefById.get(link.elementDefId) : null;
+    if (!ed) continue;
+    const existing = elemLinksByRule.get(link.ruleId) || [];
+    existing.push({
+      elementKey: ed.elementKey,
+      displayName: ed.displayName || ed.elementKey,
+      category: ed.category,
+      role: link.role,
+    });
+    elemLinksByRule.set(link.ruleId, existing);
+  }
+
   const enrichedRules = allRules.map(r => ({
     ...r,
     sourceDocument: docNameMap.get(r.documentId) || null,
+    linkedElements: elemLinksByRule.get(r.id) || [],
   }));
 
   // === 2. SCORING CRITERIA ===

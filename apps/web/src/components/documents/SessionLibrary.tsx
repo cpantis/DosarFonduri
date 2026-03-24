@@ -14,6 +14,13 @@ interface SourceDoc {
   fileType: string;
 }
 
+interface LinkedElement {
+  elementKey: string;
+  displayName: string;
+  category: string | null;
+  role: string;
+}
+
 interface LibRule {
   id: string;
   type: "fixed" | "interpreted";
@@ -27,6 +34,7 @@ interface LibRule {
   needsReview: boolean;
   validated: boolean;
   sourceDocument: SourceDoc | null;
+  linkedElements: LinkedElement[];
 }
 
 interface LibScoring {
@@ -209,6 +217,7 @@ function RulesTab({ rules }: { rules: LibraryData["rules"] }) {
       validated: rule.validated,
       needsReview: rule.needsReview,
       sourceDocument: rule.sourceDocument,
+      linkedElements: rule.linkedElements || [],
     };
   }), [displayRules]);
 

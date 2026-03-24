@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { isSOC, isPF, FORME_JURIDICE, getCompanyTabs, getFieldLabel } from "@/hooks/useFormaJuridica";
+import { useAuth } from "@/hooks/useAuth";
 import { apiGet, apiPost, apiDelete, api } from "@/lib/api";
 import { getCaenDescription } from "@/lib/caen";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -85,6 +86,7 @@ const mapDetail = (d: any) => {
 export default function CompanyDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const { user, organization } = useAuth();
   const id = params.id as string;
 
   const [detail, setDetail] = useState<any | null>(null);
@@ -228,6 +230,164 @@ export default function CompanyDetailPage() {
     } finally {
       setPreEligLoading(false);
     }
+  };
+
+  const handlePrintEligibility = () => {
+    if (!preEligResult || !sel) return;
+    const sessionLabel = sessions.find((s: any) => s.id === selectedSession)?.fullPath || "—";
+    const now = new Date().toLocaleDateString("ro-RO", { day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    const consultantName = user?.name || user?.email || "—";
+    const cabinetName = organization?.name || "—";
+
+    const statusLabel: Record<string, string> = { passed: "Indeplinit", failed: "Neindeplinit", pending: "In asteptare", not_applicable: "N/A" };
+    const statusSymbol: Record<string, string> = { passed: "\u2713", failed: "\u2717", pending: "?", not_applicable: "—" };
+
+    const rulesHtml = preEligResult.rules.map((rule: any) => {
+      const elements = (rule.elements || []).map((el: any) =>
+        `<div class="el-row">
+          <span class="el-icon ${rule.status}">${el.isMissing ? "?" : statusSymbol[rule.status] || "?"}</span>
+          <span class="el-name">${el.displayName}</span>
+          <span class="el-val">${el.isMissing ? '<em>lipsa</em>' : String(el.value)}</span>
+          ${el.expectedOperator && el.expectedValue != null ? `<span class="el-exp">(${el.expectedOperator} ${el.expectedValue})</span>` : ""}
+        </div>`
+      ).join("");
+
+      const refs = (rule.refTableResults || []).map((ref: any) =>
+        `<div class="ref-row">
+          <span class="ref-dot ${ref.status}"></span>
+          <span>${ref.tableName} — ${ref.message}</span>
+        </div>`
+      ).join("");
+
+      return `
+        <div class="rule-card ${rule.status}">
+          <div class="rule-header">
+            <span class="status-badge ${rule.status}">${statusLabel[rule.status] || rule.status}</span>
+            <span class="rule-type">${rule.type === "fixed" ? "Fixa" : "Interpretata"} &middot; ${rule.category || "general"}</span>
+          </div>
+          <div class="rule-desc">${rule.description}</div>
+          ${elements ? `<div class="rule-elements"><div class="section-label">Elemente verificate</div>${elements}</div>` : ""}
+          ${refs ? `<div class="rule-refs"><div class="section-label">Tabele de referinta</div>${refs}</div>` : ""}
+          ${rule.notes && !elements && !refs ? `<div class="rule-notes">${rule.notes}</div>` : ""}
+        </div>`;
+    }).join("");
+
+    const missingHtml = (preEligResult.summary.missingElements || []).length > 0
+      ? `<div class="missing-box">
+          <strong>Date lipsa (${preEligResult.summary.missingElements.length} elemente):</strong>
+          ${preEligResult.summary.missingElements.map((k: string) => `<code>${k}</code>`).join(" ")}
+        </div>`
+      : "";
+
+    const html = `<!DOCTYPE html>
+<html lang="ro">
+<head>
+  <meta charset="utf-8">
+  <title>Raport Eligibilitate Solicitant — ${sel.denumire}</title>
+  <style>
+    @page { size: A4; margin: 20mm 15mm 25mm 15mm; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; font-size: 11px; color: #1a1e28; line-height: 1.5; }
+    .header { text-align: center; margin-bottom: 20px; padding-bottom: 14px; border-bottom: 2px solid #2a3040; }
+    .header h1 { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+    .header .subtitle { font-size: 12px; color: #5a6478; }
+    .meta { display: flex; justify-content: space-between; margin-bottom: 16px; font-size: 11px; }
+    .meta-col { display: flex; flex-direction: column; gap: 2px; }
+    .meta-label { font-weight: 600; color: #5a6478; text-transform: uppercase; font-size: 9px; letter-spacing: .5px; }
+    .summary { display: flex; gap: 12px; margin-bottom: 16px; }
+    .summary-card { flex: 1; text-align: center; padding: 10px; border: 1px solid #e0e4ea; border-radius: 6px; }
+    .summary-card .num { font-size: 22px; font-weight: 700; }
+    .summary-card .label { font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; color: #5a6478; }
+    .summary-card.passed .num { color: #059669; }
+    .summary-card.failed .num { color: #dc2626; }
+    .summary-card.pending .num { color: #d97706; }
+    .progress { height: 6px; border-radius: 3px; background: #f1f5f9; display: flex; overflow: hidden; margin-bottom: 16px; }
+    .progress .bar-passed { background: #059669; }
+    .progress .bar-failed { background: #dc2626; }
+    .progress .bar-pending { background: #d97706; }
+    .missing-box { padding: 10px; border: 1px solid #fbbf2480; background: #fefce8; border-radius: 6px; margin-bottom: 16px; font-size: 11px; }
+    .missing-box code { background: #fef3c7; padding: 1px 5px; border-radius: 3px; font-size: 10px; font-family: monospace; }
+    .rule-card { border: 1px solid #e0e4ea; border-radius: 6px; margin-bottom: 8px; overflow: hidden; page-break-inside: avoid; }
+    .rule-card.passed { border-left: 3px solid #059669; }
+    .rule-card.failed { border-left: 3px solid #dc2626; }
+    .rule-card.pending { border-left: 3px solid #d97706; }
+    .rule-card.not_applicable { border-left: 3px solid #94a3b8; }
+    .rule-header { padding: 8px 12px; display: flex; align-items: center; gap: 10px; background: #f8fafc; border-bottom: 1px solid #f1f5f9; }
+    .status-badge { font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 12px; }
+    .status-badge.passed { background: #ecfdf5; color: #059669; }
+    .status-badge.failed { background: #fef2f2; color: #dc2626; }
+    .status-badge.pending { background: #fffbeb; color: #d97706; }
+    .status-badge.not_applicable { background: #f8fafc; color: #94a3b8; }
+    .rule-type { font-size: 10px; color: #94a3b8; }
+    .rule-desc { padding: 8px 12px; font-size: 11px; }
+    .rule-elements, .rule-refs { padding: 6px 12px 8px; border-top: 1px solid #f1f5f9; }
+    .section-label { font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; color: #94a3b8; margin-bottom: 4px; }
+    .el-row { display: flex; align-items: center; gap: 6px; font-size: 10.5px; margin-bottom: 2px; }
+    .el-icon { width: 14px; height: 14px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 700; }
+    .el-icon.passed { background: #ecfdf5; color: #059669; }
+    .el-icon.failed { background: #fef2f2; color: #dc2626; }
+    .el-icon.pending { background: #fffbeb; color: #d97706; }
+    .el-name { font-weight: 500; color: #475569; }
+    .el-val { font-family: monospace; font-size: 10px; background: #f1f5f9; padding: 1px 5px; border-radius: 3px; }
+    .el-val em { color: #d97706; font-family: inherit; }
+    .el-exp { font-size: 10px; color: #94a3b8; }
+    .ref-row { display: flex; align-items: center; gap: 6px; font-size: 10.5px; margin-bottom: 2px; }
+    .ref-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+    .ref-dot.passed { background: #059669; }
+    .ref-dot.failed { background: #dc2626; }
+    .ref-dot.warning { background: #d97706; }
+    .ref-dot.info { background: #94a3b8; }
+    .rule-notes { padding: 6px 12px; font-size: 10.5px; color: #64748b; border-top: 1px solid #f1f5f9; }
+    .footer { margin-top: 24px; padding-top: 12px; border-top: 1px solid #e0e4ea; display: flex; justify-content: space-between; font-size: 10px; color: #5a6478; }
+    @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Raport Eligibilitate Solicitant</h1>
+    <div class="subtitle">${sel.denumire} &middot; CUI ${sel.cui || "—"} &middot; ${sel.forma || "—"}</div>
+  </div>
+
+  <div class="meta">
+    <div class="meta-col">
+      <span><span class="meta-label">Sesiune:</span> ${sessionLabel}</span>
+      <span><span class="meta-label">Data verificare:</span> ${now}</span>
+    </div>
+    <div class="meta-col" style="text-align:right">
+      <span><span class="meta-label">Cabinet:</span> ${cabinetName}</span>
+      <span><span class="meta-label">Consultant:</span> ${consultantName}</span>
+    </div>
+  </div>
+
+  <div class="summary">
+    <div class="summary-card"><div class="num">${preEligResult.summary.total}</div><div class="label">Total reguli</div></div>
+    <div class="summary-card passed"><div class="num">${preEligResult.summary.passed}</div><div class="label">Indeplinite</div></div>
+    <div class="summary-card failed"><div class="num">${preEligResult.summary.failed}</div><div class="label">Neindeplinite</div></div>
+    <div class="summary-card pending"><div class="num">${preEligResult.summary.pending}</div><div class="label">In asteptare</div></div>
+  </div>
+
+  ${preEligResult.summary.total > 0 ? `
+  <div class="progress">
+    <div class="bar-passed" style="width:${(preEligResult.summary.passed / preEligResult.summary.total) * 100}%"></div>
+    <div class="bar-failed" style="width:${(preEligResult.summary.failed / preEligResult.summary.total) * 100}%"></div>
+    <div class="bar-pending" style="width:${(preEligResult.summary.pending / preEligResult.summary.total) * 100}%"></div>
+  </div>` : ""}
+
+  ${missingHtml}
+  ${rulesHtml}
+
+  <div class="footer">
+    <div>${cabinetName} &middot; ${consultantName}</div>
+    <div>Generat cu DosarFonduri &middot; ${now}</div>
+  </div>
+</body>
+</html>`;
+
+    const printWin = window.open("", "_blank", "width=800,height=1000");
+    if (!printWin) return;
+    printWin.document.write(html);
+    printWin.document.close();
+    printWin.onload = () => { printWin.print(); };
   };
 
   const sel = detail;
@@ -1063,6 +1223,29 @@ export default function CompanyDetailPage() {
                   </div>
                 </div>
               )}
+
+              {/* Print button */}
+              <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+                <button
+                  onClick={handlePrintEligibility}
+                  style={{
+                    display: "inline-flex", alignItems: "center", gap: 6,
+                    padding: "7px 14px", borderRadius: 8,
+                    background: "#f8fafc", border: "1px solid #e2e8f0",
+                    color: "#475569", fontSize: 12, fontWeight: 500,
+                    cursor: "pointer", transition: "all .15s",
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = "#f1f5f9"; e.currentTarget.style.borderColor = "#cbd5e1"; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = "#f8fafc"; e.currentTarget.style.borderColor = "#e2e8f0"; }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="6 9 6 2 18 2 18 9" />
+                    <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+                    <rect x="6" y="14" width="12" height="8" />
+                  </svg>
+                  Printeaza raport
+                </button>
+              </div>
 
               {/* Missing elements warning */}
               {preEligResult.summary.missingElements?.length > 0 && (

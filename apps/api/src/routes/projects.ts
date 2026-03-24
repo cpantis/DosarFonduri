@@ -333,6 +333,51 @@ projectRoutes.post("/", async (c) => {
         }
       }
 
+      // Step 3: Seed "tip_proiect" element — always present, filled by Solomon from chat
+      const tipProiectKey = "tip_proiect";
+      // Check if tip_proiect elementDef already exists and was seeded
+      const existingTipDef = await tx.query.elementDefinitions.findFirst({
+        where: and(eq(elementDefinitions.elementKey, tipProiectKey), eq(elementDefinitions.organizationId, orgId)),
+      });
+      const alreadySeeded = existingTipDef && seededElementDefIds.has(existingTipDef.id);
+      if (!alreadySeeded) {
+        let tipDef = await tx.query.elementDefinitions.findFirst({
+          where: and(eq(elementDefinitions.elementKey, tipProiectKey), eq(elementDefinitions.organizationId, orgId)),
+        });
+        if (!tipDef) {
+          // Find a guide doc for association (optional)
+          const ghiduriFolder = await tx.query.documentFolders.findFirst({
+            where: and(eq(documentFolders.parentId, body.folderId), eq(documentFolders.type, "ghiduri"), eq(documentFolders.organizationId, orgId)),
+          });
+          let guideDocId: string | null = null;
+          if (ghiduriFolder) {
+            const guide = await tx.query.documents.findFirst({
+              where: and(eq(documents.folderId, ghiduriFolder.id), eq(documents.processingType, "ghid")),
+            });
+            guideDocId = guide?.id ?? null;
+          }
+          [tipDef] = await tx.insert(elementDefinitions).values({
+            guideDocumentId: guideDocId,
+            organizationId: orgId,
+            elementKey: tipProiectKey,
+            displayName: "Tip proiect (bunuri / construcții / servicii / mixt)",
+            category: "other",
+            dataType: "text",
+            required: true,
+            sourcePriority: ["solomon_chat", "consultant_manual"],
+          }).returning();
+        }
+        await tx.insert(projectElements).values({
+          projectId: proj.id,
+          elementDefId: tipDef.id,
+          templateElementId: null,
+          instanceIndex: 0,
+          value: null,
+          source: "manual" as const,
+          confirmed: false,
+        });
+      }
+
       return proj;
     });
   } catch (err: any) {
@@ -1419,6 +1464,7 @@ projectRoutes.put("/:id", async (c) => {
   if (body.prefixDocumente !== undefined) updateData.prefixDocumente = body.prefixDocumente;
   if (body.codMysmis !== undefined) updateData.codMysmis = body.codMysmis;
   if (body.structuraDosar !== undefined) updateData.structuraDosar = body.structuraDosar;
+  if (body.tipProiect !== undefined) updateData.tipProiect = body.tipProiect;
 
   const [updated] = await db.update(projects).set(updateData).where(
     and(eq(projects.id, id), eq(projects.organizationId, auth.organizationId!))

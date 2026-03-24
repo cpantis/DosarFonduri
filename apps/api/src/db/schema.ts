@@ -488,6 +488,7 @@ export const projects = pgTable("projects", {
   prefixDocumente: varchar("prefix_documente", { length: 100 }),
   codMysmis: varchar("cod_mysmis", { length: 100 }),
   structuraDosar: text("structura_dosar"),
+  tipProiect: varchar("tip_proiect", { length: 50 }),
   deadline: timestamp("deadline"),
   consultantId: uuid("consultant_id").references(() => users.id, { onDelete: "set null" }),
   lockedBy: uuid("locked_by").references(() => users.id, { onDelete: "set null" }),

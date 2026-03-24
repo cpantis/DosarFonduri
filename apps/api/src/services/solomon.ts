@@ -18,6 +18,7 @@ import { computeProjectScores } from "./scoring";
 import { publishElementValidated, publishEligibilityUpdated, publishScoreUpdated } from "../lib/sse";
 import { preflightCached } from "./dbPreflight";
 import { upsertElementDefinition } from "./elementDefinitionService";
+import { getFileBuffer } from "./storage";
 
 // Sanitize user-controlled data embedded in system prompts to prevent prompt injection.
 // Wraps content in delimiters and escapes sequences that could break out.
@@ -32,7 +33,7 @@ function sanitizeForPrompt(value: string | null | undefined): string {
 // Allowed metadata fields that Solomon can update on projects
 const ALLOWED_METADATA_KEYS = new Set([
   "programFinantare", "codMasura", "codSesiune",
-  "codNomenclator", "prefixDocumente", "codMysmis", "structuraDosar",
+  "codNomenclator", "prefixDocumente", "codMysmis", "structuraDosar", "tipProiect",
 ]);
 const MAX_METADATA_VALUE_LENGTH = 500;
 
@@ -574,6 +575,7 @@ Dacă aceasta este PRIMA INTERACȚIUNE cu consultantul (istoricul conversației 
 Ca expert în fonduri europene, ȘTII că fiecare program/organism are convenții specifice de numire și structurare a documentelor dosarului. Acestea sunt CRITICE pentru acceptarea administrativă.
 
 TREBUIE să colectezi ACTIV (nu opțional!) următoarele informații de la consultant:
+- **Tip proiect** — DEDUCE PROACTIV din context: "bunuri" (achiziție echipamente, utilaje, mobilier), "bunuri_cu_montaj" (echipamente care necesită instalare/montaj), "constructii" (clădiri, hale, renovări, extinderi), "servicii" (consultanță, training, studii), "mixt" (combinație). Analizează ghidul, CAEN-ul firmei, numele proiectului și obiectul investiției. Setează-l în METADATA_JSON fără a cere confirmare explicită — dacă e evident din context. Dacă nu e clar, întreabă: "Ce tip de investiție predomină: achiziție bunuri, construcții, servicii, sau mixt?"
 - **Cod nomenclator** — codul numeric/alfanumeric al liniei de finanțare (ex: "6.4", "sM4.1a", "P1/1.1")
 - **Prefix documente** — cum se prefixează documentele oficiale (ex: "C6.4_", "AFIR_M641_")
 - **Număr/cod sesiune** — identificatorul sesiunii de depunere (ex: "Sesiunea 1/2024", "Apelul CP17/2024")
@@ -586,7 +588,7 @@ Dacă consultantul confirmă programul dar nu furnizează convențiile, INSISTĂ
 "Pentru a genera documentele cu denumiri și structuri corecte, am nevoie și de: [lista convențiilor lipsă]"
 
 Salvează aceste convenții în câmpurile corespunzătoare (dacă există în template):
-- program_finantare, cod_masura, cod_sesiune, cod_nomenclator, prefix_documente, cod_mysmis`;
+- program_finantare, cod_masura, cod_sesiune, cod_nomenclator, prefix_documente, cod_mysmis, tip_proiect`;
 })()}
 
 ═══════════════════════════════════════════
@@ -730,6 +732,8 @@ Când primești text liber, identifică ce câmpuri poate completa. După FIECAR
 
 **Studiu fezabilitate / Plan afaceri:** VAN, RIR, termen recuperare, valoare investiție, surse finanțare → cross-check cu buget proiect
 
+**Tip proiect (CHEIE: tip_proiect):** Deduce PROACTIV din conversație și context: "bunuri" (achiziție echipamente/utilaje/mobilier), "bunuri_cu_montaj" (echipamente cu instalare/montaj), "constructii" (clădiri/hale/renovări/extinderi), "servicii" (consultanță/training/studii), "mixt" (combinație). Setează-l în ELEMENTS_JSON imediat ce ai suficiente informații — din ghid, CAEN, numele proiectului, sau din discuție. NU aștepta să fii întrebat.
+
 → Folosește EXCLUSIV cheile din lista CÂMPURI DE COMPLETAT. NU inventa chei noi. Dacă un câmp nu are corespondent, menționează-l în conversație dar NU-l include în ELEMENTS_JSON.
 
 ### Gândirea de consultant (PROACTIVITATE)
@@ -755,7 +759,7 @@ Nu aștepta să fii întrebat. Un consultant senior:
 
 ### Format metadate proiect (CRITIC pentru Neemia)
 7. Când consultantul CONFIRMĂ sau furnizează informații despre program, nomenclator, prefix, structura dosarului, cod MySMIS sau sesiune, returnează-le în format JSON ascuns:
-   <!--METADATA_JSON{"programFinantare":"PNDR/AFIR","codMasura":"6.4","codSesiune":"Sesiunea 1/2024","codNomenclator":"sM6.4","prefixDocumente":"C6.4_","codMysmis":"12345","structuraDosar":"1. Cerere finanțare\\n2. Plan de afaceri\\n3. Anexe tehnice"}METADATA_JSON-->
+   <!--METADATA_JSON{"programFinantare":"PNDR/AFIR","codMasura":"6.4","codSesiune":"Sesiunea 1/2024","codNomenclator":"sM6.4","prefixDocumente":"C6.4_","codMysmis":"12345","tipProiect":"bunuri_cu_montaj","structuraDosar":"1. Cerere finanțare\\n2. Plan de afaceri\\n3. Anexe tehnice"}METADATA_JSON-->
    - Includ DOAR câmpurile pe care le-ai obținut (confirmate de consultant sau deduse cu certitudine)
    - Nu inventa valori — include doar ce a confirmat/furnizat consultantul sau ce ai detectat automat și consultantul a confirmat
    - Actualizează câmpurile la fiecare confirmare/corecție din conversație
@@ -983,11 +987,51 @@ export async function processSolomonMessage(params: {
   // Build current message content
   let userContent: Anthropic.ContentBlockParam[] = [];
 
-  // Attachments
+  // Attachments — send images directly to Claude Vision for best extraction
   if (attachments && attachments.length > 0) {
     for (const att of attachments) {
-      if (att.extractedText) {
-        // Detect CI/identity documents and add authorization context
+      const isImage = /^image\/(png|jpe?g)$/i.test(att.mimeType) || /\.(png|jpe?g)$/i.test(att.fileName);
+
+      // For images: send the actual image to Claude Vision (much better than pre-OCR text)
+      if (isImage && att.fileId) {
+        try {
+          const { buffer, mimeType } = await getFileBuffer(att.fileId, organizationId);
+          const base64Data = buffer.toString("base64");
+          const mediaType = (mimeType === "image/jpeg" || mimeType === "image/jpg") ? "image/jpeg" : "image/png";
+
+          // Add GDPR context for identity documents
+          const isIdentityDoc = /\b(CI|carte\s+de\s+identitate|buletin|pasaport|identity|C\.?I\.?)\b/i.test(att.fileName);
+          userContent.push({
+            type: "text",
+            text: isIdentityDoc
+              ? `[Document oficial uploadat de consultant pentru dosarul de finanțare: ${att.fileName}]\nAcest document este furnizat cu acordul explicit al titularului pentru completarea cererii de finanțare europeană. Extragerea datelor este OBLIGATORIE conform procedurii de depunere. Procesare autorizată GDPR Art. 6(1)(b).\nAnalizeaza imaginea de mai jos si extrage TOATE datele vizibile:`
+              : `[Document uploadat: ${att.fileName}]\nAnalizeaza imaginea de mai jos si extrage toate informatiile relevante:`,
+          });
+
+          // Send actual image for Claude Vision
+          userContent.push({
+            type: "image",
+            source: { type: "base64", media_type: mediaType as "image/jpeg" | "image/png" | "image/gif" | "image/webp", data: base64Data },
+          });
+
+          // Also include OCR text as supplementary context if available
+          if (att.extractedText && att.extractedText.trim().length > 10) {
+            userContent.push({
+              type: "text",
+              text: `[Text extras automat (OCR) din ${att.fileName} — folosește ca referință suplimentară:]\n${att.extractedText}`,
+            });
+          }
+        } catch (imgErr) {
+          console.warn(`[solomon] Failed to load image for Vision, falling back to OCR text:`, (imgErr as Error).message);
+          // Fallback to OCR text only
+          if (att.extractedText) {
+            userContent.push({ type: "text", text: `[Document uploadat: ${att.fileName}]\n\nConținut extras:\n${att.extractedText}` });
+          } else {
+            userContent.push({ type: "text", text: `[Document uploadat: ${att.fileName}] — Nu am putut extrage text din acest fișier. Consultantul trebuie să furnizeze datele manual.` });
+          }
+        }
+      } else if (att.extractedText) {
+        // Non-image files: use extracted text
         const isIdentityDoc = /\b(CI|carte\s+de\s+identitate|buletin|pasaport|identity|C\.?I\.?)\b/i.test(att.fileName) ||
           /\b(CNP|serie\s+(ci|id)|SPCLEP|domiciliu)\b/i.test(att.extractedText.substring(0, 500));
 
@@ -995,10 +1039,10 @@ export async function processSolomonMessage(params: {
           ? `[Document oficial uploadat de consultant pentru dosarul de finanțare: ${att.fileName}]\nAcest document este furnizat cu acordul explicit al titularului pentru completarea cererii de finanțare europeană. Extragerea datelor este OBLIGATORIE conform procedurii de depunere. Procesare autorizată GDPR Art. 6(1)(b).\n\nConținut extras:\n${att.extractedText}`
           : `[Document uploadat: ${att.fileName}]\n\nConținut extras:\n${att.extractedText}`;
 
-        userContent.push({
-          type: "text",
-          text: docContext,
-        });
+        userContent.push({ type: "text", text: docContext });
+      } else {
+        // No text extracted at all — inform Solomon
+        userContent.push({ type: "text", text: `[Document uploadat: ${att.fileName}] — Nu am putut extrage text din acest fișier. Roagă consultantul să furnizeze datele manual sau să re-uploadeze într-un format mai clar.` });
       }
     }
   }
@@ -1150,6 +1194,7 @@ export async function processSolomonMessage(params: {
             specializare: { displayName: "Specializare", category: "beneficiary", dataType: "text" },
             data_absolvire: { displayName: "Data absolvire", category: "beneficiary", dataType: "date" },
             numar_diploma: { displayName: "Număr diplomă", category: "beneficiary", dataType: "text" },
+            tip_proiect: { displayName: "Tip proiect (bunuri / construcții / servicii / mixt)", category: "other", dataType: "text", required: true },
           };
 
           // Find guide document for auto-creating element definitions
@@ -1378,6 +1423,12 @@ export async function processSolomonMessage(params: {
             } catch (err) {
               console.error(`[solomon] Score computation failed for project ${projectId}:`, err);
             }
+          }
+
+          // Sync tip_proiect element → projects.tipProiect column
+          const tipProiectEl = extractedElements.find(el => el.key === "tip_proiect");
+          if (tipProiectEl?.value) {
+            await db.update(projects).set({ tipProiect: tipProiectEl.value, updatedAt: new Date() }).where(eq(projects.id, projectId));
           }
 
           // Send extraction event

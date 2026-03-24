@@ -7,10 +7,10 @@ interface BtnProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const SIZE_MAP = {
-  sm: "text-[12px] h-[30px] px-3 gap-1.5 rounded-md",
-  md: "text-[13px] h-[36px] px-4 gap-2 rounded-lg",
-  lg: "text-[14px] h-[40px] px-5 gap-2 rounded-lg",
-  xl: "text-[15px] h-[44px] px-6 gap-2.5 rounded-lg",
+  sm: "text-[12px] h-[30px] px-3.5 gap-1.5 rounded-md",
+  md: "text-[13px] h-[36px] px-5 gap-2 rounded-lg",
+  lg: "text-[14px] h-[40px] px-6 gap-2 rounded-lg",
+  xl: "text-[15px] h-[44px] px-7 gap-2.5 rounded-xl",
 };
 
 export function BtnPrimary({ children, icon, size = "md", className = "", ...props }: BtnProps) {

@@ -170,19 +170,114 @@ companyRoutes.post("/", async (c) => {
 
   // Auto mode (CUI lookup)
   const body = addByCUISchema.parse(await c.req.json());
+  const cleanCUI = body.cui.replace(/\D/g, "");
 
   // Check duplicate
   const existing = await db.query.companies.findFirst({
     where: and(
-      eq(companies.cui, body.cui.replace(/\D/g, "")),
+      eq(companies.cui, cleanCUI),
       eq(companies.organizationId, auth.organizationId),
     ),
   });
   if (existing) return c.json({ error: "Firma cu acest CUI există deja" }, 400);
 
-  // Lookup ONRC
-  const onrcData = await lookupCUI(body.cui, auth.organizationId);
-  if (!onrcData) return c.json({ error: "CUI-ul nu a fost găsit" }, 404);
+  // Try ListaFirme first (most commonly configured), then ONRC as fallback
+  let lfData = null;
+  try {
+    lfData = await lookupCUI_ListaFirme(cleanCUI, auth.organizationId);
+  } catch (lfErr: any) {
+    console.log("[companies/auto] ListaFirme unavailable:", lfErr.message);
+  }
+
+  if (lfData) {
+    // Use ListaFirme data — delegate to the from-listafirme logic
+    const formaRaw = (lfData.legalForm || "").toUpperCase();
+    const lfFormaCode = Object.entries(FORMA_MAP).find(([k]) => formaRaw.includes(k))?.[1] || "SRL";
+    const foundedYear = lfData.foundedDate ? parseInt(lfData.foundedDate.slice(0, 4)) : undefined;
+    const stareRaw = (lfData.status || "").toLowerCase();
+    const lfStare = stareRaw.includes("radia") ? "radiata" as const
+      : stareRaw.includes("dizolv") ? "dizolvata" as const
+      : stareRaw.includes("lichid") ? "lichidare" as const
+      : "functiune" as const;
+
+    try {
+      const company = await db.transaction(async (tx) => {
+        const [comp] = await tx.insert(companies).values({
+          organizationId: auth.organizationId!,
+          formaJuridica: lfFormaCode as any,
+          denumire: lfData!.name,
+          cui: lfData!.taxCode,
+          regCom: lfData!.regNo || undefined,
+          adresa: lfData!.address || undefined,
+          localitate: lfData!.city || undefined,
+          judet: lfData!.county || undefined,
+          telefon: lfData!.phone || undefined,
+          email: lfData!.email || undefined,
+          website: lfData!.web || undefined,
+          caen: lfData!.nace || undefined,
+          stare: lfStare,
+          anInfiintare: foundedYear,
+          onrcRawData: lfData!.raw,
+          lastSyncedAt: new Date(),
+          createdBy: auth.userId,
+        }).returning();
+
+        if (lfData!.shareholders?.length) {
+          await tx.insert(companyAssociates).values(
+            lfData!.shareholders.map((s: any) => ({
+              companyId: comp.id,
+              type: "pf" as const,
+              name: s.name,
+              role: "Asociat",
+              contribution: s.value || undefined,
+              shares: s.shares ? parseInt(s.shares) || undefined : undefined,
+            }))
+          );
+        }
+
+        if (lfData!.administrators?.length) {
+          await tx.insert(companyAdministrators).values(
+            lfData!.administrators.map((a: any) => ({
+              companyId: comp.id,
+              name: a.name,
+              role: a.role || "Administrator",
+              appointmentDate: a.since || undefined,
+            }))
+          );
+        }
+
+        if (lfData!.turnover != null || lfData!.profit != null || lfData!.employees != null) {
+          const year = new Date().getFullYear() - 1;
+          await tx.insert(companyFinancials).values({
+            companyId: comp.id,
+            year,
+            source: "onrc" as const,
+            f20: { cifraAfaceriNeta: lfData!.turnover, profitNet: lfData!.profit },
+            f30: { numarMediuSalariati: lfData!.employees },
+          });
+        }
+
+        return comp;
+      });
+
+      populateCompanyElements(company.id, auth.organizationId!).catch((e: any) =>
+        console.warn("[companies/auto-lf] companyElements:", e.message));
+
+      return c.json(company, 201);
+    } catch (err: any) {
+      console.error("[companies/auto-lf] Transaction failed:", err.message);
+      return c.json({ error: `Eroare la crearea firmei: ${err.message}` }, 500);
+    }
+  }
+
+  // Fallback: Lookup ONRC
+  let onrcData = null;
+  try {
+    onrcData = await lookupCUI(cleanCUI, auth.organizationId);
+  } catch (onrcErr: any) {
+    console.log("[companies/auto] ONRC unavailable:", onrcErr.message);
+  }
+  if (!onrcData) return c.json({ error: "CUI-ul nu a fost găsit. Verifică că ai o integrare API configurată (ListaFirme.ro sau ONRC) în Configurări." }, 404);
 
   // Determine forma juridica
   const formaCode = Object.entries(FORMA_MAP).find(([k]) => (onrcData.formaJuridica || "").includes(k))?.[1] || "SRL";

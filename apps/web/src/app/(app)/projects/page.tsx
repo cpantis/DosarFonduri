@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { apiGet, apiPost } from "@/lib/api";
+import { apiGet, apiPost, apiDelete } from "@/lib/api";
 
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -72,6 +72,10 @@ export default function ProjectsPage() {
   const [folderTree, setFolderTree] = useState<ProgramTree[]>([]);
   const [rawFolders, setRawFolders] = useState<FolderNode[]>([]);
   const [guideWarning, setGuideWarning] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string; status: string } | null>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deleteStep, setDeleteStep] = useState<1 | 2>(1);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -163,6 +167,29 @@ export default function ProjectsPage() {
     setCreating(false);
     setCreateError(null);
     setCreateData({ name: "", firmaId: null, folderId: null, program: null, masura: null, sesiune: null });
+  };
+
+  const openDeleteConfirm = (p: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setDeleteTarget({ id: p.id, name: p.name, status: p.status });
+    setDeleteStep(1);
+    setDeleteConfirmText("");
+    setDeleting(false);
+  };
+
+  const handleDeleteProject = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await apiDelete(`/api/projects/${deleteTarget.id}`);
+      setProjects(prev => prev.filter(p => p.id !== deleteTarget.id));
+      setDeleteTarget(null);
+    } catch (err: any) {
+      console.error("Delete project failed:", err);
+      alert(err?.message || "Eroare la ștergerea proiectului");
+    } finally {
+      setDeleting(false);
+    }
   };
 
   return (
@@ -293,6 +320,13 @@ export default function ProjectsPage() {
                           </div>
                         </div>
                       )}
+                      <button
+                        className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-300 hover:text-red-500 hover:bg-red-50 transition-all opacity-0 group-hover:opacity-100"
+                        title="Șterge proiectul"
+                        onClick={(e) => openDeleteConfirm(p, e)}
+                      >
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                      </button>
                       <svg className="w-4 h-4 text-slate-300 group-hover:text-slate-400 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                     </div>
                   </div>
@@ -461,6 +495,70 @@ export default function ProjectsPage() {
                   </BtnPrimary>
                 </div>
               </>)}
+            </div>
+          </div>
+        </div>
+      )}
+      {/* DELETE PROJECT MODAL — double confirmation */}
+      {deleteTarget && (
+        <div className="fixed inset-0 flex items-center justify-center z-[100] bg-black/30 backdrop-blur-[2px]" onClick={e => e.target === e.currentTarget && setDeleteTarget(null)}>
+          <div className="bg-white rounded-[18px] w-[440px] shadow-[0_24px_64px_rgba(0,0,0,.10)] animate-[fadeUp_.2s_ease-out] border border-slate-200/70" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
+            <div className="p-6">
+              {deleteStep === 1 ? (
+                <>
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                    </div>
+                    <div>
+                      <div className="text-[15px] font-semibold text-slate-900">Șterge proiectul</div>
+                      <div className="text-[13px] text-slate-500">Această acțiune este ireversibilă</div>
+                    </div>
+                  </div>
+                  <div className="bg-red-50/80 rounded-xl p-4 mb-4 border border-red-100">
+                    <div className="text-[13px] font-semibold text-red-800 mb-2">{deleteTarget.name}</div>
+                    <div className="text-[12px] text-red-600 leading-relaxed">
+                      Se vor șterge permanent: toate elementele, eligibilitatea, conversațiile Solomon, documentele generate (Neemia), checklistul și scoringul.
+                    </div>
+                  </div>
+                  {(deleteTarget.status === "submitted" || deleteTarget.status === "approved") ? (
+                    <div className="bg-amber-50 rounded-xl p-3 mb-4 border border-amber-200 text-[12px] text-amber-700">
+                      Proiectele depuse sau aprobate nu pot fi șterse.
+                    </div>
+                  ) : null}
+                  <div className="flex gap-2.5 justify-end pt-2 border-t border-slate-100">
+                    <button className="px-4 py-2 rounded-lg text-[13px] font-medium text-slate-600 hover:bg-slate-50 transition-colors" onClick={() => setDeleteTarget(null)}>Anulează</button>
+                    <button
+                      className="px-4 py-2 rounded-lg text-[13px] font-medium bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-40"
+                      disabled={deleteTarget.status === "submitted" || deleteTarget.status === "approved"}
+                      onClick={() => setDeleteStep(2)}
+                    >Continuă</button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="text-[15px] font-semibold text-slate-900 mb-1">Confirmare finală</div>
+                  <div className="text-[13px] text-slate-500 mb-4">
+                    Tastează <span className="font-mono font-semibold text-red-600 bg-red-50 px-1.5 py-0.5 rounded">{deleteTarget.name}</span> pentru a confirma ștergerea.
+                  </div>
+                  <input
+                    type="text"
+                    className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 text-[14px] text-slate-900 focus:border-red-400 focus:ring-2 focus:ring-red-100 outline-none transition-all mb-4"
+                    placeholder="Numele proiectului..."
+                    value={deleteConfirmText}
+                    onChange={e => setDeleteConfirmText(e.target.value)}
+                    autoFocus
+                  />
+                  <div className="flex gap-2.5 justify-end pt-2 border-t border-slate-100">
+                    <button className="px-4 py-2 rounded-lg text-[13px] font-medium text-slate-600 hover:bg-slate-50 transition-colors" onClick={() => { setDeleteStep(1); setDeleteConfirmText(""); }}>Înapoi</button>
+                    <button
+                      className="px-4 py-2 rounded-lg text-[13px] font-medium bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-40"
+                      disabled={deleteConfirmText !== deleteTarget.name || deleting}
+                      onClick={handleDeleteProject}
+                    >{deleting ? "Se șterge..." : "Șterge definitiv"}</button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>

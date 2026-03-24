@@ -20,6 +20,63 @@ import { preflightCached } from "./dbPreflight";
 import { upsertElementDefinition } from "./elementDefinitionService";
 import { getFileBuffer } from "./storage";
 
+/**
+ * Extract balanced JSON (array or object) between markers in text.
+ * Handles values containing ] or } characters safely using bracket counting.
+ * Returns the JSON string (including outer brackets) or null if not found.
+ */
+function extractBalancedJSON(text: string, startMarker: string, endMarker: string): string | null {
+  const startIdx = text.indexOf(startMarker);
+  if (startIdx === -1) return null;
+
+  const searchFrom = startIdx + startMarker.length;
+  // Find the first [ or { after the start marker
+  let jsonStart = -1;
+  let openChar = "";
+  let closeChar = "";
+  for (let i = searchFrom; i < text.length; i++) {
+    if (text[i] === "[") { jsonStart = i; openChar = "["; closeChar = "]"; break; }
+    if (text[i] === "{") { jsonStart = i; openChar = "{"; closeChar = "}"; break; }
+    // Skip whitespace between marker and JSON
+    if (!/\s/.test(text[i])) break;
+  }
+  if (jsonStart === -1) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = jsonStart; i < text.length; i++) {
+    const ch = text[i];
+
+    if (escaped) { escaped = false; continue; }
+    if (ch === "\\" && inString) { escaped = true; continue; }
+    if (ch === '"' && !escaped) { inString = !inString; continue; }
+
+    if (!inString) {
+      if (ch === openChar) depth++;
+      if (ch === closeChar) {
+        depth--;
+        if (depth === 0) {
+          const jsonStr = text.slice(jsonStart, i + 1);
+          // Verify the end marker follows (allow whitespace between)
+          const afterJson = text.slice(i + 1, i + 1 + endMarker.length + 10).trim();
+          if (afterJson.startsWith(endMarker) || !endMarker) {
+            return jsonStr;
+          }
+          // End marker not found right after — might be a false start, try to parse anyway
+          return jsonStr;
+        }
+      }
+    }
+  }
+
+  // Unbalanced — try the original regex as fallback
+  const pattern = new RegExp(startMarker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "([\\s\\S]*?)" + endMarker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const match = text.match(pattern);
+  return match ? match[1] : null;
+}
+
 // Sanitize user-controlled data embedded in system prompts to prevent prompt injection.
 // Wraps content in delimiters and escapes sequences that could break out.
 function sanitizeForPrompt(value: string | null | undefined): string {
@@ -1201,11 +1258,12 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
         }
 
         // Extract elements from response (hidden JSON format)
-        const elementsMatch = fullResponse.match(/<!--ELEMENTS_JSON(\[[\s\S]*?\])ELEMENTS_JSON-->/);
+        // Use balanced bracket parser instead of fragile regex — handles values containing ] characters
         let extractedElements: any[] = [];
-        if (elementsMatch) {
+        const elementsJsonStr = extractBalancedJSON(fullResponse, "<!--ELEMENTS_JSON", "ELEMENTS_JSON-->");
+        if (elementsJsonStr) {
           try {
-            const parsed = JSON.parse(elementsMatch[1]);
+            const parsed = JSON.parse(elementsJsonStr);
             // Validate: must be an array, cap at 200 elements, each must have key+value strings
             if (Array.isArray(parsed)) {
               extractedElements = parsed
@@ -1220,8 +1278,7 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
                 }));
             }
           } catch (parseErr) {
-            // FIX F4.3: Log parse failure instead of silently swallowing
-            console.warn("[solomon] ELEMENTS_JSON parse failed", { error: parseErr, rawMatch: elementsMatch[1]?.slice(0, 200) });
+            console.warn("[solomon] ELEMENTS_JSON parse failed", { error: parseErr, rawJson: elementsJsonStr?.slice(0, 200) });
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({
               type: "extraction_warning",
               message: "Nu am putut extrage date structurate din răspuns. Răspunsul conversațional e valid.",
@@ -1544,6 +1601,16 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
             await db.update(projects).set({ tipProiect: tipProiectEl.value, updatedAt: new Date() }).where(eq(projects.id, projectId));
           }
 
+          // Resolve human-readable labels before sending SSE event
+          for (const el of extractedElements) {
+            if (!el.label) {
+              const elemDef = keyToElemDef.get(el.key);
+              const tmplEl = keyToTmplEl.get(el.key);
+              const knownDef = CLIENT_DOC_FIELD_DEFS[el.key];
+              el.label = elemDef?.displayName || tmplEl?.label || knownDef?.displayName || el.key;
+            }
+          }
+
           // Send extraction event
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({
             type: "elements_extracted",
@@ -1553,10 +1620,10 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
 
         // Extract project metadata (program, nomenclator, prefix, structure)
         // Only allow known keys with bounded values to prevent injection
-        const metadataMatch = fullResponse.match(/<!--METADATA_JSON(\{[\s\S]*?\})METADATA_JSON-->/);
-        if (metadataMatch) {
+        const metadataJsonStr = extractBalancedJSON(fullResponse, "<!--METADATA_JSON", "METADATA_JSON-->");
+        if (metadataJsonStr) {
           try {
-            const rawMetadata = JSON.parse(metadataMatch[1]);
+            const rawMetadata = JSON.parse(metadataJsonStr);
             if (rawMetadata && typeof rawMetadata === "object" && !Array.isArray(rawMetadata)) {
               const metaUpdate: any = { updatedAt: new Date() };
               const validatedMetadata: Record<string, string> = {};
@@ -1583,8 +1650,8 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
 
         // Save assistant message (clean hidden JSON tags)
         const cleanResponse = fullResponse
-          .replace(/<!--ELEMENTS_JSON\[[\s\S]*?\]ELEMENTS_JSON-->/g, "")
-          .replace(/<!--METADATA_JSON\{[\s\S]*?\}METADATA_JSON-->/g, "")
+          .replace(/<!--ELEMENTS_JSON[\s\S]*?ELEMENTS_JSON-->/g, "")
+          .replace(/<!--METADATA_JSON[\s\S]*?METADATA_JSON-->/g, "")
           .trim();
 
         await db.insert(solomonMessages).values({

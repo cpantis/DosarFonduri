@@ -1071,6 +1071,8 @@ export default function ProjectViewPage() {
 
   const handleConfirmExtraction = async (msgIdx: number, extIdx: number) => {
     const k = `${msgIdx}-${extIdx}`;
+    // Guard against double-click
+    if (extractionStates[k]) return;
     setExtractionStates(prev => ({ ...prev, [k]: "confirmed" }));
     const msg = solomonMessages[msgIdx];
     if (msg?.extractions?.[extIdx]) {
@@ -1108,20 +1110,29 @@ export default function ProjectViewPage() {
             value: ext.value,
             projectId,
           }).then(validation => {
-            if (validation && validation.totalChecks > 0) {
+            if (validation && (validation as any).totalChecks > 0) {
               setExtractionValidations(prev => ({ ...prev, [k]: validation }));
             }
-          }).catch(() => {}); // Silently fail validation
+          }).catch(() => {});
         } catch (err) {
           console.error("Failed to persist Solomon extraction:", err);
           toast("error", "Eroare la salvarea datelor extrase");
+          // Revert UI state so user can retry
+          setExtractionStates(prev => { const next = { ...prev }; delete next[k]; return next; });
         }
+      } else {
+        // Element not found in DB — revert confirmed state and inform user
+        toast("warning", `Elementul "${ext.label || ext.key}" nu a fost încă creat în proiect. Reîncearcă în câteva secunde.`);
+        setExtractionStates(prev => { const next = { ...prev }; delete next[k]; return next; });
+        setSolomonElements(prev => prev.map(e => e.key === ext.key ? { ...e, status: "propus" as const } : e));
       }
     }
   };
 
   const handleRejectExtraction = (msgIdx: number, extIdx: number) => {
-    setExtractionStates(prev => ({ ...prev, [`${msgIdx}-${extIdx}`]: "rejected" }));
+    const k = `${msgIdx}-${extIdx}`;
+    if (extractionStates[k]) return; // Guard against double-click
+    setExtractionStates(prev => ({ ...prev, [k]: "rejected" }));
   };
 
   const handleConfirmElement = async (idx: number) => {
@@ -1259,18 +1270,25 @@ export default function ProjectViewPage() {
 
   const cleanSolomonText = (text: string): string => {
     // Strip internal markup that backend embeds (ELEMENTS_JSON, METADATA_JSON blocks)
+    // Backend format: <!--ELEMENTS_JSON[...]ELEMENTS_JSON--> and <!--METADATA_JSON{...}METADATA_JSON-->
     let cleaned = text
+      // Primary format: <!--ELEMENTS_JSON[...]ELEMENTS_JSON-->
+      .replace(/<!--ELEMENTS_JSON[\s\S]*?ELEMENTS_JSON-->/g, "")
+      .replace(/<!--METADATA_JSON[\s\S]*?METADATA_JSON-->/g, "")
+      // Alternative format: <!--ELEMENTS_JSON-->...<!--/ELEMENTS_JSON-->
       .replace(/<!--ELEMENTS_JSON-->[\s\S]*?<!--\/ELEMENTS_JSON-->/g, "")
       .replace(/<!--METADATA_JSON-->[\s\S]*?<!--\/METADATA_JSON-->/g, "")
-      // Also handle cases where markers appear without proper closing
-      .replace(/<!--ELEMENTS_JSON-->[\s\S]*/g, "")
-      .replace(/<!--METADATA_JSON-->[\s\S]*/g, "")
+      // Handle incomplete/streaming markers (no closing tag yet)
+      .replace(/<!--ELEMENTS_JSON[\s\S]*$/g, "")
+      .replace(/<!--METADATA_JSON[\s\S]*$/g, "")
       // Strip any remaining HTML comment blocks
-      .replace(/<!--[^>]*-->/g, "")
-      // Clean up JSON artifacts that may leak (e.g. ELEMENTS_JSON{...} patterns)
+      .replace(/<!--[\s\S]*?-->/g, "")
+      // Clean up JSON artifacts that may leak
       .replace(/ELEMENTS_JSON\{[\s\S]*?\}/g, "")
       .replace(/METADATA_JSON\{[\s\S]*?\}/g, "")
-      // Strip standalone HTML entities that result from raw JSON in text
+      .replace(/ELEMENTS_JSON\[[\s\S]*?\]/g, "")
+      .replace(/METADATA_JSON\[[\s\S]*?\]/g, "")
+      // Strip standalone HTML entities
       .replace(/&lt;!--[\s\S]*?--&gt;/g, "")
       .replace(/&lt;!--[\s\S]*/g, "")
       .trim();
@@ -2704,6 +2722,7 @@ export default function ProjectViewPage() {
         .exc-btn.reject-btn{color:#dc2626;background:transparent}
         .exc-btn.reject-btn:hover{background:#fef2f2}
         .exc-confirmed-label{font-size:12px;font-weight:500;color:#059669;display:flex;align-items:center;gap:4px}
+        .exc-rejected-label{font-size:11px;font-weight:500;color:#dc2626;display:flex;align-items:center;gap:4px}
         .confirm-all-bar{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#eff6ff;border-radius:8px;margin-bottom:4px}
         .confirm-all-bar span{font-size:13px;color:#2563eb;font-weight:500}
         .chat-timestamp{font-size:10px;color:#94a3b8;margin-top:4px}
@@ -2715,7 +2734,7 @@ export default function ProjectViewPage() {
         .chat-attach-btn:hover{color:#2563eb;background:rgba(37,99,235,.06)}
         .chat-attach-btn:disabled{opacity:.4;cursor:not-allowed}
         .chat-input-row{display:flex;flex-direction:column;background:#ffffff;border:1px solid rgba(226,232,240,.8);border-radius:16px;padding:4px 12px 4px 4px;transition:border-color .15s;flex:1;min-width:0}
-        .chat-input-row:focus-within{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.1)}
+        .chat-input-row:focus-within{border-color:rgba(226,232,240,.8)}
         .chat-input-toolbar{display:flex;align-items:center;gap:4px;padding:0 4px 4px 8px}
         .chat-input{flex:1;padding:10px 12px 4px 12px;border-radius:8px;border:none;background:transparent;color:#0f172a;font-size:14px;font-family:'Inter',system-ui,sans-serif;line-height:1.5;resize:none;outline:none;min-height:68px;max-height:200px;overflow-y:auto}
         .chat-input::placeholder{color:#94a3b8}
@@ -4771,7 +4790,7 @@ export default function ProjectViewPage() {
                                         )}
                                       </>
                                     ) : (
-                                      <div className="text-[11px] text-red-500">Respins</div>
+                                      <div className="exc-rejected-label">&#10005; Respins</div>
                                     )}
                                   </div>
                                 );

@@ -92,6 +92,7 @@ export const updateProjectSchema = z.object({
   prefixDocumente: z.string().max(50).optional().nullable(),
   codMysmis: z.string().max(100).optional().nullable(),
   structuraDosar: z.any().optional(),
+  tipProiect: z.string().max(100).optional().nullable(),
 });
 
 export const updateElementSchema = z.object({

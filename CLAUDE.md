@@ -391,6 +391,24 @@ apiDelete<T>(path)                 // DELETE
 - **ADR-8**: Job processors separați per document type
 - **ADR-9**: Extraction cache Redis (document hash → results)
 
+### 11d. QA AUDIT (2026-03-24)
+
+**Full audit report:** `docs/QA_AUDIT_REPORT.md`
+**SQL verification:** `scripts/verify_integrity.sql`
+
+**Summary:** 23 findings across security, performance, data integrity, E2E flows, API contracts, UI/UX.
+
+| Priority | Count | Key findings |
+|----------|-------|-------------|
+| CRITICAL | 3 | IDOR on element/eligibility/checklist updates; unauthed health/run-migrations; CNP plaintext |
+| HIGH | 7 | Rate limiting AI endpoints; N+1 200 queries/page; associates not transactional; prefill/eligibility race; guide deletes validated rules |
+| MEDIUM | 7 | Split ProjectView 5691 lines; pagination; missing Zod; file upload magic-byte; duplicate components; orphan cleanup |
+| LOW | 6 | DELETE 200→204; stack traces; tmp file collision; Unicode sanitization; zero tests |
+
+**E2E flows traced:** Company registration, Guide processing, Template upload, Project creation + eligibility, Delete cascades — 13 gaps documented (G1–G13).
+
+**SQL verification script** detects: orphan files, placeholder companies, zero-element projects, dangling FK refs, duplicate CUI, orphan eligibility/checklist/conversations.
+
 ### 12. BUILD VERIFICATION RULE
 
 **ÎNAINTE de orice commit, rulează AMBELE build-uri:**

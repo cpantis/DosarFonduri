@@ -20,10 +20,12 @@ export function buildCompanyData(
   company: any,
   latestFinancial: any | null,
   allFinancials?: any[],
+  referenceValues?: Record<string, number>,
 ): Record<string, any> {
   const f20 = (latestFinancial?.f20 || {}) as any;
   const f10 = (latestFinancial?.f10 || {}) as any;
   const f30 = (latestFinancial?.f30 || {}) as any;
+  const raw = (company.onrcRawData || {}) as any;
 
   // Core direct fields
   const angajati = f30.numarMediuSalariati || 0;
@@ -35,6 +37,46 @@ export function buildCompanyData(
   const activeTotale = activeImobilizate + activeCirculante;
   const datoriiTotale = f10.datoriiTotal || 0;
   const datoriiSub1An = f10.datoriiSub1An || f10.datoriiCurente || 0;
+  const datoriiPeste1An = f10.datoriiPesteAnul || 0;
+
+  // Reference values for EUR conversion (defaults if not provided)
+  const cursEur = referenceValues?.curs_eur_ron || 4.97;
+  const cifraAfaceriEur = cifraAfaceri > 0 ? Math.round(cifraAfaceri / cursEur) : 0;
+  const activeTotaleEur = activeTotale > 0 ? Math.round(activeTotale / cursEur) : 0;
+
+  // IMM classification — correct EU definition (Reg. 651/2014 Anexa I)
+  // Uses EUR thresholds and checks BOTH CA and active totale (OR condition)
+  const pragMicroEmp = referenceValues?.prag_micro_angajati || 10;
+  const pragMicroCa = referenceValues?.prag_micro_ca_eur || 2000000;
+  const pragMicroActive = referenceValues?.prag_micro_active_eur || 2000000;
+  const pragMicaEmp = referenceValues?.prag_mica_angajati || 50;
+  const pragMicaCa = referenceValues?.prag_mica_ca_eur || 10000000;
+  const pragMicaActive = referenceValues?.prag_mica_active_eur || 10000000;
+  const pragMijlocieEmp = referenceValues?.prag_mijlocie_angajati || 250;
+  const pragMijlocieCa = referenceValues?.prag_mijlocie_ca_eur || 50000000;
+  const pragMijlocieActive = referenceValues?.prag_mijlocie_active_eur || 43000000;
+
+  let clasificareImm: string;
+  if (angajati < pragMicroEmp && (cifraAfaceriEur < pragMicroCa || activeTotaleEur < pragMicroActive)) {
+    clasificareImm = "micro";
+  } else if (angajati < pragMicaEmp && (cifraAfaceriEur < pragMicaCa || activeTotaleEur < pragMicaActive)) {
+    clasificareImm = "mica";
+  } else if (angajati < pragMijlocieEmp && (cifraAfaceriEur < pragMijlocieCa || activeTotaleEur < pragMijlocieActive)) {
+    clasificareImm = "mijlocie";
+  } else {
+    clasificareImm = "mare";
+  }
+
+  // CAEN secundare
+  const caenSecundare = (raw.activitatiSecundare || [])
+    .map((a: any) => typeof a === "string" ? a : a.cod || a.code || "")
+    .filter(Boolean);
+
+  // Natura capital
+  const natura = (company.naturaCapital || {}) as any;
+
+  // TVA
+  const vatStr = String(raw.vat || raw.VAT || "");
 
   const companyData: Record<string, any> = {
     // Solicitant
@@ -43,10 +85,20 @@ export function buildCompanyData(
     denumire: company.denumire,
     reg_com: company.regCom,
     cod_caen: company.caen,
+    cod_caen_secundare: caenSecundare.length > 0 ? caenSecundare.join(",") : null,
+    numar_activitati_secundare: caenSecundare.length,
     stare: company.stare,
     an_infiintare: company.anInfiintare,
     vechime_ani: new Date().getFullYear() - (company.anInfiintare || 2020),
     capital_social: parseFloat(company.capitalSocial?.toString() || "0"),
+    clasificare_imm: clasificareImm,
+    platitor_tva: vatStr && vatStr !== "false" && vatStr !== "0" ? "da" : "nu",
+    cod_tva: vatStr || null,
+    capital_privat_autohton_pct: natura.privatAutohton ?? null,
+    capital_privat_strain_pct: natura.privatStrain ?? null,
+    capital_stat_pct: natura.stat ?? null,
+    cifra_afaceri_eur: cifraAfaceriEur,
+    active_totale_eur: activeTotaleEur,
 
     // Financiar — core
     angajati,
@@ -59,21 +111,20 @@ export function buildCompanyData(
     active_totale: activeTotale,
     datorii_totale: datoriiTotale,
     datorii_sub_1an: datoriiSub1An,
+    datorii_peste_1an: datoriiPeste1An,
+    stocuri: f10.activeCirculante?.stocuri || 0,
+    creante: f10.activeCirculante?.creante || 0,
+    casa_si_conturi: f10.activeCirculante?.casa || 0,
     venituri_exploatare: f20.venituriExploatare || 0,
     cheltuieli_exploatare: f20.cheltuieliExploatare || 0,
     rezultat_exploatare: f20.rezultatExploatare || 0,
+    cheltuieli_personal: f20.cheltuieliPersonal || 0,
 
     // Financiar — derived ratios
     grad_indatorare: capitaluriProprii > 0 ? Math.round((datoriiTotale / capitaluriProprii) * 100) / 100 : null,
     lichiditate_curenta: datoriiSub1An > 0 ? Math.round((activeCirculante / datoriiSub1An) * 100) / 100 : null,
     solvabilitate: activeTotale > 0 ? Math.round((capitaluriProprii / activeTotale) * 100) / 100 : null,
     rentabilitate: cifraAfaceri > 0 ? Math.round((profitNet / cifraAfaceri) * 100) / 100 : null,
-
-    // IMM classification (EU definition: employees + CA or active totale)
-    clasificare_imm:
-      angajati < 10 && cifraAfaceri < 2000000 ? "micro" :
-      angajati < 50 && cifraAfaceri < 10000000 ? "mica" :
-      angajati < 250 && cifraAfaceri < 50000000 ? "mijlocie" : "mare",
 
     // Locatie
     judet: company.judet,
@@ -82,11 +133,18 @@ export function buildCompanyData(
     cod_postal: company.codPostal,
 
     // ONRC raw flags
-    insolventa: (company.onrcRawData as any)?.insolventa ? "da" : "nu",
-    dizolvare: (company.onrcRawData as any)?.dizolvare ? "da" : "nu",
-    lichidare: (company.onrcRawData as any)?.lichidare ? "da" : "nu",
-    restrictii: (company.onrcRawData as any)?.restrictii ? "da" : "nu",
+    insolventa: raw.insolventa ? "da" : "nu",
+    dizolvare: raw.dizolvare ? "da" : "nu",
+    lichidare: raw.lichidare ? "da" : "nu",
+    restrictii: raw.restrictii ? "da" : "nu",
   };
+
+  // Sedii secundare
+  if (raw.sediiSecundare?.length > 0) {
+    companyData.numar_sedii_secundare = raw.sediiSecundare.length;
+  } else {
+    companyData.numar_sedii_secundare = 0;
+  }
 
   // Per-year financials
   if (allFinancials) {
@@ -422,8 +480,15 @@ export async function checkEligibility(projectId: string, organizationId: string
   });
   const latestFinancial = allFinancials[0] || null;
 
+  // Load reference values for calculations (EUR rate, IMM thresholds)
+  let refValues: Record<string, number> | undefined;
+  try {
+    const { getReferenceValuesMap } = await import("../routes/config");
+    refValues = await getReferenceValuesMap(organizationId);
+  } catch { /* use defaults */ }
+
   // Build company data using shared function
-  const companyData = buildCompanyData(company, latestFinancial, allFinancials);
+  const companyData = buildCompanyData(company, latestFinancial, allFinancials, refValues);
 
   // Overlay projectElements values (Solomon-collected data takes precedence)
   await overlayProjectElements(companyData, projectId, organizationId);

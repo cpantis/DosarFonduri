@@ -92,7 +92,7 @@ export const KNOWN_COMPANY_FIELDS: readonly CompanyFieldDef[] = [
   { key: "reg_com", label: "Nr. Registru Comert", category: "solicitant", dataType: "text", autoPopulated: true, aliases: ["numar_registru_comert", "j_nr"] },
   { key: "denumire", label: "Denumire firma", category: "solicitant", dataType: "text", autoPopulated: true },
   { key: "cod_caen", label: "CAEN principal", category: "solicitant", dataType: "text", autoPopulated: true, aliases: ["caen_principal", "caen", "cod_caen_principal", "activitate_principala"], description: "Codul CAEN al activitatii principale" },
-  { key: "cod_caen_secundare", label: "CAEN secundare", category: "solicitant", dataType: "text", autoPopulated: false, aliases: ["caen_secundar", "activitati_secundare"], description: "Lista codurilor CAEN secundare (separate prin virgula)" },
+  { key: "cod_caen_secundare", label: "CAEN secundare", category: "solicitant", dataType: "text", autoPopulated: true, aliases: ["caen_secundar", "activitati_secundare", "coduri_caen_secundare"], description: "Lista codurilor CAEN secundare (separate prin virgula)" },
   { key: "stare", label: "Stare firma", category: "solicitant", dataType: "enum", enumValues: ["functiune", "radiata", "dizolvata", "lichidare"], autoPopulated: true, aliases: ["stare_firma", "status_firma"] },
   { key: "an_infiintare", label: "An infiintare", category: "solicitant", dataType: "number", autoPopulated: true, aliases: ["data_infiintare", "anul_infiintarii", "an_inregistrare"] },
   { key: "vechime_ani", label: "Vechime (ani)", category: "solicitant", dataType: "number", unit: "ani", autoPopulated: true, aliases: ["vechime_firma", "ani_functionare", "ani_de_la_infiintare"], description: "Numar ani de la infiintare" },
@@ -106,6 +106,14 @@ export const KNOWN_COMPANY_FIELDS: readonly CompanyFieldDef[] = [
   { key: "este_intreprindere_in_dificultate", label: "Intreprindere in dificultate", category: "solicitant", dataType: "enum", enumValues: ["da", "nu"], aliases: ["firma_in_dificultate", "in_dificultate"], description: "Conform Reg. 651/2014 art.2 pct.18" },
   { key: "datorii_buget_stat", label: "Datorii buget stat", category: "solicitant", dataType: "enum", enumValues: ["da", "nu"], aliases: ["datorii_anaf", "datorii_fiscale", "obligatii_bugetare_restante"], description: "Are datorii restante la bugetul de stat" },
   { key: "apartine_grup", label: "Apartine unui grup", category: "solicitant", dataType: "enum", enumValues: ["da", "nu"], aliases: ["intreprinderi_legate", "intreprinderi_partenere", "face_parte_din_grup"], description: "Apartine unui grup de intreprinderi legate/partenere" },
+  { key: "platitor_tva", label: "Platitor TVA", category: "solicitant", dataType: "enum", enumValues: ["da", "nu"], autoPopulated: true, aliases: ["inregistrat_tva", "este_platitor_tva", "tva_activ"], description: "Inregistrat in scopuri de TVA" },
+  { key: "cod_tva", label: "Cod TVA", category: "solicitant", dataType: "text", autoPopulated: true, aliases: ["numar_tva", "vat_number"], description: "Codul de inregistrare in scopuri de TVA" },
+  { key: "capital_privat_autohton_pct", label: "Capital privat autohton (%)", category: "solicitant", dataType: "percent", autoPopulated: true, aliases: ["pct_capital_roman", "capital_romanesc"], description: "Procentul capitalului privat autohton" },
+  { key: "capital_privat_strain_pct", label: "Capital privat strain (%)", category: "solicitant", dataType: "percent", autoPopulated: true, aliases: ["pct_capital_strain", "capital_strain"], description: "Procentul capitalului privat strain" },
+  { key: "capital_stat_pct", label: "Capital de stat (%)", category: "solicitant", dataType: "percent", autoPopulated: true, aliases: ["pct_capital_stat", "participare_stat"], description: "Procentul capitalului de stat" },
+  { key: "numar_activitati_secundare", label: "Nr. activitati secundare", category: "solicitant", dataType: "number", autoPopulated: true, description: "Numarul codurilor CAEN secundare" },
+  { key: "cifra_afaceri_eur", label: "Cifra de afaceri (EUR)", category: "solicitant", dataType: "number", unit: "EUR", autoPopulated: true, aliases: ["ca_eur", "turnover_eur"], description: "CA convertita in EUR (la cursul de referinta)" },
+  { key: "active_totale_eur", label: "Active totale (EUR)", category: "solicitant", dataType: "number", unit: "EUR", autoPopulated: true, description: "Active totale convertite in EUR (pt clasificare IMM)" },
 
   // === FINANCIAR (financial data) ===
   { key: "cifra_afaceri", label: "Cifra de afaceri neta", category: "financiar", dataType: "number", unit: "RON", autoPopulated: true, perYear: true, aliases: ["cifra_afaceri_neta", "ca", "turnover", "venituri_nete"], description: "Cifra de afaceri neta (cel mai recent an)" },
@@ -126,6 +134,11 @@ export const KNOWN_COMPANY_FIELDS: readonly CompanyFieldDef[] = [
   { key: "solvabilitate", label: "Solvabilitate", category: "financiar", dataType: "percent", aliases: ["rata_solvabilitate"], description: "Capitaluri proprii / Active totale" },
   { key: "rentabilitate", label: "Rentabilitate", category: "financiar", dataType: "percent", aliases: ["rata_rentabilitate", "profitabilitate", "marja_profit"], description: "Profit net / Cifra de afaceri" },
   { key: "cifra_afaceri_consolidata", label: "CA consolidata (grup)", category: "financiar", dataType: "number", unit: "RON", aliases: ["ca_consolidata", "cifra_afaceri_grup"], description: "Cifra de afaceri consolidata (intreprinderi legate)" },
+  { key: "stocuri", label: "Stocuri", category: "financiar", dataType: "number", unit: "RON", autoPopulated: true, aliases: ["inventar", "marfuri"], description: "Valoare stocuri din bilant" },
+  { key: "creante", label: "Creante", category: "financiar", dataType: "number", unit: "RON", autoPopulated: true, aliases: ["creante_comerciale", "debitori"], description: "Creante comerciale si alte creante" },
+  { key: "casa_si_conturi", label: "Casa si conturi la banci", category: "financiar", dataType: "number", unit: "RON", autoPopulated: true, aliases: ["disponibilitati", "numerar", "cash"], description: "Disponibilitati banesti (capacitate cofinantare)" },
+  { key: "cheltuieli_personal", label: "Cheltuieli cu personalul", category: "financiar", dataType: "number", unit: "RON", autoPopulated: true, aliases: ["cost_personal", "salarii_total"], description: "Total cheltuieli cu personalul" },
+  { key: "datorii_peste_1an", label: "Datorii peste 1 an", category: "financiar", dataType: "number", unit: "RON", autoPopulated: true, aliases: ["datorii_termen_lung", "datorii_pe_termen_lung"] },
 
   // === LOCATIE ===
   { key: "judet", label: "Judet", category: "locatie", dataType: "text", autoPopulated: true, aliases: ["judet_sediu", "judet_social"], description: "Judetul sediului social" },
@@ -135,11 +148,19 @@ export const KNOWN_COMPANY_FIELDS: readonly CompanyFieldDef[] = [
   { key: "regiune_dezvoltare", label: "Regiune de dezvoltare", category: "locatie", dataType: "enum", enumValues: ["Nord-Est", "Sud-Est", "Sud-Muntenia", "Sud-Vest-Oltenia", "Vest", "Nord-Vest", "Centru", "Bucuresti-Ilfov"], aliases: ["regiune", "regiunea_dezvoltare", "macroregiune"], description: "Regiunea de dezvoltare (NE, SE, S, SV, V, NV, C, BI)" },
   { key: "tip_localitate", label: "Tip localitate", category: "locatie", dataType: "enum", enumValues: ["urban", "rural"], aliases: ["mediu", "mediu_urban_rural", "zona_urban_rural"], description: "Urban sau rural" },
   { key: "zona_defavorizata", label: "Zona defavorizata", category: "locatie", dataType: "enum", enumValues: ["da", "nu"], aliases: ["zona_montana", "iti_delta_dunarii", "zona_dezavantajata"], description: "Zona defavorizata (montana, ITI Delta Dunarii, etc.)" },
+  { key: "numar_sedii_secundare", label: "Nr. sedii secundare", category: "locatie", dataType: "number", autoPopulated: true, aliases: ["puncte_lucru", "nr_puncte_lucru"], description: "Numarul de sedii secundare / puncte de lucru" },
+  { key: "judete_sedii_secundare", label: "Judete sedii secundare", category: "locatie", dataType: "text", autoPopulated: true, description: "Lista judetelor unde firma are sedii secundare (separate prin virgula)" },
 
   // === PERSOANE (asociati / administratori) ===
   { key: "numar_asociati", label: "Numar asociati", category: "persoane", dataType: "number", autoPopulated: true, aliases: ["nr_asociati", "nr_actionari"] },
+  { key: "numar_asociati_pf", label: "Asociati persoane fizice", category: "persoane", dataType: "number", autoPopulated: true },
+  { key: "numar_asociati_pj", label: "Asociati persoane juridice", category: "persoane", dataType: "number", autoPopulated: true },
+  { key: "asociat_majoritar_pct", label: "Cota asociat majoritar (%)", category: "persoane", dataType: "percent", autoPopulated: true, aliases: ["pct_majoritar", "cota_majoritar"], description: "Procentul celui mai mare asociat" },
+  { key: "asociat_majoritar_nume", label: "Asociat majoritar (nume)", category: "persoane", dataType: "text", autoPopulated: true, description: "Numele asociatului cu cota cea mai mare" },
+  { key: "are_asociat_strain", label: "Are asociat strain", category: "persoane", dataType: "enum", enumValues: ["da", "nu"], autoPopulated: true, aliases: ["asociat_strain", "actionariat_strain"], description: "Exista asociati non-romani" },
   { key: "numar_administratori", label: "Numar administratori", category: "persoane", dataType: "number", autoPopulated: true, aliases: ["nr_administratori"] },
   { key: "reprezentant_legal", label: "Reprezentant legal", category: "persoane", dataType: "text", autoPopulated: true, aliases: ["administrator", "director_general"] },
+  { key: "data_numire_administrator", label: "Data numire administrator", category: "persoane", dataType: "text", autoPopulated: true, description: "Data numirii administratorului principal" },
   { key: "gen_administrator", label: "Gen administrator", category: "persoane", dataType: "enum", enumValues: ["M", "F"], aliases: ["sex_administrator", "gen_reprezentant"], description: "Genul reprezentantului legal (punctaj egalitate gen)" },
   { key: "varsta_administrator", label: "Varsta administrator", category: "persoane", dataType: "number", unit: "ani", aliases: ["varsta_reprezentant"], description: "Varsta reprezentantului legal (tineri antreprenori)" },
   { key: "experienta_domeniu_ani", label: "Experienta in domeniu", category: "persoane", dataType: "number", unit: "ani", aliases: ["experienta_ani", "ani_experienta", "experienta_profesionala"], description: "Ani de experienta in domeniul proiectului" },
@@ -236,3 +257,77 @@ export function generateFieldListForPrompt(): string {
 
   return lines.join("\n");
 }
+
+// ============================================================
+// REFERENCE VALUES — dynamic calculation parameters
+// ============================================================
+
+export interface ReferenceValueDef {
+  /** Unique key for this reference value */
+  key: string;
+  /** Human-readable label */
+  label: string;
+  /** Grouping category */
+  group: "fiscal" | "cursuri" | "praguri_imm" | "praguri_ajutor" | "salarii" | "contributii" | "custom";
+  /** Data type */
+  dataType: "number" | "percent" | "text";
+  /** Unit */
+  unit?: string;
+  /** Default value (used when no org-level override exists) */
+  defaultValue: string;
+  /** Description */
+  description?: string;
+  /** Whether this is used in automatic calculations (IMM classification, etc.) */
+  usedInCalculations?: boolean;
+}
+
+export const REFERENCE_VALUE_GROUPS: Record<string, { label: string; order: number }> = {
+  fiscal: { label: "Fiscal", order: 1 },
+  cursuri: { label: "Cursuri valutare", order: 2 },
+  praguri_imm: { label: "Praguri IMM (UE)", order: 3 },
+  praguri_ajutor: { label: "Praguri ajutor de stat", order: 4 },
+  salarii: { label: "Salarii si contributii", order: 5 },
+  contributii: { label: "Contributii sociale", order: 6 },
+  custom: { label: "Altele", order: 7 },
+};
+
+/**
+ * Default reference values used system-wide.
+ * Organizations can override these in Settings → Baza de cunoștințe → Valori de referință.
+ */
+export const DEFAULT_REFERENCE_VALUES: readonly ReferenceValueDef[] = [
+  // Fiscal
+  { key: "tva_standard", label: "Cota TVA standard", group: "fiscal", dataType: "percent", defaultValue: "19", description: "Cota standard TVA in Romania", usedInCalculations: true },
+  { key: "tva_redus_1", label: "Cota TVA redusa 1", group: "fiscal", dataType: "percent", defaultValue: "9", description: "Cota TVA redusa (alimente, medicamente, etc.)" },
+  { key: "tva_redus_2", label: "Cota TVA redusa 2", group: "fiscal", dataType: "percent", defaultValue: "5", description: "Cota TVA redusa (carti, locuinte sociale, etc.)" },
+  { key: "impozit_profit", label: "Impozit pe profit", group: "fiscal", dataType: "percent", defaultValue: "16", description: "Cota standard impozit pe profit" },
+  { key: "impozit_micro", label: "Impozit microintreprindere", group: "fiscal", dataType: "percent", defaultValue: "1", description: "Cota impozit pe venitul microintreprinderilor" },
+
+  // Cursuri valutare
+  { key: "curs_eur_ron", label: "Curs EUR/RON", group: "cursuri", dataType: "number", unit: "RON/EUR", defaultValue: "4.97", description: "Cursul de schimb EUR/RON (folosit pt clasificare IMM)", usedInCalculations: true },
+  { key: "curs_usd_ron", label: "Curs USD/RON", group: "cursuri", dataType: "number", unit: "RON/USD", defaultValue: "4.60", description: "Cursul de schimb USD/RON" },
+
+  // Praguri IMM (Reg. 651/2014 Anexa I — in EUR)
+  { key: "prag_micro_angajati", label: "Prag micro: angajati", group: "praguri_imm", dataType: "number", defaultValue: "10", description: "< 10 angajati", usedInCalculations: true },
+  { key: "prag_micro_ca_eur", label: "Prag micro: CA (EUR)", group: "praguri_imm", dataType: "number", unit: "EUR", defaultValue: "2000000", description: "CA < 2M EUR sau active < 2M EUR", usedInCalculations: true },
+  { key: "prag_micro_active_eur", label: "Prag micro: active (EUR)", group: "praguri_imm", dataType: "number", unit: "EUR", defaultValue: "2000000", usedInCalculations: true },
+  { key: "prag_mica_angajati", label: "Prag mica: angajati", group: "praguri_imm", dataType: "number", defaultValue: "50", usedInCalculations: true },
+  { key: "prag_mica_ca_eur", label: "Prag mica: CA (EUR)", group: "praguri_imm", dataType: "number", unit: "EUR", defaultValue: "10000000", usedInCalculations: true },
+  { key: "prag_mica_active_eur", label: "Prag mica: active (EUR)", group: "praguri_imm", dataType: "number", unit: "EUR", defaultValue: "10000000", usedInCalculations: true },
+  { key: "prag_mijlocie_angajati", label: "Prag mijlocie: angajati", group: "praguri_imm", dataType: "number", defaultValue: "250", usedInCalculations: true },
+  { key: "prag_mijlocie_ca_eur", label: "Prag mijlocie: CA (EUR)", group: "praguri_imm", dataType: "number", unit: "EUR", defaultValue: "50000000", usedInCalculations: true },
+  { key: "prag_mijlocie_active_eur", label: "Prag mijlocie: active (EUR)", group: "praguri_imm", dataType: "number", unit: "EUR", defaultValue: "43000000", usedInCalculations: true },
+
+  // Praguri ajutor de stat
+  { key: "plafon_minimis_eur", label: "Plafon de minimis", group: "praguri_ajutor", dataType: "number", unit: "EUR", defaultValue: "300000", description: "Plafon de minimis pe 3 ani (Reg. 2023/2831)" },
+  { key: "plafon_minimis_transport_eur", label: "Plafon de minimis transport", group: "praguri_ajutor", dataType: "number", unit: "EUR", defaultValue: "100000", description: "Plafon de minimis transport rutier marfa" },
+
+  // Salarii
+  { key: "salariu_minim_brut", label: "Salariu minim brut", group: "salarii", dataType: "number", unit: "RON", defaultValue: "3700", description: "Salariul minim brut pe tara garantat in plata" },
+  { key: "salariu_minim_constructii", label: "Salariu minim constructii", group: "salarii", dataType: "number", unit: "RON", defaultValue: "4582", description: "Salariul minim brut in constructii" },
+
+  // Contributii sociale
+  { key: "cas_angajat", label: "CAS angajat", group: "contributii", dataType: "percent", defaultValue: "25", description: "Contributia de asigurari sociale (pensie)" },
+  { key: "cass_angajat", label: "CASS angajat", group: "contributii", dataType: "percent", defaultValue: "10", description: "Contributia de asigurari sociale de sanatate" },
+  { key: "cam_angajator", label: "CAM angajator", group: "contributii", dataType: "percent", defaultValue: "2.25", description: "Contributia asiguratorie pentru munca" },
+] as const;

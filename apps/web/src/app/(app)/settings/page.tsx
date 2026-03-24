@@ -111,6 +111,17 @@ export default function SettingsPage() {
   const [knowledgeLoading, setKnowledgeLoading] = useState(false);
   const [showAddKnowledge, setShowAddKnowledge] = useState(false);
   const [editingKnowledge, setEditingKnowledge] = useState<string | null>(null);
+
+  // Reference Values
+  const [refValues, setRefValues] = useState<any[]>([]);
+  const [refGroups, setRefGroups] = useState<any[]>([]);
+  const [refLoading, setRefLoading] = useState(false);
+  const [refActiveGroup, setRefActiveGroup] = useState("fiscal");
+  const [editingRefKey, setEditingRefKey] = useState<string | null>(null);
+  const [editingRefValue, setEditingRefValue] = useState("");
+  const [showAddRefValue, setShowAddRefValue] = useState(false);
+  const [newRefKey, setNewRefKey] = useState("");
+  const [newRefValue, setNewRefValue] = useState("");
   const [newKnowledge, setNewKnowledge] = useState({ category: "legislatie", title: "", content: "", sourceReference: "", validFrom: "", validUntil: "" });
 
   const loadConfig = useCallback(async () => {
@@ -153,12 +164,23 @@ export default function SettingsPage() {
     setKnowledgeLoading(false);
   }, []);
 
+  const loadRefValues = useCallback(async () => {
+    setRefLoading(true);
+    try {
+      const data = await apiGet<any>("/api/config/reference-values");
+      setRefValues(data?.values || []);
+      setRefGroups(data?.groups || []);
+    } catch { /* non-critical */ }
+    setRefLoading(false);
+  }, []);
+
   useEffect(() => {
     loadConfig();
     loadApis();
     loadBranding();
     loadKnowledge();
-  }, [loadConfig, loadApis, loadBranding, loadKnowledge]);
+    loadRefValues();
+  }, [loadConfig, loadApis, loadBranding, loadKnowledge, loadRefValues]);
 
   const updateConfig = async (updates: Partial<OrgConfig>) => {
     if (!config) return;
@@ -668,6 +690,141 @@ export default function SettingsPage() {
                   })}
                 </div>
               )}
+
+              {/* ═══ VALORI DE REFERINȚĂ ═══ */}
+              <div className="mt-10 pt-8 border-t border-slate-200">
+                <div className="text-lg font-semibold mb-1 text-slate-900">&#x1F4CA; Valori de referin&#539;&#259;</div>
+                <div className="text-sm mb-5 leading-relaxed text-slate-500">
+                  Parametri dinamici folosi&#539;i &#238;n calcule automate: cot&#259; TVA, curs EUR, praguri IMM, salarii, contribu&#539;ii. Modific&#259;rile se aplic&#259; la urm&#259;toarea evaluare de eligibilitate.
+                </div>
+
+                {/* Group pills */}
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {refGroups.map((g: any) => (
+                    <button
+                      key={g.key}
+                      onClick={() => setRefActiveGroup(g.key)}
+                      className="px-3 py-1.5 text-xs font-semibold rounded-full border transition-all"
+                      style={{
+                        background: refActiveGroup === g.key ? "#2563eb" : "#fff",
+                        color: refActiveGroup === g.key ? "#fff" : "#475569",
+                        borderColor: refActiveGroup === g.key ? "#2563eb" : "#e2e8f0",
+                      }}
+                    >
+                      {g.label}
+                    </button>
+                  ))}
+                </div>
+
+                {refLoading ? (
+                  <div className="text-sm text-slate-400 py-4">Se &#238;ncarc&#259;...</div>
+                ) : (
+                  <div className="border rounded-xl overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-slate-50 border-b">
+                          <th className="text-left px-4 py-2.5 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Parametru</th>
+                          <th className="text-left px-4 py-2.5 text-[11px] font-semibold text-slate-500 uppercase tracking-wider w-36">Valoare</th>
+                          <th className="text-left px-4 py-2.5 text-[11px] font-semibold text-slate-500 uppercase tracking-wider w-28">Implicit</th>
+                          <th className="w-20"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {refValues.filter((v: any) => v.group === refActiveGroup).map((v: any) => (
+                          <tr key={v.key} className="border-b border-slate-100 hover:bg-slate-50/50 transition-colors">
+                            <td className="px-4 py-2.5">
+                              <div className="font-medium text-slate-800">{v.label}</div>
+                              {v.description && <div className="text-[11px] text-slate-400 mt-0.5">{v.description}</div>}
+                              {v.usedInCalculations && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 ml-0">CALCUL AUTO</span>}
+                            </td>
+                            <td className="px-4 py-2.5">
+                              {editingRefKey === v.key ? (
+                                <div className="flex gap-1 items-center">
+                                  <input
+                                    type="text"
+                                    value={editingRefValue}
+                                    onChange={e => setEditingRefValue(e.target.value)}
+                                    onKeyDown={async e => {
+                                      if (e.key === "Enter") {
+                                        await apiPut("/api/config/reference-values", { key: v.key, value: editingRefValue });
+                                        setEditingRefKey(null);
+                                        loadRefValues();
+                                      }
+                                      if (e.key === "Escape") setEditingRefKey(null);
+                                    }}
+                                    className="w-24 px-2 py-1 text-sm border rounded"
+                                    autoFocus
+                                  />
+                                  <button
+                                    className="text-xs px-2 py-1 bg-blue-600 text-white rounded font-semibold"
+                                    onClick={async () => {
+                                      await apiPut("/api/config/reference-values", { key: v.key, value: editingRefValue });
+                                      setEditingRefKey(null);
+                                      loadRefValues();
+                                    }}
+                                  >OK</button>
+                                </div>
+                              ) : (
+                                <span
+                                  className="cursor-pointer hover:text-blue-600 transition-colors font-mono"
+                                  onClick={() => { setEditingRefKey(v.key); setEditingRefValue(v.value); }}
+                                  style={{ fontWeight: v.isOverridden ? 700 : 400, color: v.isOverridden ? "#1e40af" : "#334155" }}
+                                >
+                                  {v.value}{v.unit ? ` ${v.unit === "RON/EUR" || v.unit === "RON/USD" ? "" : v.dataType === "percent" ? "%" : ` ${v.unit}`}` : v.dataType === "percent" ? "%" : ""}
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-4 py-2.5 text-slate-400 font-mono text-xs">{v.defaultValue}{v.dataType === "percent" ? "%" : ""}</td>
+                            <td className="px-4 py-2.5 text-center">
+                              {v.isOverridden && (
+                                <button
+                                  className="text-[11px] text-slate-400 hover:text-red-500 transition-colors"
+                                  title="Revert la valoarea implicita"
+                                  onClick={async () => {
+                                    await apiDelete(`/api/config/reference-values/${v.key}`);
+                                    loadRefValues();
+                                  }}
+                                >&#x21A9; Reset</button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Add custom value */}
+                <div className="mt-3">
+                  {showAddRefValue ? (
+                    <div className="p-3 border rounded-lg bg-white flex gap-2 items-end">
+                      <div className="flex-1">
+                        <label className="text-[11px] font-semibold text-slate-500 block mb-1">Cheie</label>
+                        <input className="w-full px-2 py-1.5 text-sm border rounded" placeholder="ex: prag_custom" value={newRefKey} onChange={e => setNewRefKey(e.target.value)} />
+                      </div>
+                      <div className="flex-1">
+                        <label className="text-[11px] font-semibold text-slate-500 block mb-1">Valoare</label>
+                        <input className="w-full px-2 py-1.5 text-sm border rounded" placeholder="ex: 50000" value={newRefValue} onChange={e => setNewRefValue(e.target.value)} />
+                      </div>
+                      <button
+                        className="px-3 py-1.5 text-sm font-semibold rounded bg-blue-600 text-white"
+                        onClick={async () => {
+                          if (!newRefKey.trim()) return;
+                          await apiPut("/api/config/reference-values", { key: newRefKey.trim(), value: newRefValue.trim() });
+                          setShowAddRefValue(false); setNewRefKey(""); setNewRefValue("");
+                          loadRefValues();
+                        }}
+                      >Salveaz&#259;</button>
+                      <button className="px-3 py-1.5 text-sm rounded border text-slate-600" onClick={() => setShowAddRefValue(false)}>Anuleaz&#259;</button>
+                    </div>
+                  ) : (
+                    <button
+                      className="text-xs font-semibold text-blue-600 hover:underline"
+                      onClick={() => setShowAddRefValue(true)}
+                    >+ Adaug&#259; valoare custom</button>
+                  )}
+                </div>
+              </div>
             </>
           )}
 

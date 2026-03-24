@@ -807,6 +807,18 @@ export const apiIntegrations = pgTable("api_integrations", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// === REFERENCE VALUES (dynamic calculation parameters per organization) ===
+export const referenceValues = pgTable("reference_values", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  key: varchar("key", { length: 100 }).notNull(),
+  value: varchar("value", { length: 255 }).notNull(),
+  updatedBy: uuid("updated_by").references(() => users.id, { onDelete: "set null" }),
+  updatedAt: timestamp("updated_at").defaultNow().notNull().$onUpdate(() => new Date()),
+}, (table) => ({
+  orgKeyIdx: uniqueIndex("ref_val_org_key_idx").on(table.organizationId, table.key),
+}));
+
 // === PROVIDER ===
 export const providerUsers = pgTable("provider_users", {
   id: uuid("id").defaultRandom().primaryKey(),

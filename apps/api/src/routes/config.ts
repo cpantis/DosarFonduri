@@ -32,20 +32,20 @@ configRoutes.get("/", async (c) => {
 
 // ─── PUT / (update org config) ───
 const configUpdateSchema = z.object({
-  solomonModel: z.string().optional(),
-  solomonET: z.boolean().optional(),
-  neemiaModel: z.string().optional(),
-  reguliFixeModel: z.string().optional(),
-  reguliInterpModel: z.string().optional(),
-  reguliInterpET: z.boolean().optional(),
-  reviewThreshold: z.string().optional(),
-  solomonLabel: z.string().max(100).optional(),
-  neemiaLabel: z.string().max(100).optional(),
-  notifNewElement: z.boolean().optional(),
-  notifEligFail: z.boolean().optional(),
-  notifTemplateReady: z.boolean().optional(),
-  notifDeadline: z.boolean().optional(),
-  emailFrom: z.string().optional(),
+  solomonModel: z.string().nullish(),
+  solomonET: z.boolean().nullish(),
+  neemiaModel: z.string().nullish(),
+  reguliFixeModel: z.string().nullish(),
+  reguliInterpModel: z.string().nullish(),
+  reguliInterpET: z.boolean().nullish(),
+  reviewThreshold: z.string().nullish(),
+  solomonLabel: z.string().max(100).nullish(),
+  neemiaLabel: z.string().max(100).nullish(),
+  notifNewElement: z.boolean().nullish(),
+  notifEligFail: z.boolean().nullish(),
+  notifTemplateReady: z.boolean().nullish(),
+  notifDeadline: z.boolean().nullish(),
+  emailFrom: z.string().nullish(),
 });
 
 configRoutes.put("/", async (c) => {

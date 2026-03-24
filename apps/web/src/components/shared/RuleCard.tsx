@@ -12,6 +12,8 @@ export interface RuleLinkedElement {
   displayName: string;
   category: string | null;
   role: string; // "input" | "output" | "constraint"
+  value?: any;       // actual value from companyData/projectElements (project context)
+  isMissing?: boolean; // true if value is null/undefined
 }
 
 export interface RuleCardData {
@@ -448,6 +450,7 @@ export function RuleCard({ rule, isOpen, onToggle, categoryColor, categoryLabel 
             <Section title="Elemente asociate">
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {r.linkedElements.map((el, i) => {
+                  const hasValue = el.value !== undefined;
                   const roleColors: Record<string, { bg: string; text: string; border: string }> = {
                     constraint: { bg: "rgba(37,99,235,.06)", text: "#2563eb", border: "rgba(37,99,235,.2)" },
                     input: { bg: "rgba(5,150,105,.06)", text: "#059669", border: "rgba(5,150,105,.2)" },
@@ -481,6 +484,27 @@ export function RuleCard({ rule, isOpen, onToggle, categoryColor, categoryLabel 
                       }}>
                         {el.elementKey}
                       </span>
+                      {/* Show value if available (project context) */}
+                      {hasValue && !el.isMissing && (
+                        <span style={{
+                          fontSize: 12, fontWeight: 600, fontFamily: "'JetBrains Mono', monospace",
+                          padding: "2px 10px", borderRadius: 6,
+                          background: "rgba(5,150,105,.08)", color: "#059669",
+                          border: "1px solid rgba(5,150,105,.2)",
+                        }}>
+                          = {String(el.value)}
+                        </span>
+                      )}
+                      {hasValue && el.isMissing && (
+                        <span style={{
+                          fontSize: 11, fontStyle: "italic",
+                          padding: "2px 10px", borderRadius: 6,
+                          background: "rgba(245,158,11,.08)", color: "#d97706",
+                          border: "1px solid rgba(245,158,11,.2)",
+                        }}>
+                          lipsă
+                        </span>
+                      )}
                       {el.category && (
                         <span style={{ fontSize: 10, color: "#94a3b8", marginLeft: "auto" }}>
                           {catLabels[el.category] || el.category}

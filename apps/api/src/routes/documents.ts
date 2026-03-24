@@ -4,7 +4,7 @@ import { z } from "zod";
 import { createHash } from "crypto";
 import { updateDocElementSchema, validatePageSchema, createDocElementSchema } from "@dosarfonduri/shared";
 import { db } from "../db";
-import { documentFolders, documents, files, templateElements, rules, scoringCriteria, elementDefinitions, templatePlaceholderMapping, users, guideReferenceTables, elementRuleLinks, ruleReferenceLinks, sessionChecklist, projects, projectDocuments } from "../db/schema";
+import { documentFolders, documents, files, templateElements, rules, scoringCriteria, elementDefinitions, templatePlaceholderMapping, users, guideReferenceTables, elementRuleLinks, ruleReferenceLinks, sessionChecklist, projects, projectDocuments, projectElements } from "../db/schema";
 import { eq, and, isNull, sql, inArray } from "drizzle-orm";
 import { uploadFile, getFileUrl, deleteFile, createPresignedUploadUrl, verifyFileUploaded, isLocalStorage } from "../services/storage";
 import { AuthContext } from "../middleware/auth";
@@ -742,13 +742,69 @@ documentRoutes.delete("/documents/:id", async (c) => {
 
   const fileId = doc.fileId;
 
-  // Delete document first (cascades to rules, elements, etc.)
-  await db.delete(documents).where(eq(documents.id, id));
+  try {
+    // Manual cascade cleanup — ensures clean deletion even if DB FK constraints
+    // were created without ON DELETE CASCADE (migration 0000 used "no action")
+    // Order matters: delete leaf tables first, then parents
 
-  // Now delete the file from storage + files table (no more FK reference)
-  await deleteFile(fileId);
+    // 1. Guide-specific: rules → ruleReferenceLinks, elementRuleLinks, projectEligibility cascade
+    const docRules = await db.select({ id: rules.id }).from(rules).where(eq(rules.documentId, id));
+    if (docRules.length > 0) {
+      const ruleIds = docRules.map(r => r.id);
+      await db.delete(ruleReferenceLinks).where(inArray(ruleReferenceLinks.ruleId, ruleIds)).catch(() => {});
+      await db.delete(elementRuleLinks).where(inArray(elementRuleLinks.ruleId, ruleIds)).catch(() => {});
+    }
 
-  return c.json({ ok: true });
+    // 2. Guide-specific: elementDefinitions → set null on projectElements (preserve project data)
+    const docElemDefs = await db.select({ id: elementDefinitions.id }).from(elementDefinitions)
+      .where(eq(elementDefinitions.guideDocumentId, id));
+    if (docElemDefs.length > 0) {
+      const defIds = docElemDefs.map(d => d.id);
+      // Unlink from project elements (don't delete them — user said to preserve projects)
+      await db.update(projectElements).set({ elementDefId: null })
+        .where(inArray(projectElements.elementDefId, defIds)).catch(() => {});
+      // Delete elementRuleLinks for these defs
+      await db.delete(elementRuleLinks).where(inArray(elementRuleLinks.elementDefId, defIds)).catch(() => {});
+      // Delete templatePlaceholderMappings for these defs
+      await db.delete(templatePlaceholderMapping).where(inArray(templatePlaceholderMapping.elementDefId, defIds)).catch(() => {});
+    }
+
+    // 3. Reference tables
+    await db.delete(guideReferenceTables).where(eq(guideReferenceTables.documentId, id)).catch(() => {});
+
+    // 4. Scoring criteria
+    await db.delete(scoringCriteria).where(eq(scoringCriteria.documentId, id)).catch(() => {});
+
+    // 5. Rules themselves
+    await db.delete(rules).where(eq(rules.documentId, id)).catch(() => {});
+
+    // 6. Element definitions
+    await db.delete(elementDefinitions).where(eq(elementDefinitions.guideDocumentId, id)).catch(() => {});
+
+    // 7. Template-specific: template elements, placeholder mappings
+    await db.delete(templateElements).where(eq(templateElements.documentId, id)).catch(() => {});
+    await db.delete(templatePlaceholderMapping).where(eq(templatePlaceholderMapping.templateDocumentId, id)).catch(() => {});
+
+    // 8. Project documents (generated docs from this template)
+    await db.delete(projectDocuments).where(eq(projectDocuments.templateDocumentId, id)).catch(() => {});
+
+    // 9. Session checklist — set null for template_id
+    await db.update(sessionChecklist).set({ templateId: null })
+      .where(eq(sessionChecklist.templateId, id)).catch(() => {});
+
+    // 10. Now delete the document itself (should succeed with all refs cleaned)
+    await db.delete(documents).where(eq(documents.id, id));
+
+    // 11. Delete the file from storage + files table
+    await deleteFile(fileId).catch((e: any) => {
+      console.warn(`[documents] Storage cleanup failed for fileId ${fileId}:`, e.message);
+    });
+
+    return c.json({ ok: true });
+  } catch (err: any) {
+    console.error(`[documents] Delete document ${id} failed:`, err.message, err.stack);
+    return c.json({ error: `Eroare la ștergerea documentului: ${err.message}` }, 500);
+  }
 });
 
 // --- REPLACE DOCUMENT FILE (re-upload) ---

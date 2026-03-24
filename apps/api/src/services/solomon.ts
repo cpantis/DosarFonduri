@@ -724,7 +724,16 @@ Când primești text liber, identifică ce câmpuri poate completa. După FIECAR
 
 **Extras CF:** număr CF, suprafață, sarcini/ipoteci, proprietar → AVERTIZEAZĂ dacă există sarcini sau proprietarul ≠ solicitantul
 
-**Oferte de preț:** furnizor, echipament, cantitate, preț unitar fără TVA, total, valabilitate → verifică comparabilitate specificații și diferență preț rezonabilă
+**Oferte de preț (PROCESARE AVANSATĂ):**
+Când primești oferte de preț (una sau mai multe), OBLIGATORIU:
+1. **Extrage structurat** din FIECARE ofertă: furnizor (nume + CUI), articole (denumire × cantitate × preț unitar), total fără TVA, valabilitate, data și nr. ofertă
+2. **Mapează pe chei indexate:** furnizor_1_* pentru prima ofertă, furnizor_2_* pentru a doua, furnizor_3_* pentru a treia — salvează în ELEMENTS_JSON
+3. **Chei disponibile per furnizor (N=1,2,3):** furnizor_N_nume, furnizor_N_cui, furnizor_N_articole, furnizor_N_total_eur, furnizor_N_total_ron, furnizor_N_valabilitate, furnizor_N_data_oferta, furnizor_N_nr_oferta
+4. **Tabel comparativ:** Generează un tabel Markdown side-by-side cu specificații tehnice, prețuri, termene
+5. **Verificări automate:** comparabilitate specificații tehnice (aceleași categorii de echipamente), diferență preț rezonabilă (>15% → semnalează), valabilitate suficientă vs. calendar depunere
+6. **Recomandare:** Dacă ai 3 oferte, recomandă furnizorul cu cel mai bun raport calitate/preț și completează furnizor_selectat + justificare_selectie_furnizor
+7. **Valoare investiție:** Calculează valoare_totala_investitie_eur/ron din oferta selectată (sau cea mai avantajoasă)
+8. Dacă primești o singură ofertă, salvează ca furnizor_1_* și menționează că mai sunt necesare încă 2 oferte comparative
 
 **Hotărâre AGA:** data, obiect decizie, semnătari → verifică autorizarea depunerii
 
@@ -736,7 +745,7 @@ Când primești text liber, identifică ce câmpuri poate completa. După FIECAR
 
 **Tip proiect (CHEIE: tip_proiect):** Deduce PROACTIV din conversație și context: "bunuri" (achiziție echipamente/utilaje/mobilier), "bunuri_cu_montaj" (echipamente cu instalare/montaj), "constructii" (clădiri/hale/renovări/extinderi), "servicii" (consultanță/training/studii), "mixt" (combinație). Setează-l în ELEMENTS_JSON imediat ce ai suficiente informații — din ghid, CAEN, numele proiectului, sau din discuție. NU aștepta să fii întrebat.
 
-→ Folosește EXCLUSIV cheile din lista CÂMPURI DE COMPLETAT. NU inventa chei noi. Dacă un câmp nu are corespondent, menționează-l în conversație dar NU-l include în ELEMENTS_JSON.
+→ Folosește cheile din lista CÂMPURI DE COMPLETAT + cheile predefinite de oferte (furnizor_N_*, furnizor_selectat, justificare_selectie_furnizor, valoare_totala_investitie_eur/ron) + cheile de identitate (cnp, serie_ci, numar_ci, nume, prenume, etc.). NU inventa alte chei. Dacă un câmp nu are corespondent, menționează-l în conversație dar NU-l include în ELEMENTS_JSON.
 
 ### Gândirea de consultant (PROACTIVITATE)
 Nu aștepta să fii întrebat. Un consultant senior:
@@ -1217,6 +1226,35 @@ ${att.extractedText || "[OCR eșuat — solicită datele manual de la consultant
             data_absolvire: { displayName: "Data absolvire", category: "beneficiary", dataType: "date" },
             numar_diploma: { displayName: "Număr diplomă", category: "beneficiary", dataType: "text" },
             tip_proiect: { displayName: "Tip proiect (bunuri / construcții / servicii / mixt)", category: "other", dataType: "text", required: true },
+            // ── Oferte de preț (3 furnizori) ──
+            furnizor_1_nume: { displayName: "Furnizor 1 — Nume", category: "other", dataType: "text" },
+            furnizor_1_cui: { displayName: "Furnizor 1 — CUI", category: "other", dataType: "text" },
+            furnizor_1_articole: { displayName: "Furnizor 1 — Articole (denumire × cantitate)", category: "other", dataType: "text" },
+            furnizor_1_total_eur: { displayName: "Furnizor 1 — Total fără TVA (EUR)", category: "other", dataType: "number" },
+            furnizor_1_total_ron: { displayName: "Furnizor 1 — Total fără TVA (RON)", category: "other", dataType: "number" },
+            furnizor_1_valabilitate: { displayName: "Furnizor 1 — Valabilitate ofertă", category: "other", dataType: "text" },
+            furnizor_1_data_oferta: { displayName: "Furnizor 1 — Data ofertă", category: "other", dataType: "date" },
+            furnizor_1_nr_oferta: { displayName: "Furnizor 1 — Nr. ofertă", category: "other", dataType: "text" },
+            furnizor_2_nume: { displayName: "Furnizor 2 — Nume", category: "other", dataType: "text" },
+            furnizor_2_cui: { displayName: "Furnizor 2 — CUI", category: "other", dataType: "text" },
+            furnizor_2_articole: { displayName: "Furnizor 2 — Articole (denumire × cantitate)", category: "other", dataType: "text" },
+            furnizor_2_total_eur: { displayName: "Furnizor 2 — Total fără TVA (EUR)", category: "other", dataType: "number" },
+            furnizor_2_total_ron: { displayName: "Furnizor 2 — Total fără TVA (RON)", category: "other", dataType: "number" },
+            furnizor_2_valabilitate: { displayName: "Furnizor 2 — Valabilitate ofertă", category: "other", dataType: "text" },
+            furnizor_2_data_oferta: { displayName: "Furnizor 2 — Data ofertă", category: "other", dataType: "date" },
+            furnizor_2_nr_oferta: { displayName: "Furnizor 2 — Nr. ofertă", category: "other", dataType: "text" },
+            furnizor_3_nume: { displayName: "Furnizor 3 — Nume", category: "other", dataType: "text" },
+            furnizor_3_cui: { displayName: "Furnizor 3 — CUI", category: "other", dataType: "text" },
+            furnizor_3_articole: { displayName: "Furnizor 3 — Articole (denumire × cantitate)", category: "other", dataType: "text" },
+            furnizor_3_total_eur: { displayName: "Furnizor 3 — Total fără TVA (EUR)", category: "other", dataType: "number" },
+            furnizor_3_total_ron: { displayName: "Furnizor 3 — Total fără TVA (RON)", category: "other", dataType: "number" },
+            furnizor_3_valabilitate: { displayName: "Furnizor 3 — Valabilitate ofertă", category: "other", dataType: "text" },
+            furnizor_3_data_oferta: { displayName: "Furnizor 3 — Data ofertă", category: "other", dataType: "date" },
+            furnizor_3_nr_oferta: { displayName: "Furnizor 3 — Nr. ofertă", category: "other", dataType: "text" },
+            furnizor_selectat: { displayName: "Furnizor selectat (1, 2 sau 3)", category: "other", dataType: "text" },
+            justificare_selectie_furnizor: { displayName: "Justificare selecție furnizor", category: "other", dataType: "text" },
+            valoare_totala_investitie_eur: { displayName: "Valoare totală investiție fără TVA (EUR)", category: "other", dataType: "number" },
+            valoare_totala_investitie_ron: { displayName: "Valoare totală investiție fără TVA (RON)", category: "other", dataType: "number" },
           };
 
           // Find guide document for auto-creating element definitions

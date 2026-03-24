@@ -7,10 +7,10 @@ interface BtnProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const SIZE_MAP = {
-  sm: "text-[12px] h-[30px] px-4 gap-1.5 rounded-lg",
-  md: "text-[13px] h-[36px] px-6 gap-2 rounded-lg",
-  lg: "text-[14px] h-[40px] px-7 gap-2 rounded-xl",
-  xl: "text-[15px] h-[44px] px-8 gap-2.5 rounded-xl",
+  sm: "text-[12px] h-[32px] px-4 gap-1.5 rounded-lg",
+  md: "text-[13px] h-[38px] px-5 gap-2 rounded-[10px]",
+  lg: "text-[14px] h-[42px] px-6 gap-2.5 rounded-xl",
+  xl: "text-[15px] h-[46px] px-8 gap-2.5 rounded-xl",
 };
 
 export function BtnPrimary({ children, icon, size = "md", className = "", ...props }: BtnProps) {
@@ -18,7 +18,7 @@ export function BtnPrimary({ children, icon, size = "md", className = "", ...pro
   return (
     <button
       {...props}
-      className={`bg-blue-500 hover:bg-blue-600 text-white font-semibold transition-all inline-flex items-center justify-center whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed shadow-sm shadow-blue-500/20 hover:shadow-md hover:shadow-blue-500/25 ${sz} ${className}`}
+      className={`bg-blue-500 hover:bg-blue-600 text-white font-medium tracking-[0.01em] transition-all inline-flex items-center justify-center whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed shadow-sm shadow-blue-500/20 hover:shadow-md hover:shadow-blue-500/25 ${sz} ${className}`}
     >
       {icon && <span className="shrink-0 [&>svg]:w-[14px] [&>svg]:h-[14px]">{icon}</span>}
       {children}

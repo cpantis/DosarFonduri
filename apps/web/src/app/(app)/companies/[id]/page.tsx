@@ -100,7 +100,6 @@ export default function CompanyDetailPage() {
   // Bilant ANAF upload
   const [showBilantUpload, setShowBilantUpload] = useState(false);
   const [bilantUploading, setBilantUploading] = useState(false);
-  const [bilantYear, setBilantYear] = useState(new Date().getFullYear() - 1);
   const bilantFileRef = useRef<HTMLInputElement>(null);
   const [selectedBilantYear, setSelectedBilantYear] = useState<number | null>(null);
 
@@ -169,7 +168,7 @@ export default function CompanyDetailPage() {
     try {
       const formData = new FormData();
       formData.append("file", bilantFileRef.current.files[0]);
-      formData.append("year", String(bilantYear));
+      // Year is auto-detected from PDF by AI — no manual selection needed
       await api<any>(`/api/companies/${id}/upload-bilant`, {
         method: "POST",
         body: formData,
@@ -844,7 +843,9 @@ export default function CompanyDetailPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {anafData.map((s: any, i: number) => (
+                    {anafData.map((s: any, i: number) => {
+                      const rowRaw = (detail?.financials || []).find((f: any) => f.source === "anaf_upload" && f.year === s.an);
+                      return (
                       <tr
                         key={i}
                         className={`clickable ${s.an === viewYear ? "active" : ""}`}
@@ -853,11 +854,12 @@ export default function CompanyDetailPage() {
                         <td style={{ fontWeight: s.an === viewYear ? 700 : 500 }} className="name">{s.an}</td>
                         <td className="right mono">{fmtLei(s.cifraAfaceri)}</td>
                         <td className="right" style={{ fontFamily: "'JetBrains Mono', monospace", fontVariantNumeric: "tabular-nums", color: (s.profitNet ?? 0) >= 0 ? "#059669" : "#dc2626" }}>{fmtLei(s.profitNet)}</td>
-                        <td className="right mono">{fmtLei(raw?.f20?.rezultatExploatare)}</td>
+                        <td className="right mono">{fmtLei(rowRaw?.f20?.profitExploatare ?? rowRaw?.f20?.rezultatExploatare)}</td>
                         <td className="right mono">{s.angajati ?? "\u2014"}</td>
                         {isSOC(sel.forma) && <td className="right mono">{fmtLei(s.capitaluriProprii)}</td>}
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -870,12 +872,17 @@ export default function CompanyDetailPage() {
                     { label: "Cifra afaceri neta", value: fmtLei(f20.cifraAfaceriNeta) },
                     { label: "Venituri exploatare", value: fmtLei(f20.venituriExploatare) },
                     { label: "Cheltuieli exploatare", value: fmtLei(f20.cheltuieliExploatare) },
-                    { label: "Rezultat exploatare", value: fmtLei(f20.rezultatExploatare), color: (f20.rezultatExploatare ?? 0) >= 0 },
+                    { label: "Rezultat exploatare", value: fmtLei(f20.profitExploatare ?? f20.rezultatExploatare), color: (f20.profitExploatare ?? f20.rezultatExploatare ?? 0) >= 0 },
+                    { label: "Cheltuieli materiale", value: fmtLei(f20.cheltuieliMatPrim) },
+                    { label: "Cheltuieli personal", value: fmtLei(f20.cheltuieliPersonal) },
                     { label: "Venituri financiare", value: fmtLei(f20.venituriFinanciare) },
                     { label: "Cheltuieli financiare", value: fmtLei(f20.cheltuieliFinanciare) },
-                    { label: "Rezultat brut", value: fmtLei(f20.rezultatBrut), color: (f20.rezultatBrut ?? 0) >= 0 },
+                    { label: "Venituri totale", value: fmtLei(f20.venituriTotale) },
+                    { label: "Cheltuieli totale", value: fmtLei(f20.cheltuieliTotale) },
+                    { label: "Rezultat brut", value: fmtLei(f20.profitBrut ?? f20.rezultatBrut), color: (f20.profitBrut ?? f20.rezultatBrut ?? 0) >= 0 },
+                    { label: "Impozit profit", value: fmtLei(f20.impozitProfit) },
                     { label: "Rezultat net", value: fmtLei(f20.profitNet), color: (f20.profitNet ?? 0) >= 0 },
-                  ].map(item => (
+                  ].filter(item => item.value !== "\u2014").map(item => (
                     <div key={item.label} className="cd-info">
                       <div className="cd-info-label">{item.label}</div>
                       <div className="cd-info-value" style={{ fontFamily: "'JetBrains Mono', monospace", fontVariantNumeric: "tabular-nums", color: item.color !== undefined ? (item.color ? "#059669" : "#dc2626") : "#0f172a" }}>{item.value}</div>
@@ -888,15 +895,24 @@ export default function CompanyDetailPage() {
                 <SectionTitle>Bilant ({viewYear})</SectionTitle>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 20 }}>
                   {[
-                    { label: "Active imobilizate", value: fmtLei(f10.activeImobilizate) },
-                    { label: "Active circulante", value: fmtLei(f10.activeCirculante) },
-                    { label: "Stocuri", value: fmtLei(f10.stocuri) },
-                    { label: "Creante", value: fmtLei(f10.creante) },
-                    { label: "Casa si conturi", value: fmtLei(f10.casaSiConturi) },
-                    { label: "Datorii sub 1 an", value: fmtLei(f10.datoriiSub1An) },
-                    { label: "Datorii peste 1 an", value: fmtLei(f10.datoriiPeste1An) },
+                    { label: "Active imobilizate", value: fmtLei(f10.activeImobilizate?.total ?? f10.activeImobilizate) },
+                    { label: "  - Necorporale", value: fmtLei(f10.activeImobilizate?.necorporale) },
+                    { label: "  - Corporale", value: fmtLei(f10.activeImobilizate?.corporale) },
+                    { label: "  - Financiare", value: fmtLei(f10.activeImobilizate?.financiare) },
+                    { label: "Active circulante", value: fmtLei(f10.activeCirculante?.total ?? f10.activeCirculante) },
+                    { label: "  - Stocuri", value: fmtLei(f10.activeCirculante?.stocuri ?? f10.stocuri) },
+                    { label: "  - Creante", value: fmtLei(f10.activeCirculante?.creante ?? f10.creante) },
+                    { label: "  - Casa si conturi", value: fmtLei(f10.activeCirculante?.casa ?? f10.casaSiConturi) },
+                    { label: "Cheltuieli in avans", value: fmtLei(f10.cheltuieliAvans) },
+                    { label: "Datorii sub 1 an", value: fmtLei(f10.datoriiSubAnul ?? f10.datoriiSub1An) },
+                    { label: "Datorii peste 1 an", value: fmtLei(f10.datoriiPesteAnul ?? f10.datoriiPeste1An) },
+                    { label: "Venituri in avans", value: fmtLei(f10.venituriAvans) },
+                    { label: "Capital subscris varsat", value: fmtLei(f10.capital?.subscrisVarsat) },
+                    { label: "Rezerve", value: fmtLei(f10.capital?.rezerve) },
+                    { label: "Profit reportat", value: fmtLei(f10.capital?.profitReportat) },
+                    { label: "Profit exercitiu", value: fmtLei(f10.capital?.profitExercitiu) },
                     { label: "Capitaluri proprii", value: fmtLei(f10.capitaluriProprii), color: (f10.capitaluriProprii ?? 0) >= 0 },
-                  ].map(item => (
+                  ].filter(item => item.value !== "\u2014").map(item => (
                     <div key={item.label} className="cd-info">
                       <div className="cd-info-label">{item.label}</div>
                       <div className="cd-info-value" style={{ fontFamily: "'JetBrains Mono', monospace", fontVariantNumeric: "tabular-nums", color: item.color !== undefined ? (item.color ? "#059669" : "#dc2626") : "#0f172a" }}>{item.value}</div>
@@ -1164,21 +1180,8 @@ export default function CompanyDetailPage() {
               </button>
             </div>
             <p style={{ fontSize: 13, marginBottom: 20, lineHeight: 1.6, color: "#64748b" }}>
-              Incarca un bilant ANAF (PDF descarcat din SPV). Se accepta Formularul 10 (bilant), Formularul 20 (cont profit/pierderi), Formularul 30/40. Datele financiare se extrag automat.
+              Incarca un bilant ANAF (PDF descarcat din SPV). Se accepta Formularul 10 (bilant), Formularul 20 (cont profit/pierderi), Formularul 30/40. Anul fiscal si datele financiare se detecteaza automat.
             </p>
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".06em", color: "#94a3b8", marginBottom: 6 }}>An fiscal</div>
-              <select
-                value={bilantYear}
-                onChange={e => setBilantYear(Number(e.target.value))}
-                className="cd-select"
-                style={{ width: 140 }}
-              >
-                {Array.from({ length: 6 }, (_, i) => new Date().getFullYear() - 1 - i).map(y => (
-                  <option key={y} value={y}>{y}</option>
-                ))}
-              </select>
-            </div>
             <input type="file" ref={bilantFileRef} accept=".pdf" className="hidden" onChange={() => {}} />
             <div
               className="cd-drop-zone"

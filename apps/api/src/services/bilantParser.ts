@@ -33,10 +33,17 @@ VALIDARE:
 - Profit net ≈ Profit brut - Impozit profit
 - Cifra afaceri ≥ Profit brut (de obicei)`;
 
-const BILANT_USER_PROMPT = (pdfText: string, year: number) => `Extrage datele din acest bilanț ANAF pentru anul ${year}. Returnează DOAR JSON valid, fără backticks, fără explicații.
+const BILANT_USER_PROMPT = (pdfText: string, year?: number) => `${year ? `Extrage datele din acest bilanț ANAF pentru anul ${year}.` : `Extrage datele din acest bilanț ANAF. Detectează anul fiscal din document (caută "Exercițiul financiar", "Anul", "Perioada", sau câmpuri de dată).`} Returnează DOAR JSON valid, fără backticks, fără explicații.
+
+IMPORTANT:
+- Bilanțul ANAF are 2 coloane: "Sold la începutul anului" (anul precedent) și "Sold la sfârșitul anului" (anul curent/raportat)
+- Extrage datele pentru ANUL CURENT (coloana "Sold la sfârșit" / anul cel mai recent)
+- XFA bilanțe au tag-uri C1 (an precedent) și C2 (an curent) — folosește C2
+- Câmpul "year" este OBLIGATORIU — detectează-l din document
 
 Structura cerută:
 {
+  "year": number,
   "f10": {
     "activeImobilizate": { "necorporale": number, "corporale": number, "financiare": number, "total": number },
     "activeCirculante": { "stocuri": number, "creante": number, "investitiiTS": number, "casa": number, "total": number },
@@ -52,11 +59,15 @@ Structura cerută:
     "venituriExploatare": number,
     "cheltuieliExploatare": number,
     "profitExploatare": number,
+    "venituriFinanciare": number,
+    "cheltuieliFinanciare": number,
     "venituriTotale": number,
     "cheltuieliTotale": number,
     "profitBrut": number,
     "impozitProfit": number,
-    "profitNet": number
+    "profitNet": number,
+    "cheltuieliMatPrim": number,
+    "cheltuieliPersonal": number
   },
   "f30": {
     "numarMediuSalariati": number,
@@ -126,9 +137,14 @@ function preExtractXFA(text: string): Partial<ParsedBilant> | null {
   };
 }
 
-export async function parseBilantPDF(pdfText: string, year: number): Promise<ParsedBilant> {
+export async function parseBilantPDF(pdfText: string, year?: number): Promise<ParsedBilant> {
   const textSample = pdfText.slice(0, 200);
   const MAX_ATTEMPTS = 2;
+
+  // Try to detect year from PDF text via regex (as a fallback reference)
+  const detectedYear = detectYearFromText(pdfText);
+  const effectiveYear = year || detectedYear || new Date().getFullYear() - 1;
+  console.log(`[bilantParser] Year: provided=${year || "none"}, detected=${detectedYear || "none"}, effective=${effectiveYear}`);
 
   // Try XFA pre-extraction as reference
   const xfaRef = preExtractXFA(pdfText);
@@ -143,7 +159,7 @@ export async function parseBilantPDF(pdfText: string, year: number): Promise<Par
       model: "claude-sonnet-4-20250514",
       max_tokens: 8000,
       system: isRetry
-        ? BILANT_SYSTEM_PROMPT + "\n\nATENȚIE: Răspunsul tău anterior NU a fost JSON valid. Returnează EXCLUSIV un obiect JSON valid cu cheile f10, f20, f30, f40. Nimic altceva."
+        ? BILANT_SYSTEM_PROMPT + "\n\nATENȚIE: Răspunsul tău anterior NU a fost JSON valid. Returnează EXCLUSIV un obiect JSON valid cu cheile year, f10, f20, f30, f40. Nimic altceva."
         : BILANT_SYSTEM_PROMPT,
       messages: [{
         role: "user",
@@ -171,15 +187,18 @@ export async function parseBilantPDF(pdfText: string, year: number): Promise<Par
       console.log(`[bilantParser] Continuation: +${contText.length} chars (total: ${responseText.length})`);
     }
 
-    const parsedResult = safeJSONParse(responseText, `bilantParser_${year}`);
+    const parsedResult = safeJSONParse(responseText, `bilantParser_${effectiveYear}`);
     const data = parsedResult?.data ?? null;
 
     if (data) {
+      // Use AI-detected year if available, otherwise fallback
+      const finalYear = data.year || effectiveYear;
+
       // Accept partial data — f10 or f20 alone is still valuable
       if (!data.f10 && !data.f20) {
         console.warn(
           `[bilantParser] Attempt ${attempt}: JSON valid but no f10/f20 found. ` +
-          `Keys: [${Object.keys(data).join(", ")}]. Year: ${year}. Text sample: "${textSample}"`,
+          `Keys: [${Object.keys(data).join(", ")}]. Year: ${finalYear}. Text sample: "${textSample}"`,
         );
         if (attempt < MAX_ATTEMPTS) continue;
       }
@@ -195,22 +214,48 @@ export async function parseBilantPDF(pdfText: string, year: number): Promise<Par
         }
       }
 
-      return { year, ...data };
+      return { year: finalYear, f10: data.f10, f20: data.f20, f30: data.f30, f40: data.f40 };
     }
 
     console.error(
       `[bilantParser] Attempt ${attempt}/${MAX_ATTEMPTS}: JSON parse failed. ` +
       `Response length: ${responseText.length}, first 300 chars: "${responseText.slice(0, 300)}". ` +
-      `Year: ${year}. Input text sample: "${textSample}"`,
+      `Year: ${effectiveYear}. Input text sample: "${textSample}"`,
     );
   }
 
   // All AI attempts failed — try to use XFA pre-extraction as fallback
   if (xfaRef && (xfaRef.f10 || xfaRef.f20)) {
-    console.warn(`[bilantParser] AI failed but XFA pre-extraction available. Using XFA data for year ${year}.`);
-    return { year, f10: xfaRef.f10, f20: xfaRef.f20, f30: xfaRef.f30 };
+    console.warn(`[bilantParser] AI failed but XFA pre-extraction available. Using XFA data for year ${effectiveYear}.`);
+    return { year: effectiveYear, f10: xfaRef.f10, f20: xfaRef.f20, f30: xfaRef.f30 };
   }
 
-  console.error(`[bilantParser] All ${MAX_ATTEMPTS} attempts failed. Returning empty bilant for year ${year}.`);
-  return { year, f10: null, f20: null, f30: null };
+  console.error(`[bilantParser] All ${MAX_ATTEMPTS} attempts failed. Returning empty bilant for year ${effectiveYear}.`);
+  return { year: effectiveYear, f10: null, f20: null, f30: null };
+}
+
+/**
+ * Detect fiscal year from PDF text using common patterns in ANAF bilanțuri.
+ */
+function detectYearFromText(text: string): number | null {
+  // XFA: look for period tags like "AnFiscal", "AnRaportare", or date fields
+  const xfaYear = text.match(/(?:AnFiscal|AnRaportare|an_fiscal|an_raportare)\s*[:=]?\s*(\d{4})/i);
+  if (xfaYear) return parseInt(xfaYear[1]);
+
+  // Period: "01.01.2023 - 31.12.2023" or "Exercițiul financiar 2023"
+  const periodMatch = text.match(/(?:31\.12\.|exerci[tț]iul\s+financiar\s*|anul\s+fiscal\s*)(\d{4})/i);
+  if (periodMatch) return parseInt(periodMatch[1]);
+
+  // Date range: "Perioada: 01.01.2023 - 31.12.2023"
+  const rangeMatch = text.match(/\d{2}\.\d{2}\.(\d{4})\s*[-–]\s*\d{2}\.\d{2}\.(\d{4})/);
+  if (rangeMatch) return parseInt(rangeMatch[2]); // end year
+
+  // Filename-style: "2023_12" or "2023"
+  const fileYear = text.match(/(?:^|\s|_)(\d{4})(?:_12|\s|$)/m);
+  if (fileYear) {
+    const y = parseInt(fileYear[1]);
+    if (y >= 2010 && y <= 2030) return y;
+  }
+
+  return null;
 }

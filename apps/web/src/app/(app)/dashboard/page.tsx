@@ -68,7 +68,7 @@ export default function DashboardPage() {
 
   return (
     <div className="animate-[fadeIn_.2s_ease-out]">
-      <div className="max-w-6xl mx-auto px-8 pt-10 pb-8">
+      <div className="px-6 pt-10 pb-8">
         <div style={{ marginBottom: 28 }}>
           <h1 className="text-[20px] font-semibold text-slate-800 tracking-tight" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
             Bun venit, {userName}

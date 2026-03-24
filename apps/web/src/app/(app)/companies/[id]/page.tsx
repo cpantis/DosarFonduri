@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { isSOC, isPF, FORME_JURIDICE, getCompanyTabs, getFieldLabel } from "@/hooks/useFormaJuridica";
 import { useAuth } from "@/hooks/useAuth";
-import { apiGet, apiPost, apiDelete, api } from "@/lib/api";
+import { apiGet, apiPost, apiPut, apiDelete, api } from "@/lib/api";
 import { getCaenDescription } from "@/lib/caen";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { TypeBadge } from "@/components/ui/TypeBadge";
@@ -111,6 +111,19 @@ export default function CompanyDetailPage() {
   const bilantFileRef = useRef<HTMLInputElement>(null);
   const [selectedBilantYear, setSelectedBilantYear] = useState<number | null>(null);
 
+  // Biblioteca Elemente
+  const [elementsData, setElementsData] = useState<any>(null);
+  const [elementsLoading, setElementsLoading] = useState(false);
+  const [elementsSearch, setElementsSearch] = useState("");
+  const [elementsCategory, setElementsCategory] = useState("Toate");
+  const [elementsFilter, setElementsFilter] = useState<"all" | "empty" | "proposed">("all");
+  const [showAddElement, setShowAddElement] = useState(false);
+  const [newElKey, setNewElKey] = useState("");
+  const [newElLabel, setNewElLabel] = useState("");
+  const [newElValue, setNewElValue] = useState("");
+  const [editingElementId, setEditingElementId] = useState<string | null>(null);
+  const [editingValue, setEditingValue] = useState("");
+
   // Pre-eligibility
   const [sessions, setSessions] = useState<any[]>([]);
   const [selectedSession, setSelectedSession] = useState<string>("");
@@ -211,6 +224,21 @@ export default function CompanyDetailPage() {
       setOnrcUploading(false);
     }
   };
+
+  // Fetch company elements when Elemente tab activates
+  const fetchElements = useCallback(async () => {
+    if (!id) return;
+    setElementsLoading(true);
+    try {
+      const data = await apiGet(`/api/companies/${id}/elements`);
+      setElementsData(data);
+    } catch { setElementsData(null); }
+    finally { setElementsLoading(false); }
+  }, [id]);
+
+  useEffect(() => {
+    if (activeTab === "Elemente" && !elementsData) fetchElements();
+  }, [activeTab, elementsData, fetchElements]);
 
   // Fetch available sessions when tab activates
   useEffect(() => {
@@ -404,6 +432,48 @@ export default function CompanyDetailPage() {
     printWin.document.close();
     printWin.onload = () => { printWin.print(); };
   };
+
+  // Element CRUD handlers
+  const handleSaveElement = async (key: string, value: string, source: string = "manual") => {
+    try {
+      await apiPut(`/api/companies/${id}/elements`, { elementKey: key, value: value || null, source });
+      await fetchElements();
+    } catch (err: any) { alert(err.message || "Eroare la salvare"); }
+  };
+
+  const handleAddElement = async () => {
+    if (!newElKey.trim()) return;
+    await handleSaveElement(newElKey.trim(), newElValue.trim());
+    setNewElKey(""); setNewElLabel(""); setNewElValue(""); setShowAddElement(false);
+  };
+
+  const handleDeleteElement = async (elementId: string) => {
+    if (!confirm("Sigur doriti sa stergeti acest element?")) return;
+    try {
+      await apiDelete(`/api/companies/${id}/elements/${elementId}`);
+      await fetchElements();
+    } catch (err: any) { alert(err.message || "Eroare la stergere"); }
+  };
+
+  // Filtered elements for UI
+  const filteredElements = (elementsData?.elements || []).filter((el: any) => {
+    if (elementsCategory !== "Toate" && (elementsData?.fieldCategories?.[el.category]?.label || "Custom") !== elementsCategory) return false;
+    if (elementsFilter === "empty" && el.value) return false;
+    if (elementsFilter === "proposed" && el.autoPopulated) return false;
+    if (elementsSearch) {
+      const q = elementsSearch.toLowerCase();
+      return el.elementKey.toLowerCase().includes(q) || (el.label || "").toLowerCase().includes(q) || (el.value || "").toLowerCase().includes(q);
+    }
+    return true;
+  });
+
+  // Category counts
+  const categoryCounts = (elementsData?.elements || []).reduce((acc: Record<string, number>, el: any) => {
+    const catLabel = elementsData?.fieldCategories?.[el.category]?.label || "Custom";
+    acc[catLabel] = (acc[catLabel] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+  const totalCount = (elementsData?.elements || []).length;
 
   const sel = detail;
   const tabs = sel ? getCompanyTabs(sel.forma) : [];
@@ -1162,6 +1232,225 @@ export default function CompanyDetailPage() {
               <div className="cd-info-label">Ultima mentiune</div>
               <div style={{ fontSize: 13, lineHeight: 1.6, color: "#64748b" }}>{sel.ultimaMentiune}</div>
             </div>
+          </>)}
+
+          {/* BIBLIOTECA ELEMENTE */}
+          {activeTab === "Elemente" && (<>
+            <SectionTitle>Biblioteca Elemente</SectionTitle>
+            <p style={{ fontSize: 13, color: "#64748b", marginBottom: 16, lineHeight: 1.6 }}>
+              Toate datele companiei disponibile pentru verificarea regulilor de eligibilitate. Elementele se populeaza automat din ONRC si bilant, dar pot fi adaugate/editate manual.
+            </p>
+
+            {/* Search + category filters + action buttons */}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 16 }}>
+              <div style={{ position: "relative", flex: "0 1 220px" }}>
+                <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "#94a3b8", fontSize: 14 }}>&#x1F50D;</span>
+                <input
+                  type="text"
+                  placeholder="Cauta element..."
+                  value={elementsSearch}
+                  onChange={e => setElementsSearch(e.target.value)}
+                  className="cd-input"
+                  style={{ paddingLeft: 32, fontSize: 13, height: 34 }}
+                />
+              </div>
+              {/* Category pills */}
+              {[
+                { label: "Toate", count: totalCount },
+                ...Object.entries(categoryCounts).sort(([a], [b]) => {
+                  const order = ["Solicitant", "Financiar", "Exploatatie", "Locatie", "Documente", "Tehnic", "Persoane", "Custom"];
+                  return order.indexOf(a) - order.indexOf(b);
+                }).map(([label, count]) => ({ label, count })),
+              ].map(({ label, count }) => (
+                <button
+                  key={label}
+                  onClick={() => setElementsCategory(label)}
+                  style={{
+                    padding: "5px 14px", borderRadius: 20, fontSize: 12, fontWeight: 600, border: "1px solid",
+                    cursor: "pointer", transition: "all .15s", whiteSpace: "nowrap",
+                    background: elementsCategory === label ? "#3b82f6" : "#fff",
+                    color: elementsCategory === label ? "#fff" : "#475569",
+                    borderColor: elementsCategory === label ? "#3b82f6" : "#e2e8f0",
+                  }}
+                >
+                  {label} <span style={{ opacity: 0.8, fontWeight: 400 }}>{count as number}</span>
+                </button>
+              ))}
+
+              {/* Spacer */}
+              <div style={{ flex: 1 }} />
+
+              {/* Filter toggles */}
+              <button
+                onClick={() => setElementsFilter(elementsFilter === "empty" ? "all" : "empty")}
+                style={{
+                  padding: "5px 12px", borderRadius: 20, fontSize: 12, border: "1px solid",
+                  cursor: "pointer", transition: "all .15s",
+                  background: elementsFilter === "empty" ? "#fef3c7" : "#fff",
+                  color: elementsFilter === "empty" ? "#92400e" : "#64748b",
+                  borderColor: elementsFilter === "empty" ? "#fde68a" : "#e2e8f0",
+                }}
+              >
+                &#x25CB; Goale
+              </button>
+              <button
+                onClick={() => setElementsFilter(elementsFilter === "proposed" ? "all" : "proposed")}
+                style={{
+                  padding: "5px 12px", borderRadius: 20, fontSize: 12, border: "1px solid",
+                  cursor: "pointer", transition: "all .15s",
+                  background: elementsFilter === "proposed" ? "#fef3c7" : "#fff",
+                  color: elementsFilter === "proposed" ? "#92400e" : "#64748b",
+                  borderColor: elementsFilter === "proposed" ? "#fde68a" : "#e2e8f0",
+                }}
+              >
+                &#x26A0; Propuse
+              </button>
+              <button
+                onClick={() => setShowAddElement(!showAddElement)}
+                style={{
+                  padding: "5px 14px", borderRadius: 20, fontSize: 12, fontWeight: 600, border: "1px solid #f97316",
+                  cursor: "pointer", background: showAddElement ? "#f97316" : "#fff",
+                  color: showAddElement ? "#fff" : "#f97316", transition: "all .15s",
+                }}
+              >
+                + Adauga
+              </button>
+            </div>
+
+            {/* Add new element form */}
+            {showAddElement && (
+              <div className="cd-card" style={{ marginBottom: 16, padding: 16 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: "#0f172a", marginBottom: 12 }}>Element nou</div>
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                  <input
+                    type="text"
+                    placeholder="Cheie (ex: nr_angajati)"
+                    value={newElKey}
+                    onChange={e => setNewElKey(e.target.value)}
+                    className="cd-input"
+                    style={{ flex: "1 1 280px", fontSize: 13 }}
+                  />
+                  <input
+                    type="text"
+                    placeholder="Eticheta (ex: Numar angajati)"
+                    value={newElLabel}
+                    onChange={e => setNewElLabel(e.target.value)}
+                    className="cd-input"
+                    style={{ flex: "1 1 280px", fontSize: 13 }}
+                  />
+                </div>
+                <div style={{ marginTop: 10 }}>
+                  <input
+                    type="text"
+                    placeholder="Valoare (optional)"
+                    value={newElValue}
+                    onChange={e => setNewElValue(e.target.value)}
+                    className="cd-input"
+                    style={{ width: "100%", fontSize: 13 }}
+                    onKeyDown={e => { if (e.key === "Enter") handleAddElement(); }}
+                  />
+                </div>
+                <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                  <BtnPrimary onClick={handleAddElement} disabled={!newElKey.trim()}>Salveaza</BtnPrimary>
+                  <BtnSecondary onClick={() => { setShowAddElement(false); setNewElKey(""); setNewElLabel(""); setNewElValue(""); }}>Anuleaza</BtnSecondary>
+                </div>
+              </div>
+            )}
+
+            {/* Elements table */}
+            {elementsLoading ? (
+              <div style={{ textAlign: "center", padding: 40, color: "#94a3b8" }}>Se incarca...</div>
+            ) : filteredElements.length === 0 ? (
+              <EmptyState
+                icon="&#x1F4CB;"
+                title="Niciun element gasit"
+                description={elementsSearch ? "Incearca un alt termen de cautare." : "Nu exista elemente in aceasta categorie."}
+              />
+            ) : (
+              <div style={{ border: "1px solid #e2e8f0", borderRadius: 10, overflow: "hidden" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
+                      <th style={{ textAlign: "left", padding: "10px 14px", fontWeight: 600, color: "#64748b", fontSize: 11, textTransform: "uppercase", letterSpacing: ".05em" }}>Cheie</th>
+                      <th style={{ textAlign: "left", padding: "10px 14px", fontWeight: 600, color: "#64748b", fontSize: 11, textTransform: "uppercase", letterSpacing: ".05em" }}>Eticheta</th>
+                      <th style={{ textAlign: "left", padding: "10px 14px", fontWeight: 600, color: "#64748b", fontSize: 11, textTransform: "uppercase", letterSpacing: ".05em" }}>Valoare</th>
+                      <th style={{ textAlign: "left", padding: "10px 14px", fontWeight: 600, color: "#64748b", fontSize: 11, textTransform: "uppercase", letterSpacing: ".05em", width: 90 }}>Sursa</th>
+                      <th style={{ width: 70 }}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredElements.map((el: any) => (
+                      <tr key={el.id} style={{ borderBottom: "1px solid #f1f5f9", transition: "background .1s" }}
+                        onMouseEnter={e => (e.currentTarget.style.background = "#f8fafc")}
+                        onMouseLeave={e => (e.currentTarget.style.background = "")}
+                      >
+                        <td style={{ padding: "8px 14px", fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: "#3b82f6" }}>{el.elementKey}</td>
+                        <td style={{ padding: "8px 14px", color: "#0f172a" }}>{el.label}</td>
+                        <td style={{ padding: "8px 14px" }}>
+                          {editingElementId === el.id ? (
+                            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                              <input
+                                type="text"
+                                value={editingValue}
+                                onChange={e => setEditingValue(e.target.value)}
+                                onKeyDown={e => {
+                                  if (e.key === "Enter") { handleSaveElement(el.elementKey, editingValue); setEditingElementId(null); }
+                                  if (e.key === "Escape") setEditingElementId(null);
+                                }}
+                                className="cd-input"
+                                style={{ fontSize: 12, padding: "3px 8px", width: "100%" }}
+                                autoFocus
+                              />
+                              <button
+                                onClick={() => { handleSaveElement(el.elementKey, editingValue); setEditingElementId(null); }}
+                                style={{ background: "#10b981", color: "#fff", border: "none", borderRadius: 4, padding: "3px 8px", cursor: "pointer", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap" }}
+                              >OK</button>
+                              <button
+                                onClick={() => setEditingElementId(null)}
+                                style={{ background: "#f1f5f9", color: "#64748b", border: "none", borderRadius: 4, padding: "3px 8px", cursor: "pointer", fontSize: 11 }}
+                              >&#x2715;</button>
+                            </div>
+                          ) : (
+                            <span
+                              onClick={() => { setEditingElementId(el.id); setEditingValue(el.value || ""); }}
+                              style={{ cursor: "pointer", color: el.value ? "#0f172a" : "#cbd5e1", fontStyle: el.value ? "normal" : "italic", padding: "2px 0", display: "block" }}
+                              title="Click pentru a edita"
+                            >
+                              {el.value || "— gol —"}{el.unit ? ` ${el.unit}` : ""}
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ padding: "8px 14px" }}>
+                          <span style={{
+                            fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".04em",
+                            padding: "2px 8px", borderRadius: 10,
+                            background: el.source === "manual" || el.source === "consultant_manual" ? "#ede9fe" :
+                              el.source === "calculated" || el.source === "derived" ? "#fef3c7" : "#e0f2fe",
+                            color: el.source === "manual" || el.source === "consultant_manual" ? "#6d28d9" :
+                              el.source === "calculated" || el.source === "derived" ? "#92400e" : "#0369a1",
+                          }}>
+                            {el.source}
+                          </span>
+                        </td>
+                        <td style={{ padding: "8px 14px", textAlign: "center" }}>
+                          {!el.autoPopulated && (
+                            <button
+                              onClick={() => handleDeleteElement(el.id)}
+                              style={{ background: "none", border: "none", cursor: "pointer", color: "#cbd5e1", fontSize: 14, padding: 4, transition: "color .15s" }}
+                              onMouseEnter={e => (e.currentTarget.style.color = "#ef4444")}
+                              onMouseLeave={e => (e.currentTarget.style.color = "#cbd5e1")}
+                              title="Sterge element"
+                            >
+                              <svg style={{ width: 14, height: 14 }} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </>)}
 
           {/* PRE-ELIGIBILITATE */}

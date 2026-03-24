@@ -6,6 +6,7 @@ import {
 import { eq, and } from "drizzle-orm";
 import { anthropic, withAILimit } from "../lib/anthropic";
 import { logAIUsage } from "./aiUsage";
+import { resolveFieldKey } from "@dosarfonduri/shared";
 
 // ============================================================
 // SHARED UTILITIES (used by both project eligibility and pre-eligibility)
@@ -20,33 +21,84 @@ export function buildCompanyData(
   latestFinancial: any | null,
   allFinancials?: any[],
 ): Record<string, any> {
+  const f20 = (latestFinancial?.f20 || {}) as any;
+  const f10 = (latestFinancial?.f10 || {}) as any;
+  const f30 = (latestFinancial?.f30 || {}) as any;
+
+  // Core direct fields
+  const angajati = f30.numarMediuSalariati || 0;
+  const cifraAfaceri = f20.cifraAfaceriNeta || 0;
+  const profitNet = f20.profitNet || 0;
+  const capitaluriProprii = f10.capitaluriProprii || 0;
+  const activeImobilizate = f10.activeImobilizate?.total || 0;
+  const activeCirculante = f10.activeCirculante?.total || 0;
+  const activeTotale = activeImobilizate + activeCirculante;
+  const datoriiTotale = f10.datoriiTotal || 0;
+  const datoriiSub1An = f10.datoriiSub1An || f10.datoriiCurente || 0;
+
   const companyData: Record<string, any> = {
+    // Solicitant
     forma_juridica: company.formaJuridica,
     cui: company.cui,
+    denumire: company.denumire,
+    reg_com: company.regCom,
     cod_caen: company.caen,
     stare: company.stare,
     an_infiintare: company.anInfiintare,
     vechime_ani: new Date().getFullYear() - (company.anInfiintare || 2020),
     capital_social: parseFloat(company.capitalSocial?.toString() || "0"),
-    angajati: (latestFinancial?.f30 as any)?.numarMediuSalariati || 0,
-    cifra_afaceri: (latestFinancial?.f20 as any)?.cifraAfaceriNeta || 0,
-    profit_net: (latestFinancial?.f20 as any)?.profitNet || 0,
-    capitaluri_proprii: (latestFinancial?.f10 as any)?.capitaluriProprii || 0,
+
+    // Financiar — core
+    angajati,
+    cifra_afaceri: cifraAfaceri,
+    profit_net: profitNet,
+    profit_brut: f20.profitBrut || 0,
+    capitaluri_proprii: capitaluriProprii,
+    active_imobilizate: activeImobilizate,
+    active_circulante: activeCirculante,
+    active_totale: activeTotale,
+    datorii_totale: datoriiTotale,
+    datorii_sub_1an: datoriiSub1An,
+    venituri_exploatare: f20.venituriExploatare || 0,
+    cheltuieli_exploatare: f20.cheltuieliExploatare || 0,
+    rezultat_exploatare: f20.rezultatExploatare || 0,
+
+    // Financiar — derived ratios
+    grad_indatorare: capitaluriProprii > 0 ? Math.round((datoriiTotale / capitaluriProprii) * 100) / 100 : null,
+    lichiditate_curenta: datoriiSub1An > 0 ? Math.round((activeCirculante / datoriiSub1An) * 100) / 100 : null,
+    solvabilitate: activeTotale > 0 ? Math.round((capitaluriProprii / activeTotale) * 100) / 100 : null,
+    rentabilitate: cifraAfaceri > 0 ? Math.round((profitNet / cifraAfaceri) * 100) / 100 : null,
+
+    // IMM classification (EU definition: employees + CA or active totale)
+    clasificare_imm:
+      angajati < 10 && cifraAfaceri < 2000000 ? "micro" :
+      angajati < 50 && cifraAfaceri < 10000000 ? "mica" :
+      angajati < 250 && cifraAfaceri < 50000000 ? "mijlocie" : "mare",
+
+    // Locatie
     judet: company.judet,
     localitate: company.localitate,
+    adresa: company.adresa,
+    cod_postal: company.codPostal,
+
+    // ONRC raw flags
+    insolventa: (company.onrcRawData as any)?.insolventa ? "da" : "nu",
+    dizolvare: (company.onrcRawData as any)?.dizolvare ? "da" : "nu",
+    lichidare: (company.onrcRawData as any)?.lichidare ? "da" : "nu",
+    restrictii: (company.onrcRawData as any)?.restrictii ? "da" : "nu",
   };
 
-  // Add per-year financials if available
+  // Per-year financials
   if (allFinancials) {
     for (const fin of allFinancials) {
       const yr = fin.year;
-      const f20 = (fin.f20 || {}) as any;
-      const f10 = (fin.f10 || {}) as any;
-      const f30 = (fin.f30 || {}) as any;
-      companyData[`cifra_afaceri_${yr}`] = f20.cifraAfaceriNeta;
-      companyData[`profit_net_${yr}`] = f20.profitNet;
-      companyData[`angajati_${yr}`] = f30.numarMediuSalariati;
-      companyData[`capitaluri_proprii_${yr}`] = f10.capitaluriProprii;
+      const yf20 = (fin.f20 || {}) as any;
+      const yf10 = (fin.f10 || {}) as any;
+      const yf30 = (fin.f30 || {}) as any;
+      companyData[`cifra_afaceri_${yr}`] = yf20.cifraAfaceriNeta;
+      companyData[`profit_net_${yr}`] = yf20.profitNet;
+      companyData[`angajati_${yr}`] = yf30.numarMediuSalariati;
+      companyData[`capitaluri_proprii_${yr}`] = yf10.capitaluriProprii;
     }
   }
 
@@ -140,7 +192,9 @@ export function evaluateFixedRule(
     return { status: "not_applicable", autoResult: null, notes: null };
   }
 
-  const fieldValue = companyData[condition.field];
+  // Resolve field aliases to canonical key (e.g. "numar_angajati" → "angajati")
+  const canonicalField = resolveFieldKey(condition.field);
+  const fieldValue = companyData[canonicalField] ?? companyData[condition.field];
   if (fieldValue === undefined || fieldValue === null) {
     return { status: "pending", autoResult: null, notes: "Date lipsă: " + condition.field };
   }

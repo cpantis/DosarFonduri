@@ -12,6 +12,7 @@ import { anthropic, withAILimit } from "../lib/anthropic";
 import { repairTruncatedJSON } from "../lib/safeExtract";
 import { preflightCached } from "../services/dbPreflight";
 import { z } from "zod";
+import { generateFieldListForPrompt, resolveFieldKey } from "@dosarfonduri/shared";
 
 /** Generate a slugified rule_key from category + description */
 function generateRuleKey(category: string, description: string): string {
@@ -171,7 +172,13 @@ CLASIFICARE SEMANTICĂ — pentru FIECARE regulă (fixă sau interpretată) atri
 Fii EXHAUSTIV — o regulă omisă poate însemna un dosar respins.
 Returnează DOAR JSON valid — un singur obiect cu 4 array-uri. Fără backticks, fără explicații.`;
 
+// Generated at module load — contains the full field reference for the AI
+const FIELD_LIST_FOR_PROMPT = generateFieldListForPrompt();
+
 const UNIFIED_EXTRACTION_USER = `Analizează acest ghid de finanțare pre-structurat și extrage SIMULTAN toate regulile și elementele.
+
+CÂMPURI DISPONIBILE PENTRU condition.field — folosește EXACT aceste chei canonice:
+${FIELD_LIST_FOR_PROMPT}
 
 Returnează un singur obiect JSON cu 4 chei:
 
@@ -181,7 +188,7 @@ Returnează un singur obiect JSON cu 4 chei:
       "category": "eligibilitate" | "financiar" | "tehnic" | "administrativ" | "achizitii" | "documente",
       "description": "Descriere clară a regulii",
       "condition": {
-        "field": "câmpul verificat (ex: cifra_afaceri, forma_juridica, cod_caen)",
+        "field": "cheia canonică din lista de mai sus (ex: cifra_afaceri, forma_juridica, cod_caen, clasificare_imm)",
         "operator": "eq" | "neq" | "gt" | "gte" | "lt" | "lte" | "in" | "not_in" | "between",
         "value": "valoarea de comparare",
         "value2": "pentru between (opțional)"
@@ -447,6 +454,10 @@ async function saveFixedRules(fixedRules: any[], documentId: string, organizatio
       const condition = r.condition ? { ...r.condition } : {};
       if (Array.isArray(r.semantic_tags) && r.semantic_tags.length > 0) {
         condition.semantic_tags = r.semantic_tags;
+      }
+      // Normalize field name to canonical key (e.g. "numar_angajati" → "angajati")
+      if (condition.field) {
+        condition.field = resolveFieldKey(condition.field);
       }
       return {
         documentId,

@@ -145,9 +145,36 @@ export async function populateCompanyElements(
       add(`capitaluri_proprii_${yr}`, yf10.capitaluriProprii, ySrc);
     }
 
-    // Derived: IMM classification
+    // Derived financial fields
     const ca = parseFloat(String(f20.cifraAfaceriNeta || 0));
     const emp = parseInt(String(f30.numarMediuSalariati || 0));
+    const profitNet = parseFloat(String(f20.profitNet || 0));
+    const capitaluriProprii = parseFloat(String(f10.capitaluriProprii || 0));
+    const activeImob = parseFloat(String(f10.activeImobilizate?.total || 0));
+    const activeCirc = parseFloat(String(f10.activeCirculante?.total || 0));
+    const activeTotale = activeImob + activeCirc;
+    const datoriiTotale = parseFloat(String(f10.datoriiTotal || 0));
+    const datoriiSub1An = parseFloat(String(f10.datoriiSub1An || f10.datoriiCurente || 0));
+
+    add("active_totale", activeTotale > 0 ? activeTotale : null, "calculated");
+    add("datorii_totale", datoriiTotale > 0 ? datoriiTotale : null, "calculated");
+    add("datorii_sub_1an", datoriiSub1An > 0 ? datoriiSub1An : null, "calculated");
+
+    // Financial ratios
+    if (capitaluriProprii > 0 && datoriiTotale > 0) {
+      add("grad_indatorare", Math.round((datoriiTotale / capitaluriProprii) * 100) / 100, "calculated");
+    }
+    if (datoriiSub1An > 0 && activeCirc > 0) {
+      add("lichiditate_curenta", Math.round((activeCirc / datoriiSub1An) * 100) / 100, "calculated");
+    }
+    if (activeTotale > 0 && capitaluriProprii > 0) {
+      add("solvabilitate", Math.round((capitaluriProprii / activeTotale) * 100) / 100, "calculated");
+    }
+    if (ca > 0 && profitNet !== 0) {
+      add("rentabilitate", Math.round((profitNet / ca) * 100) / 100, "calculated");
+    }
+
+    // IMM classification (EU definition)
     if (emp < 10 && ca < 2000000) {
       add("clasificare_imm", "micro", "calculated");
     } else if (emp < 50 && ca < 10000000) {

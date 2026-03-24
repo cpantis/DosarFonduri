@@ -5,9 +5,10 @@ import { db } from "../db";
 import {
   companies, companyAssociates, companyAdministrators,
   companyFinancials, companyIfMembers, documentFolders, rules, documents,
-  projects, projectDocuments,
+  projects, projectDocuments, companyElements,
 } from "../db/schema";
 import { eq, and, sql, inArray, count } from "drizzle-orm";
+import { KNOWN_COMPANY_FIELDS, FIELD_CATEGORIES, resolveFieldKey, getFieldDef } from "@dosarfonduri/shared";
 import { lookupCUI, FORMA_MAP } from "../services/onrc";
 import { lookupCUI_ListaFirme, searchCompany_ListaFirme, type ListaFirmeCompany } from "../services/listafirme";
 import { uploadFile, deleteFile } from "../services/storage";
@@ -1060,4 +1061,190 @@ companyRoutes.get("/sessions/list", async (c) => {
   }
 
   return c.json(result);
+});
+
+// ============================================================
+// COMPANY ELEMENTS — Biblioteca Elemente (CRUD)
+// ============================================================
+
+// --- GET elements for a company ---
+companyRoutes.get("/:id/elements", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  if (!auth.organizationId) return c.json({ error: "No organization" }, 403);
+  const companyId = c.req.param("id");
+
+  // Verify company belongs to org
+  const company = await db.query.companies.findFirst({
+    where: and(eq(companies.id, companyId), eq(companies.organizationId, auth.organizationId)),
+  });
+  if (!company) return c.json({ error: "Firma nu a fost gasita" }, 404);
+
+  const elements = await db.query.companyElements.findMany({
+    where: eq(companyElements.companyId, companyId),
+    orderBy: (el, { asc }) => [asc(el.elementKey)],
+  });
+
+  // Enrich with field definitions (category, label, etc.)
+  const enriched = elements.map(el => {
+    const fieldDef = getFieldDef(el.elementKey);
+    return {
+      ...el,
+      label: fieldDef?.label || el.elementKey,
+      category: fieldDef?.category || "custom",
+      dataType: fieldDef?.dataType || "text",
+      unit: fieldDef?.unit || null,
+      autoPopulated: fieldDef?.autoPopulated || false,
+    };
+  });
+
+  return c.json({
+    elements: enriched,
+    fieldCategories: FIELD_CATEGORIES,
+    knownFields: KNOWN_COMPANY_FIELDS,
+  });
+});
+
+// --- ADD / UPDATE a single element ---
+companyRoutes.put("/:id/elements", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  if (!auth.organizationId) return c.json({ error: "No organization" }, 403);
+  const companyId = c.req.param("id");
+
+  const body = await c.req.json();
+  const schema = z.object({
+    elementKey: z.string().min(1).max(255),
+    value: z.string().nullable(),
+    label: z.string().optional(),
+    source: z.enum(["manual", "solomon", "consultant_manual", "derived"]).default("manual"),
+  });
+  const parsed = schema.safeParse(body);
+  if (!parsed.success) return c.json({ error: "Date invalide", details: parsed.error.flatten() }, 400);
+
+  // Verify company belongs to org
+  const company = await db.query.companies.findFirst({
+    where: and(eq(companies.id, companyId), eq(companies.organizationId, auth.organizationId)),
+  });
+  if (!company) return c.json({ error: "Firma nu a fost gasita" }, 404);
+
+  const { elementKey, value, source } = parsed.data;
+
+  // Normalize the key via alias map
+  const canonicalKey = resolveFieldKey(elementKey);
+
+  // Upsert element
+  const existing = await db.query.companyElements.findFirst({
+    where: and(
+      eq(companyElements.companyId, companyId),
+      eq(companyElements.elementKey, canonicalKey),
+    ),
+  });
+
+  if (existing) {
+    await db.update(companyElements).set({
+      value: value || null,
+      source,
+      updatedAt: new Date(),
+    }).where(eq(companyElements.id, existing.id));
+  } else {
+    await db.insert(companyElements).values({
+      companyId,
+      organizationId: auth.organizationId,
+      elementKey: canonicalKey,
+      value: value || null,
+      source,
+    });
+  }
+
+  return c.json({ ok: true, elementKey: canonicalKey });
+});
+
+// --- BULK UPDATE elements ---
+companyRoutes.put("/:id/elements/bulk", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  if (!auth.organizationId) return c.json({ error: "No organization" }, 403);
+  const companyId = c.req.param("id");
+
+  const body = await c.req.json();
+  const schema = z.object({
+    elements: z.array(z.object({
+      elementKey: z.string().min(1).max(255),
+      value: z.string().nullable(),
+      source: z.enum(["manual", "solomon", "consultant_manual", "derived"]).default("manual"),
+    })),
+  });
+  const parsed = schema.safeParse(body);
+  if (!parsed.success) return c.json({ error: "Date invalide", details: parsed.error.flatten() }, 400);
+
+  // Verify company belongs to org
+  const company = await db.query.companies.findFirst({
+    where: and(eq(companies.id, companyId), eq(companies.organizationId, auth.organizationId)),
+  });
+  if (!company) return c.json({ error: "Firma nu a fost gasita" }, 404);
+
+  let updated = 0;
+  let created = 0;
+
+  for (const el of parsed.data.elements) {
+    const canonicalKey = resolveFieldKey(el.elementKey);
+    const existing = await db.query.companyElements.findFirst({
+      where: and(
+        eq(companyElements.companyId, companyId),
+        eq(companyElements.elementKey, canonicalKey),
+      ),
+    });
+
+    if (existing) {
+      await db.update(companyElements).set({
+        value: el.value || null,
+        source: el.source,
+        updatedAt: new Date(),
+      }).where(eq(companyElements.id, existing.id));
+      updated++;
+    } else {
+      await db.insert(companyElements).values({
+        companyId,
+        organizationId: auth.organizationId,
+        elementKey: canonicalKey,
+        value: el.value || null,
+        source: el.source,
+      });
+      created++;
+    }
+  }
+
+  return c.json({ ok: true, updated, created });
+});
+
+// --- DELETE a single element ---
+companyRoutes.delete("/:id/elements/:elementId", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  if (!auth.organizationId) return c.json({ error: "No organization" }, 403);
+  const companyId = c.req.param("id");
+  const elementId = c.req.param("elementId");
+
+  // Verify company belongs to org
+  const company = await db.query.companies.findFirst({
+    where: and(eq(companies.id, companyId), eq(companies.organizationId, auth.organizationId)),
+  });
+  if (!company) return c.json({ error: "Firma nu a fost gasita" }, 404);
+
+  // Verify element belongs to this company
+  const element = await db.query.companyElements.findFirst({
+    where: and(
+      eq(companyElements.id, elementId),
+      eq(companyElements.companyId, companyId),
+    ),
+  });
+  if (!element) return c.json({ error: "Element negasit" }, 404);
+
+  await db.delete(companyElements).where(eq(companyElements.id, elementId));
+  return c.json({ ok: true });
+});
+
+// --- GET known field definitions (for UI field picker) ---
+companyRoutes.get("/field-definitions", async (c) => {
+  return c.json({
+    fields: KNOWN_COMPANY_FIELDS,
+    categories: FIELD_CATEGORIES,
+  });
 });

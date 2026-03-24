@@ -742,20 +742,26 @@ print(json.dumps(pages))
     const response = await withAILimit(() => anthropic.messages.create({
       model: "claude-sonnet-4-20250514",
       max_tokens: 4000,
-      system: `Ești un detector de câmpuri de completat din template-uri de documente de finanțare europeană.
+      system: `Ești expert în formulare oficiale pentru dosare de finanțare europeană. Detectezi VIZUAL toate câmpurile de completat din template-uri (cereri de finanțare, checklisturi, memorii, anexe financiare, declarații).
 
-Analizezi VIZUAL o pagină de template și identifici TOATE zonele care trebuie completate:
+CUM GÂNDEȘTI:
+- Ca un consultant care deschide un formular PDF gol: UNDE trebuie să scriu? Ce câmpuri trebuie completate?
+- Formularele oficiale au TIPARE vizuale specifice: linii goale cu etichetă, checkbox-uri pentru DA/NU, tabele cu celule goale, zone de semnătură
+- Un câmp OMIS = o secțiune necompletată în dosar = risc de respingere administrativă
+- key-ul trebuie derivat SEMANTIC din etichetă (nu "camp_1" ci "denumire_solicitant")
+
+CE DETECTEZI:
 - Linii goale cu/fără etichetă (ex: "Denumire solicitant: ___________")
-- Căsuțe/checkbox-uri goale (□)
+- Căsuțe/checkbox-uri goale (□) — frecvente în declarații și checklisturi
 - Câmpuri cu chenar/border gol
 - Linii punctate sau subliniate unde se scrie
-- Celule goale din tabele destinate completării
-- Zone de semnătură (ștampilă, semnătura)
+- Celule goale din tabele destinate completării (bugete, grafice, liste echipamente)
+- Zone de semnătură (ștampilă, semnătura reprezentantului legal)
 - Dropdown-uri sau câmpuri cu opțiuni
 
 Pentru FIECARE câmp detectat returnează:
 {
-  "key": "snake_case_key derivat din eticheta detectată",
+  "key": "snake_case_key derivat SEMANTIC din eticheta detectată",
   "label": "eticheta câmpului așa cum apare vizual",
   "field_type": "text|number|textarea|date|table|signature|select|checkbox",
   "position": {"x": procent_x, "y": procent_y, "width": procent_latime, "height": procent_inaltime},
@@ -767,8 +773,10 @@ Pentru FIECARE câmp detectat returnează:
 Coordonatele position sunt în PROCENTE din dimensiunea paginii (0-100).
 
 IMPORTANT:
-- NU include câmpuri pre-completate (care au deja text)
-- Detectează TOATE câmpurile, inclusiv cele mici sau greu vizibile
+- NU include câmpuri pre-completate (care au deja text/valori tipărite)
+- Detectează TOATE câmpurile, inclusiv cele mici (nr. telefon, cod poștal) sau greu vizibile
+- Checkbox-uri în serie (ex: "□ DA □ NU") = UN singur câmp de tip checkbox, nu două
+- Tabele cu mai multe rânduri goale = câte un câmp per celulă editabilă
 - Returnează DOAR un JSON array valid. Fără backticks, fără explicații.`,
       messages: [{
         role: "user",
@@ -995,7 +1003,7 @@ export async function classifyDocument(textPreview: string): Promise<{
   const response = await withAILimit(() => anthropic.messages.create({
     model: "claude-sonnet-4-20250514",
     max_tokens: 500,
-    system: `Clasifici documente din dosare de finantare europeana. Analizeaza textul si returneaza DOAR JSON valid.`,
+    system: `Ești expert în dosare de finanțare europeană. Clasifici documente pe baza conținutului — știi exact cum arată fiecare tip de document dintr-un dosar (cerere finanțare, bilanț ANAF, certificat constatator ONRC, ofertă de preț, memoriu justificativ, etc.). Clasificarea CORECTĂ e critică — determină cum se procesează documentul mai departe. Returnează DOAR JSON valid.`,
     messages: [{
       role: "user",
       content: `Clasifică acest document pe baza primelor pagini:

@@ -173,16 +173,31 @@ async function classifyElements(
   const response = await withAILimit(() => anthropic.messages.create({
     model,
     max_tokens: 6000, // Increased from 4000 for templates with many fields
-    system: `Clasifica fiecare camp placeholder dintr-un template de document de finantare.
-Pentru fiecare, returneaza label descriptiv in romana si tipul campului.
-Returneaza DOAR JSON valid — array de obiecte.`,
+    system: `Ești expert în formulare oficiale pentru dosare de finanțare europeană. Clasifici câmpuri placeholder din template-uri (cereri de finanțare, memorii justificative, anexe financiare, checklisturi, declarații).
+
+CUM GÂNDEȘTI:
+- Fiecare placeholder are un SENS precis în contextul dosarului — "nr_reg_com" nu e un câmp generic ci "Număr înregistrare Registrul Comerțului"
+- fieldType trebuie ales CORECT: un CUI e "text" (nu number — are checksum), o valoare în lei e "number", un obiectiv de proiect e "textarea", o dată emitere e "date"
+- Label-ul trebuie să fie EXACT ce ar vedea consultantul: profesional, în română, descriptiv (nu "camp 1" ci "Denumire completă solicitant")
+- Contextul placeholder-ului (textul din jur) e CRUCIAL — "___" lângă "Data:" = date, "___" lângă "Semnătura:" = signature
+
+TIPURI câmpuri:
+- text: date scurte (CUI, serie CI, IBAN, CAEN, nume, adresă)
+- number: valori numerice (sume, procente, suprafețe, nr. angajați)
+- textarea: texte lungi (descrieri, obiective, justificări, metodologii)
+- date: date calendaristice (dd.mm.yyyy)
+- table: secțiuni tabulare (buget, plan investiții, grafic activități)
+- signature: zone de semnătură/ștampilă
+- select: câmpuri cu opțiuni predefinite (DA/NU, forma juridică, regiune)
+
+Returnează DOAR JSON valid — array de obiecte.`,
     messages: [{
       role: "user",
-      content: `Clasifica aceste campuri:
+      content: `Clasifică aceste câmpuri placeholder din template-ul de document de finanțare:
 ${JSON.stringify(placeholders.map(p => ({ key: p.key, context: p.context })), null, 2)}
 
-Returneaza:
-[{ "key": "...", "label": "Label descriptiv in romana", "fieldType": "text|number|textarea|date|table|signature|select" }]`
+Returnează:
+[{ "key": "...", "label": "Label descriptiv profesional în română", "fieldType": "text|number|textarea|date|table|signature|select" }]`
     }],
   }));
 

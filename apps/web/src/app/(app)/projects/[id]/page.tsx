@@ -2662,8 +2662,6 @@ export default function ProjectViewPage() {
         .solomon-msg-right .solomon-msg-body{text-align:right}
         .solomon-msg-right .solomon-msg-text{background:rgba(77,139,255,0.06);border-radius:14px 14px 2px 14px;padding:10px 14px;display:inline-block;text-align:left}
         .solomon-msg-left .solomon-msg-text{padding:10px 0}
-        .solomon-msg-name{font-size:13px;font-weight:600;color:#0f172a;margin-bottom:4px}
-        .solomon-msg-name span{font-weight:400;color:#94a3b8;margin-left:8px;font-size:12px}
         .solomon-msg-text{font-size:15px;line-height:1.5;color:#475569;font-family:'Inter',system-ui,sans-serif}
         .solomon-msg-text strong{color:#0f172a;font-weight:600}
         .chat-msg .msg-bold{font-weight:600;color:#0f172a}
@@ -4624,10 +4622,6 @@ export default function ProjectViewPage() {
                     {solomonMessages.map((msg, msgIdx) => (
                       <div key={msgIdx} className={`solomon-msg ${msg.role === "assistant" ? "solomon-msg-left" : "solomon-msg-right"}`}>
                         <div className="solomon-msg-body">
-                          <div className="solomon-msg-name">
-                            {msg.role === "assistant" ? orgLabels.solomonLabel : "Tu"}
-                            <span>{new Date().toLocaleTimeString("ro-RO", { hour: "2-digit", minute: "2-digit" })}</span>
-                          </div>
                           <div className="solomon-msg-text">
                           {renderMsgText(msg.text)}
                           {msg.extractions && (() => {

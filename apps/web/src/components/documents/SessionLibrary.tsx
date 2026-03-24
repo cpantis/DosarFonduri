@@ -143,10 +143,10 @@ export function SessionLibrary({ folderId }: { folderId: string }) {
   if (!data) return null;
 
   const tabs = [
-    { key: "rules", label: "Reguli", icon: "\u{1F6E1}", count: data.rules.total },
-    { key: "scoring", label: "Scoring", icon: "\u{1F3AF}", count: data.scoring.total },
-    { key: "elements", label: "Elemente", icon: "\u{1F9E9}", count: data.elements.total },
-    { key: "tables", label: "Tabele", icon: "\u{1F4CA}", count: data.tables.total },
+    { key: "rules", label: "Reguli", icon: "\uD83D\uDEE1", count: data.rules.total },
+    { key: "scoring", label: "Scoring", icon: "\uD83C\uDFAF", count: data.scoring.total },
+    { key: "elements", label: "Elemente", icon: "\uD83E\uDDE9", count: data.elements.total },
+    { key: "tables", label: "Tabele", icon: "\uD83D\uDCCA", count: data.tables.total },
     { key: "checklist", label: "Checklist", icon: "\u2705", count: data.checklist.total },
   ];
 
@@ -155,7 +155,7 @@ export function SessionLibrary({ folderId }: { folderId: string }) {
       {/* Header */}
       <div className="px-5 pt-4 pb-2 flex-shrink-0">
         <div className="flex items-center gap-2 mb-1">
-          <span style={{ fontSize: 18 }}>{"\u{1F4DA}"}</span>
+          <span style={{ fontSize: 18 }}>{"\uD83D\uDCDA"}</span>
           <h2 className="text-[15px] font-extrabold text-slate-900">Biblioteca Sesiune</h2>
         </div>
         <p className="text-[11px] text-slate-500">{data.sessionName} — date agregate din toate ghidurile si template-urile</p>
@@ -248,7 +248,7 @@ function RulesTab({ rules }: { rules: LibraryData["rules"] }) {
         ))}
       </RuleCardList>
 
-      {displayRules.length === 0 && <EmptyTab icon="\u{1F6E1}" message="Nicio regulă extrasă încă" />}
+      {displayRules.length === 0 && <EmptyTab icon="\uD83D\uDEE1" message="Nicio regulă extrasă încă" />}
     </div>
   );
 }
@@ -258,7 +258,7 @@ function RulesTab({ rules }: { rules: LibraryData["rules"] }) {
    ══════════════════════════════════════════ */
 
 function ScoringTab({ scoring }: { scoring: LibraryData["scoring"] }) {
-  if (scoring.items.length === 0) return <EmptyTab icon="\u{1F3AF}" message="Niciun criteriu de scoring extras" />;
+  if (scoring.items.length === 0) return <EmptyTab icon="\uD83C\uDFAF" message="Niciun criteriu de scoring extras" />;
 
   const totalMax = scoring.items.reduce((s, c) => s + parseFloat(c.maxPoints), 0);
 
@@ -328,7 +328,7 @@ function ElementsTab({ elements }: { elements: LibraryData["elements"] }) {
   const categories = [...grouped.keys()].sort();
   const displayItems = catFilter ? (grouped.get(catFilter) || []) : elements.items;
 
-  if (elements.items.length === 0) return <EmptyTab icon="\u{1F9E9}" message="Nicio definitie de element inca" />;
+  if (elements.items.length === 0) return <EmptyTab icon="\uD83E\uDDE9" message="Nicio definitie de element inca" />;
 
   return (
     <div className="flex flex-col gap-3">
@@ -409,7 +409,7 @@ function ElementsTab({ elements }: { elements: LibraryData["elements"] }) {
 function TablesTab({ tables }: { tables: LibraryData["tables"] }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
-  if (tables.items.length === 0) return <EmptyTab icon="\u{1F4CA}" message="Niciun tabel de referinta extras" />;
+  if (tables.items.length === 0) return <EmptyTab icon="\uD83D\uDCCA" message="Niciun tabel de referinta extras" />;
 
   const toggle = (id: string) => {
     setExpanded(prev => {
@@ -532,7 +532,7 @@ function ChecklistTab({ checklist, folderId, onRefresh }: { checklist: LibraryDa
           disabled={populating}
           className="text-[12px] font-semibold text-purple-600 hover:text-purple-700 bg-purple-50 hover:bg-purple-100 px-3 py-1.5 rounded-lg transition-all flex items-center gap-1 disabled:opacity-50"
         >
-          {populating ? "\u23F3" : "\u{1F916}"} Auto-populate din ghid
+          {populating ? "\u23F3" : "\uD83E\uDD16"} Auto-populate din ghid
         </button>
       </div>
 
@@ -577,7 +577,7 @@ function ChecklistTab({ checklist, folderId, onRefresh }: { checklist: LibraryDa
           <div className="flex flex-col gap-1.5">
             {checklist.items.filter(i => i.category === cat).map(item => (
               <div key={item.id} className="flex items-start gap-2.5 px-3 py-2.5 rounded-lg border border-slate-200 bg-white hover:border-slate-300 transition-all group">
-                <span className="text-[12px] mt-0.5 flex-shrink-0">{item.source === "ghid" ? "\u{1F4D6}" : "\u270D\uFE0F"}</span>
+                <span className="text-[12px] mt-0.5 flex-shrink-0">{item.source === "ghid" ? "\uD83D\uDCD6" : "\u270D\uFE0F"}</span>
                 <div className="flex-1 min-w-0">
                   <div className="text-[12px] font-medium text-slate-800 leading-snug">{item.name}</div>
                   <div className="flex items-center gap-2 mt-0.5">

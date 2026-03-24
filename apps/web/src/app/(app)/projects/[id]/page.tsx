@@ -428,6 +428,7 @@ export default function ProjectViewPage() {
   const [solomonStreaming, setSolomonStreaming] = useState(false);
   const [extractionStates, setExtractionStates] = useState<Record<string, "confirmed" | "rejected">>({});
   const [extractionValidations, setExtractionValidations] = useState<Record<string, any>>({});
+  const [expandedExtractions, setExpandedExtractions] = useState<Record<number, boolean>>({});
   const [editingExtraction, setEditingExtraction] = useState<string | null>(null);
   const [editingExtractionValue, setEditingExtractionValue] = useState("");
   const [refinePopup, setRefinePopup] = useState<{ text: string; x: number; y: number } | null>(null);
@@ -2723,6 +2724,11 @@ export default function ProjectViewPage() {
         .exc-btn.reject-btn:hover{background:#fef2f2}
         .exc-confirmed-label{font-size:12px;font-weight:500;color:#059669;display:flex;align-items:center;gap:4px}
         .exc-rejected-label{font-size:11px;font-weight:500;color:#dc2626;display:flex;align-items:center;gap:4px}
+        .exc-collapsed-summary{display:flex;align-items:center;gap:8px;padding:8px 14px;margin-top:8px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;cursor:pointer;transition:all .15s;user-select:none}
+        .exc-collapsed-summary:hover{background:#dcfce7;border-color:#86efac}
+        .exc-collapsed-icon{font-size:13px;color:#059669;font-weight:600}
+        .exc-collapsed-text{font-size:12px;font-weight:500;color:#059669;flex:1}
+        .exc-collapsed-toggle{font-size:10px;color:#94a3b8}
         .confirm-all-bar{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#eff6ff;border-radius:8px;margin-bottom:4px}
         .confirm-all-bar span{font-size:13px;color:#2563eb;font-weight:500}
         .chat-timestamp{font-size:10px;color:#94a3b8;margin-top:4px}
@@ -4664,7 +4670,30 @@ export default function ProjectViewPage() {
                           <div className="solomon-msg-text">
                           {renderMsgText(msg.text)}
                           {msg.extractions && (() => {
-                            const pendingIndices = msg.extractions.map((_: any, i: number) => i).filter((i: number) => !extractionStates[`${msgIdx}-${i}`]);
+                            const allExtractions = msg.extractions;
+                            const pendingIndices = allExtractions.map((_: any, i: number) => i).filter((i: number) => !extractionStates[`${msgIdx}-${i}`]);
+                            const confirmedCount = allExtractions.filter((_: any, i: number) => extractionStates[`${msgIdx}-${i}`] === "confirmed").length;
+                            const rejectedCount = allExtractions.filter((_: any, i: number) => extractionStates[`${msgIdx}-${i}`] === "rejected").length;
+                            const allResolved = pendingIndices.length === 0 && allExtractions.length > 0;
+
+                            // All extractions resolved — show collapsed summary
+                            if (allResolved) {
+                              return (
+                                <div
+                                  className="exc-collapsed-summary"
+                                  onClick={() => setExpandedExtractions(prev => ({ ...prev, [msgIdx]: !prev[msgIdx] }))}
+                                >
+                                  <span className="exc-collapsed-icon">{confirmedCount > 0 ? "\u2713" : "\u2715"}</span>
+                                  <span className="exc-collapsed-text">
+                                    {confirmedCount > 0 && `${confirmedCount} salvate`}
+                                    {confirmedCount > 0 && rejectedCount > 0 && ", "}
+                                    {rejectedCount > 0 && `${rejectedCount} respinse`}
+                                  </span>
+                                  <span className="exc-collapsed-toggle">{expandedExtractions[msgIdx] ? "\u25B2" : "\u25BC"}</span>
+                                </div>
+                              );
+                            }
+
                             return (
                             <div className="extraction-cards">
                               {pendingIndices.length > 1 && (
@@ -4678,9 +4707,11 @@ export default function ProjectViewPage() {
                                   </button>
                                 </div>
                               )}
-                              {msg.extractions.map((ext: any, extIdx: number) => {
+                              {allExtractions.map((ext: any, extIdx: number) => {
                                 const k = `${msgIdx}-${extIdx}`;
                                 const state = extractionStates[k];
+                                // Hide confirmed/rejected cards (collapsed by default)
+                                if (state && !expandedExtractions[msgIdx]) return null;
                                 return (
                                   <div key={extIdx} className={`extraction-card ${state || ""}`}>
                                     <div className="exc-top">
@@ -4725,7 +4756,6 @@ export default function ProjectViewPage() {
                                       />
                                     ) : (
                                       <div className="exc-value">{(() => {
-                                        // Format JSON values for readability
                                         const v = ext.value;
                                         if (!v) return "-";
                                         if (typeof v === "string" && v.startsWith("[")) {
@@ -4959,7 +4989,9 @@ export default function ProjectViewPage() {
                           {group.items.map(el => (
                             <div key={el.id} className={`sep-row ${el.status} clickable`} onClick={() => {
                               if (el.value) {
-                                openDetailPanel(el.id);
+                                // Navigate to Elemente tab and open detail panel
+                                setActiveLeaf("elements");
+                                setTimeout(() => openDetailPanel(el.id), 100);
                               } else {
                                 // Send directly — include key so Solomon can emit ELEMENTS_JSON
                                 const prompt = `Completează elementul "${el.label}" (cheie: ${el.key}). Propune o valoare bazată pe datele firmei, ghidul de finanțare și conversația anterioară. Salvează valoarea în ELEMENTS_JSON.`;

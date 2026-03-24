@@ -427,8 +427,9 @@ projectRoutes.post("/", async (c) => {
 // NOTE: prefillFromCompany() replaced by agenticPrefillFromCompany() in services/agenticPrefill.ts
 // Uses Claude Sonnet for semantic mapping instead of hardcoded aliases.
 
-// Auto-populate checklist from guide rules
-async function populateChecklistFromRules(projectId: string, folderId: string, orgId: string) {
+// Auto-populate checklist from guide's AI-extracted document_requirements (primary)
+// and document-category rules (fallback). Deduplicates by name.
+async function populateChecklistFromRules(projectId: string, folderId: string, _orgId: string) {
   const guideFolders = await db.query.documentFolders.findMany({
     where: and(
       eq(documentFolders.parentId, folderId),
@@ -436,51 +437,119 @@ async function populateChecklistFromRules(projectId: string, folderId: string, o
     ),
   });
 
-  const allRules: any[] = [];
+  const checklistItems: Array<{ projectId: string; name: string; category: string; source: "ghid"; sortOrder: number }> = [];
+  const seenNames = new Set<string>();
+
+  // Primary source: AI-extracted document_requirements from processingResult
   for (const folder of guideFolders) {
     const docs = await db.query.documents.findMany({
-      where: eq(documents.folderId, folder.id),
+      where: and(eq(documents.folderId, folder.id), eq(documents.processingType, "ghid")),
     });
     for (const doc of docs) {
-      const docRules = await db.query.rules.findMany({
-        where: eq(rules.documentId, doc.id),
-      });
-      allRules.push(...docRules);
+      const pr = doc.processingResult as any;
+      const docReqs = pr?.document_requirements;
+      if (Array.isArray(docReqs)) {
+        for (const req of docReqs) {
+          const name = (req.name || "").trim();
+          if (!name) continue;
+          const key = name.toLowerCase();
+          if (seenNames.has(key)) continue;
+          seenNames.add(key);
+
+          const categoryMap: Record<string, string> = {
+            juridice: "Documente juridice",
+            financiare: "Documente financiare",
+            tehnice: "Documente tehnice",
+            declaratii: "Declarații & Angajamente",
+            oferte: "Oferte de preț",
+            anexe: "Anexe",
+            altele: "Alte documente",
+          };
+          const category = categoryMap[req.category] || categorizeDocument({ description: name });
+          const desc = req.description ? `${name} — ${req.description}` : name;
+
+          checklistItems.push({
+            projectId,
+            name: desc,
+            category,
+            source: "ghid",
+            sortOrder: checklistItems.length,
+          });
+        }
+      }
     }
   }
 
-  const checklistItems = allRules
-    .filter(r =>
+  // Fallback: if no document_requirements were found, use rule-based extraction
+  if (checklistItems.length === 0) {
+    const allRules: any[] = [];
+    for (const folder of guideFolders) {
+      const docs = await db.query.documents.findMany({
+        where: eq(documents.folderId, folder.id),
+      });
+      for (const doc of docs) {
+        const docRules = await db.query.rules.findMany({
+          where: eq(rules.documentId, doc.id),
+        });
+        allRules.push(...docRules);
+      }
+    }
+
+    const filtered = allRules.filter(r =>
       r.category === "documente" || r.category === "documentare" || r.category === "documente_necesare"
       || r.description?.toLowerCase().includes("document")
       || r.description?.toLowerCase().includes("acte necesare")
       || r.description?.toLowerCase().includes("anexe")
-    )
-    .map((r, idx) => ({
-      projectId,
-      name: r.description,
-      category: categorizeDocument(r),
-      source: "ghid" as const,
-      sortOrder: idx,
-    }));
+      || r.description?.toLowerCase().includes("cerere de finanțare")
+      || r.description?.toLowerCase().includes("plan de afaceri")
+      || r.description?.toLowerCase().includes("certificat")
+      || r.description?.toLowerCase().includes("bilanț")
+      || r.description?.toLowerCase().includes("declarați")
+      || r.description?.toLowerCase().includes("memoriu")
+      || r.description?.toLowerCase().includes("extras")
+      || r.description?.toLowerCase().includes("ofert")
+    );
+
+    for (const r of filtered) {
+      const name = (r.description || "").trim();
+      const key = name.toLowerCase();
+      if (!name || seenNames.has(key)) continue;
+      seenNames.add(key);
+      checklistItems.push({
+        projectId,
+        name,
+        category: categorizeDocument(r),
+        source: "ghid",
+        sortOrder: checklistItems.length,
+      });
+    }
+  }
 
   if (checklistItems.length > 0) {
     await db.insert(projectChecklist).values(checklistItems);
   }
+
+  return checklistItems.length;
 }
 
 function categorizeDocument(rule: any): string {
   const desc = (rule.description || "").toLowerCase();
-  if (desc.includes("bilanț") || desc.includes("financiar") || desc.includes("buget") || desc.includes("contabil")) {
+  if (desc.includes("bilanț") || desc.includes("financiar") || desc.includes("buget") || desc.includes("contabil") || desc.includes("situați")) {
     return "Documente financiare";
   }
-  if (desc.includes("tehnic") || desc.includes("fezabilitate") || desc.includes("memoriu")) {
+  if (desc.includes("tehnic") || desc.includes("fezabilitate") || desc.includes("memoriu") || desc.includes("studiu")) {
     return "Documente tehnice";
   }
-  if (desc.includes("declarați") || desc.includes("angajament") || desc.includes("acord")) {
+  if (desc.includes("declarați") || desc.includes("angajament") || desc.includes("acord") || desc.includes("consimț")) {
     return "Declarații & Angajamente";
   }
-  return "Documente juridice";
+  if (desc.includes("ofert") || desc.includes("preț") || desc.includes("deviz")) {
+    return "Oferte de preț";
+  }
+  if (desc.includes("certificat") || desc.includes("extras") || desc.includes("autorizați")) {
+    return "Documente juridice";
+  }
+  return "Alte documente";
 }
 
 // Seed all rules as 'pending' so the Eligibility tab always shows all rules,
@@ -1247,6 +1316,30 @@ projectRoutes.delete("/:id/checklist/:itemId", async (c) => {
     and(eq(projectChecklist.id, itemId), eq(projectChecklist.projectId, id))
   );
   return c.json({ ok: true });
+});
+
+// ─── REFRESH CHECKLIST (from guide's document_requirements) ───
+projectRoutes.post("/:id/checklist/refresh", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const id = c.req.param("id");
+
+  const project = await db.query.projects.findFirst({
+    where: and(eq(projects.id, id), eq(projects.organizationId, auth.organizationId!)),
+  });
+  if (!project) return c.json({ error: "Not found" }, 404);
+
+  const lockErr = await requireLock(id, auth.userId);
+  if (lockErr) return c.json({ error: lockErr }, 423);
+
+  // Delete only guide-sourced items (preserve manual items)
+  await db.delete(projectChecklist).where(
+    and(eq(projectChecklist.projectId, id), eq(projectChecklist.source, "ghid"))
+  );
+
+  // Re-populate from guide's AI-extracted document_requirements
+  const count = await populateChecklistFromRules(id, project.folderId, auth.organizationId!);
+
+  return c.json({ ok: true, refreshed: count });
 });
 
 // ─── LOCK: ACQUIRE ───

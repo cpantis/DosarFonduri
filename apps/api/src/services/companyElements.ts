@@ -43,14 +43,11 @@ export async function populateCompanyElements(
   // === ONRC / company direct fields ===
   add("denumire", company.denumire);
   add("cui", company.cui);
-  add("cod_unic_inregistrare", company.cui); // alias
   add("reg_com", company.regCom);
-  add("numar_registru_comert", company.regCom); // alias
   add("euid", company.euid);
   add("forma_juridica", company.formaJuridica);
   add("stare", company.stare);
   add("adresa", company.adresa);
-  add("adresa_sediu", company.adresa); // alias
   add("localitate", company.localitate);
   add("judet", company.judet);
   add("cod_postal", company.codPostal);
@@ -58,10 +55,8 @@ export async function populateCompanyElements(
   add("email", company.email);
   add("website", company.website);
   add("cod_caen", company.caen);
-  add("caen_principal", company.caen); // alias
   add("durata", company.durata);
   add("an_infiintare", company.anInfiintare);
-  add("data_infiintare", company.anInfiintare); // alias (year only)
   add("capital_social", company.capitalSocial);
   add("moneda", company.moneda);
   add("parti_sociale", company.partiSociale);
@@ -73,7 +68,6 @@ export async function populateCompanyElements(
   if (company.anInfiintare) {
     const vechime = new Date().getFullYear() - company.anInfiintare;
     add("vechime_ani", vechime, "calculated");
-    add("vechime_firma", vechime, "calculated"); // alias
   }
 
   // === Associates ===
@@ -91,7 +85,6 @@ export async function populateCompanyElements(
   // === Administrators ===
   if (admins.length > 0) {
     add("reprezentant_legal", admins[0].name, "onrc");
-    add("administrator", admins[0].name, "onrc"); // alias
     add("functie_administrator", admins[0].role, "onrc");
     add("numar_administratori", admins.length, "calculated");
   }
@@ -184,11 +177,9 @@ export async function populateCompanyElements(
 
     add("an_financiar", latest.year, finSource);
     add("cifra_afaceri", f20.cifraAfaceriNeta, finSource);
-    add("cifra_afaceri_neta", f20.cifraAfaceriNeta, finSource); // alias
     add("profit_net", f20.profitNet, finSource);
     add("profit_brut", f20.profitBrut, finSource);
     add("angajati", f30.numarMediuSalariati, finSource);
-    add("numar_mediu_salariati", f30.numarMediuSalariati, finSource); // alias
     add("capitaluri_proprii", f10.capitaluriProprii, finSource);
     add("active_imobilizate", f10.activeImobilizate?.total, finSource);
     add("active_circulante", f10.activeCirculante?.total, finSource);

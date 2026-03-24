@@ -1152,7 +1152,7 @@ export default function TemplateViewerPage() {
                                   background: "rgba(251,191,36,.1)", color: "#d97706",
                                   display: "inline-flex", alignItems: "center", gap: 3,
                                 }}>
-                                  {"\u{1F3AF}"} {sc.criterionName} (max {sc.maxPoints}pt)
+                                  {"🎯"} {sc.criterionName} (max {sc.maxPoints}pt)
                                 </span>
                               ))}
                             </div>

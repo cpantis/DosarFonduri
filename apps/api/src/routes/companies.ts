@@ -56,15 +56,25 @@ async function insertCompanyFromListaFirme(
   const balance = lfData.balance || {};
   const capitalSocial = balance.CapitalSocial || balance.capitalSocial || balance.Capital || undefined;
 
-  // Build raw data with all fields for future reference
+  // Derive status flags from company status text
+  const statusLower = (lfData.status || "").toLowerCase();
+
+  // Build raw data using keys the frontend expects + all extra ListaFirme fields
   const rawData = {
     ...lfData.raw,
-    _lf_vat: lfData.vat,
-    _lf_naceDescription: lfData.naceDescription,
-    _lf_naceSecondary: lfData.naceSecondary,
-    _lf_foundedDate: lfData.foundedDate,
-    _lf_townCode: lfData.townCode,
-    _lf_balance: lfData.balance,
+    source: "listafirme",
+    // Keys the frontend reads directly:
+    caenDesc: lfData.naceDescription || "",
+    activitatiSecundare: lfData.naceSecondary || [],
+    insolventa: statusLower.includes("insolv"),
+    dizolvare: statusLower.includes("dizolv"),
+    lichidare: statusLower.includes("lichid"),
+    restrictii: false,
+    // Extra ListaFirme fields:
+    vat: lfData.vat || "",
+    foundedDate: lfData.foundedDate || "",
+    townCode: lfData.townCode || "",
+    balance: lfData.balance || null,
   };
 
   return db.transaction(async (tx) => {

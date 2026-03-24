@@ -67,7 +67,7 @@ const mapDetail = (d: any) => {
   }));
   return {
     ...d, forma: d.formaJuridica || "SRL",
-    caenDesc: raw.caenDesc || raw.caen_desc || "\u2014",
+    caenDesc: raw.caenDesc || raw.caen_desc || raw.NACEDescription || "\u2014",
     activitatiSecundare: (raw.activitatiSecundare || raw.activitati_secundare || (raw.caenSecundare || []).map((c: string) => ({ cod: c, den: "" }))),
     sediiSecundare: raw.sediiSecundare || raw.sedii_secundare || [],
     insolventa: raw.insolventa ?? false, dizolvare: raw.dizolvare ?? false,
@@ -75,6 +75,8 @@ const mapDetail = (d: any) => {
     titular: raw.titular || null, cenzori: raw.cenzori || null,
     ultimaMentiune: raw.ultimaMentiune || raw.ultima_mentiune || "\u2014",
     natura: d.naturaCapital || null,
+    platitorTVA: raw.vat || raw.VAT || null,
+    dataInfiintare: raw.foundedDate || raw.Date || null,
     situatiiFinanciare, asociatiPF, asociatiPJ, administratori, membriIF,
   };
 };
@@ -428,6 +430,18 @@ export default function CompanyDetailPage() {
                 <div className="cd-info">
                   <div className="cd-info-label">EUID</div>
                   <div className="cd-info-value" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13 }}>{sel.euid}</div>
+                </div>
+              )}
+              {sel.platitorTVA && (
+                <div className="cd-info">
+                  <div className="cd-info-label">Platitor TVA</div>
+                  <div className="cd-info-value">{sel.platitorTVA}</div>
+                </div>
+              )}
+              {sel.dataInfiintare && (
+                <div className="cd-info">
+                  <div className="cd-info-label">Data infiintare</div>
+                  <div className="cd-info-value">{sel.dataInfiintare}</div>
                 </div>
               )}
             </div>

@@ -1259,18 +1259,25 @@ export default function ProjectViewPage() {
 
   const cleanSolomonText = (text: string): string => {
     // Strip internal markup that backend embeds (ELEMENTS_JSON, METADATA_JSON blocks)
+    // Backend format: <!--ELEMENTS_JSON[...]ELEMENTS_JSON--> and <!--METADATA_JSON{...}METADATA_JSON-->
     let cleaned = text
+      // Primary format: <!--ELEMENTS_JSON[...]ELEMENTS_JSON-->
+      .replace(/<!--ELEMENTS_JSON[\s\S]*?ELEMENTS_JSON-->/g, "")
+      .replace(/<!--METADATA_JSON[\s\S]*?METADATA_JSON-->/g, "")
+      // Alternative format: <!--ELEMENTS_JSON-->...<!--/ELEMENTS_JSON-->
       .replace(/<!--ELEMENTS_JSON-->[\s\S]*?<!--\/ELEMENTS_JSON-->/g, "")
       .replace(/<!--METADATA_JSON-->[\s\S]*?<!--\/METADATA_JSON-->/g, "")
-      // Also handle cases where markers appear without proper closing
-      .replace(/<!--ELEMENTS_JSON-->[\s\S]*/g, "")
-      .replace(/<!--METADATA_JSON-->[\s\S]*/g, "")
+      // Handle incomplete/streaming markers (no closing tag yet)
+      .replace(/<!--ELEMENTS_JSON[\s\S]*$/g, "")
+      .replace(/<!--METADATA_JSON[\s\S]*$/g, "")
       // Strip any remaining HTML comment blocks
-      .replace(/<!--[^>]*-->/g, "")
-      // Clean up JSON artifacts that may leak (e.g. ELEMENTS_JSON{...} patterns)
+      .replace(/<!--[\s\S]*?-->/g, "")
+      // Clean up JSON artifacts that may leak
       .replace(/ELEMENTS_JSON\{[\s\S]*?\}/g, "")
       .replace(/METADATA_JSON\{[\s\S]*?\}/g, "")
-      // Strip standalone HTML entities that result from raw JSON in text
+      .replace(/ELEMENTS_JSON\[[\s\S]*?\]/g, "")
+      .replace(/METADATA_JSON\[[\s\S]*?\]/g, "")
+      // Strip standalone HTML entities
       .replace(/&lt;!--[\s\S]*?--&gt;/g, "")
       .replace(/&lt;!--[\s\S]*/g, "")
       .trim();

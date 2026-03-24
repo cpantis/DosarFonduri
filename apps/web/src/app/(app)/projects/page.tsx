@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { apiGet, apiPost } from "@/lib/api";
-import { PageHeader } from "@/components/ui/PageHeader";
+
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { BtnPrimary, BtnSecondary, IconPlus, IconArrowLeft, IconArrowRight, IconCheck } from "@/components/ui/Buttons";
@@ -167,44 +167,45 @@ export default function ProjectsPage() {
 
   return (
     <div className="animate-[fadeIn_.2s_ease-out]">
-      <PageHeader title="Proiecte" subtitle="Dosare de finanțare în lucru">
-        <BtnPrimary icon={<IconPlus />} onClick={openCreate}>Proiect nou</BtnPrimary>
-      </PageHeader>
-
       <div className="max-w-6xl mx-auto px-8 py-6">
-        {/* GAP 17: Filters */}
-        {!loading && projects.length > 0 && (
-          <div className="flex items-center gap-3 mb-4 flex-wrap">
-            <input
-              className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg bg-white outline-none focus:border-blue-300 transition-colors"
-              placeholder="Caută proiect..."
-              value={searchFilter}
-              onChange={e => setSearchFilter(e.target.value)}
-              style={{ width: 200 }}
-            />
-            <div className="flex rounded-lg p-0.5 gap-px bg-slate-100">
-              {[
-                { id: "all", label: "Toate" },
-                { id: "draft", label: "Draft" },
-                { id: "in_progress", label: "În progres" },
-                { id: "review", label: "Review" },
-                { id: "submitted", label: "Depus" },
-                { id: "approved", label: "Aprobat" },
-                { id: "rejected", label: "Respins" },
-              ].map(f => (
-                <button key={f.id}
-                  className={`px-2 py-1 rounded-md text-[11px] font-semibold border-none cursor-pointer transition-all ${statusFilter === f.id ? "bg-blue-600 text-white" : "bg-transparent text-slate-400 hover:text-slate-600"}`}
-                  onClick={() => setStatusFilter(f.id)}
-                >{f.label}</button>
-              ))}
-            </div>
-            <select className="px-2 py-1.5 text-[12px] border border-slate-200 rounded-lg bg-white" value={sortBy} onChange={e => setSortBy(e.target.value as any)}>
-              <option value="date">Sort: Dată</option>
-              <option value="name">Sort: Nume</option>
-              <option value="value">Sort: Valoare</option>
-            </select>
+        {/* Search + filters + action */}
+        <div className="flex items-center gap-3 mb-4 flex-wrap">
+          {!loading && projects.length > 0 && (
+            <>
+              <input
+                className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg bg-white outline-none focus:border-blue-500 transition-colors"
+                placeholder="Caută proiect..."
+                value={searchFilter}
+                onChange={e => setSearchFilter(e.target.value)}
+                style={{ width: 200 }}
+              />
+              <div className="flex rounded-lg p-0.5 gap-px bg-slate-100">
+                {[
+                  { id: "all", label: "Toate" },
+                  { id: "draft", label: "Draft" },
+                  { id: "in_progress", label: "În progres" },
+                  { id: "review", label: "Review" },
+                  { id: "submitted", label: "Depus" },
+                  { id: "approved", label: "Aprobat" },
+                  { id: "rejected", label: "Respins" },
+                ].map(f => (
+                  <button key={f.id}
+                    className={`px-2 py-1 rounded-md text-[11px] font-semibold border-none cursor-pointer transition-all ${statusFilter === f.id ? "bg-blue-600 text-white" : "bg-transparent text-slate-400 hover:text-slate-600"}`}
+                    onClick={() => setStatusFilter(f.id)}
+                  >{f.label}</button>
+                ))}
+              </div>
+              <select className="px-2 py-1.5 text-[12px] border border-slate-200 rounded-lg bg-white" value={sortBy} onChange={e => setSortBy(e.target.value as any)}>
+                <option value="date">Sort: Dată</option>
+                <option value="name">Sort: Nume</option>
+                <option value="value">Sort: Valoare</option>
+              </select>
+            </>
+          )}
+          <div style={{ marginLeft: "auto" }}>
+            <BtnPrimary icon={<IconPlus />} size="lg" onClick={openCreate}>Proiect nou</BtnPrimary>
           </div>
-        )}
+        </div>
 
         {loading ? (
           <div className="space-y-3">

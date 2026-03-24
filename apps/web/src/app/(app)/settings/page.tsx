@@ -325,13 +325,6 @@ export default function SettingsPage() {
         .cfg-select:focus{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.1)}
       `}</style>
 
-      {/* Topbar */}
-      <PageHeader title="Configurări">
-        <BtnPrimary icon={<IconSave />} onClick={handleSave}>
-          {saved ? "Salvat" : "Salvează modificările"}
-        </BtnPrimary>
-      </PageHeader>
-
       <div className="cfg-layout">
         {/* Left nav */}
         <div className="cfg-nav">
@@ -348,6 +341,11 @@ export default function SettingsPage() {
 
         {/* Content */}
         <div className="cfg-content">
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 20 }}>
+            <BtnPrimary icon={<IconSave />} size="lg" onClick={handleSave}>
+              {saved ? "Salvat" : "Salvează modificările"}
+            </BtnPrimary>
+          </div>
 
           {/* ═══ SOLOMON ═══ */}
           {activeSection === "solomon" && (

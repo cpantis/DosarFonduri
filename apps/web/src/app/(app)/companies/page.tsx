@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { isPF, FORME_JURIDICE } from "@/hooks/useFormaJuridica";
 import { apiGet, apiPost, api } from "@/lib/api";
 import { getCaenDescription } from "@/lib/caen";
-import { PageHeader } from "@/components/ui/PageHeader";
+
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { TypeBadge } from "@/components/ui/TypeBadge";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -167,41 +167,42 @@ export default function CompaniesPage() {
         .co-mode-btn.on{background:#ffffff;color:#0f172a;box-shadow:0 1px 3px rgba(0,0,0,.06);font-weight:600}
       `}</style>
 
-      <PageHeader title="Firme" subtitle={`${filtered.length} firme gestionate`}>
-        <BtnPrimary icon={<IconPlus />} onClick={openAdd}>Adaugă firmă</BtnPrimary>
-      </PageHeader>
-
       <div className="max-w-6xl mx-auto px-8 py-6">
-        {/* Search + filter bar */}
-        {!loading && companies.length > 0 && (
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
-            <div style={{ position: "relative", flex: 1, maxWidth: 360 }}>
-              <svg style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", width: 16, height: 16, color: "#94a3b8" }} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-              <input
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder="Caută după denumire, CUI, CAEN..."
-                className="co-search"
-              />
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-              {[
-                { key: "all", label: "Toate" },
-                { key: "activ", label: "Active" },
-                { key: "soc", label: "Societăți" },
-                { key: "pf", label: "PF/II/IF" },
-              ].map(f => (
-                <button
-                  key={f.key}
-                  onClick={() => setFilter(f.key)}
-                  className={`co-filter ${filter === f.key ? "on" : ""}`}
-                >
-                  {f.label}
-                </button>
-              ))}
-            </div>
+        {/* Search + filter bar + action */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+          {!loading && companies.length > 0 && (
+            <>
+              <div style={{ position: "relative", flex: 1, maxWidth: 360 }}>
+                <svg style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", width: 16, height: 16, color: "#94a3b8" }} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                <input
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder="Caută după denumire, CUI, CAEN..."
+                  className="co-search"
+                />
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                {[
+                  { key: "all", label: "Toate" },
+                  { key: "activ", label: "Active" },
+                  { key: "soc", label: "Societăți" },
+                  { key: "pf", label: "PF/II/IF" },
+                ].map(f => (
+                  <button
+                    key={f.key}
+                    onClick={() => setFilter(f.key)}
+                    className={`co-filter ${filter === f.key ? "on" : ""}`}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+          <div style={{ marginLeft: "auto" }}>
+            <BtnPrimary icon={<IconPlus />} size="lg" onClick={openAdd}>Adaugă firmă</BtnPrimary>
           </div>
-        )}
+        </div>
 
         {/* Loading state */}
         {loading && (

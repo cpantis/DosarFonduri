@@ -5,7 +5,7 @@ import { apiGet, apiPost } from "@/lib/api";
 
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { BtnPrimary, BtnSecondary, IconPlus, IconArrowLeft, IconArrowRight, IconCheck } from "@/components/ui/Buttons";
+import { BtnPrimary, BtnOutline, BtnSecondary, IconPlus, IconArrowLeft, IconArrowRight, IconCheck } from "@/components/ui/Buttons";
 import { SkeletonCard } from "@/components/ui/Skeleton";
 
 const pct = (a: number, b: number) => b > 0 ? Math.round((a / b) * 100) : 0;
@@ -203,7 +203,7 @@ export default function ProjectsPage() {
             </>
           )}
           <div style={{ marginLeft: "auto" }}>
-            <BtnPrimary icon={<IconPlus />} size="lg" onClick={openCreate}>Proiect nou</BtnPrimary>
+            <BtnOutline icon={<IconPlus />} size="sm" onClick={openCreate}>Proiect nou</BtnOutline>
           </div>
         </div>
 

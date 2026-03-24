@@ -9,7 +9,7 @@ import { getCaenDescription } from "@/lib/caen";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { TypeBadge } from "@/components/ui/TypeBadge";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { BtnPrimary, BtnSecondary, IconPlus, IconSearch, IconUpload, IconX } from "@/components/ui/Buttons";
+import { BtnPrimary, BtnOutline, BtnSecondary, IconPlus, IconSearch, IconUpload, IconX } from "@/components/ui/Buttons";
 
 export default function CompaniesPage() {
   const router = useRouter();
@@ -200,7 +200,7 @@ export default function CompaniesPage() {
             </>
           )}
           <div style={{ marginLeft: "auto" }}>
-            <BtnPrimary icon={<IconPlus />} size="lg" onClick={openAdd}>Adaugă firmă</BtnPrimary>
+            <BtnOutline icon={<IconPlus />} size="sm" onClick={openAdd}>Adaugă firmă</BtnOutline>
           </div>
         </div>
 

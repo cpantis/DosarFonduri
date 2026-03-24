@@ -1638,8 +1638,8 @@ export default function DocumentsPage() {
 
         /* ─── Upload modal ─── */
         .doc-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; z-index: 100; animation: docFadeIn .2s; }
-        .doc-modal { background: #ffffff; border: 1px solid rgba(226,232,240,.8); border-radius: 12px; width: 520px; max-width: calc(100vw - 40px); padding: 28px; animation: docSlideUp .3s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 8px 40px rgba(0,0,0,.12), 0 1px 3px rgba(0,0,0,.08); }
-        .doc-modal-title { font-size: 15px; font-weight: 800; color: #0f172a; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; }
+        .doc-modal { background: #ffffff; border: 1px solid rgba(226,232,240,.8); border-radius: 18px; width: 520px; max-width: calc(100vw - 40px); padding: 36px; animation: docSlideUp .3s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 24px 64px rgba(0,0,0,.10), 0 1px 3px rgba(0,0,0,.08); }
+        .doc-modal-title { font-size: 17px; font-weight: 800; color: #0f172a; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; letter-spacing: -0.01em; }
         .doc-modal-close { background: none; border: none; color: #94a3b8; cursor: pointer; font-size: 18px; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1); }
         .doc-modal-close:hover { color: #0f172a; background: #f1f5f9; }
         .doc-modal-sub { font-size: 13px; color: #94a3b8; margin-bottom: 20px; }
@@ -1686,10 +1686,10 @@ export default function DocumentsPage() {
         /* Error box */
         .doc-upload-error { padding: 10px 14px; margin-bottom: 12px; border-radius: 8px; background: rgba(220,38,38,.05); border: 1px solid rgba(220,38,38,.15); color: #dc2626; font-size: 13px; display: flex; align-items: center; gap: 8px; animation: docFadeIn .2s ease; }
 
-        .doc-btn-primary { padding: 10px 20px; border-radius: 8px; border: none; background: #2563eb; color: #fff; font-size: 13px; font-weight: 600; font-family: 'Inter', system-ui, sans-serif; cursor: pointer; transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 1px 2px rgba(0,0,0,.05); }
-        .doc-btn-primary:hover:not(:disabled) { background: #1d4ed8; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+        .doc-btn-primary { padding: 11px 24px; border-radius: 10px; border: none; background: #2563eb; color: #fff; font-size: 14px; font-weight: 600; font-family: 'Inter', system-ui, sans-serif; cursor: pointer; transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 1px 3px rgba(37,99,235,.2); min-width: 100px; }
+        .doc-btn-primary:hover:not(:disabled) { background: #1d4ed8; box-shadow: 0 2px 6px rgba(37,99,235,.25); }
         .doc-btn-primary:disabled { opacity: .5; cursor: not-allowed; }
-        .doc-btn-secondary { padding: 10px 20px; border-radius: 8px; border: 1px solid rgba(226,232,240,.8); background: transparent; color: #64748b; font-size: 13px; font-weight: 600; font-family: 'Inter', system-ui, sans-serif; cursor: pointer; transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1); }
+        .doc-btn-secondary { padding: 11px 24px; border-radius: 10px; border: 1px solid rgba(226,232,240,.6); background: transparent; color: #64748b; font-size: 14px; font-weight: 500; font-family: 'Inter', system-ui, sans-serif; cursor: pointer; transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1); min-width: 100px; }
         .doc-btn-secondary:hover { border-color: rgba(226,232,240,1); color: #0f172a; background: #f1f5f9; }
 
         /* ─── Scrollbar ─── */

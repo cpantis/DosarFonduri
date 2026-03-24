@@ -2662,20 +2662,20 @@ export default function ProjectViewPage() {
         .solomon-msg-right .solomon-msg-body{text-align:right}
         .solomon-msg-right .solomon-msg-text{background:rgba(77,139,255,0.06);border-radius:14px 14px 2px 14px;padding:10px 14px;display:inline-block;text-align:left}
         .solomon-msg-left .solomon-msg-text{padding:10px 0}
-        .solomon-msg-text{font-size:15px;line-height:1.5;color:#475569;font-family:'Inter',system-ui,sans-serif}
+        .solomon-msg-text{font-size:14.5px;line-height:1.7;color:#475569;font-family:'Inter',system-ui,sans-serif}
         .solomon-msg-text strong{color:#0f172a;font-weight:600}
         .chat-msg .msg-bold{font-weight:600;color:#0f172a}
 
         /* Solomon Markdown Rich Content */
         .solomon-md-content{display:flex;flex-direction:column;gap:4px}
-        .solomon-md-p{margin:0;padding:0;font-size:15px;line-height:1.5;color:#475569;max-width:640px}
+        .solomon-md-p{margin:0;padding:0;font-size:14.5px;line-height:1.7;color:#475569;max-width:640px}
         .solomon-md-h2{margin:16px 0 6px;padding:0;font-size:16px;font-weight:700;color:#0f172a;line-height:1.4;display:flex;align-items:center;gap:6px;letter-spacing:-0.01em}
         .solomon-md-h3{margin:12px 0 4px;padding:0;font-size:15px;font-weight:600;color:#1e293b;line-height:1.4;display:flex;align-items:center;gap:6px}
         .solomon-md-bold{color:#0f172a;font-weight:600}
         .solomon-md-italic{font-style:italic;color:#64748b}
         .solomon-md-code{background:#f1f5f9;color:#7c3aed;padding:1px 5px;border-radius:4px;font-size:13px;font-family:'JetBrains Mono','SF Mono',monospace}
         .solomon-md-list{margin:4px 0;padding-left:20px;display:flex;flex-direction:column;gap:3px;list-style:none}
-        .solomon-md-list li{position:relative;font-size:15px;line-height:1.5;color:#475569;padding-left:12px}
+        .solomon-md-list li{position:relative;font-size:14.5px;line-height:1.7;color:#475569;padding-left:12px}
         .solomon-md-list li::before{content:'';position:absolute;left:0;top:9px;width:5px;height:5px;border-radius:50%;background:#94a3b8}
         .solomon-md-hr{border:none;height:1px;background:linear-gradient(90deg,transparent,#e2e8f0 20%,#e2e8f0 80%,transparent);margin:12px 0}
         .extraction-cards{margin-top:12px;display:flex;flex-direction:column;gap:8px}

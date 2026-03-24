@@ -1278,13 +1278,13 @@ export default function CompanyDetailPage() {
                 </div>
               )}
 
-              {/* Rules list — only fixed rules (company data), sorted: failed → pending → passed */}
+              {/* Rules list — sorted: failed → pending → passed */}
               {(() => {
                 const statusOrder: Record<string, number> = { failed: 0, pending: 1, not_applicable: 2, passed: 3 };
                 const fixedRules = (preEligResult.rules as any[])
-                  .filter((r: any) => r.type === "fixed")
                   .sort((a: any, b: any) => (statusOrder[a.status] ?? 2) - (statusOrder[b.status] ?? 2));
-                const interpretedCount = (preEligResult.rules as any[]).filter((r: any) => r.type === "interpreted").length;
+                const interpretedCount = preEligResult.summary?.interpreted?.total || 0;
+                const skippedProjectRules = preEligResult.summary?.skippedProjectRules || 0;
 
                 return (
                   <>
@@ -1410,11 +1410,14 @@ export default function CompanyDetailPage() {
                     </div>
 
                     {/* Sub-summary */}
-                    <div style={{ display: "flex", gap: 16, marginTop: 16, fontSize: 12, color: "#64748b", flexWrap: "wrap" }}>
-                      <span>Reguli fixe: {preEligResult.summary.fixed.passed + preEligResult.summary.fixed.failed}/{preEligResult.summary.fixed.total} verificate</span>
-                      {interpretedCount > 0 && (
-                        <span style={{ padding: "2px 10px", borderRadius: 12, background: "rgba(167,139,250,.08)", border: "1px solid rgba(167,139,250,.2)", color: "#7c3aed" }}>
-                          + {interpretedCount} reguli interpretate (necesita proiect pentru evaluare AI)
+                    <div style={{ display: "flex", gap: 10, marginTop: 16, fontSize: 12, color: "#64748b", flexWrap: "wrap", alignItems: "center" }}>
+                      <span>{preEligResult.summary.fixed.passed + preEligResult.summary.fixed.failed}/{preEligResult.summary.fixed.total} reguli verificate din datele firmei</span>
+                      {(interpretedCount > 0 || skippedProjectRules > 0) && (
+                        <span style={{ padding: "2px 10px", borderRadius: 12, background: "#f8fafc", border: "1px solid #e2e8f0", color: "#94a3b8", fontSize: 11 }}>
+                          {[
+                            interpretedCount > 0 ? `${interpretedCount} interpretate` : "",
+                            skippedProjectRules > 0 ? `${skippedProjectRules} de proiect` : "",
+                          ].filter(Boolean).join(" + ")} — se evalueaza in proiect
                         </span>
                       )}
                     </div>

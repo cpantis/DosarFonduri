@@ -201,13 +201,35 @@ export async function checkPreEligibility(
     refLinksByRule.set(link.ruleId, existing);
   }
 
-  // 9. Evaluate rules and build enriched results
+  // 9. Determine which fields are company-relevant (for filtering)
+  // Core companyData keys are always relevant
   const companyDataKeys = new Set(Object.keys(companyData));
+  // Also identify element categories that are company-relevant (not project/investment)
+  const companyRelevantCategories = new Set(["financial", "legal", "beneficiary", "location", "farm", "other"]);
+  // Build set of company-relevant field keys from element definitions
+  const companyRelevantFields = new Set<string>(companyDataKeys);
+  for (const ed of orgElemDefs) {
+    if (!ed.category || companyRelevantCategories.has(ed.category)) {
+      companyRelevantFields.add(ed.elementKey.toLowerCase());
+    }
+  }
+
+  // 10. Evaluate rules — only include rules relevant to company data
   const results: PreEligibilityRule[] = [];
   const allMissingElements: string[] = [];
 
   for (const rule of allRules) {
     const condition = rule.condition as any;
+
+    // Skip interpreted rules entirely (need AI + project context)
+    if (rule.type === "interpreted") continue;
+
+    // Skip fixed rules with no condition (nothing to check)
+    if (!condition?.field) continue;
+
+    // Skip rules whose condition.field is NOT company-relevant
+    const fieldKey = String(condition.field).toLowerCase();
+    if (!companyRelevantFields.has(fieldKey)) continue;
 
     // Build element info for this rule
     const elements: RuleElementInfo[] = [];
@@ -311,8 +333,8 @@ export async function checkPreEligibility(
       }
     }
 
-    // Evaluate rule
-    if (rule.type === "fixed" && condition?.field && companyDataKeys.has(condition.field)) {
+    // Evaluate rule — we already filtered to fixed rules with condition.field
+    if (companyDataKeys.has(condition.field)) {
       const result = evaluateFixedRule(rule, companyData);
 
       // If fixed rule passed but reference table says failed, override to failed
@@ -339,8 +361,11 @@ export async function checkPreEligibility(
         elements,
         refTableResults,
       });
-    } else if (rule.type === "fixed" && condition?.field && !companyDataKeys.has(condition.field)) {
-      // Fixed rule but data missing — pending
+    } else {
+      // Company-relevant field but data not yet available — pending
+      if (!allMissingElements.includes(fieldKey)) {
+        allMissingElements.push(fieldKey);
+      }
       results.push({
         id: rule.id,
         type: "fixed",
@@ -354,27 +379,14 @@ export async function checkPreEligibility(
         elements,
         refTableResults,
       });
-    } else if (rule.type === "interpreted") {
-      // Interpreted rules — show as pending but include element info
-      results.push({
-        id: rule.id,
-        type: "interpreted",
-        description: rule.description,
-        category: rule.category,
-        status: "pending",
-        autoResult: null,
-        notes: "Regulă interpretată — necesită evaluare AI în proiect",
-        condition: rule.condition,
-        sourceDocument: { id: rule.documentId, name: rule.documentName },
-        elements,
-        refTableResults,
-      });
     }
   }
 
-  // 10. Build summary
-  const fixedResults = results.filter(r => r.type === "fixed");
-  const interpResults = results.filter(r => r.type === "interpreted");
+  // 11. Build summary
+  // Count original totals for reporting
+  const totalSessionRules = allRules.length;
+  const interpretedCount = allRules.filter(r => r.type === "interpreted").length;
+  const skippedProjectRules = totalSessionRules - interpretedCount - results.length;
 
   const summary: PreEligibilitySummary = {
     total: results.length,
@@ -383,19 +395,21 @@ export async function checkPreEligibility(
     pending: results.filter(r => r.status === "pending").length,
     notApplicable: results.filter(r => r.status === "not_applicable").length,
     fixed: {
-      total: fixedResults.length,
-      passed: fixedResults.filter(r => r.status === "passed").length,
-      failed: fixedResults.filter(r => r.status === "failed").length,
-      pending: fixedResults.filter(r => r.status === "pending").length,
+      total: results.length,
+      passed: results.filter(r => r.status === "passed").length,
+      failed: results.filter(r => r.status === "failed").length,
+      pending: results.filter(r => r.status === "pending").length,
     },
     interpreted: {
-      total: interpResults.length,
-      passed: interpResults.filter(r => r.status === "passed").length,
-      failed: interpResults.filter(r => r.status === "failed").length,
-      pending: interpResults.filter(r => r.status === "pending").length,
+      total: interpretedCount,
+      passed: 0,
+      failed: 0,
+      pending: interpretedCount,
     },
     missingElements: allMissingElements,
-  };
+    totalSessionRules,
+    skippedProjectRules,
+  } as PreEligibilitySummary;
 
   return { rules: results, summary, companyDataUsed: companyData };
 }

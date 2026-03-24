@@ -904,7 +904,7 @@ companyRoutes.post("/:id/pre-eligibility", async (c) => {
   const id = c.req.param("id");
 
   const body = await c.req.json();
-  const { sessionFolderId, includeInterpreted } = body;
+  const { sessionFolderId } = body;
   if (!sessionFolderId) return c.json({ error: "sessionFolderId obligatoriu" }, 400);
 
   try {
@@ -912,7 +912,6 @@ companyRoutes.post("/:id/pre-eligibility", async (c) => {
       id,
       sessionFolderId,
       auth.organizationId!,
-      { includeInterpreted: !!includeInterpreted },
     );
     return c.json(result);
   } catch (err: any) {

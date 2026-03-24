@@ -5,7 +5,7 @@ import {
 import { eq, and } from "drizzle-orm";
 import {
   buildCompanyData, overlayCompanyElements, getRulesForSession,
-  evaluateFixedRule, evaluateInterpretedRules,
+  evaluateFixedRule,
 } from "./eligibility";
 
 export interface PreEligibilityRule {
@@ -44,7 +44,6 @@ export async function checkPreEligibility(
   companyId: string,
   sessionFolderId: string,
   organizationId: string,
-  options?: { includeInterpreted?: boolean },
 ): Promise<PreEligibilityResult> {
   // 1. Load company
   const company = await db.query.companies.findFirst({
@@ -81,7 +80,18 @@ export async function checkPreEligibility(
   // 6. Get all rules from session guides
   const allRules = await getRulesForSession(sessionFolderId);
 
-  if (allRules.length === 0) {
+  // 7. Filter to company-relevant rules only.
+  // Pre-eligibility checks ONLY rules that can be verified from company data
+  // (legal form, financials, location, age, CAEN, etc.) — not project-specific rules.
+  const companyDataKeys = new Set(Object.keys(companyData));
+  const companyRelevantRules = allRules.filter(r => {
+    if (r.type !== "fixed") return false; // Only fixed rules can be auto-evaluated
+    const condition = r.condition as any;
+    if (!condition || !condition.field) return false;
+    return companyDataKeys.has(condition.field);
+  });
+
+  if (companyRelevantRules.length === 0) {
     return {
       rules: [],
       summary: {
@@ -93,13 +103,10 @@ export async function checkPreEligibility(
     };
   }
 
-  // 7. Evaluate fixed rules
-  const fixedRules = allRules.filter(r => r.type === "fixed");
-  const interpretedRules = allRules.filter(r => r.type === "interpreted");
-
+  // 8. Evaluate only company-relevant fixed rules
   const results: PreEligibilityRule[] = [];
 
-  for (const rule of fixedRules) {
+  for (const rule of companyRelevantRules) {
     const result = evaluateFixedRule(rule, companyData);
     results.push({
       id: rule.id,
@@ -112,47 +119,6 @@ export async function checkPreEligibility(
       condition: rule.condition,
       sourceDocument: { id: rule.documentId, name: rule.documentName },
     });
-  }
-
-  // 8. Optionally evaluate interpreted rules (AI — slower)
-  if (options?.includeInterpreted && interpretedRules.length > 0) {
-    const interpretedResults = await evaluateInterpretedRules(
-      interpretedRules,
-      company,
-      allFinancials,
-      companyData,
-      organizationId,
-    );
-    for (let i = 0; i < interpretedRules.length; i++) {
-      const rule = interpretedRules[i];
-      const result = interpretedResults[i];
-      results.push({
-        id: rule.id,
-        type: "interpreted",
-        description: rule.description,
-        category: rule.category,
-        status: result.status,
-        autoResult: result.autoResult,
-        notes: result.notes,
-        condition: rule.condition,
-        sourceDocument: { id: rule.documentId, name: rule.documentName },
-      });
-    }
-  } else {
-    // Mark interpreted rules as pending (not evaluated)
-    for (const rule of interpretedRules) {
-      results.push({
-        id: rule.id,
-        type: "interpreted",
-        description: rule.description,
-        category: rule.category,
-        status: "pending",
-        autoResult: null,
-        notes: "Regulă interpretată — necesită evaluare AI (activați opțiunea)",
-        condition: rule.condition,
-        sourceDocument: { id: rule.documentId, name: rule.documentName },
-      });
-    }
   }
 
   // 9. Build summary

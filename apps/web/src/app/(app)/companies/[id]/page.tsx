@@ -206,7 +206,7 @@ export default function CompanyDetailPage() {
 
   // Fetch available sessions when tab activates
   useEffect(() => {
-    if (activeTab === "Preeligibilitate" && sessions.length === 0) {
+    if (activeTab === "Eligibilitate solicitant" && sessions.length === 0) {
       apiGet("/api/companies/sessions/list")
         .then((data: any[]) => setSessions(data))
         .catch(() => setSessions([]));
@@ -990,8 +990,8 @@ export default function CompanyDetailPage() {
           </>)}
 
           {/* PRE-ELIGIBILITATE */}
-          {activeTab === "Preeligibilitate" && (<>
-            <SectionTitle>Preeligibilitate</SectionTitle>
+          {activeTab === "Eligibilitate solicitant" && (<>
+            <SectionTitle>Eligibilitate solicitant</SectionTitle>
             <p style={{ fontSize: 13, color: "#64748b", marginBottom: 20, lineHeight: 1.6 }}>
               Verifica rapid daca firma indeplineste criteriile de eligibilitate pentru o sesiune de finantare, fara a crea un proiect.
             </p>
@@ -1019,7 +1019,7 @@ export default function CompanyDetailPage() {
                   onClick={handlePreEligibility}
                   disabled={!selectedSession || preEligLoading}
                 >
-                  {preEligLoading ? "Se verifica..." : "Verifica preeligibilitate"}
+                  {preEligLoading ? "Se verifica..." : "Verifica eligibilitate solicitant"}
                 </BtnPrimary>
               </div>
             </div>
@@ -1116,7 +1116,7 @@ export default function CompanyDetailPage() {
               <EmptyState
                 icon="&#x2714;"
                 title="Selecteaza o sesiune de finantare"
-                description="Alege o sesiune pentru a verifica rapid preeligibilitatea firmei contra regulilor din ghidul de finantare."
+                description="Alege o sesiune pentru a verifica rapid eligibilitatea solicitantului contra regulilor din ghidul de finantare."
               />
             )}
           </>)}

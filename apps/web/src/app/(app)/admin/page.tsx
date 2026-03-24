@@ -641,9 +641,9 @@ export default function AdminPage() {
           className="fixed inset-0 backdrop-blur-sm flex items-center justify-center z-[100] animate-[fadeIn_0.2s] bg-black/40"
           onClick={(e) => e.target === e.currentTarget && setShowInvite(false)}
         >
-          <div className="rounded-xl p-6 w-[460px] animate-[slideUp_0.3s_ease] bg-white border border-slate-200/70">
+          <div className="rounded-[18px] p-8 w-[460px] animate-[slideUp_0.3s_ease] bg-white border border-slate-200/70 shadow-[0_24px_64px_rgba(0,0,0,.10)]">
             <div className="flex justify-between items-center mb-1">
-              <div className="text-xl font-extrabold text-slate-900">Invita consultant</div>
+              <div className="text-[19px] font-extrabold text-slate-900 tracking-[-0.01em]">Invita consultant</div>
               <button
                 className="text-lg cursor-pointer bg-transparent border-none text-slate-400 hover:text-slate-500 transition-colors"
                 onClick={() => setShowInvite(false)}
@@ -664,7 +664,7 @@ export default function AdminPage() {
                 placeholder="consultant.nou@firma.ro"
                 value={inviteEmail}
                 onChange={(e) => setInviteEmail(e.target.value)}
-                className="w-full rounded-lg px-3 py-2 text-sm outline-none border border-slate-200 bg-white text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
+                className="w-full rounded-[10px] px-3.5 py-2.5 text-sm outline-none border border-slate-200 bg-white text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
               />
             </div>
 
@@ -676,7 +676,7 @@ export default function AdminPage() {
                 {Object.entries(ROLES).map(([key, role]) => (
                   <div
                     key={key}
-                    className={`py-3 px-2.5 text-center cursor-pointer transition-all rounded-lg bg-slate-50 border-2 ${
+                    className={`py-3 px-2.5 text-center cursor-pointer transition-all rounded-[10px] bg-slate-50 border-2 ${
                       inviteRole === key
                         ? "border-blue-500"
                         : "border-slate-200 hover:border-slate-300"

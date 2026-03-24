@@ -293,8 +293,8 @@ function mapElements(elements: any[]): ElementItem[] {
         } else if (typeof parsed === "object" && parsed !== null) {
           displayValue = Object.entries(parsed)
             .filter(([, v]) => v != null)
-            .map(([k, v]) => `${k}: ${v}`)
-            .join(", ");
+            .map(([k, v]) => `${k}: ${typeof v === "number" ? new Intl.NumberFormat("ro-RO").format(v) : v}`)
+            .join(" · ");
         }
       } catch {
         // Not JSON — keep as is

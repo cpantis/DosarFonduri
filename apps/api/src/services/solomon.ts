@@ -757,6 +757,12 @@ Nu aștepta să fii întrebat. Un consultant senior:
    - Dacă ai dedus/calculat, confidence 0.7-0.9
    - Dacă ai propus o formulare, confidence 0.5-0.7 (necesită confirmare consultant)
 
+   **VALORI STRUCTURATE (multi-an, tabelar):** Când un element reprezintă date pe mai mulți ani sau categorii (ex: "Cifra de afaceri ultimii 3 ani", "Număr angajați pe ani", "Capitaluri proprii pe ani"), salvează valoarea ca JSON structurat:
+   - Exemplu multi-an: {"2024": "1913806", "2023": "1750000", "2022": "1520000"}
+   - Exemplu tabel: [{"an": "2024", "CA": "1913806", "profit": "125000"}, {"an": "2023", ...}]
+   - IMPORTANT: Datele financiare ale firmei sunt deja listate în secțiunea "Evoluție financiară". Folosește-le DIRECT — nu cere consultantului date pe care le ai deja!
+   - Dacă ai date parțiale (ex: doar 2024, lipsesc 2022-2023), salvează ce ai cu confidence 0.9 pentru datele existente și menționează ce lipsește
+
    **CERERE EXPLICITĂ DE COMPLETARE:** Când consultantul scrie "Completează elementul X (cheie: Y)" sau similar, TREBUIE OBLIGATORIU să:
    (a) Propui o valoare concretă bazată pe datele disponibile (firmă, ghid, conversație anterioară)
    (b) Returnezi ELEMENTS_JSON cu cheia specificată și valoarea propusă

@@ -843,7 +843,9 @@ export default function CompanyDetailPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {anafData.map((s: any, i: number) => (
+                    {anafData.map((s: any, i: number) => {
+                      const rowRaw = (detail?.financials || []).find((f: any) => f.source === "anaf_upload" && f.year === s.an);
+                      return (
                       <tr
                         key={i}
                         className={`clickable ${s.an === viewYear ? "active" : ""}`}
@@ -852,11 +854,12 @@ export default function CompanyDetailPage() {
                         <td style={{ fontWeight: s.an === viewYear ? 700 : 500 }} className="name">{s.an}</td>
                         <td className="right mono">{fmtLei(s.cifraAfaceri)}</td>
                         <td className="right" style={{ fontFamily: "'JetBrains Mono', monospace", fontVariantNumeric: "tabular-nums", color: (s.profitNet ?? 0) >= 0 ? "#059669" : "#dc2626" }}>{fmtLei(s.profitNet)}</td>
-                        <td className="right mono">{fmtLei(raw?.f20?.profitExploatare ?? raw?.f20?.rezultatExploatare)}</td>
+                        <td className="right mono">{fmtLei(rowRaw?.f20?.profitExploatare ?? rowRaw?.f20?.rezultatExploatare)}</td>
                         <td className="right mono">{s.angajati ?? "\u2014"}</td>
                         {isSOC(sel.forma) && <td className="right mono">{fmtLei(s.capitaluriProprii)}</td>}
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

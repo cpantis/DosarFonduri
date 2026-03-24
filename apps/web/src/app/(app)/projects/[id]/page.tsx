@@ -4928,12 +4928,14 @@ export default function ProjectViewPage() {
                               if (el.value) {
                                 openDetailPanel(el.id);
                               } else {
-                                const input = document.querySelector("[data-solomon-input]") as HTMLTextAreaElement;
-                                if (input) {
-                                  const prompt = `Completează câmpul "${el.label}"`;
-                                  setSolomonInput(prompt);
-                                  input.focus();
-                                }
+                                // Send directly — include key so Solomon can emit ELEMENTS_JSON
+                                const prompt = `Completează elementul "${el.label}" (cheie: ${el.key}). Propune o valoare bazată pe datele firmei, ghidul de finanțare și conversația anterioară. Salvează valoarea în ELEMENTS_JSON.`;
+                                setSolomonInput(prompt);
+                                // Auto-send after state update
+                                setTimeout(() => {
+                                  const sendBtn = document.querySelector(".chat-btn.send") as HTMLButtonElement;
+                                  if (sendBtn) sendBtn.click();
+                                }, 50);
                               }
                             }}>
                               <div className="sep-row-left">

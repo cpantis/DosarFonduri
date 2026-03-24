@@ -13,6 +13,12 @@ import { SectionTitle } from "@/components/ui/SectionTitle";
 import { BtnPrimary, BtnSecondary, BtnDanger, IconRefresh, IconUpload, IconTrash } from "@/components/ui/Buttons";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PageHeader } from "@/components/ui/PageHeader";
+import {
+  formatConditionText as rcFormatConditionText,
+  formatFieldName as rcFormatFieldName,
+  formatConditionValue as rcFormatConditionValue,
+  OPERATOR_LABELS as RC_OP_LABELS,
+} from "@/components/shared/RuleCard";
 
 /* === HELPERS === */
 const fmt = (v: string | number | null | undefined) => {
@@ -242,13 +248,21 @@ export default function CompanyDetailPage() {
     const statusLabel: Record<string, string> = { passed: "Indeplinit", failed: "Neindeplinit", pending: "In asteptare", not_applicable: "N/A" };
     const statusSymbol: Record<string, string> = { passed: "\u2713", failed: "\u2717", pending: "?", not_applicable: "—" };
 
-    const rulesHtml = preEligResult.rules.map((rule: any) => {
+    // Sort: failed → pending → passed, only fixed rules
+    const printStatusOrder: Record<string, number> = { failed: 0, pending: 1, not_applicable: 2, passed: 3 };
+    const fixedRulesForPrint = (preEligResult.rules as any[])
+      .filter((r: any) => r.type === "fixed")
+      .sort((a: any, b: any) => (printStatusOrder[a.status] ?? 2) - (printStatusOrder[b.status] ?? 2));
+
+    const rulesHtml = fixedRulesForPrint.map((rule: any) => {
+      const condition = rule.condition;
+      const humanCondition = condition ? rcFormatConditionText(condition) : null;
       const elements = (rule.elements || []).map((el: any) =>
         `<div class="el-row">
           <span class="el-icon ${rule.status}">${el.isMissing ? "?" : statusSymbol[rule.status] || "?"}</span>
-          <span class="el-name">${el.displayName}</span>
-          <span class="el-val">${el.isMissing ? '<em>lipsa</em>' : String(el.value)}</span>
-          ${el.expectedOperator && el.expectedValue != null ? `<span class="el-exp">(${el.expectedOperator} ${el.expectedValue})</span>` : ""}
+          <span class="el-name">${el.displayName !== el.elementKey ? el.displayName : rcFormatFieldName(el.elementKey)}</span>
+          <span class="el-val">${el.isMissing ? '<em>lipsa</em>' : `= ${rcFormatConditionValue(el.value)}`}</span>
+          ${el.expectedOperator && el.expectedValue != null ? `<span class="el-exp">${RC_OP_LABELS[el.expectedOperator] || el.expectedOperator} ${rcFormatConditionValue(el.expectedValue)}</span>` : ""}
         </div>`
       ).join("");
 
@@ -263,12 +277,12 @@ export default function CompanyDetailPage() {
         <div class="rule-card ${rule.status}">
           <div class="rule-header">
             <span class="status-badge ${rule.status}">${statusLabel[rule.status] || rule.status}</span>
-            <span class="rule-type">${rule.type === "fixed" ? "Fixa" : "Interpretata"} &middot; ${rule.category || "general"}</span>
+            <span class="rule-type">${rule.category || "general"}</span>
           </div>
           <div class="rule-desc">${rule.description}</div>
+          ${humanCondition ? `<div class="rule-condition">${rule.status === "passed" ? "✓" : rule.status === "failed" ? "✗" : "?"} ${humanCondition}</div>` : ""}
           ${elements ? `<div class="rule-elements"><div class="section-label">Elemente verificate</div>${elements}</div>` : ""}
           ${refs ? `<div class="rule-refs"><div class="section-label">Tabele de referinta</div>${refs}</div>` : ""}
-          ${rule.notes && !elements && !refs ? `<div class="rule-notes">${rule.notes}</div>` : ""}
         </div>`;
     }).join("");
 
@@ -320,6 +334,7 @@ export default function CompanyDetailPage() {
     .status-badge.not_applicable { background: #f8fafc; color: #94a3b8; }
     .rule-type { font-size: 10px; color: #94a3b8; }
     .rule-desc { padding: 8px 12px; font-size: 11px; }
+    .rule-condition { padding: 6px 12px; font-size: 11px; font-weight: 600; background: #f8fafc; border-top: 1px solid #f1f5f9; }
     .rule-elements, .rule-refs { padding: 6px 12px 8px; border-top: 1px solid #f1f5f9; }
     .section-label { font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; color: #94a3b8; margin-bottom: 4px; }
     .el-row { display: flex; align-items: center; gap: 6px; font-size: 10.5px; margin-bottom: 2px; }
@@ -1193,33 +1208,33 @@ export default function CompanyDetailPage() {
 
             {/* Results */}
             {preEligResult && (<>
-              {/* Summary cards */}
+              {/* Summary cards — only fixed rules (company data) */}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
                 <div className="cd-info" style={{ textAlign: "center" }}>
-                  <div style={{ fontSize: 28, fontWeight: 700, color: "#0f172a" }}>{preEligResult.summary.total}</div>
-                  <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".06em", color: "#94a3b8" }}>Total reguli</div>
+                  <div style={{ fontSize: 28, fontWeight: 700, color: "#0f172a" }}>{preEligResult.summary.fixed.total}</div>
+                  <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".06em", color: "#94a3b8" }}>Reguli verificabile</div>
                 </div>
                 <div className="cd-info" style={{ textAlign: "center", borderColor: "rgba(5,150,105,.2)" }}>
-                  <div style={{ fontSize: 28, fontWeight: 700, color: "#059669" }}>{preEligResult.summary.passed}</div>
+                  <div style={{ fontSize: 28, fontWeight: 700, color: "#059669" }}>{preEligResult.summary.fixed.passed}</div>
                   <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".06em", color: "#059669" }}>Indeplinite</div>
                 </div>
                 <div className="cd-info" style={{ textAlign: "center", borderColor: "rgba(239,68,68,.2)" }}>
-                  <div style={{ fontSize: 28, fontWeight: 700, color: "#dc2626" }}>{preEligResult.summary.failed}</div>
+                  <div style={{ fontSize: 28, fontWeight: 700, color: "#dc2626" }}>{preEligResult.summary.fixed.failed}</div>
                   <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".06em", color: "#dc2626" }}>Neindeplinite</div>
                 </div>
                 <div className="cd-info" style={{ textAlign: "center", borderColor: "rgba(245,158,11,.2)" }}>
-                  <div style={{ fontSize: 28, fontWeight: 700, color: "#d97706" }}>{preEligResult.summary.pending}</div>
-                  <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".06em", color: "#d97706" }}>In asteptare</div>
+                  <div style={{ fontSize: 28, fontWeight: 700, color: "#d97706" }}>{preEligResult.summary.fixed.pending}</div>
+                  <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".06em", color: "#d97706" }}>Date lipsa</div>
                 </div>
               </div>
 
               {/* Progress bar */}
-              {preEligResult.summary.total > 0 && (
+              {preEligResult.summary.fixed.total > 0 && (
                 <div style={{ marginBottom: 20 }}>
                   <div style={{ display: "flex", height: 8, borderRadius: 4, overflow: "hidden", background: "#f1f5f9" }}>
-                    <div style={{ width: `${(preEligResult.summary.passed / preEligResult.summary.total) * 100}%`, background: "#059669", transition: "width .3s" }} />
-                    <div style={{ width: `${(preEligResult.summary.failed / preEligResult.summary.total) * 100}%`, background: "#dc2626", transition: "width .3s" }} />
-                    <div style={{ width: `${(preEligResult.summary.pending / preEligResult.summary.total) * 100}%`, background: "#d97706", transition: "width .3s" }} />
+                    <div style={{ width: `${(preEligResult.summary.fixed.passed / preEligResult.summary.fixed.total) * 100}%`, background: "#059669", transition: "width .3s" }} />
+                    <div style={{ width: `${(preEligResult.summary.fixed.failed / preEligResult.summary.fixed.total) * 100}%`, background: "#dc2626", transition: "width .3s" }} />
+                    <div style={{ width: `${(preEligResult.summary.fixed.pending / preEligResult.summary.fixed.total) * 100}%`, background: "#d97706", transition: "width .3s" }} />
                   </div>
                 </div>
               )}
@@ -1263,101 +1278,149 @@ export default function CompanyDetailPage() {
                 </div>
               )}
 
-              {/* Rules list */}
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {preEligResult.rules.map((rule: any, i: number) => {
-                  const statusColors: Record<string, { bg: string; text: string; dot: string; border: string }> = {
-                    passed: { bg: "rgba(5,150,105,.04)", text: "#059669", dot: "#059669", border: "rgba(5,150,105,.2)" },
-                    failed: { bg: "rgba(239,68,68,.04)", text: "#dc2626", dot: "#dc2626", border: "rgba(239,68,68,.2)" },
-                    pending: { bg: "rgba(245,158,11,.04)", text: "#d97706", dot: "#d97706", border: "rgba(245,158,11,.2)" },
-                    not_applicable: { bg: "rgba(148,163,184,.04)", text: "#94a3b8", dot: "#94a3b8", border: "rgba(148,163,184,.2)" },
-                  };
-                  const statusLabels: Record<string, string> = { passed: "Indeplinit", failed: "Neindeplinit", pending: "In asteptare", not_applicable: "N/A" };
-                  const sc = statusColors[rule.status] || statusColors.pending;
-                  const elements = rule.elements || [];
-                  const refResults = rule.refTableResults || [];
-                  const typeLabel = rule.type === "fixed" ? "Fixa" : "Interpretata";
+              {/* Rules list — only fixed rules (company data), sorted: failed → pending → passed */}
+              {(() => {
+                const statusOrder: Record<string, number> = { failed: 0, pending: 1, not_applicable: 2, passed: 3 };
+                const fixedRules = (preEligResult.rules as any[])
+                  .filter((r: any) => r.type === "fixed")
+                  .sort((a: any, b: any) => (statusOrder[a.status] ?? 2) - (statusOrder[b.status] ?? 2));
+                const interpretedCount = (preEligResult.rules as any[]).filter((r: any) => r.type === "interpreted").length;
 
-                  return (
-                    <div key={rule.id || i} className="cd-card" style={{ padding: 0, borderLeft: `3px solid ${sc.dot}`, overflow: "hidden" }}>
-                      {/* Rule header */}
-                      <div style={{ padding: "12px 16px", display: "flex", alignItems: "flex-start", gap: 12, background: sc.bg }}>
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 20, background: sc.bg, color: sc.text, border: `1px solid ${sc.border}`, flexShrink: 0, marginTop: 1 }}>
-                          <span style={{ width: 6, height: 6, borderRadius: "50%", background: sc.dot }} />
-                          {statusLabels[rule.status] || rule.status}
+                return (
+                  <>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      {fixedRules.map((rule: any, i: number) => {
+                        const statusColors: Record<string, { bg: string; text: string; dot: string; border: string }> = {
+                          passed: { bg: "rgba(5,150,105,.04)", text: "#059669", dot: "#059669", border: "rgba(5,150,105,.2)" },
+                          failed: { bg: "rgba(239,68,68,.04)", text: "#dc2626", dot: "#dc2626", border: "rgba(239,68,68,.2)" },
+                          pending: { bg: "rgba(245,158,11,.04)", text: "#d97706", dot: "#d97706", border: "rgba(245,158,11,.2)" },
+                          not_applicable: { bg: "rgba(148,163,184,.04)", text: "#94a3b8", dot: "#94a3b8", border: "rgba(148,163,184,.2)" },
+                        };
+                        const statusLabels: Record<string, string> = { passed: "Indeplinit", failed: "Neindeplinit", pending: "In asteptare", not_applicable: "N/A" };
+                        const sc = statusColors[rule.status] || statusColors.pending;
+                        const elements = rule.elements || [];
+                        const refResults = rule.refTableResults || [];
+                        const condition = rule.condition;
+                        const humanCondition = condition ? rcFormatConditionText(condition) : null;
+
+                        return (
+                          <div key={rule.id || i} className="cd-card" style={{ padding: 0, borderLeft: `3px solid ${sc.dot}`, overflow: "hidden" }}>
+                            {/* Rule header */}
+                            <div style={{ padding: "12px 16px", display: "flex", alignItems: "flex-start", gap: 12, background: sc.bg }}>
+                              <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 20, background: sc.bg, color: sc.text, border: `1px solid ${sc.border}`, flexShrink: 0, marginTop: 1 }}>
+                                <span style={{ width: 6, height: 6, borderRadius: "50%", background: sc.dot }} />
+                                {statusLabels[rule.status] || rule.status}
+                              </span>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: 13, color: "#0f172a", lineHeight: 1.5 }}>{rule.description}</div>
+                                {rule.category && (
+                                  <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
+                                    {rule.category}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Human-readable condition + element values */}
+                            {(humanCondition || elements.length > 0) && (
+                              <div style={{ padding: "10px 16px", borderTop: "1px solid #f1f5f9" }}>
+                                {/* Condition in natural language */}
+                                {humanCondition && (
+                                  <div style={{
+                                    display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderRadius: 8,
+                                    background: rule.status === "passed" ? "rgba(5,150,105,.04)" : rule.status === "failed" ? "rgba(239,68,68,.04)" : "rgba(245,158,11,.04)",
+                                    border: `1px solid ${rule.status === "passed" ? "rgba(5,150,105,.15)" : rule.status === "failed" ? "rgba(239,68,68,.15)" : "rgba(245,158,11,.15)"}`,
+                                    marginBottom: elements.length > 0 ? 10 : 0,
+                                  }}>
+                                    <span style={{ fontSize: 14, flexShrink: 0 }}>{rule.status === "passed" ? "✓" : rule.status === "failed" ? "✗" : "?"}</span>
+                                    <span style={{ fontSize: 13, fontWeight: 600, color: "#0f172a" }}>{humanCondition}</span>
+                                  </div>
+                                )}
+                                {/* Element values */}
+                                {elements.length > 0 && (
+                                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                                    {elements.map((el: any, j: number) => (
+                                      <div key={j} style={{
+                                        display: "flex", alignItems: "center", gap: 10, fontSize: 12,
+                                        padding: "6px 10px", borderRadius: 8, background: "#f8fafc",
+                                      }}>
+                                        <span style={{
+                                          width: 18, height: 18, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+                                          fontSize: 10, flexShrink: 0, fontWeight: 700,
+                                          background: el.isMissing ? "rgba(245,158,11,.12)" : rule.status === "passed" ? "rgba(5,150,105,.12)" : "rgba(239,68,68,.12)",
+                                          color: el.isMissing ? "#d97706" : rule.status === "passed" ? "#059669" : "#dc2626",
+                                        }}>
+                                          {el.isMissing ? "?" : rule.status === "passed" ? "\u2713" : "\u2717"}
+                                        </span>
+                                        <span style={{ color: "#475569", fontWeight: 500 }}>
+                                          {el.displayName !== el.elementKey ? el.displayName : rcFormatFieldName(el.elementKey)}
+                                        </span>
+                                        {!el.isMissing ? (
+                                          <span style={{
+                                            fontFamily: "'JetBrains Mono', monospace", fontSize: 12, fontWeight: 600,
+                                            padding: "2px 10px", borderRadius: 6,
+                                            background: rule.status === "passed" ? "rgba(5,150,105,.08)" : "rgba(239,68,68,.06)",
+                                            color: rule.status === "passed" ? "#059669" : "#dc2626",
+                                            border: `1px solid ${rule.status === "passed" ? "rgba(5,150,105,.2)" : "rgba(239,68,68,.15)"}`,
+                                          }}>
+                                            = {rcFormatConditionValue(el.value)}
+                                          </span>
+                                        ) : (
+                                          <span style={{
+                                            fontSize: 11, fontStyle: "italic", padding: "2px 10px", borderRadius: 6,
+                                            background: "rgba(245,158,11,.08)", color: "#d97706",
+                                            border: "1px solid rgba(245,158,11,.2)",
+                                          }}>
+                                            lipsa
+                                          </span>
+                                        )}
+                                        {/* Show expected condition in human-readable form */}
+                                        {el.expectedOperator && el.expectedValue !== null && el.expectedValue !== undefined && (
+                                          <span style={{ fontSize: 11, color: "#94a3b8", marginLeft: "auto" }}>
+                                            {RC_OP_LABELS[el.expectedOperator] || el.expectedOperator}{" "}
+                                            {rcFormatConditionValue(el.expectedValue)}
+                                          </span>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Reference table results */}
+                            {refResults.length > 0 && (
+                              <div style={{ padding: "10px 16px", borderTop: "1px solid #f1f5f9" }}>
+                                <div style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".06em", color: "#94a3b8", marginBottom: 6 }}>Tabele de referinta</div>
+                                {refResults.map((ref: any, k: number) => {
+                                  const refStatusColor = ref.status === "passed" ? "#059669" : ref.status === "failed" ? "#dc2626" : ref.status === "warning" ? "#d97706" : "#94a3b8";
+                                  return (
+                                    <div key={k} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, marginBottom: 3 }}>
+                                      <span style={{ width: 6, height: 6, borderRadius: "50%", background: refStatusColor, flexShrink: 0 }} />
+                                      <span style={{ color: "#475569" }}>{ref.tableName}</span>
+                                      <span style={{ color: "#94a3b8", fontSize: 11 }}>&mdash; {ref.message}</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Sub-summary */}
+                    <div style={{ display: "flex", gap: 16, marginTop: 16, fontSize: 12, color: "#64748b", flexWrap: "wrap" }}>
+                      <span>Reguli fixe: {preEligResult.summary.fixed.passed + preEligResult.summary.fixed.failed}/{preEligResult.summary.fixed.total} verificate</span>
+                      {interpretedCount > 0 && (
+                        <span style={{ padding: "2px 10px", borderRadius: 12, background: "rgba(167,139,250,.08)", border: "1px solid rgba(167,139,250,.2)", color: "#7c3aed" }}>
+                          + {interpretedCount} reguli interpretate (necesita proiect pentru evaluare AI)
                         </span>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 13, color: "#0f172a", lineHeight: 1.5 }}>{rule.description}</div>
-                          <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
-                            {typeLabel} &middot; {rule.category || "general"}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Elements used */}
-                      {elements.length > 0 && (
-                        <div style={{ padding: "10px 16px", borderTop: "1px solid #f1f5f9" }}>
-                          <div style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".06em", color: "#94a3b8", marginBottom: 6 }}>Elemente verificate</div>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                            {elements.map((el: any, j: number) => (
-                              <div key={j} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
-                                <span style={{ width: 14, height: 14, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, flexShrink: 0, background: el.isMissing ? "rgba(245,158,11,.1)" : rule.status === "passed" ? "rgba(5,150,105,.1)" : "rgba(239,68,68,.1)", color: el.isMissing ? "#d97706" : rule.status === "passed" ? "#059669" : "#dc2626" }}>
-                                  {el.isMissing ? "?" : rule.status === "passed" ? "\u2713" : "\u2717"}
-                                </span>
-                                <span style={{ color: "#475569", fontWeight: 500 }}>{el.displayName}</span>
-                                {!el.isMissing ? (
-                                  <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, padding: "1px 6px", borderRadius: 4, background: "#f1f5f9", color: "#334155" }}>
-                                    {String(el.value)}
-                                  </span>
-                                ) : (
-                                  <span style={{ fontSize: 11, color: "#d97706", fontStyle: "italic" }}>lipsa</span>
-                                )}
-                                {el.expectedOperator && el.expectedValue !== null && el.expectedValue !== undefined && (
-                                  <span style={{ fontSize: 11, color: "#94a3b8" }}>
-                                    ({el.expectedOperator} {String(el.expectedValue)})
-                                  </span>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Reference table results */}
-                      {refResults.length > 0 && (
-                        <div style={{ padding: "10px 16px", borderTop: "1px solid #f1f5f9" }}>
-                          <div style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".06em", color: "#94a3b8", marginBottom: 6 }}>Tabele de referinta</div>
-                          {refResults.map((ref: any, k: number) => {
-                            const refStatusColor = ref.status === "passed" ? "#059669" : ref.status === "failed" ? "#dc2626" : ref.status === "warning" ? "#d97706" : "#94a3b8";
-                            return (
-                              <div key={k} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, marginBottom: 3 }}>
-                                <span style={{ width: 6, height: 6, borderRadius: "50%", background: refStatusColor, flexShrink: 0 }} />
-                                <span style={{ color: "#475569" }}>{ref.tableName}</span>
-                                <span style={{ color: "#94a3b8", fontSize: 11 }}>&mdash; {ref.message}</span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-
-                      {/* Notes */}
-                      {rule.notes && elements.length === 0 && refResults.length === 0 && (
-                        <div style={{ padding: "8px 16px", borderTop: "1px solid #f1f5f9", fontSize: 12, color: "#64748b" }}>
-                          {rule.notes}
-                        </div>
                       )}
                     </div>
-                  );
-                })}
-              </div>
-
-              {/* Sub-summary */}
-              <div style={{ display: "flex", gap: 16, marginTop: 16, fontSize: 12, color: "#64748b", flexWrap: "wrap" }}>
-                <span>Reguli fixe: {preEligResult.summary.fixed.passed + preEligResult.summary.fixed.failed}/{preEligResult.summary.fixed.total} verificate</span>
-                {preEligResult.summary.interpreted.total > 0 && (
-                  <span>Reguli interpretate: {preEligResult.summary.interpreted.total} (necesita proiect)</span>
-                )}
-              </div>
+                  </>
+                );
+              })()}
             </>)}
 
             {/* Empty state when no check done yet */}

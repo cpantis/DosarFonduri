@@ -159,12 +159,12 @@ export default function CompaniesPage() {
         .co-step-bar{display:flex;align-items:center;gap:8px;font-size:11px;color:#94a3b8;padding:10px 16px;border-radius:8px;background:#f8fafc;margin-bottom:20px}
         .co-step-bar .arrow{color:#cbd5e1}
         .co-modal-overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:100;background:rgba(0,0,0,.35);backdrop-filter:blur(4px)}
-        .co-modal{background:#ffffff;border-radius:16px;width:560px;max-height:85vh;overflow-y:auto;padding:32px;border:1px solid rgba(226,232,240,.8);box-shadow:0 20px 60px rgba(0,0,0,.08);animation:fadeUp .2s ease-out}
+        .co-modal{background:#ffffff;border-radius:18px;width:560px;max-height:85vh;overflow-y:auto;padding:36px;border:1px solid rgba(226,232,240,.8);box-shadow:0 24px 64px rgba(0,0,0,.10);animation:fadeUp .2s ease-out}
         @keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
         @keyframes statusPulse{0%,100%{opacity:1}50%{opacity:.3}}
         .co-mode-toggle{display:flex;gap:4px;padding:4px;background:#f1f5f9;border-radius:10px;margin-bottom:24px}
-        .co-mode-btn{flex:1;padding:10px 12px;font-size:13px;font-weight:500;border-radius:8px;border:none;cursor:pointer;transition:all .15s;background:transparent;color:#64748b}
-        .co-mode-btn.on{background:#ffffff;color:#0f172a;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+        .co-mode-btn{flex:1;padding:11px 12px;font-size:14px;font-weight:500;border-radius:8px;border:none;cursor:pointer;transition:all .15s;background:transparent;color:#64748b}
+        .co-mode-btn.on{background:#ffffff;color:#0f172a;box-shadow:0 1px 3px rgba(0,0,0,.06);font-weight:600}
       `}</style>
 
       <PageHeader title="Firme" subtitle={`${filtered.length} firme gestionate`}>
@@ -320,7 +320,7 @@ export default function CompaniesPage() {
         <div className="co-modal-overlay" onClick={e => { if (e.target === e.currentTarget) setShowAdd(false); }}>
           <div className="co-modal">
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
-              <h2 style={{ fontSize: 18, fontWeight: 700, color: "#0f172a" }}>Adaugă firmă</h2>
+              <h2 style={{ fontSize: 19, fontWeight: 700, color: "#0f172a", letterSpacing: "-0.01em" }}>Adaugă firmă</h2>
               <button
                 onClick={() => setShowAdd(false)}
                 style={{ width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 8, border: "none", background: "transparent", cursor: "pointer", color: "#94a3b8", transition: "all .15s" }}
@@ -344,7 +344,7 @@ export default function CompaniesPage() {
               <div style={{ display: "flex", gap: 10, marginBottom: 12, position: "relative" }}>
                 <input
                   style={{
-                    flex: 1, borderRadius: 8, padding: "10px 14px", fontSize: 13,
+                    flex: 1, borderRadius: 10, padding: "11px 14px", fontSize: 14,
                     fontFamily: "'JetBrains Mono', monospace",
                     outline: "none", background: "#ffffff", color: "#0f172a",
                     border: `1px solid ${cuiRes && cuiRes !== "error" ? "#34d399" : cuiRes === "error" ? "#f87171" : "rgba(226,232,240,.8)"}`,
@@ -354,8 +354,6 @@ export default function CompaniesPage() {
                   value={cui}
                   onChange={e => { setCui(e.target.value); setCuiRes(null); searchCUI(e.target.value); }}
                   onKeyDown={e => e.key === "Enter" && checkCui()}
-                  onFocus={e => { if (!cuiRes) e.currentTarget.style.borderColor = "#2563eb"; }}
-                  onBlur={e => { if (!cuiRes) e.currentTarget.style.borderColor = "rgba(226,232,240,.8)"; }}
                 />
                 <BtnPrimary icon={<IconSearch />} onClick={checkCui} disabled={cuiLoad || cui.replace(/\D/g, "").length < 4}>
                   {cuiLoad ? "Se caută..." : "Adaugă"}
@@ -422,7 +420,7 @@ export default function CompaniesPage() {
                 ))}
               </div>
 
-              <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600, marginTop: 20, marginBottom: 10, color: "#94a3b8" }}>Societăți comerciale</div>
+              <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700, marginTop: 20, marginBottom: 12, color: "#94a3b8" }}>Societăți comerciale</div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 24 }}>
                 {FORME_JURIDICE.filter(f => f.group === "SOC").map(f => (
                   <div key={f.cod}
@@ -435,7 +433,7 @@ export default function CompaniesPage() {
                 ))}
               </div>
 
-              <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600, marginTop: 20, marginBottom: 10, color: "#94a3b8" }}>Persoane fizice / Întreprinderi</div>
+              <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700, marginTop: 20, marginBottom: 12, color: "#94a3b8" }}>Persoane fizice / Întreprinderi</div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 24 }}>
                 {FORME_JURIDICE.filter(f => f.group === "PF").map(f => (
                   <div key={f.cod}

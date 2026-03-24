@@ -149,9 +149,6 @@ export function Sidebar() {
     return pathname === href || pathname.startsWith(href + "/");
   };
 
-  const cabinetName = organization?.name || "Cabinet";
-  const initials = cabinetName.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase();
-
   return (
     <>
       {/* Mobile hamburger toggle */}
@@ -218,38 +215,6 @@ export function Sidebar() {
           )}
         </div>
       </div>
-
-      {/* Cabinet card — hidden when collapsed */}
-      {!isCollapsed && (
-        <div style={{ padding: "0 16px 12px" }}>
-          <div style={{
-            background: "#f8f9fb", borderRadius: 8, padding: 12,
-            border: "1px solid #e2e8f0",
-          }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{
-                width: 32, height: 32, borderRadius: 8, flexShrink: 0,
-                background: "rgba(77,139,255,.15)", display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 11, fontWeight: 700, color: "#4d8bff",
-              }}>{initials}</div>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.14em", color: "#94a3b8", marginBottom: 2 }}>Cabinet activ</div>
-                <div style={{ color: "#0f172a", fontSize: 13, fontWeight: 500, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cabinetName}</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-      {/* Collapsed: just the cabinet initials */}
-      {isCollapsed && (
-        <div style={{ display: "flex", justifyContent: "center", padding: "0 0 8px" }} title={cabinetName}>
-          <div style={{
-            width: 32, height: 32, borderRadius: 8,
-            background: "rgba(77,139,255,.15)", display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 11, fontWeight: 700, color: "#4d8bff",
-          }}>{initials}</div>
-        </div>
-      )}
 
       {/* Navigation */}
       <nav style={{ flex: 1, overflowY: "auto", padding: isCollapsed ? "4px 0" : "4px 8px" }}>

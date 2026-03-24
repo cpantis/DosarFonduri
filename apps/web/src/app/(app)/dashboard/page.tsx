@@ -3,7 +3,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { apiGet } from "@/lib/api";
-import { PageHeader } from "@/components/ui/PageHeader";
+
 import { StatCard } from "@/components/ui/StatCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SectionTitle } from "@/components/ui/SectionTitle";
@@ -68,8 +68,13 @@ export default function DashboardPage() {
 
   return (
     <div className="animate-[fadeIn_.2s_ease-out]">
-      <PageHeader title={`Bun venit, ${userName}`} subtitle={`${cabinetName} · Panou de control`} />
-      <div className="max-w-6xl mx-auto px-8 py-8">
+      <div className="max-w-6xl mx-auto px-8 pt-10 pb-8">
+        <div style={{ marginBottom: 28 }}>
+          <h1 className="text-[20px] font-semibold text-slate-800 tracking-tight" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
+            Bun venit, {userName}
+          </h1>
+          <p className="text-[13px] text-slate-400 mt-1">{cabinetName} &middot; Panou de control</p>
+        </div>
         {error && (
           <div className="mb-4 p-4 rounded-xl border border-red-300/60 bg-red-50/30" style={{ color: "var(--accent-red)" }}>
             <span className="font-medium">Eroare: </span>{error}

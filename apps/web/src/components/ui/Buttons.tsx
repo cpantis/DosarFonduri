@@ -39,6 +39,19 @@ export function BtnSecondary({ children, icon, size = "md", className = "", ...p
   );
 }
 
+export function BtnOutline({ children, icon, size = "md", className = "", ...props }: BtnProps) {
+  const sz = SIZE_MAP[size];
+  return (
+    <button
+      {...props}
+      className={`bg-white border border-slate-200 hover:border-blue-300 hover:bg-blue-50/40 text-blue-600 font-semibold tracking-[0.01em] transition-all inline-flex items-center justify-center whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed ${sz} ${className}`}
+    >
+      {icon && <span className="shrink-0 [&>svg]:w-[15px] [&>svg]:h-[15px]">{icon}</span>}
+      {children}
+    </button>
+  );
+}
+
 export function BtnDanger({ children, icon, size = "md", className = "", ...props }: BtnProps) {
   const sz = SIZE_MAP[size];
   return (

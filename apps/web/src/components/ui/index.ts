@@ -14,5 +14,5 @@ export { SectionTitle } from "./SectionTitle";
 export { DataTable } from "./DataTable";
 export { Tabs } from "./Tabs";
 export { InfoCard } from "./InfoCard";
-export { BtnPrimary, BtnSecondary, BtnDanger } from "./Buttons";
+export { BtnPrimary, BtnSecondary, BtnOutline, BtnDanger } from "./Buttons";
 export { Skeleton, SkeletonText, SkeletonCard, SkeletonStatCard, SkeletonTable, SkeletonPage } from "./Skeleton";

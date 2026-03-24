@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from "react";
 import { apiGet, apiPut, apiPost, apiDelete } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { BtnPrimary, BtnSecondary, BtnDanger, IconSave, IconRefresh, IconZap, IconPlus, IconEdit, IconTrash } from "@/components/ui/Buttons";
+import { BtnPrimary, BtnOutline, BtnSecondary, BtnDanger, IconSave, IconRefresh, IconZap, IconPlus, IconEdit, IconTrash } from "@/components/ui/Buttons";
 import { useToast } from "@/components/shared/Toast";
 
 // ─── Types ───
@@ -342,9 +342,9 @@ export default function SettingsPage() {
         {/* Content */}
         <div className="cfg-content">
           <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 20 }}>
-            <BtnPrimary icon={<IconSave />} size="lg" onClick={handleSave}>
+            <BtnOutline icon={<IconSave />} size="sm" onClick={handleSave}>
               {saved ? "Salvat" : "Salvează modificările"}
-            </BtnPrimary>
+            </BtnOutline>
           </div>
 
           {/* ═══ SOLOMON ═══ */}

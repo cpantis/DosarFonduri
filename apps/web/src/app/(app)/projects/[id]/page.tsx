@@ -2727,7 +2727,11 @@ export default function ProjectViewPage() {
         .sep-category-group{margin-bottom:8px}
         .sep-category-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#94a3b8;padding:10px 8px 4px;font-family:'Inter',system-ui,sans-serif}
         .sep-row{display:flex;align-items:flex-start;justify-content:space-between;padding:8px 8px;border-radius:8px;transition:background .1s}
+        .sep-row.clickable{cursor:pointer}
         .sep-row:hover{background:rgba(0,0,0,.03)}
+        .sep-row.clickable:hover{background:rgba(37,99,235,.04)}
+        .sep-row-arrow{color:#94a3b8;font-size:18px;line-height:1;flex-shrink:0;margin-top:2px;transition:color .1s}
+        .sep-row.clickable:hover .sep-row-arrow{color:#2563eb}
         .sep-row-left{display:flex;align-items:flex-start;gap:8px;flex:1;min-width:0}
         .sep-row-icon{font-size:12px;flex-shrink:0;width:16px;text-align:center;margin-top:1px}
         .sep-row-icon.confirmat{color:#059669}
@@ -4920,7 +4924,18 @@ export default function ProjectViewPage() {
                         <div key={group.cat} className="sep-category-group">
                           <div className="sep-category-title">{group.label}</div>
                           {group.items.map(el => (
-                            <div key={el.id} className={`sep-row ${el.status}`}>
+                            <div key={el.id} className={`sep-row ${el.status} clickable`} onClick={() => {
+                              if (el.value) {
+                                openDetailPanel(el.id);
+                              } else {
+                                const input = document.querySelector("[data-solomon-input]") as HTMLTextAreaElement;
+                                if (input) {
+                                  const prompt = `Completează câmpul "${el.label}"`;
+                                  setSolomonInput(prompt);
+                                  input.focus();
+                                }
+                              }
+                            }}>
                               <div className="sep-row-left">
                                 <span className={`sep-row-icon ${el.status}`}>
                                   {el.status === "confirmat" ? "\u2713" : el.status === "propus_ai" ? "\u26A0" : el.status === "conflict" ? "\u26A1" : "\u25CB"}
@@ -4934,6 +4949,7 @@ export default function ProjectViewPage() {
                                   )}
                                 </div>
                               </div>
+                              {el.value && <span className="sep-row-arrow">&rsaquo;</span>}
                             </div>
                           ))}
                         </div>

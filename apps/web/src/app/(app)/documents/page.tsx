@@ -100,14 +100,14 @@ interface DocItem {
    CONSTANTS
    ══════════════════════════════════════════ */
 
-const TYPE_ICONS: Record<string, string> = { PDF: "\u{1F4D5}", DOCX: "\u{1F4D8}", XLSX: "\u{1F4D7}", DOC: "\u{1F4D8}", PNG: "\u{1F5BC}", JPG: "\u{1F5BC}" };
+const TYPE_ICONS: Record<string, string> = { PDF: "📕", DOCX: "📘", XLSX: "📗", DOC: "📘", PNG: "🖼", JPG: "🖼" };
 
 const STATUS_MAP: Record<string, { label: string; color: string; bg: string; icon: string }> = {
   procesat: { label: "Procesat AI", color: "#34d399", bg: "rgba(52,211,153,.1)", icon: "\u2713" },
   neprocesat: { label: "Neprocesat", color: "#64748b", bg: "#f8fafc", icon: "\u23F3" },
   procesare: { label: "Procesare AI...", color: "#fbbf24", bg: "rgba(251,191,36,.1)", icon: "\u2699" },
-  template: { label: "Template", color: "#4d8bff", bg: "rgba(77,139,255,.1)", icon: "\u{1F4DD}" },
-  "referință": { label: "Referință", color: "#a78bfa", bg: "rgba(167,139,250,.1)", icon: "\u{1F4CC}" },
+  template: { label: "Template", color: "#4d8bff", bg: "rgba(77,139,255,.1)", icon: "📝" },
+  "referință": { label: "Referință", color: "#a78bfa", bg: "rgba(167,139,250,.1)", icon: "📌" },
   eroare: { label: "Eroare", color: "#f87171", bg: "rgba(248,113,113,.1)", icon: "\u26A0" },
 };
 
@@ -139,11 +139,11 @@ const DOCUMENT_TYPE_LABELS: Record<string, string> = {
 };
 
 const NODE_ICONS: Record<string, string> = {
-  ghiduri: "\u{1F4D6}",
-  templateuri: "\u{1F4DD}",
-  clienti_prospecti: "\u{1F50D}",
+  ghiduri: "📖",
+  templateuri: "📝",
+  clienti_prospecti: "🔍",
   clienti_finali: "\u2705",
-  biblioteca: "\u{1F4DA}",
+  biblioteca: "📚",
 };
 
 const NODE_DOTS: Record<string, { size: number; color: string }> = {
@@ -743,7 +743,7 @@ export default function DocumentsPage() {
           ) : icon ? (
             <span className="doc-tree-icon">{icon}</span>
           ) : (
-            <span className="doc-tree-icon">{isExpanded ? "\u{1F4C2}" : "\u{1F4C1}"}</span>
+            <span className="doc-tree-icon">{isExpanded ? "📂" : "📁"}</span>
           )}
 
           {isRenaming ? (
@@ -778,7 +778,7 @@ export default function DocumentsPage() {
   const treePanel = (
     <div className="doc-tree-panel">
       <div className="doc-tree-header">
-        <span className="doc-tree-header-icon">{"\u{1F4C2}"}</span>
+        <span className="doc-tree-header-icon">{"📂"}</span>
         <span className="doc-tree-header-label">Structura programe</span>
       </div>
       <div className="doc-tree-scroll">
@@ -893,15 +893,15 @@ export default function DocumentsPage() {
             </div>
             <div className="doc-welcome-tips">
               <div className="doc-welcome-tip">
-                <span className="doc-welcome-tip-icon">{"\u{1F4C2}"}</span>
+                <span className="doc-welcome-tip-icon">{"📂"}</span>
                 <span>Click dreapta pe un nod pentru a adauga sub-nivele</span>
               </div>
               <div className="doc-welcome-tip">
-                <span className="doc-welcome-tip-icon">{"\u{1F4D6}"}</span>
+                <span className="doc-welcome-tip-icon">{"📖"}</span>
                 <span>La crearea unei sesiuni se creeaza automat Ghiduri, Template-uri, Clienti</span>
               </div>
               <div className="doc-welcome-tip">
-                <span className="doc-welcome-tip-icon">{"\u{1F4E4}"}</span>
+                <span className="doc-welcome-tip-icon">{"📤"}</span>
                 <span>Upload disponibil doar in folderele finale (Ghiduri, Template-uri, etc.)</span>
               </div>
             </div>
@@ -914,11 +914,11 @@ export default function DocumentsPage() {
           <div className="doc-welcome">
             <div className="doc-welcome-icon">
               {selectedNode?.type === "program" ? (
-                <span style={{ fontSize: 44, opacity: 0.5 }}>{"\u{1F3E2}"}</span>
+                <span style={{ fontSize: 44, opacity: 0.5 }}>{"🏢"}</span>
               ) : selectedNode?.type === "masura" ? (
-                <span style={{ fontSize: 44, opacity: 0.5 }}>{"\u{1F4CA}"}</span>
+                <span style={{ fontSize: 44, opacity: 0.5 }}>{"📊"}</span>
               ) : (
-                <span style={{ fontSize: 44, opacity: 0.5 }}>{"\u{1F4C5}"}</span>
+                <span style={{ fontSize: 44, opacity: 0.5 }}>{"📅"}</span>
               )}
             </div>
             <div className="doc-welcome-title">{selectedNode?.label}</div>
@@ -959,7 +959,7 @@ export default function DocumentsPage() {
               </>
             ) : isClientFolder ? (
               <>
-                <div style={{ fontSize: 48, opacity: 0.2, marginBottom: 16 }}>{"\u{1F4AC}"}</div>
+                <div style={{ fontSize: 48, opacity: 0.2, marginBottom: 16 }}>{"💬"}</div>
                 <div className="doc-empty-title">Documentele client vin prin Solomon</div>
                 <div className="doc-empty-desc" style={{ maxWidth: 320, textAlign: "center" }}>
                   Deschide Solomon pe un proiect pentru a uploada
@@ -968,7 +968,7 @@ export default function DocumentsPage() {
               </>
             ) : selectedNode?.type === "ghiduri" ? (
               <>
-                <div style={{ fontSize: 48, opacity: 0.2, marginBottom: 16 }}>{"\u{1F4D6}"}</div>
+                <div style={{ fontSize: 48, opacity: 0.2, marginBottom: 16 }}>{"📖"}</div>
                 <div className="doc-empty-title">Niciun ghid uploadat</div>
                 <div className="doc-empty-desc" style={{ maxWidth: 320, textAlign: "center" }}>
                   Apasa butonul <span style={{ fontWeight: 600, color: "#2563eb" }}>+</span> pentru a uploada
@@ -977,7 +977,7 @@ export default function DocumentsPage() {
               </>
             ) : selectedNode?.type === "templateuri" ? (
               <>
-                <div style={{ fontSize: 48, opacity: 0.2, marginBottom: 16 }}>{"\u{1F4DD}"}</div>
+                <div style={{ fontSize: 48, opacity: 0.2, marginBottom: 16 }}>{"📝"}</div>
                 <div className="doc-empty-title">Niciun template uploadat</div>
                 <div className="doc-empty-desc" style={{ maxWidth: 320, textAlign: "center" }}>
                   Apasa butonul <span style={{ fontWeight: 600, color: "#2563eb" }}>+</span> pentru a uploada
@@ -1015,12 +1015,12 @@ export default function DocumentsPage() {
                 className={`doc-card ${isSelected ? "active" : ""}`}
                 onClick={() => setSelectedDoc(isSelected ? null : d.id)}
               >
-                <div className="doc-card-icon">{TYPE_ICONS[d.type] || "\u{1F4C4}"}</div>
+                <div className="doc-card-icon">{TYPE_ICONS[d.type] || "📄"}</div>
                 <div className="doc-card-info">
                   <div className="doc-card-name">{d.name}</div>
                   <div className="doc-card-meta">
                     <span>{d.type} {"\u00B7"} {d.size}</span>
-                    <span>{"\u{1F4C5}"} {d.uploaded}</span>
+                    <span>{"📅"} {d.uploaded}</span>
                     {d.pageCount ? <span>{d.pageCount} pag.</span> : null}
                     {d.uploadedBy && <span>de {d.uploadedBy}</span>}
                   </div>
@@ -1129,7 +1129,7 @@ export default function DocumentsPage() {
                   {d.status === "neprocesat" && (
                     <div style={{ marginBottom: 10 }}>
                       <button className="doc-detail-btn primary" style={{ width: "auto", display: "inline-flex" }} onClick={(e) => { e.stopPropagation(); handleDocProcess(d.id); }}>
-                        {"\u{1F916}"} Procesează cu AI
+                        {"🤖"} Procesează cu AI
                       </button>
                     </div>
                   )}
@@ -1141,7 +1141,7 @@ export default function DocumentsPage() {
                         </div>
                       )}
                       <button className="doc-detail-btn primary" style={{ width: "auto", display: "inline-flex" }} onClick={(e) => { e.stopPropagation(); handleDocProcess(d.id); }}>
-                        {"\u{1F504}"} Reîncearcă procesarea
+                        {"🔄"} Reîncearcă procesarea
                       </button>
                     </div>
                   )}
@@ -1239,11 +1239,11 @@ export default function DocumentsPage() {
                   const interpCount = (d.summary as any)?.interpretedRules || 0;
                   // Pipeline stages
                   const stages = [
-                    { icon: "\u{1F4C4}", label: "Extragere text", detail: d.pageCount ? `${d.pageCount} pagini` : null, done: true },
-                    { icon: "\u{1F6E1}", label: "Reguli eligibilitate", detail: rulesCount > 0 ? `${fixedCount || "?"} fixe + ${interpCount || "?"} interpretate = ${rulesCount}` : null, done: rulesCount > 0 },
-                    { icon: "\u{2B50}", label: "Criterii selecție", detail: scoringCount > 0 ? `${scoringCount} criterii` : null, done: scoringCount > 0 },
-                    { icon: "\u{1F4CB}", label: "Elemente (câmpuri)", detail: elementsCount > 0 ? `${elementsCount} definiții` : null, done: elementsCount > 0 },
-                    { icon: "\u{1F517}", label: "Linkuri reguli ↔ elemente", detail: null, done: rulesCount > 0 && elementsCount > 0 },
+                    { icon: "📄", label: "Extragere text", detail: d.pageCount ? `${d.pageCount} pagini` : null, done: true },
+                    { icon: "🛡", label: "Reguli eligibilitate", detail: rulesCount > 0 ? `${fixedCount || "?"} fixe + ${interpCount || "?"} interpretate = ${rulesCount}` : null, done: rulesCount > 0 },
+                    { icon: "⭐", label: "Criterii selecție", detail: scoringCount > 0 ? `${scoringCount} criterii` : null, done: scoringCount > 0 },
+                    { icon: "📋", label: "Elemente (câmpuri)", detail: elementsCount > 0 ? `${elementsCount} definiții` : null, done: elementsCount > 0 },
+                    { icon: "🔗", label: "Linkuri reguli ↔ elemente", detail: null, done: rulesCount > 0 && elementsCount > 0 },
                     { icon: "\u2705", label: "Verificare completitudine", detail: trustScore != null ? `Trust: ${Math.round(trustScore * 100)}%` : null, done: trustScore != null },
                   ];
                   return (
@@ -1260,9 +1260,9 @@ export default function DocumentsPage() {
                       {/* Compact summary bar */}
                       <div style={{ display: "flex", gap: 0, background: "#f8fafc", borderBottom: "1px solid rgba(226,232,240,.6)", padding: "0" }}>
                         {[
-                          { label: "Reguli", count: rulesCount, color: "#059669", icon: "\u{1F6E1}" },
-                          { label: "Criterii", count: scoringCount, color: "#7c3aed", icon: "\u{1F4CA}" },
-                          { label: "Elemente", count: elementsCount, color: "#2563eb", icon: "\u{1F4CB}" },
+                          { label: "Reguli", count: rulesCount, color: "#059669", icon: "🛡" },
+                          { label: "Criterii", count: scoringCount, color: "#7c3aed", icon: "📊" },
+                          { label: "Elemente", count: elementsCount, color: "#2563eb", icon: "📋" },
                         ].map(s => (
                           <div key={s.label} style={{
                             flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
@@ -1378,7 +1378,7 @@ export default function DocumentsPage() {
                     <div style={{ display: "flex", gap: 0, background: "#f8fafc", borderBottom: "1px solid rgba(226,232,240,.6)" }}>
                       {d.processingType === "template" && (d.summary?.fieldsCount || 0) > 0 && (
                         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 14px" }}>
-                          <span style={{ fontSize: 13 }}>{"\u{1F4DD}"}</span>
+                          <span style={{ fontSize: 13 }}>{"📝"}</span>
                           <span style={{ color: "#64748b" }}>Elemente extrase:</span>
                           <span style={{ fontWeight: 700, color: "#4d8bff", fontFamily: "'JetBrains Mono', monospace" }}>{tplElements[d.id]?.total ?? d.summary?.fieldsCount}</span>
                           {d.generationMode && (
@@ -1443,7 +1443,7 @@ export default function DocumentsPage() {
                                 >
                                   {/* Mapped status icon */}
                                   <span style={{ fontSize: 13, flexShrink: 0 }}>
-                                    {el.mapped ? "\u2705" : "\u{1F7E0}"}
+                                    {el.mapped ? "\u2705" : "🟠"}
                                   </span>
                                   {/* Element info */}
                                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -1751,7 +1751,7 @@ export default function DocumentsPage() {
             {/* Show "add child" only for program/masura (sesiune auto-creates leaves) */}
             {childInfo && (
               <button className="doc-ctx-item" onClick={() => handleCreateChild(ctxMenu.nodeId)}>
-                {ctxType === "program" ? "\u{1F4CA}" : "\u{1F4C5}"} {childInfo.label}
+                {ctxType === "program" ? "📊" : "📅"} {childInfo.label}
               </button>
             )}
             {childInfo && <div className="doc-ctx-sep" />}
@@ -1768,7 +1768,7 @@ export default function DocumentsPage() {
                     if (confirm("Sigur vrei sa stergi acest folder si tot continutul?")) handleDelete(ctxMenu.nodeId);
                   }}
                 >
-                  {"\u{1F5D1}"} Sterge
+                  {"🗑"} Sterge
                 </button>
               </>
             )}

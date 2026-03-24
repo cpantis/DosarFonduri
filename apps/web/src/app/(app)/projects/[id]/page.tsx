@@ -72,6 +72,15 @@ type EligibilityRule = {
   isPreEligibility?: boolean;
 };
 
+type LinkedElementWithValue = {
+  elementKey: string;
+  displayName: string;
+  category: string | null;
+  role: string;
+  value: any;
+  isMissing: boolean;
+};
+
 type GuideRule = {
   id: string;
   ruleId?: string;
@@ -87,6 +96,7 @@ type GuideRule = {
   validated: boolean;
   needsReview: boolean;
   sourceDocument: { id: string; name: string; fileType: string } | null;
+  linkedElements?: LinkedElementWithValue[];
 };
 
 type ElementItem = {
@@ -214,6 +224,7 @@ function mapGuideRules(grouped: any[]): GuideRule[] {
         validated: item.rule?.validated ?? false,
         needsReview: item.rule?.needsReview ?? (parseFloat(item.rule?.confidence) < 0.85),
         sourceDocument: item.rule?.sourceDocument || group.document || null,
+        linkedElements: item.rule?.linkedElements || [],
       });
     }
   }
@@ -3702,6 +3713,14 @@ export default function ProjectViewPage() {
                               validated: r.validated,
                               needsReview: r.needsReview,
                               sourceDocument: r.sourceDocument,
+                              linkedElements: (r.linkedElements || []).map(el => ({
+                                elementKey: el.elementKey,
+                                displayName: el.displayName,
+                                category: el.category,
+                                role: el.role,
+                                value: el.value,
+                                isMissing: el.isMissing,
+                              })),
                               eligStatus: eStatus ? { status: eStatus.status as "pass" | "fail" | "pending", notes: eStatus.notes ?? undefined } : null,
                             };
                             return (

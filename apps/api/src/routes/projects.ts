@@ -8,6 +8,7 @@ import {
   projectChecklist, templateElements, elementDefinitions, rules, companies, companyFinancials,
   documentFolders, documents, auditLog, orgConfig, users, elementAuditLog, scoringCriteria,
   templatePlaceholderMapping, companyAssociates, companyAdministrators,
+  elementRuleLinks, companyElements,
 } from "../db/schema";
 import { eq, and, count, asc, desc, sql, inArray, sum } from "drizzle-orm";
 import { AuthContext } from "../middleware/auth";
@@ -839,28 +840,127 @@ projectRoutes.get("/:id/eligibility", async (c) => {
     where: eq(projectEligibility.projectId, id),
   });
 
-  // Enrich each rule with source document
-  const enriched = await Promise.all(result.map(async (e) => {
-    const rule = await db.query.rules.findFirst({
-      where: eq(rules.id, e.ruleId),
-    });
+  if (result.length === 0) {
+    return c.json({ flat: [], grouped: [], summary: { total: 0, fixed: 0, interpreted: 0, passed: 0, failed: 0, pending: 0, documents: 0 } });
+  }
 
-    const sourceDoc = rule?.documentId
-      ? await db.query.documents.findFirst({ where: eq(documents.id, rule.documentId) })
-      : null;
+  // Batch-load all rules
+  const ruleIds = [...new Set(result.map(e => e.ruleId))];
+  const allRules = ruleIds.length > 0
+    ? await db.query.rules.findMany({ where: inArray(rules.id, ruleIds) })
+    : [];
+  const ruleMap = new Map(allRules.map(r => [r.id, r]));
+
+  // Batch-load source documents
+  const docIds = [...new Set(allRules.map(r => r.documentId).filter(Boolean))];
+  const allDocs = docIds.length > 0
+    ? await db.query.documents.findMany({ where: inArray(documents.id, docIds) })
+    : [];
+  const docMap = new Map(allDocs.map(d => [d.id, d]));
+
+  // Batch-load element_rule_links for all rules
+  const allElemLinks = ruleIds.length > 0
+    ? await db.query.elementRuleLinks.findMany({ where: inArray(elementRuleLinks.ruleId, ruleIds) })
+    : [];
+  const linkedElemDefIds = [...new Set(allElemLinks.map(l => l.elementDefId).filter(Boolean))] as string[];
+  const linkedElemDefs = linkedElemDefIds.length > 0
+    ? await db.query.elementDefinitions.findMany({ where: inArray(elementDefinitions.id, linkedElemDefIds) })
+    : [];
+  const elemDefById = new Map(linkedElemDefs.map(ed => [ed.id, ed]));
+
+  // Also build key-based map for all org element definitions (for condition.field fallback)
+  const orgElemDefs = await db.query.elementDefinitions.findMany({
+    where: eq(elementDefinitions.organizationId, auth.organizationId!),
+  });
+  const elemDefByKey = new Map(orgElemDefs.map(ed => [ed.elementKey.toLowerCase(), ed]));
+
+  // Group element links by ruleId
+  const elemLinksByRule = new Map<string, Array<{ elementDefId: string; role: string }>>();
+  for (const link of allElemLinks) {
+    if (!link.elementDefId) continue;
+    const arr = elemLinksByRule.get(link.ruleId) || [];
+    arr.push({ elementDefId: link.elementDefId, role: link.role });
+    elemLinksByRule.set(link.ruleId, arr);
+  }
+
+  // Build companyData to get actual element values
+  const project = await db.query.projects.findFirst({ where: eq(projects.id, id) });
+  let companyData: Record<string, any> = {};
+  if (project) {
+    const company = await db.query.companies.findFirst({ where: eq(companies.id, project.companyId) });
+    if (company) {
+      const allFinancials = await db.query.companyFinancials.findMany({
+        where: eq(companyFinancials.companyId, company.id),
+        orderBy: (f, { desc: d }) => [d(f.year)],
+      });
+      const latestFin = allFinancials[0] || null;
+      // Import shared builder
+      const { buildCompanyData, overlayCompanyElements, overlayProjectElements } = await import("../services/eligibility");
+      companyData = buildCompanyData(company, latestFin, allFinancials);
+      // Overlay companyElements
+      const compEls = await db.query.companyElements.findMany({
+        where: eq(companyElements.companyId, company.id),
+      });
+      overlayCompanyElements(companyData, compEls);
+      // Overlay projectElements (Solomon-collected data takes precedence)
+      await overlayProjectElements(companyData, id, auth.organizationId!);
+    }
+  }
+
+  // Enrich each eligibility record
+  const enriched = result.map(e => {
+    const rule = ruleMap.get(e.ruleId);
+    const sourceDoc = rule?.documentId ? docMap.get(rule.documentId) : null;
+
+    // Build linkedElements with actual values
+    const links = elemLinksByRule.get(e.ruleId) || [];
+    const condition = rule?.condition as any;
+    const linkedElements: Array<{
+      elementKey: string; displayName: string; category: string | null;
+      role: string; value: any; isMissing: boolean;
+    }> = [];
+
+    const addedKeys = new Set<string>();
+    for (const link of links) {
+      const ed = elemDefById.get(link.elementDefId);
+      if (!ed) continue;
+      if (addedKeys.has(ed.elementKey)) continue;
+      addedKeys.add(ed.elementKey);
+      const value = companyData[ed.elementKey] ?? null;
+      linkedElements.push({
+        elementKey: ed.elementKey,
+        displayName: ed.displayName || ed.elementKey,
+        category: ed.category,
+        role: link.role,
+        value,
+        isMissing: value === null || value === undefined,
+      });
+    }
+
+    // Fallback: if no links found but condition.field exists, infer from condition
+    if (linkedElements.length === 0 && condition?.field) {
+      const fieldKey = String(condition.field).toLowerCase();
+      const ed = elemDefByKey.get(fieldKey);
+      const value = companyData[fieldKey] ?? null;
+      linkedElements.push({
+        elementKey: fieldKey,
+        displayName: ed?.displayName || fieldKey,
+        category: ed?.category || null,
+        role: "constraint",
+        value,
+        isMissing: value === null || value === undefined,
+      });
+    }
 
     return {
       ...e,
       rule: rule ? {
         ...rule,
-        sourceDocument: sourceDoc ? {
-          id: sourceDoc.id,
-          name: sourceDoc.name,
-          fileType: sourceDoc.fileType,
-        } : null,
+        sourceDocument: sourceDoc ? { id: sourceDoc.id, name: sourceDoc.name, fileType: sourceDoc.fileType } : null,
+        linkedElements,
       } : null,
     };
-  }));
+  });
 
   // Group by source document
   const grouped: Record<string, {

@@ -7,6 +7,15 @@ import React from "react";
    ══════════════════════════════════════════ */
 
 // ── Normalized data interface ──
+export interface RuleLinkedElement {
+  elementKey: string;
+  displayName: string;
+  category: string | null;
+  role: string; // "input" | "output" | "constraint"
+  value?: any;       // actual value from companyData/projectElements (project context)
+  isMissing?: boolean; // true if value is null/undefined
+}
+
 export interface RuleCardData {
   id: string;
   type: "fixed" | "interpreted";
@@ -20,6 +29,8 @@ export interface RuleCardData {
   validated: boolean;
   needsReview: boolean;
   sourceDocument: { name: string; fileType: string } | null;
+  // Linked element definitions (from element_rule_links)
+  linkedElements?: RuleLinkedElement[];
   // Optional eligibility status (only in Proiect context)
   eligStatus?: { status: "pass" | "fail" | "pending"; notes?: string } | null;
 }
@@ -430,6 +441,78 @@ export function RuleCard({ rule, isOpen, onToggle, categoryColor, categoryLabel 
                     )}
                   </>
                 )}
+              </div>
+            </Section>
+          )}
+
+          {/* Linked elements */}
+          {r.linkedElements && r.linkedElements.length > 0 && (
+            <Section title="Elemente asociate">
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {r.linkedElements.map((el, i) => {
+                  const hasValue = el.value !== undefined;
+                  const roleColors: Record<string, { bg: string; text: string; border: string }> = {
+                    constraint: { bg: "rgba(37,99,235,.06)", text: "#2563eb", border: "rgba(37,99,235,.2)" },
+                    input: { bg: "rgba(5,150,105,.06)", text: "#059669", border: "rgba(5,150,105,.2)" },
+                    output: { bg: "rgba(124,58,237,.06)", text: "#7c3aed", border: "rgba(124,58,237,.2)" },
+                  };
+                  const roleLabels: Record<string, string> = {
+                    constraint: "verifică", input: "input", output: "output",
+                  };
+                  const rc2 = roleColors[el.role] || roleColors.input;
+                  const catLabels: Record<string, string> = {
+                    financial: "Financiar", legal: "Juridic", beneficiary: "Beneficiar",
+                    farm: "Fermă", investment: "Investiție", location: "Localizare",
+                    technical: "Tehnic", other: "Altele",
+                  };
+                  return (
+                    <div key={i} style={{
+                      display: "flex", alignItems: "center", gap: 10, padding: "10px 14px",
+                      background: "#fff", border: "1px solid rgba(226,232,240,.8)", borderRadius: 10,
+                    }}>
+                      <span style={{
+                        fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 4,
+                        background: rc2.bg, color: rc2.text, border: `1px solid ${rc2.border}`,
+                        textTransform: "uppercase", letterSpacing: ".4px", flexShrink: 0,
+                      }}>
+                        {roleLabels[el.role] || el.role}
+                      </span>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: "#0f172a" }}>{el.displayName}</span>
+                      <span style={{
+                        fontSize: 11, fontFamily: "'JetBrains Mono', monospace",
+                        color: "#64748b", background: "#f8fafc", padding: "1px 8px", borderRadius: 4,
+                      }}>
+                        {el.elementKey}
+                      </span>
+                      {/* Show value if available (project context) */}
+                      {hasValue && !el.isMissing && (
+                        <span style={{
+                          fontSize: 12, fontWeight: 600, fontFamily: "'JetBrains Mono', monospace",
+                          padding: "2px 10px", borderRadius: 6,
+                          background: "rgba(5,150,105,.08)", color: "#059669",
+                          border: "1px solid rgba(5,150,105,.2)",
+                        }}>
+                          = {String(el.value)}
+                        </span>
+                      )}
+                      {hasValue && el.isMissing && (
+                        <span style={{
+                          fontSize: 11, fontStyle: "italic",
+                          padding: "2px 10px", borderRadius: 6,
+                          background: "rgba(245,158,11,.08)", color: "#d97706",
+                          border: "1px solid rgba(245,158,11,.2)",
+                        }}>
+                          lipsă
+                        </span>
+                      )}
+                      {el.category && (
+                        <span style={{ fontSize: 10, color: "#94a3b8", marginLeft: "auto" }}>
+                          {catLabels[el.category] || el.category}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </Section>
           )}

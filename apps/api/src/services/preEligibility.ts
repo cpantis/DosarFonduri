@@ -201,18 +201,89 @@ export async function checkPreEligibility(
     refLinksByRule.set(link.ruleId, existing);
   }
 
-  // 9. Determine which fields are company-relevant (for filtering)
-  // Core companyData keys are always relevant
-  const companyDataKeys = new Set(Object.keys(companyData));
-  // Also identify element categories that are company-relevant (not project/investment)
-  const companyRelevantCategories = new Set(["financial", "legal", "beneficiary", "location", "farm", "other"]);
-  // Build set of company-relevant field keys from element definitions
-  const companyRelevantFields = new Set<string>(companyDataKeys);
-  for (const ed of orgElemDefs) {
-    if (!ed.category || companyRelevantCategories.has(ed.category)) {
-      companyRelevantFields.add(ed.elementKey.toLowerCase());
+  // 9. Determine which fields are company-relevant (strict whitelist approach)
+  //
+  // Only include rules that check fields we KNOW belong to the company/beneficiary.
+  // Fields about the project, investment, contract, budget, etc. are excluded.
+  //
+  // Strategy: whitelist core company fields from buildCompanyData() +
+  //           known beneficiary/financial patterns, and blocklist project patterns.
+
+  // Core fields from buildCompanyData (always available for a company)
+  const COMPANY_CORE_FIELDS = new Set([
+    "forma_juridica", "cui", "cod_caen", "stare", "an_infiintare", "vechime_ani",
+    "capital_social", "angajati", "cifra_afaceri", "profit_net", "capitaluri_proprii",
+    "judet", "localitate",
+  ]);
+
+  // Prefixes that indicate per-year financials (also from buildCompanyData)
+  const COMPANY_YEAR_PREFIXES = [
+    "cifra_afaceri_", "profit_net_", "angajati_", "capitaluri_proprii_",
+  ];
+
+  // Additional known company/beneficiary field patterns (from extractors, ONRC, etc.)
+  const COMPANY_EXTRA_PATTERNS = [
+    "forma_", "tip_beneficiar", "categoria_beneficiar", "tip_solicitant",
+    "varsta_firma", "ani_activitate", "ani_functionare",
+    "numar_angajati", "numar_salariati", "media_angajati",
+    "rata_solvabilitate", "rata_lichiditate", "rata_rentabilitate",
+    "rezultat_exploatare", "profit_brut", "profit_mediu", "pierdere",
+    "datorii_totale", "active_totale", "venituri_totale", "cheltuieli_totale",
+    "valoare_productie", "capitaluri",
+    "regiune", "zona_eligibila", "zona_",
+    "dimensiune_economica", "exploatatie",
+    "suprafata_agricola", "suprafata_teren", "suprafata_",
+    "efectiv_animal", "uvm_", "upe_", "cap_animal",
+    "are_datorii", "nu_are_datorii", "cazier_fiscal", "cazier_judiciar",
+    "nu_este_in_", "este_in_", "nu_se_afla", "se_afla",
+    "inregistrat_", "inscris_", "autorizat_", "acreditat_",
+    "varsta_", "tinar_fermier", "tanar_fermier", "fermier_tanar",
+    "cod_caen_", "caen_",
+  ];
+
+  // Fields that are definitively NOT about the company (project/investment/contract)
+  const PROJECT_BLOCKLIST_PATTERNS = [
+    "valoare_proiect", "valoare_investit", "valoare_eligibil", "valoare_total_proiect",
+    "valoare_contract", "valoare_achizit", "valoare_sprijin",
+    "cofinantare", "are_cofinantare", "intensitate_ajutor", "ajutor_solicitat", "sprijin_solicitat",
+    "durata_implementare", "durata_contract", "durata_proiect",
+    "procent_avans", "procent_transfer", "avans_procent", "avans_",
+    "numar_transe", "transe_plata",
+    "tip_investit", "componenta", "sub_masura", "masura", "axa",
+    "punctaj_", "prag_", "scor_",
+    "plan_afaceri", "studiu_fezabilitate",
+    "cost_", "buget_", "deviz_",
+    "termen_depunere", "termen_implementare", "data_depunere",
+    "raport_profit_mediu_sprijin", "_sprijin",
+  ];
+
+  function isCompanyRelevantField(fieldKey: string): boolean {
+    const lower = fieldKey.toLowerCase();
+
+    // 1. Exact match on core fields
+    if (COMPANY_CORE_FIELDS.has(lower)) return true;
+
+    // 2. Per-year financial fields (cifra_afaceri_2023, profit_net_2024, etc.)
+    if (COMPANY_YEAR_PREFIXES.some(p => lower.startsWith(p))) return true;
+
+    // 3. Blocked project/investment patterns — reject before accepting extras
+    if (PROJECT_BLOCKLIST_PATTERNS.some(p => lower.startsWith(p) || lower.includes(p))) return false;
+
+    // 4. Known company/beneficiary patterns
+    if (COMPANY_EXTRA_PATTERNS.some(p => lower.startsWith(p) || lower.includes(p))) return true;
+
+    // 5. Check element definition category (only trust financial, legal, beneficiary, location, farm)
+    const ed = elemDefByKey.get(lower);
+    if (ed && ed.category && ["financial", "legal", "beneficiary", "location", "farm"].includes(ed.category)) {
+      return true;
     }
+
+    // 6. Default: not company-relevant (conservative — better to miss a rule
+    //    than show an irrelevant project rule in company eligibility)
+    return false;
   }
+
+  const companyDataKeys = new Set(Object.keys(companyData));
 
   // 10. Evaluate rules — only include rules relevant to company data
   const results: PreEligibilityRule[] = [];
@@ -229,7 +300,7 @@ export async function checkPreEligibility(
 
     // Skip rules whose condition.field is NOT company-relevant
     const fieldKey = String(condition.field).toLowerCase();
-    if (!companyRelevantFields.has(fieldKey)) continue;
+    if (!isCompanyRelevantField(fieldKey)) continue;
 
     // Build element info for this rule
     const elements: RuleElementInfo[] = [];

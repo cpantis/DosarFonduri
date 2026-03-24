@@ -1071,6 +1071,8 @@ export default function ProjectViewPage() {
 
   const handleConfirmExtraction = async (msgIdx: number, extIdx: number) => {
     const k = `${msgIdx}-${extIdx}`;
+    // Guard against double-click
+    if (extractionStates[k]) return;
     setExtractionStates(prev => ({ ...prev, [k]: "confirmed" }));
     const msg = solomonMessages[msgIdx];
     if (msg?.extractions?.[extIdx]) {
@@ -1108,20 +1110,29 @@ export default function ProjectViewPage() {
             value: ext.value,
             projectId,
           }).then(validation => {
-            if (validation && validation.totalChecks > 0) {
+            if (validation && (validation as any).totalChecks > 0) {
               setExtractionValidations(prev => ({ ...prev, [k]: validation }));
             }
-          }).catch(() => {}); // Silently fail validation
+          }).catch(() => {});
         } catch (err) {
           console.error("Failed to persist Solomon extraction:", err);
           toast("error", "Eroare la salvarea datelor extrase");
+          // Revert UI state so user can retry
+          setExtractionStates(prev => { const next = { ...prev }; delete next[k]; return next; });
         }
+      } else {
+        // Element not found in DB — revert confirmed state and inform user
+        toast("warning", `Elementul "${ext.label || ext.key}" nu a fost încă creat în proiect. Reîncearcă în câteva secunde.`);
+        setExtractionStates(prev => { const next = { ...prev }; delete next[k]; return next; });
+        setSolomonElements(prev => prev.map(e => e.key === ext.key ? { ...e, status: "propus" as const } : e));
       }
     }
   };
 
   const handleRejectExtraction = (msgIdx: number, extIdx: number) => {
-    setExtractionStates(prev => ({ ...prev, [`${msgIdx}-${extIdx}`]: "rejected" }));
+    const k = `${msgIdx}-${extIdx}`;
+    if (extractionStates[k]) return; // Guard against double-click
+    setExtractionStates(prev => ({ ...prev, [k]: "rejected" }));
   };
 
   const handleConfirmElement = async (idx: number) => {
@@ -2711,6 +2722,7 @@ export default function ProjectViewPage() {
         .exc-btn.reject-btn{color:#dc2626;background:transparent}
         .exc-btn.reject-btn:hover{background:#fef2f2}
         .exc-confirmed-label{font-size:12px;font-weight:500;color:#059669;display:flex;align-items:center;gap:4px}
+        .exc-rejected-label{font-size:11px;font-weight:500;color:#dc2626;display:flex;align-items:center;gap:4px}
         .confirm-all-bar{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#eff6ff;border-radius:8px;margin-bottom:4px}
         .confirm-all-bar span{font-size:13px;color:#2563eb;font-weight:500}
         .chat-timestamp{font-size:10px;color:#94a3b8;margin-top:4px}
@@ -4778,7 +4790,7 @@ export default function ProjectViewPage() {
                                         )}
                                       </>
                                     ) : (
-                                      <div className="text-[11px] text-red-500">Respins</div>
+                                      <div className="exc-rejected-label">&#10005; Respins</div>
                                     )}
                                   </div>
                                 );

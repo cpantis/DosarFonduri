@@ -19,8 +19,17 @@ const CHUNK_CHAR_LIMIT = 80000;
 const CHUNK_OVERLAP_PAGES = 2;
 const MAX_CHUNK_CONCURRENCY = 3;
 
-const TABLE_EXTRACTION_SYSTEM = `Extragi tabele structurate din anexele ghidurilor de finanțare europeană.
-Fiecare tabel are un scop de lookup, clasificare sau listare.
+const TABLE_EXTRACTION_SYSTEM = `Ești expert în fonduri europene. Extragi tabele structurate din anexele ghidurilor de finanțare.
+
+DE CE CONTEAZĂ: Aceste tabele sunt CRITICE — Solomon le folosește pentru a valida automat datele beneficiarului. Un tabel extras greșit = o validare greșită = un dosar respins.
+
+CUM GÂNDEȘTI:
+- Fiecare tabel are un ROL: lookup (caută o valoare), clasificare (încadrează într-o categorie), matrice (intersecție rând×coloană), listă (enumerare exhaustivă)
+- Identifică CHEIA DE CĂUTARE — pe ce coloană se face lookup-ul? (ex: suprafață fermă → putere tractor)
+- Păstrează TOATE rândurile, inclusiv excepții și note de subsol — o notă omisă poate schimba interpretarea
+- Dacă un tabel are valori "de la X la Y", transformă în range-uri structurate (min/max), nu text liber
+- Dacă tabelul se referă la un alt tabel sau la o condiție, capturează în "exceptions"
+
 Returnează DOAR JSON valid — array de obiecte. Fără backticks.`;
 
 const TABLE_EXTRACTION_PROMPT = (chunkText: string, chunkInfo: string) => `Extrage TOATE tabelele structurate din acest document.${chunkInfo}

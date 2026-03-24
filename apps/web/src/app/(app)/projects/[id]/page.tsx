@@ -156,6 +156,7 @@ type ProjectData = {
   prefixDocumente: string | null;
   codMysmis: string | null;
   structuraDosar: string | null;
+  tipProiect: string | null;
 };
 
 const STATUS_MAP: Record<string, { label: string; color: string; bg: string }> = {
@@ -924,6 +925,7 @@ export default function ProjectViewPage() {
                 prefixDocumente: evt.metadata.prefixDocumente || prev.prefixDocumente,
                 codMysmis: evt.metadata.codMysmis || prev.codMysmis,
                 structuraDosar: evt.metadata.structuraDosar || prev.structuraDosar,
+                tipProiect: evt.metadata.tipProiect || prev.tipProiect,
               } : prev);
             }
           } catch {}
@@ -1041,6 +1043,7 @@ export default function ProjectViewPage() {
                 prefixDocumente: evt.metadata.prefixDocumente || prev.prefixDocumente,
                 codMysmis: evt.metadata.codMysmis || prev.codMysmis,
                 structuraDosar: evt.metadata.structuraDosar || prev.structuraDosar,
+                tipProiect: evt.metadata.tipProiect || prev.tipProiect,
               } : prev);
             }
           } catch {}
@@ -3295,6 +3298,7 @@ export default function ProjectViewPage() {
                         {project.codNomenclator && <div className="si-row"><span className="si-label">Cod nomenclator</span><span className="si-value">{project.codNomenclator}</span></div>}
                         {project.prefixDocumente && <div className="si-row"><span className="si-label">Prefix documente</span><span className="si-value font-mono text-blue-600">{project.prefixDocumente}</span></div>}
                         {project.codMysmis && <div className="si-row"><span className="si-label">Cod MySMIS</span><span className="si-value">{project.codMysmis}</span></div>}
+                        {project.tipProiect && <div className="si-row"><span className="si-label">Tip proiect</span><span className="si-value" style={{ textTransform: "capitalize" }}>{project.tipProiect.replace(/_/g, " ")}</span></div>}
                         {project.structuraDosar && (
                           <div className="si-row" style={{ flexDirection: "column", alignItems: "flex-start", gap: 4 }}>
                             <span className="si-label">Structura dosar</span>

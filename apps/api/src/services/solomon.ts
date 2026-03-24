@@ -32,7 +32,7 @@ function sanitizeForPrompt(value: string | null | undefined): string {
 // Allowed metadata fields that Solomon can update on projects
 const ALLOWED_METADATA_KEYS = new Set([
   "programFinantare", "codMasura", "codSesiune",
-  "codNomenclator", "prefixDocumente", "codMysmis", "structuraDosar",
+  "codNomenclator", "prefixDocumente", "codMysmis", "structuraDosar", "tipProiect",
 ]);
 const MAX_METADATA_VALUE_LENGTH = 500;
 
@@ -574,6 +574,7 @@ Dacă aceasta este PRIMA INTERACȚIUNE cu consultantul (istoricul conversației 
 Ca expert în fonduri europene, ȘTII că fiecare program/organism are convenții specifice de numire și structurare a documentelor dosarului. Acestea sunt CRITICE pentru acceptarea administrativă.
 
 TREBUIE să colectezi ACTIV (nu opțional!) următoarele informații de la consultant:
+- **Tip proiect** — DEDUCE PROACTIV din context: "bunuri" (achiziție echipamente, utilaje, mobilier), "bunuri_cu_montaj" (echipamente care necesită instalare/montaj), "constructii" (clădiri, hale, renovări, extinderi), "servicii" (consultanță, training, studii), "mixt" (combinație). Analizează ghidul, CAEN-ul firmei, numele proiectului și obiectul investiției. Setează-l în METADATA_JSON fără a cere confirmare explicită — dacă e evident din context. Dacă nu e clar, întreabă: "Ce tip de investiție predomină: achiziție bunuri, construcții, servicii, sau mixt?"
 - **Cod nomenclator** — codul numeric/alfanumeric al liniei de finanțare (ex: "6.4", "sM4.1a", "P1/1.1")
 - **Prefix documente** — cum se prefixează documentele oficiale (ex: "C6.4_", "AFIR_M641_")
 - **Număr/cod sesiune** — identificatorul sesiunii de depunere (ex: "Sesiunea 1/2024", "Apelul CP17/2024")
@@ -586,7 +587,7 @@ Dacă consultantul confirmă programul dar nu furnizează convențiile, INSISTĂ
 "Pentru a genera documentele cu denumiri și structuri corecte, am nevoie și de: [lista convențiilor lipsă]"
 
 Salvează aceste convenții în câmpurile corespunzătoare (dacă există în template):
-- program_finantare, cod_masura, cod_sesiune, cod_nomenclator, prefix_documente, cod_mysmis`;
+- program_finantare, cod_masura, cod_sesiune, cod_nomenclator, prefix_documente, cod_mysmis, tip_proiect`;
 })()}
 
 ═══════════════════════════════════════════
@@ -755,7 +756,7 @@ Nu aștepta să fii întrebat. Un consultant senior:
 
 ### Format metadate proiect (CRITIC pentru Neemia)
 7. Când consultantul CONFIRMĂ sau furnizează informații despre program, nomenclator, prefix, structura dosarului, cod MySMIS sau sesiune, returnează-le în format JSON ascuns:
-   <!--METADATA_JSON{"programFinantare":"PNDR/AFIR","codMasura":"6.4","codSesiune":"Sesiunea 1/2024","codNomenclator":"sM6.4","prefixDocumente":"C6.4_","codMysmis":"12345","structuraDosar":"1. Cerere finanțare\\n2. Plan de afaceri\\n3. Anexe tehnice"}METADATA_JSON-->
+   <!--METADATA_JSON{"programFinantare":"PNDR/AFIR","codMasura":"6.4","codSesiune":"Sesiunea 1/2024","codNomenclator":"sM6.4","prefixDocumente":"C6.4_","codMysmis":"12345","tipProiect":"bunuri_cu_montaj","structuraDosar":"1. Cerere finanțare\\n2. Plan de afaceri\\n3. Anexe tehnice"}METADATA_JSON-->
    - Includ DOAR câmpurile pe care le-ai obținut (confirmate de consultant sau deduse cu certitudine)
    - Nu inventa valori — include doar ce a confirmat/furnizat consultantul sau ce ai detectat automat și consultantul a confirmat
    - Actualizează câmpurile la fiecare confirmare/corecție din conversație

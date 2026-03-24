@@ -1419,6 +1419,7 @@ projectRoutes.put("/:id", async (c) => {
   if (body.prefixDocumente !== undefined) updateData.prefixDocumente = body.prefixDocumente;
   if (body.codMysmis !== undefined) updateData.codMysmis = body.codMysmis;
   if (body.structuraDosar !== undefined) updateData.structuraDosar = body.structuraDosar;
+  if (body.tipProiect !== undefined) updateData.tipProiect = body.tipProiect;
 
   const [updated] = await db.update(projects).set(updateData).where(
     and(eq(projects.id, id), eq(projects.organizationId, auth.organizationId!))

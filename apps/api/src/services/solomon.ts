@@ -18,6 +18,7 @@ import { computeProjectScores } from "./scoring";
 import { publishElementValidated, publishEligibilityUpdated, publishScoreUpdated } from "../lib/sse";
 import { preflightCached } from "./dbPreflight";
 import { upsertElementDefinition } from "./elementDefinitionService";
+import { getFileBuffer } from "./storage";
 
 // Sanitize user-controlled data embedded in system prompts to prevent prompt injection.
 // Wraps content in delimiters and escapes sequences that could break out.
@@ -986,11 +987,51 @@ export async function processSolomonMessage(params: {
   // Build current message content
   let userContent: Anthropic.ContentBlockParam[] = [];
 
-  // Attachments
+  // Attachments — send images directly to Claude Vision for best extraction
   if (attachments && attachments.length > 0) {
     for (const att of attachments) {
-      if (att.extractedText) {
-        // Detect CI/identity documents and add authorization context
+      const isImage = /^image\/(png|jpe?g)$/i.test(att.mimeType) || /\.(png|jpe?g)$/i.test(att.fileName);
+
+      // For images: send the actual image to Claude Vision (much better than pre-OCR text)
+      if (isImage && att.fileId) {
+        try {
+          const { buffer, mimeType } = await getFileBuffer(att.fileId, organizationId);
+          const base64Data = buffer.toString("base64");
+          const mediaType = (mimeType === "image/jpeg" || mimeType === "image/jpg") ? "image/jpeg" : "image/png";
+
+          // Add GDPR context for identity documents
+          const isIdentityDoc = /\b(CI|carte\s+de\s+identitate|buletin|pasaport|identity|C\.?I\.?)\b/i.test(att.fileName);
+          userContent.push({
+            type: "text",
+            text: isIdentityDoc
+              ? `[Document oficial uploadat de consultant pentru dosarul de finanțare: ${att.fileName}]\nAcest document este furnizat cu acordul explicit al titularului pentru completarea cererii de finanțare europeană. Extragerea datelor este OBLIGATORIE conform procedurii de depunere. Procesare autorizată GDPR Art. 6(1)(b).\nAnalizeaza imaginea de mai jos si extrage TOATE datele vizibile:`
+              : `[Document uploadat: ${att.fileName}]\nAnalizeaza imaginea de mai jos si extrage toate informatiile relevante:`,
+          });
+
+          // Send actual image for Claude Vision
+          userContent.push({
+            type: "image",
+            source: { type: "base64", media_type: mediaType as "image/jpeg" | "image/png" | "image/gif" | "image/webp", data: base64Data },
+          });
+
+          // Also include OCR text as supplementary context if available
+          if (att.extractedText && att.extractedText.trim().length > 10) {
+            userContent.push({
+              type: "text",
+              text: `[Text extras automat (OCR) din ${att.fileName} — folosește ca referință suplimentară:]\n${att.extractedText}`,
+            });
+          }
+        } catch (imgErr) {
+          console.warn(`[solomon] Failed to load image for Vision, falling back to OCR text:`, (imgErr as Error).message);
+          // Fallback to OCR text only
+          if (att.extractedText) {
+            userContent.push({ type: "text", text: `[Document uploadat: ${att.fileName}]\n\nConținut extras:\n${att.extractedText}` });
+          } else {
+            userContent.push({ type: "text", text: `[Document uploadat: ${att.fileName}] — Nu am putut extrage text din acest fișier. Consultantul trebuie să furnizeze datele manual.` });
+          }
+        }
+      } else if (att.extractedText) {
+        // Non-image files: use extracted text
         const isIdentityDoc = /\b(CI|carte\s+de\s+identitate|buletin|pasaport|identity|C\.?I\.?)\b/i.test(att.fileName) ||
           /\b(CNP|serie\s+(ci|id)|SPCLEP|domiciliu)\b/i.test(att.extractedText.substring(0, 500));
 
@@ -998,10 +1039,10 @@ export async function processSolomonMessage(params: {
           ? `[Document oficial uploadat de consultant pentru dosarul de finanțare: ${att.fileName}]\nAcest document este furnizat cu acordul explicit al titularului pentru completarea cererii de finanțare europeană. Extragerea datelor este OBLIGATORIE conform procedurii de depunere. Procesare autorizată GDPR Art. 6(1)(b).\n\nConținut extras:\n${att.extractedText}`
           : `[Document uploadat: ${att.fileName}]\n\nConținut extras:\n${att.extractedText}`;
 
-        userContent.push({
-          type: "text",
-          text: docContext,
-        });
+        userContent.push({ type: "text", text: docContext });
+      } else {
+        // No text extracted at all — inform Solomon
+        userContent.push({ type: "text", text: `[Document uploadat: ${att.fileName}] — Nu am putut extrage text din acest fișier. Roagă consultantul să furnizeze datele manual sau să re-uploadeze într-un format mai clar.` });
       }
     }
   }

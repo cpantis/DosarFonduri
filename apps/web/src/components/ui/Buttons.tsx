@@ -7,10 +7,10 @@ interface BtnProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const SIZE_MAP = {
-  sm: "text-[12px] h-[32px] px-4 gap-1.5 rounded-lg",
-  md: "text-[13px] h-[38px] px-5 gap-2 rounded-[10px]",
-  lg: "text-[14px] h-[42px] px-6 gap-2.5 rounded-xl",
-  xl: "text-[15px] h-[46px] px-8 gap-2.5 rounded-xl",
+  sm: "text-[12px] h-[34px] px-4 gap-1.5 rounded-lg",
+  md: "text-[14px] h-[42px] px-6 gap-2 rounded-[10px]",
+  lg: "text-[14px] h-[44px] px-7 gap-2.5 rounded-xl",
+  xl: "text-[15px] h-[48px] px-8 gap-2.5 rounded-xl",
 };
 
 export function BtnPrimary({ children, icon, size = "md", className = "", ...props }: BtnProps) {
@@ -18,9 +18,9 @@ export function BtnPrimary({ children, icon, size = "md", className = "", ...pro
   return (
     <button
       {...props}
-      className={`bg-blue-500 hover:bg-blue-600 text-white font-medium tracking-[0.01em] transition-all inline-flex items-center justify-center whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed shadow-sm shadow-blue-500/20 hover:shadow-md hover:shadow-blue-500/25 ${sz} ${className}`}
+      className={`bg-blue-500 hover:bg-blue-600 text-white font-semibold tracking-[0.01em] transition-all inline-flex items-center justify-center whitespace-nowrap min-w-[100px] disabled:opacity-50 disabled:cursor-not-allowed shadow-sm shadow-blue-500/20 hover:shadow-md hover:shadow-blue-500/25 ${sz} ${className}`}
     >
-      {icon && <span className="shrink-0 [&>svg]:w-[14px] [&>svg]:h-[14px]">{icon}</span>}
+      {icon && <span className="shrink-0 [&>svg]:w-[15px] [&>svg]:h-[15px]">{icon}</span>}
       {children}
     </button>
   );
@@ -31,9 +31,9 @@ export function BtnSecondary({ children, icon, size = "md", className = "", ...p
   return (
     <button
       {...props}
-      className={`bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-600 font-medium transition-all inline-flex items-center justify-center whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed ${sz} ${className}`}
+      className={`bg-transparent border border-slate-200/60 hover:border-slate-300 hover:bg-slate-50 text-slate-500 font-medium transition-all inline-flex items-center justify-center whitespace-nowrap min-w-[100px] disabled:opacity-50 disabled:cursor-not-allowed ${sz} ${className}`}
     >
-      {icon && <span className="shrink-0 [&>svg]:w-[14px] [&>svg]:h-[14px] text-slate-400">{icon}</span>}
+      {icon && <span className="shrink-0 [&>svg]:w-[15px] [&>svg]:h-[15px] text-slate-400">{icon}</span>}
       {children}
     </button>
   );
@@ -44,9 +44,9 @@ export function BtnDanger({ children, icon, size = "md", className = "", ...prop
   return (
     <button
       {...props}
-      className={`text-red-500 bg-white border border-red-200 hover:bg-red-50 hover:border-red-300 font-medium transition-all inline-flex items-center justify-center whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed ${sz} ${className}`}
+      className={`text-red-500 bg-white border border-red-200 hover:bg-red-50 hover:border-red-300 font-semibold transition-all inline-flex items-center justify-center whitespace-nowrap min-w-[100px] disabled:opacity-50 disabled:cursor-not-allowed ${sz} ${className}`}
     >
-      {icon && <span className="shrink-0 [&>svg]:w-[14px] [&>svg]:h-[14px]">{icon}</span>}
+      {icon && <span className="shrink-0 [&>svg]:w-[15px] [&>svg]:h-[15px]">{icon}</span>}
       {children}
     </button>
   );

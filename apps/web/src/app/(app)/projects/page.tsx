@@ -305,7 +305,7 @@ export default function ProjectsPage() {
       {/* CREATE PROJECT MODAL */}
       {showCreate && (
         <div className="fixed inset-0 flex items-center justify-center z-[100] bg-black/30 backdrop-blur-[2px]" onClick={e => e.target === e.currentTarget && setShowCreate(false)}>
-          <div className="bg-white rounded-2xl w-[540px] max-h-[85vh] overflow-y-auto shadow-2xl shadow-black/10 animate-[fadeUp_.2s_ease-out]" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
+          <div className="bg-white rounded-[18px] w-[540px] max-h-[85vh] overflow-y-auto shadow-[0_24px_64px_rgba(0,0,0,.10)] animate-[fadeUp_.2s_ease-out] border border-slate-200/70" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
 
             {/* Modal header */}
             <div className="flex items-center justify-between px-7 pt-6 pb-0">
@@ -418,7 +418,7 @@ export default function ProjectsPage() {
               {createStep === 3 && (<>
                 <label className="block text-[11px] font-semibold uppercase tracking-widest mb-2 text-slate-400">Denumire proiect</label>
                 <input
-                  className="w-full px-4 py-3 rounded-xl text-[14px] outline-none border border-slate-200 bg-slate-50/50 text-slate-900 placeholder:text-slate-300 focus:bg-white focus:border-blue-300 focus:ring-2 focus:ring-blue-500/10 transition-all mb-5"
+                  className="w-full px-4 py-3 rounded-[10px] text-[14px] outline-none border border-slate-200 bg-slate-50/50 text-slate-900 placeholder:text-slate-300 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 transition-all mb-5"
                   placeholder="ex: Modernizare linie producție..."
                   value={createData.name}
                   onChange={e => setCreateData(p => ({ ...p, name: e.target.value }))}

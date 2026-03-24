@@ -704,9 +704,9 @@ export default function ProviderDashboardPage() {
         {/* ═══ GENERATE CODE MODAL ═══ */}
         {showGenerate && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] animate-[fadeIn_0.2s]" onClick={(e) => e.target === e.currentTarget && setShowGenerate(false)}>
-            <div className="bg-white border border-slate-200 rounded-xl w-[480px] p-7 animate-[slideUp_0.3s_ease]">
+            <div className="bg-white border border-slate-200 rounded-[18px] w-[480px] p-8 animate-[slideUp_0.3s_ease] shadow-[0_24px_64px_rgba(0,0,0,.10)]">
               <div className="flex justify-between items-center mb-1">
-                <div className="text-xl font-extrabold">🔑 Genereaza cod cabinet</div>
+                <div className="text-[19px] font-extrabold tracking-[-0.01em]">🔑 Genereaza cod cabinet</div>
                 <button className="cursor-pointer text-lg bg-transparent border-none text-slate-400" onClick={() => setShowGenerate(false)}>✕</button>
               </div>
               <div className="text-sm mb-5 text-slate-500">
@@ -724,6 +724,7 @@ export default function ProviderDashboardPage() {
                           className={`py-3 px-2.5 text-center cursor-pointer transition-all rounded-lg border-2 ${
                             genPlan === p ? "border-violet-500 bg-violet-500/[.06]" : "border-slate-200 bg-slate-50"
                           }`}
+                          style={{ borderRadius: 10 }}
                           onClick={() => setGenPlan(p)}
                         >
                           <div className={`text-[13px] font-bold capitalize ${PLAN_COLOR_CLASSES[p]}`}>{p}</div>
@@ -742,7 +743,7 @@ export default function ProviderDashboardPage() {
                         max={100}
                         value={genMaxUsers}
                         onChange={(e) => setGenMaxUsers(parseInt(e.target.value) || 1)}
-                        className="w-full px-3.5 py-2.5 text-sm text-center outline-none rounded-lg border border-slate-200 bg-slate-50 text-slate-900 font-mono"
+                        className="w-full px-3.5 py-2.5 text-sm text-center outline-none rounded-[10px] border border-slate-200 bg-slate-50 text-slate-900 font-mono"
                       />
                     </div>
                     <div className="flex-1">
@@ -753,7 +754,7 @@ export default function ProviderDashboardPage() {
                         max={90}
                         value={genTrial}
                         onChange={(e) => setGenTrial(parseInt(e.target.value) || 0)}
-                        className="w-full px-3.5 py-2.5 text-sm text-center outline-none rounded-lg border border-slate-200 bg-slate-50 text-slate-900 font-mono"
+                        className="w-full px-3.5 py-2.5 text-sm text-center outline-none rounded-[10px] border border-slate-200 bg-slate-50 text-slate-900 font-mono"
                       />
                     </div>
                   </div>
@@ -768,14 +769,14 @@ export default function ProviderDashboardPage() {
                         value={genCui}
                         onChange={(e) => { setGenCui(e.target.value); setGenCuiRes(null); }}
                         onKeyDown={(e) => e.key === "Enter" && handleLookupCui()}
-                        className={`flex-1 px-3.5 py-2.5 text-sm outline-none rounded-lg border bg-slate-50 text-slate-900 font-mono ${
+                        className={`flex-1 px-3.5 py-2.5 text-sm outline-none rounded-[10px] border bg-slate-50 text-slate-900 font-mono ${
                           genCuiRes && genCuiRes !== "error" ? "border-emerald-500" : genCuiRes === "error" ? "border-red-500" : "border-slate-200"
                         }`}
                         style={{ letterSpacing: "1px" }}
                         placeholder="ex: 19893984"
                       />
                       <button
-                        className="px-4 py-2.5 text-sm font-semibold cursor-pointer rounded-lg border border-slate-200 bg-transparent text-slate-500 font-sans"
+                        className="px-4 py-2.5 text-sm font-semibold cursor-pointer rounded-[10px] border border-slate-200 bg-transparent text-slate-500 font-sans"
                         onClick={handleLookupCui}
                         disabled={genCuiLoad || genCui.replace(/\D/g, "").length < 6}
                       >
@@ -812,8 +813,8 @@ export default function ProviderDashboardPage() {
                   </div>
 
                   <div className="flex gap-2.5 justify-end">
-                    <button className="px-5 py-2.5 text-sm font-semibold cursor-pointer rounded-lg border border-slate-200 bg-transparent text-slate-500 font-sans" onClick={() => setShowGenerate(false)}>Anuleaza</button>
-                    <button className="px-5 py-2.5 text-sm font-bold text-white cursor-pointer rounded-lg border-none bg-violet-500 font-sans" onClick={handleGenerateCode}>🔑 Genereaza cod</button>
+                    <button className="px-6 py-2.5 text-sm font-semibold cursor-pointer rounded-[10px] border border-slate-200/60 bg-transparent text-slate-500 font-sans min-w-[100px]" onClick={() => setShowGenerate(false)}>Anuleaza</button>
+                    <button className="px-6 py-2.5 text-sm font-bold text-white cursor-pointer rounded-[10px] border-none bg-violet-500 font-sans min-w-[100px] shadow-sm shadow-violet-500/20" onClick={handleGenerateCode}>🔑 Genereaza cod</button>
                   </div>
                 </>
               ) : (
@@ -833,13 +834,13 @@ export default function ProviderDashboardPage() {
                   </div>
                   <div className="flex gap-2.5 justify-end">
                     <button
-                      className="px-5 py-2.5 text-sm font-semibold cursor-pointer rounded-lg border border-slate-200 bg-transparent text-slate-500 font-sans"
+                      className="px-6 py-2.5 text-sm font-semibold cursor-pointer rounded-[10px] border border-slate-200/60 bg-transparent text-slate-500 font-sans min-w-[100px]"
                       onClick={() => navigator.clipboard?.writeText(genCode!)}
                     >
                       📋 Copiaza cod
                     </button>
                     <button
-                      className="px-5 py-2.5 text-sm font-bold text-white cursor-pointer rounded-lg border-none bg-violet-500 font-sans"
+                      className="px-6 py-2.5 text-sm font-bold text-white cursor-pointer rounded-[10px] border-none bg-violet-500 font-sans min-w-[100px] shadow-sm shadow-violet-500/20"
                       onClick={() => setShowGenerate(false)}
                     >
                       Gata
@@ -853,9 +854,9 @@ export default function ProviderDashboardPage() {
         {/* ═══ EDIT PLAN MODAL ═══ */}
         {editModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] animate-[fadeIn_0.2s]" onClick={(e) => e.target === e.currentTarget && setEditModal(null)}>
-            <div className="bg-white border border-slate-200 rounded-xl w-[480px] p-7 animate-[slideUp_0.3s_ease]">
+            <div className="bg-white border border-slate-200 rounded-[18px] w-[480px] p-8 animate-[slideUp_0.3s_ease] shadow-[0_24px_64px_rgba(0,0,0,.10)]">
               <div className="flex justify-between items-center mb-1">
-                <div className="text-xl font-extrabold">✏️ Editeaza plan cabinet</div>
+                <div className="text-[19px] font-extrabold tracking-[-0.01em]">✏️ Editeaza plan cabinet</div>
                 <button className="cursor-pointer text-lg bg-transparent border-none text-slate-400" onClick={() => setEditModal(null)}>✕</button>
               </div>
               <div className="text-sm mb-5 text-slate-500">
@@ -868,9 +869,10 @@ export default function ProviderDashboardPage() {
                   {(["starter", "professional", "enterprise"] as const).map((p) => (
                     <div
                       key={p}
-                      className={`py-3 px-2.5 text-center cursor-pointer transition-all rounded-lg border-2 ${
+                      className={`py-3 px-2.5 text-center cursor-pointer transition-all border-2 ${
                         editModal.plan === p ? "border-violet-500 bg-violet-500/[.06]" : "border-slate-200 bg-slate-50"
                       }`}
+                      style={{ borderRadius: 10 }}
                       onClick={() => setEditModal({ ...editModal, plan: p })}
                     >
                       <div className={`text-[13px] font-bold capitalize ${PLAN_COLOR_CLASSES[p]}`}>{p}</div>
@@ -888,13 +890,13 @@ export default function ProviderDashboardPage() {
                   max={100}
                   value={editModal.maxUsers}
                   onChange={(e) => setEditModal({ ...editModal, maxUsers: parseInt(e.target.value) || 1 })}
-                  className="w-full px-3.5 py-2.5 text-sm text-center outline-none rounded-lg border border-slate-200 bg-slate-50 text-slate-900 font-mono"
+                  className="w-full px-3.5 py-2.5 text-sm text-center outline-none rounded-[10px] border border-slate-200 bg-slate-50 text-slate-900 font-mono"
                 />
               </div>
 
               <div className="flex gap-2.5 justify-end">
-                <button className="px-5 py-2.5 text-sm font-semibold cursor-pointer rounded-lg border border-slate-200 bg-transparent text-slate-500 font-sans" onClick={() => setEditModal(null)}>Anuleaza</button>
-                <button className="px-5 py-2.5 text-sm font-bold text-white cursor-pointer rounded-lg border-none bg-violet-500 font-sans" onClick={handleEditPlan}>Salveaza</button>
+                <button className="px-6 py-2.5 text-sm font-semibold cursor-pointer rounded-[10px] border border-slate-200/60 bg-transparent text-slate-500 font-sans min-w-[100px]" onClick={() => setEditModal(null)}>Anuleaza</button>
+                <button className="px-6 py-2.5 text-sm font-bold text-white cursor-pointer rounded-[10px] border-none bg-violet-500 font-sans min-w-[100px] shadow-sm shadow-violet-500/20" onClick={handleEditPlan}>Salveaza</button>
               </div>
             </div>
           </div>
@@ -903,9 +905,9 @@ export default function ProviderDashboardPage() {
         {/* ═══ EMAIL MODAL ═══ */}
         {emailModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] animate-[fadeIn_0.2s]" onClick={(e) => e.target === e.currentTarget && setEmailModal(null)}>
-            <div className="bg-white border border-slate-200 rounded-xl w-[480px] p-7 animate-[slideUp_0.3s_ease]">
+            <div className="bg-white border border-slate-200 rounded-[18px] w-[480px] p-8 animate-[slideUp_0.3s_ease] shadow-[0_24px_64px_rgba(0,0,0,.10)]">
               <div className="flex justify-between items-center mb-1">
-                <div className="text-xl font-extrabold">📧 Trimite email</div>
+                <div className="text-[19px] font-extrabold tracking-[-0.01em]">📧 Trimite email</div>
                 <button className="cursor-pointer text-lg bg-transparent border-none text-slate-400" onClick={() => setEmailModal(null)}>✕</button>
               </div>
               <div className="text-sm mb-5 text-slate-500">
@@ -917,7 +919,7 @@ export default function ProviderDashboardPage() {
                 <input
                   value={emailSubject}
                   onChange={(e) => setEmailSubject(e.target.value)}
-                  className="w-full px-3.5 py-2.5 text-sm outline-none rounded-lg border border-slate-200 bg-slate-50 text-slate-900 font-sans"
+                  className="w-full px-3.5 py-2.5 text-sm outline-none rounded-[10px] border border-slate-200 bg-slate-50 text-slate-900 font-sans"
                   placeholder="Subiect email..."
                 />
               </div>
@@ -927,15 +929,15 @@ export default function ProviderDashboardPage() {
                 <textarea
                   value={emailMessage}
                   onChange={(e) => setEmailMessage(e.target.value)}
-                  className="w-full px-3.5 py-2.5 text-sm outline-none rounded-lg border border-slate-200 bg-slate-50 text-slate-900 font-sans min-h-[120px] resize-y"
+                  className="w-full px-3.5 py-2.5 text-sm outline-none rounded-[10px] border border-slate-200 bg-slate-50 text-slate-900 font-sans min-h-[120px] resize-y"
                   placeholder="Scrie mesajul..."
                 />
               </div>
 
               <div className="flex gap-2.5 justify-end">
-                <button className="px-5 py-2.5 text-sm font-semibold cursor-pointer rounded-lg border border-slate-200 bg-transparent text-slate-500 font-sans" onClick={() => setEmailModal(null)}>Anuleaza</button>
+                <button className="px-6 py-2.5 text-sm font-semibold cursor-pointer rounded-[10px] border border-slate-200/60 bg-transparent text-slate-500 font-sans min-w-[100px]" onClick={() => setEmailModal(null)}>Anuleaza</button>
                 <button
-                  className="px-5 py-2.5 text-sm font-bold text-white cursor-pointer rounded-lg border-none bg-blue-600 font-sans"
+                  className="px-6 py-2.5 text-sm font-bold text-white cursor-pointer rounded-[10px] border-none bg-blue-600 font-sans min-w-[100px] shadow-sm shadow-blue-600/20"
                   style={{ opacity: emailSending ? 0.5 : 1 }}
                   onClick={handleSendEmail}
                   disabled={emailSending || !emailSubject.trim() || !emailMessage.trim()}

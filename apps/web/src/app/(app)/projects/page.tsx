@@ -179,7 +179,7 @@ export default function ProjectsPage() {
                 onChange={e => setSearchFilter(e.target.value)}
                 style={{ width: 200 }}
               />
-              <div className="flex rounded-lg p-0.5 gap-px bg-slate-100">
+              <div className="flex rounded-lg p-0.5 gap-0.5 bg-slate-100">
                 {[
                   { id: "all", label: "Toate" },
                   { id: "draft", label: "Draft" },
@@ -190,7 +190,7 @@ export default function ProjectsPage() {
                   { id: "rejected", label: "Respins" },
                 ].map(f => (
                   <button key={f.id}
-                    className={`px-2 py-1 rounded-md text-[11px] font-semibold border-none cursor-pointer transition-all ${statusFilter === f.id ? "bg-blue-600 text-white" : "bg-transparent text-slate-400 hover:text-slate-600"}`}
+                    className={`px-2.5 py-1 rounded-md text-[11px] font-semibold border-none cursor-pointer transition-all ${statusFilter === f.id ? "bg-blue-600 text-white shadow-sm" : "bg-transparent text-slate-400 hover:text-slate-600"}`}
                     onClick={() => setStatusFilter(f.id)}
                   >{f.label}</button>
                 ))}
@@ -202,8 +202,8 @@ export default function ProjectsPage() {
               </select>
             </>
           )}
-          <div style={{ marginLeft: "auto" }}>
-            <BtnOutline icon={<IconPlus />} size="sm" onClick={openCreate}>Proiect nou</BtnOutline>
+          <div style={{ marginLeft: "auto", flexShrink: 0 }}>
+            <BtnPrimary icon={<IconPlus />} size="sm" onClick={openCreate}>Proiect nou</BtnPrimary>
           </div>
         </div>
 

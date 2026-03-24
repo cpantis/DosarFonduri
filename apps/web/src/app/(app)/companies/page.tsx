@@ -169,10 +169,10 @@ export default function CompaniesPage() {
 
       <div className="px-6 py-6">
         {/* Search + filter bar + action */}
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
           {!loading && companies.length > 0 && (
             <>
-              <div style={{ position: "relative", flex: 1, maxWidth: 360 }}>
+              <div style={{ position: "relative", flex: "1 1 240px", maxWidth: 360 }}>
                 <svg style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", width: 16, height: 16, color: "#94a3b8" }} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
                 <input
                   value={search}
@@ -199,8 +199,8 @@ export default function CompaniesPage() {
               </div>
             </>
           )}
-          <div style={{ marginLeft: "auto" }}>
-            <BtnOutline icon={<IconPlus />} size="sm" onClick={openAdd}>Adaugă firmă</BtnOutline>
+          <div style={{ marginLeft: "auto", flexShrink: 0 }}>
+            <BtnPrimary icon={<IconPlus />} size="sm" onClick={openAdd}>Adaugă firmă</BtnPrimary>
           </div>
         </div>
 

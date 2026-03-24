@@ -2655,11 +2655,16 @@ export default function ProjectViewPage() {
         .et-toggle.on{border-color:#7c3aed;color:#7c3aed;background:rgba(167,139,250,.08)}
         .chat-messages{flex:1;overflow-y:auto;overflow-x:hidden;padding:24px 20px;min-height:0}
         .chat-messages-inner{max-width:720px;margin:0 auto;width:100%;display:flex;flex-direction:column;gap:24px}
-        .solomon-msg{display:flex;gap:12px}
+        .solomon-msg{display:flex;gap:12px;max-width:85%}
+        .solomon-msg.solomon-msg-left{align-self:flex-start}
+        .solomon-msg.solomon-msg-right{align-self:flex-end;flex-direction:row-reverse}
         .solomon-msg-avatar{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0}
         .solomon-msg-avatar.ai{background:linear-gradient(135deg,#f59e0b,#ea580c);color:#ffffff}
-        .solomon-msg-avatar.user{background:#e2e8f0;color:#475569}
+        .solomon-msg-avatar.user{background:var(--accent-blue);color:#ffffff}
         .solomon-msg-body{flex:1;min-width:0}
+        .solomon-msg-right .solomon-msg-body{text-align:right}
+        .solomon-msg-right .solomon-msg-text{background:rgba(77,139,255,0.08);border-radius:14px 14px 2px 14px;padding:10px 14px;display:inline-block;text-align:left}
+        .solomon-msg-left .solomon-msg-text{background:var(--bg-elevated,#f8fafc);border-radius:14px 14px 14px 2px;padding:10px 14px}
         .solomon-msg-name{font-size:13px;font-weight:600;color:#0f172a;margin-bottom:4px}
         .solomon-msg-name span{font-weight:400;color:#94a3b8;margin-left:8px;font-size:12px}
         .solomon-msg-text{font-size:15px;line-height:1.5;color:#475569;font-family:'Inter',system-ui,sans-serif}
@@ -4620,7 +4625,7 @@ export default function ProjectViewPage() {
                   <div className="chat-messages" ref={chatRef} onScroll={handleChatScroll} onMouseUp={handleTextSelect}>
                     <div className="chat-messages-inner">
                     {solomonMessages.map((msg, msgIdx) => (
-                      <div key={msgIdx} className="solomon-msg">
+                      <div key={msgIdx} className={`solomon-msg ${msg.role === "assistant" ? "solomon-msg-left" : "solomon-msg-right"}`}>
                         <div className={`solomon-msg-avatar ${msg.role === "assistant" ? "ai" : "user"}`}>
                           {msg.role === "assistant" ? "S" : (typeof window !== "undefined" && localStorage.getItem("df-user-initials")) || "U"}
                         </div>

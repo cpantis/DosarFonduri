@@ -2700,13 +2700,14 @@ export default function ProjectViewPage() {
         .chat-timestamp{font-size:10px;color:#94a3b8;margin-top:4px}
         .chat-input-area{padding:16px 20px;border-top:1px solid rgba(226,232,240,.8);background:#ffffff}
         .chat-input-inner{max-width:760px;margin:0 auto}
-        .chat-input-wrapper{display:flex;gap:10px;align-items:flex-end;max-width:720px;margin:0 auto;width:100%}
-        .chat-attach-btn{width:36px;height:36px;border-radius:50%;border:1px solid rgba(226,232,240,.8);background:#ffffff;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#94a3b8;transition:all .15s cubic-bezier(.4,0,.2,1);flex-shrink:0}
-        .chat-attach-btn:hover{color:#475569;border-color:#cbd5e1;background:#f8fafc}
+        .chat-input-wrapper{display:flex;gap:8px;align-items:flex-end;max-width:720px;margin:0 auto;width:100%}
+        .chat-hint{text-align:center;font-size:11px;color:#94a3b8;margin-top:8px;font-family:'Inter',system-ui,sans-serif}
+        .chat-attach-btn{width:36px;height:36px;border-radius:0;border:none;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#2563eb;transition:all .15s cubic-bezier(.4,0,.2,1);flex-shrink:0;padding:0}
+        .chat-attach-btn:hover{color:#1d4ed8}
         .chat-attach-btn:disabled{opacity:.4;cursor:not-allowed}
         .chat-input-row{display:flex;gap:8px;align-items:flex-end;background:#ffffff;border:1px solid rgba(226,232,240,.8);border-radius:20px;padding:10px 12px 10px 16px;transition:border-color .15s;flex:1;min-width:0}
         .chat-input-row:focus-within{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.1)}
-        .chat-input{flex:1;padding:8px 10px;border-radius:8px;border:none;background:transparent;color:#0f172a;font-size:14px;font-family:'Inter',system-ui,sans-serif;line-height:1.5;resize:none;outline:none;min-height:36px;max-height:160px;overflow-y:auto}
+        .chat-input{flex:1;padding:8px 10px;border-radius:8px;border:none;background:transparent;color:#0f172a;font-size:14px;font-family:'Inter',system-ui,sans-serif;line-height:1.5;resize:none;outline:none;min-height:52px;max-height:160px;overflow-y:auto}
         .chat-input::placeholder{color:#94a3b8}
         .chat-btn{width:36px;height:36px;border-radius:50%;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s cubic-bezier(.4,0,.2,1);flex-shrink:0}
         .chat-btn.send{background:#2563eb;color:#ffffff;font-size:16px}
@@ -4802,20 +4803,17 @@ export default function ProjectViewPage() {
                         }}
                       />
                       <div className="chat-input-wrapper">
-                        <button className="chat-attach-btn" title="Atașează document sau imagine" onClick={() => solomonFileRef.current?.click()} disabled={solomonStreaming || readOnly}>
-                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
-                        </button>
                         <div className="chat-input-row">
                           <textarea
                             className="chat-input"
                             data-solomon-input
                             placeholder="Scrie detalii despre proiect, lipește date sau poze, sau întreabă..."
                             value={solomonInput}
-                            rows={1}
+                            rows={2}
                             onChange={e => {
                               setSolomonInput(e.target.value);
                               e.target.style.height = "auto";
-                              e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
+                              e.target.style.height = Math.min(e.target.scrollHeight, 160) + "px";
                             }}
                             onKeyDown={e => {
                               if (e.key === "Enter" && !e.shiftKey) {
@@ -4841,6 +4839,9 @@ export default function ProjectViewPage() {
                               }
                             }}
                           />
+                          <button className="chat-attach-btn" title="Atașează document sau imagine" onClick={() => solomonFileRef.current?.click()} disabled={solomonStreaming || readOnly}>
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                          </button>
                           {solomonStreaming ? (
                             <button className="chat-btn send" onClick={handleSolomonStop} title="Oprește generarea" style={{ background: "#64748b" }}>
                               <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="1" y="1" width="12" height="12" rx="2.5"/></svg>
@@ -4852,6 +4853,7 @@ export default function ProjectViewPage() {
                           )}
                         </div>
                       </div>
+                      <div className="chat-hint">Scrie „analiză detaliată" sau „opus" pentru gândire aprofundată</div>
                     </div>
                   </div>
                 </div>

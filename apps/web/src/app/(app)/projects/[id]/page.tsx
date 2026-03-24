@@ -962,15 +962,21 @@ export default function ProjectViewPage() {
     }
   };
 
-  const handleSolomonUpload = async (file: File) => {
+  const handleSolomonUpload = async (filesOrFile: File | File[]) => {
     if (readOnly || !solomonConvId || solomonStreaming) return;
-    setSolomonMessages(prev => [...prev, { role: "user", text: file.name, extractions: null }]);
+    const files = Array.isArray(filesOrFile) ? filesOrFile : [filesOrFile];
+    if (files.length === 0) return;
+
+    const fileNames = files.map(f => f.name).join(", ");
+    setSolomonMessages(prev => [...prev, { role: "user", text: files.length > 1 ? `${files.length} documente: ${fileNames}` : fileNames, extractions: null }]);
     setSolomonStreaming(true);
 
     try {
       const token = typeof window !== "undefined" ? localStorage.getItem("df-token") : null;
       const formData = new FormData();
-      formData.append("file", file);
+      for (const f of files) {
+        formData.append("files", f);
+      }
 
       const res = await fetch(`${API_URL}/api/solomon/conversations/${solomonConvId}/upload`, {
         method: "POST",
@@ -4617,14 +4623,17 @@ export default function ProjectViewPage() {
                     e.preventDefault();
                     e.stopPropagation();
                     setSolomonDragOver(false);
-                    const file = e.dataTransfer.files?.[0];
-                    if (file) handleSolomonUpload(file);
+                    const fileList = e.dataTransfer.files;
+                    if (fileList && fileList.length > 0) {
+                      const files = Array.from(fileList);
+                      handleSolomonUpload(files.length === 1 ? files[0] : files);
+                    }
                   }}
                 >
                   {solomonDragOver && (
                     <div className="solomon-drop-overlay">
                       <div className="solomon-drop-icon">&#128206;</div>
-                      <div className="solomon-drop-text">Elibereaza pentru upload document</div>
+                      <div className="solomon-drop-text">Eliberează pentru upload documente</div>
                     </div>
                   )}
                   {/* Messages */}
@@ -4804,11 +4813,15 @@ export default function ProjectViewPage() {
                       <input
                         ref={solomonFileRef}
                         type="file"
+                        multiple
                         accept=".pdf,.docx,.xlsx,.doc,.png,.jpg,.jpeg"
                         style={{ display: "none" }}
                         onChange={e => {
-                          const file = e.target.files?.[0];
-                          if (file) handleSolomonUpload(file);
+                          const fileList = e.target.files;
+                          if (fileList && fileList.length > 0) {
+                            const files = Array.from(fileList);
+                            handleSolomonUpload(files.length === 1 ? files[0] : files);
+                          }
                           e.target.value = "";
                         }}
                       />

@@ -1064,50 +1064,116 @@ export default function CompanyDetailPage() {
                 </div>
               )}
 
-              {/* Rules table */}
-              <div className="cd-card" style={{ padding: 0, overflow: "hidden" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                  <thead>
-                    <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
-                      <th style={{ padding: "10px 16px", textAlign: "left", fontWeight: 600, color: "#475569", fontSize: 11, textTransform: "uppercase", letterSpacing: ".05em" }}>Status</th>
-                      <th style={{ padding: "10px 16px", textAlign: "left", fontWeight: 600, color: "#475569", fontSize: 11, textTransform: "uppercase", letterSpacing: ".05em" }}>Regula</th>
-                      <th style={{ padding: "10px 16px", textAlign: "left", fontWeight: 600, color: "#475569", fontSize: 11, textTransform: "uppercase", letterSpacing: ".05em" }}>Detalii</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {preEligResult.rules.map((rule: any, i: number) => {
-                      const statusColors: Record<string, { bg: string; text: string; dot: string }> = {
-                        passed: { bg: "rgba(5,150,105,.06)", text: "#059669", dot: "#059669" },
-                        failed: { bg: "rgba(239,68,68,.06)", text: "#dc2626", dot: "#dc2626" },
-                        pending: { bg: "rgba(245,158,11,.06)", text: "#d97706", dot: "#d97706" },
-                        not_applicable: { bg: "rgba(148,163,184,.06)", text: "#94a3b8", dot: "#94a3b8" },
-                      };
-                      const statusLabels: Record<string, string> = { passed: "Indeplinit", failed: "Neindeplinit", pending: "In asteptare", not_applicable: "N/A" };
-                      const sc = statusColors[rule.status] || statusColors.pending;
-                      return (
-                        <tr key={rule.id || i} style={{ borderBottom: "1px solid #f1f5f9", background: i % 2 === 0 ? "#ffffff" : "#fafbfc" }}>
-                          <td style={{ padding: "10px 16px", whiteSpace: "nowrap" }}>
-                            <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 20, background: sc.bg, color: sc.text }}>
-                              <span style={{ width: 6, height: 6, borderRadius: "50%", background: sc.dot }} />
-                              {statusLabels[rule.status] || rule.status}
-                            </span>
-                          </td>
-                          <td style={{ padding: "10px 16px", color: "#0f172a", lineHeight: 1.5, maxWidth: 500 }}>
-                            {rule.description}
-                          </td>
-                          <td style={{ padding: "10px 16px", color: "#64748b", fontSize: 12, maxWidth: 350 }}>
-                            {rule.notes || "\u2014"}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+              {/* Missing elements warning */}
+              {preEligResult.summary.missingElements?.length > 0 && (
+                <div style={{ padding: 14, borderRadius: 12, background: "rgba(245,158,11,.05)", border: "1px solid rgba(245,158,11,.2)", marginBottom: 20 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: "#d97706", marginBottom: 6 }}>
+                    Date lipsa ({preEligResult.summary.missingElements.length} elemente)
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {preEligResult.summary.missingElements.map((key: string) => (
+                      <span key={key} style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, background: "rgba(245,158,11,.1)", color: "#92400e", fontFamily: "'JetBrains Mono', monospace" }}>
+                        {key}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Rules list */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {preEligResult.rules.map((rule: any, i: number) => {
+                  const statusColors: Record<string, { bg: string; text: string; dot: string; border: string }> = {
+                    passed: { bg: "rgba(5,150,105,.04)", text: "#059669", dot: "#059669", border: "rgba(5,150,105,.2)" },
+                    failed: { bg: "rgba(239,68,68,.04)", text: "#dc2626", dot: "#dc2626", border: "rgba(239,68,68,.2)" },
+                    pending: { bg: "rgba(245,158,11,.04)", text: "#d97706", dot: "#d97706", border: "rgba(245,158,11,.2)" },
+                    not_applicable: { bg: "rgba(148,163,184,.04)", text: "#94a3b8", dot: "#94a3b8", border: "rgba(148,163,184,.2)" },
+                  };
+                  const statusLabels: Record<string, string> = { passed: "Indeplinit", failed: "Neindeplinit", pending: "In asteptare", not_applicable: "N/A" };
+                  const sc = statusColors[rule.status] || statusColors.pending;
+                  const elements = rule.elements || [];
+                  const refResults = rule.refTableResults || [];
+                  const typeLabel = rule.type === "fixed" ? "Fixa" : "Interpretata";
+
+                  return (
+                    <div key={rule.id || i} className="cd-card" style={{ padding: 0, borderLeft: `3px solid ${sc.dot}`, overflow: "hidden" }}>
+                      {/* Rule header */}
+                      <div style={{ padding: "12px 16px", display: "flex", alignItems: "flex-start", gap: 12, background: sc.bg }}>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 20, background: sc.bg, color: sc.text, border: `1px solid ${sc.border}`, flexShrink: 0, marginTop: 1 }}>
+                          <span style={{ width: 6, height: 6, borderRadius: "50%", background: sc.dot }} />
+                          {statusLabels[rule.status] || rule.status}
+                        </span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, color: "#0f172a", lineHeight: 1.5 }}>{rule.description}</div>
+                          <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
+                            {typeLabel} &middot; {rule.category || "general"}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Elements used */}
+                      {elements.length > 0 && (
+                        <div style={{ padding: "10px 16px", borderTop: "1px solid #f1f5f9" }}>
+                          <div style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".06em", color: "#94a3b8", marginBottom: 6 }}>Elemente verificate</div>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                            {elements.map((el: any, j: number) => (
+                              <div key={j} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
+                                <span style={{ width: 14, height: 14, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, flexShrink: 0, background: el.isMissing ? "rgba(245,158,11,.1)" : rule.status === "passed" ? "rgba(5,150,105,.1)" : "rgba(239,68,68,.1)", color: el.isMissing ? "#d97706" : rule.status === "passed" ? "#059669" : "#dc2626" }}>
+                                  {el.isMissing ? "?" : rule.status === "passed" ? "\u2713" : "\u2717"}
+                                </span>
+                                <span style={{ color: "#475569", fontWeight: 500 }}>{el.displayName}</span>
+                                {!el.isMissing ? (
+                                  <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, padding: "1px 6px", borderRadius: 4, background: "#f1f5f9", color: "#334155" }}>
+                                    {String(el.value)}
+                                  </span>
+                                ) : (
+                                  <span style={{ fontSize: 11, color: "#d97706", fontStyle: "italic" }}>lipsa</span>
+                                )}
+                                {el.expectedOperator && el.expectedValue !== null && el.expectedValue !== undefined && (
+                                  <span style={{ fontSize: 11, color: "#94a3b8" }}>
+                                    ({el.expectedOperator} {String(el.expectedValue)})
+                                  </span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Reference table results */}
+                      {refResults.length > 0 && (
+                        <div style={{ padding: "10px 16px", borderTop: "1px solid #f1f5f9" }}>
+                          <div style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".06em", color: "#94a3b8", marginBottom: 6 }}>Tabele de referinta</div>
+                          {refResults.map((ref: any, k: number) => {
+                            const refStatusColor = ref.status === "passed" ? "#059669" : ref.status === "failed" ? "#dc2626" : ref.status === "warning" ? "#d97706" : "#94a3b8";
+                            return (
+                              <div key={k} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, marginBottom: 3 }}>
+                                <span style={{ width: 6, height: 6, borderRadius: "50%", background: refStatusColor, flexShrink: 0 }} />
+                                <span style={{ color: "#475569" }}>{ref.tableName}</span>
+                                <span style={{ color: "#94a3b8", fontSize: 11 }}>&mdash; {ref.message}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* Notes */}
+                      {rule.notes && elements.length === 0 && refResults.length === 0 && (
+                        <div style={{ padding: "8px 16px", borderTop: "1px solid #f1f5f9", fontSize: 12, color: "#64748b" }}>
+                          {rule.notes}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
 
               {/* Sub-summary */}
-              <div style={{ display: "flex", gap: 16, marginTop: 16, fontSize: 12, color: "#64748b" }}>
-                <span>Reguli verificate: {preEligResult.summary.passed + preEligResult.summary.failed}/{preEligResult.summary.total}</span>
+              <div style={{ display: "flex", gap: 16, marginTop: 16, fontSize: 12, color: "#64748b", flexWrap: "wrap" }}>
+                <span>Reguli fixe: {preEligResult.summary.fixed.passed + preEligResult.summary.fixed.failed}/{preEligResult.summary.fixed.total} verificate</span>
+                {preEligResult.summary.interpreted.total > 0 && (
+                  <span>Reguli interpretate: {preEligResult.summary.interpreted.total} (necesita proiect)</span>
+                )}
               </div>
             </>)}
 

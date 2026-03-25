@@ -113,14 +113,17 @@ function verifyExtractionCompleteness(
   };
 }
 
-/** Default model for guide extraction (Sonnet = higher rate limits, 10x cheaper) */
+/** Default model for fast structured extraction (fixed rules, scoring, elements, docs) */
 const DEFAULT_EXTRACTION_MODEL = "claude-sonnet-4-6";
 
-/** Character limit for a single extraction pass (200K context window) */
-const EXTRACTION_CHAR_LIMIT = 150000;
+/** Model for deep reasoning on interpreted rules (decision trees, exceptions, cascading) */
+const INTERPRETED_RULES_MODEL = "claude-opus-4-6";
 
-/** Max concurrent extraction chunks when guide exceeds EXTRACTION_CHAR_LIMIT */
-const MAX_PARALLEL_CHUNKS = 2;
+/** Character limit for a single extraction pass — smaller chunks = more parallelism */
+const EXTRACTION_CHAR_LIMIT = 60000;
+
+/** Max concurrent extraction chunks */
+const MAX_PARALLEL_CHUNKS = 4;
 
 // ─── UNIFIED AI + ET EXTRACTION ───
 
@@ -458,16 +461,22 @@ async function refineInterpretedRulesWithET(
   // Skip ET refinement if rules payload is trivially small
   if (rulesJson.length < 200) return interpretedRules;
 
-  console.log(`[processGuide] ET refinement: ${interpretedRules.length} interpreted rules (${rulesJson.length} chars)`);
+  // Use org config for model override, fallback to Opus
+  const config = await db.query.orgConfig.findFirst({
+    where: eq(orgConfig.organizationId, organizationId),
+  });
+  const model = config?.reguliInterpModel || INTERPRETED_RULES_MODEL;
+
+  console.log(`[processGuide] ET refinement: ${interpretedRules.length} interpreted rules (${rulesJson.length} chars) with ${model}`);
 
   try {
     const response = await withAILimit(() => anthropic.messages.create({
-      model: DEFAULT_EXTRACTION_MODEL,
-      max_tokens: 16000,
+      model,
+      max_tokens: 24000,
       temperature: 1, // Required for ET
       thinking: {
         type: "enabled",
-        budget_tokens: 10000,
+        budget_tokens: 15000,
       },
       system: REFINE_ET_SYSTEM,
       messages: [{
@@ -482,7 +491,7 @@ async function refineInterpretedRulesWithET(
     await logAIUsage({
       organizationId,
       agent: "ghid_rules",
-      model: DEFAULT_EXTRACTION_MODEL,
+      model,
       tokensInput: response.usage.input_tokens,
       tokensOutput: response.usage.output_tokens,
       action: "et_refine_interpreted_rules",
@@ -1511,7 +1520,7 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
           documentName: doc.name,
           progress: 75,
           status: "processing",
-          message: `Rafinare ${allInterpreted.length} reguli interpretate cu Extended Thinking...`,
+          message: `Rafinare ${allInterpreted.length} reguli interpretate cu Opus + Extended Thinking...`,
         }).catch((e: any) => console.warn("[processGuide] sse et refine:", e.message));
 
         const etStart = Date.now();

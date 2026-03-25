@@ -51,7 +51,7 @@ export async function extractCarteIdentitateFromImage(
   const start = Date.now();
 
   const response = await withAILimit(() => anthropic.messages.create({
-    model: "claude-sonnet-4-20250514",
+    model: "claude-sonnet-4-6-20250514",
     max_tokens: 2000,
     system: CI_SYSTEM_PROMPT,
     messages: [{
@@ -81,7 +81,7 @@ export async function extractCarteIdentitate(text: string): Promise<ExtractionRe
   const start = Date.now();
 
   const response = await withAILimit(() => anthropic.messages.create({
-    model: "claude-sonnet-4-20250514",
+    model: "claude-sonnet-4-6-20250514",
     max_tokens: 2000,
     system: CI_SYSTEM_PROMPT,
     messages: [{

@@ -270,7 +270,7 @@ print(json.dumps(pages))
 
 export async function ocrPageWithVision(pageImageBase64: string, mediaType: string = "image/png"): Promise<string> {
   const response = await withAILimit(() => anthropic.messages.create({
-    model: "claude-sonnet-4-20250514",
+    model: "claude-sonnet-4-6-20250514",
     max_tokens: 4000,
     messages: [{
       role: "user",
@@ -371,7 +371,7 @@ export async function preStructurePages(rawText: string, organizationId?: string
       .join("\n\n");
 
     const response = await withAILimit(() => anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
+      model: "claude-sonnet-4-6-20250514",
       max_tokens: 4000,
       system: `Ești un pre-procesor de documente de finanțare europeană. Primești pagini brute dintr-un ghid de finanțare și returnezi o versiune structurată.
 
@@ -398,7 +398,7 @@ IMPORTANT:
       logAIUsage({
         organizationId,
         agent: "ghid_rules",
-        model: "claude-sonnet-4-20250514",
+        model: "claude-sonnet-4-6-20250514",
         tokensInput: response.usage.input_tokens,
         tokensOutput: response.usage.output_tokens,
         action: `prestructure_batch_${batch[0]?.page || 0}-${batch[batch.length - 1]?.page || 0}`,
@@ -587,7 +587,7 @@ export async function preStructureClientText(rawText: string): Promise<PreStruct
       .join("\n\n");
 
     const response = await withAILimit(() => anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
+      model: "claude-sonnet-4-6-20250514",
       max_tokens: 6000,
       system: `Ești un pre-procesor de text pentru documente client din dosare de finanțare europeană.
 
@@ -740,7 +740,7 @@ print(json.dumps(pages))
 
   const processPage = async (pageData: { page: number; image: string; width: number; height: number }): Promise<VisualField[]> => {
     const response = await withAILimit(() => anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
+      model: "claude-sonnet-4-6-20250514",
       max_tokens: 4000,
       system: `Ești expert în formulare oficiale pentru dosare de finanțare europeană. Detectezi VIZUAL toate câmpurile de completat din template-uri (cereri de finanțare, checklisturi, memorii, anexe financiare, declarații).
 
@@ -1001,7 +1001,7 @@ export async function classifyDocument(textPreview: string): Promise<{
   hasForms: boolean;
 }> {
   const response = await withAILimit(() => anthropic.messages.create({
-    model: "claude-sonnet-4-20250514",
+    model: "claude-sonnet-4-6-20250514",
     max_tokens: 500,
     system: `Ești expert în dosare de finanțare europeană. Clasifici documente pe baza conținutului — știi exact cum arată fiecare tip de document dintr-un dosar (cerere finanțare, bilanț ANAF, certificat constatator ONRC, ofertă de preț, memoriu justificativ, etc.). Clasificarea CORECTĂ e critică — determină cum se procesează documentul mai departe. Returnează DOAR JSON valid.`,
     messages: [{
@@ -1115,7 +1115,7 @@ export async function extractTextFromImage(buffer: Buffer, fileName: string): Pr
  */
 export async function ocrIdentityDocWithVision(pageImageBase64: string, mediaType: string = "image/png"): Promise<string> {
   const response = await withAILimit(() => anthropic.messages.create({
-    model: "claude-sonnet-4-20250514",
+    model: "claude-sonnet-4-6-20250514",
     max_tokens: 4000,
     system: `Ești un modul OCR (Optical Character Recognition) integrat în platforma DosarFonduri — un sistem profesional de consultanță pentru fonduri europene nerambursabile.
 

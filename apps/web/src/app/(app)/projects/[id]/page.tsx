@@ -756,7 +756,7 @@ export default function ProjectViewPage() {
         const conv = convs[0];
         setSolomonConvId(conv.id);
         // Ensure conversation uses Sonnet by default
-        apiPut(`/api/solomon/conversations/${conv.id}/model`, { model: "claude-sonnet-4-20250514" }).catch(() => {});
+        apiPut(`/api/solomon/conversations/${conv.id}/model`, { model: "claude-sonnet-4-6-20250514" }).catch(() => {});
         const msgs = await apiGet<any[]>(`/api/solomon/conversations/${conv.id}/messages`);
         setSolomonMessages((msgs || []).map((m: any) => ({
           role: m.role as "user" | "assistant",
@@ -789,7 +789,7 @@ export default function ProjectViewPage() {
   async function handleSolomonModelChange(model: "sonnet" | "opus") {
     setSolomonModel(model);
     if (solomonConvId) {
-      const modelId = model === "opus" ? "claude-opus-4-6" : "claude-sonnet-4-20250514";
+      const modelId = model === "opus" ? "claude-opus-4-6" : "claude-sonnet-4-6-20250514";
       try {
         await apiPut(`/api/solomon/conversations/${solomonConvId}/model`, { model: modelId });
       } catch {}

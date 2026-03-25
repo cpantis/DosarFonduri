@@ -156,7 +156,7 @@ export async function parseBilantPDF(pdfText: string, year?: number): Promise<Pa
     const isRetry = attempt > 1;
 
     const response = await withAILimit(() => anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
+      model: "claude-sonnet-4-6-20250514",
       max_tokens: 8000,
       system: isRetry
         ? BILANT_SYSTEM_PROMPT + "\n\nATENȚIE: Răspunsul tău anterior NU a fost JSON valid. Returnează EXCLUSIV un obiect JSON valid cu cheile year, f10, f20, f30, f40. Nimic altceva."
@@ -173,7 +173,7 @@ export async function parseBilantPDF(pdfText: string, year?: number): Promise<Pa
     if (response.stop_reason === "max_tokens") {
       console.warn(`[bilantParser] Attempt ${attempt}: truncated at ${responseText.length} chars, requesting continuation...`);
       const contResponse = await withAILimit(() => anthropic.messages.create({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-sonnet-4-6-20250514",
         max_tokens: 8000,
         system: BILANT_SYSTEM_PROMPT + "\n\nContinuă JSON-ul trunchiat. NU repeta ce a fost generat anterior.",
         messages: [

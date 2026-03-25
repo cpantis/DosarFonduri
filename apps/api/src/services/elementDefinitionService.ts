@@ -398,7 +398,7 @@ async function aiSemanticMapping(
 
   try {
     const response = await withAILimit(() => anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
+      model: "claude-sonnet-4-6-20250514",
       max_tokens: 4000,
       system: `Ești expert în maparea câmpurilor de formulare la definiții de elemente pentru fonduri europene din România.
 
@@ -426,7 +426,7 @@ Returnează DOAR un JSON array valid. Fără backticks, fără explicații.`,
     await logAIUsage({
       organizationId,
       agent: "template_mapping",
-      model: "claude-sonnet-4-20250514",
+      model: "claude-sonnet-4-6-20250514",
       tokensInput: response.usage.input_tokens,
       tokensOutput: response.usage.output_tokens,
       action: "ai_semantic_mapping",
@@ -552,7 +552,7 @@ export async function extractElementDefinitionsFromGuide(
   organizationId: string,
 ): Promise<number> {
   const response = await withAILimit(() => anthropic.messages.create({
-    model: "claude-sonnet-4-20250514",
+    model: "claude-sonnet-4-6-20250514",
     max_tokens: 8000,
     system: ELEMENT_EXTRACTION_SYSTEM,
     messages: [{
@@ -567,7 +567,7 @@ export async function extractElementDefinitionsFromGuide(
   await logAIUsage({
     organizationId,
     agent: "ghid_rules",
-    model: "claude-sonnet-4-20250514",
+    model: "claude-sonnet-4-6-20250514",
     tokensInput: response.usage.input_tokens,
     tokensOutput: response.usage.output_tokens,
     action: "extract_element_definitions",

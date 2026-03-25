@@ -15,7 +15,7 @@ import { eq, inArray } from "drizzle-orm";
 import { anthropic, withAILimit } from "../lib/anthropic";
 import { logAIUsage } from "./aiUsage";
 
-const SONNET_MODEL = "claude-sonnet-4-20250514";
+const SONNET_MODEL = "claude-sonnet-4-6-20250514";
 
 // ─── SYSTEM PROMPT ───
 

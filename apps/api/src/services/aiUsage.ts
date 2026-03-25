@@ -2,7 +2,7 @@ import { db } from "../db";
 import { aiUsageLog } from "../db/schema";
 
 const MODEL_COSTS: Record<string, { input: number; output: number }> = {
-  "claude-sonnet-4-20250514": { input: 3 / 1_000_000, output: 15 / 1_000_000 },
+  "claude-sonnet-4-6-20250514": { input: 3 / 1_000_000, output: 15 / 1_000_000 },
   "claude-opus-4-6": { input: 15 / 1_000_000, output: 75 / 1_000_000 },
   "claude-haiku-4-5-20251001": { input: 0.25 / 1_000_000, output: 1.25 / 1_000_000 },
 };

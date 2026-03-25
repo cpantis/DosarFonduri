@@ -742,7 +742,7 @@ export default function TemplateViewerPage() {
                   <input
                     value={composeAiModel}
                     onChange={e => setComposeAiModel(e.target.value)}
-                    placeholder="claude-sonnet-4-20250514 (default din org)"
+                    placeholder="claude-sonnet-4-6-20250514 (default din org)"
                     className="flex-1 max-w-[320px] px-2.5 py-1 rounded border border-slate-200 bg-slate-50 text-slate-900 text-xs font-mono"
                   />
                   <button

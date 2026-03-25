@@ -10,7 +10,7 @@ export async function extractDeclaratie(pdfText: string): Promise<ExtractionResu
   const start = Date.now();
 
   const response = await withAILimit(() => anthropic.messages.create({
-    model: "claude-sonnet-4-20250514",
+    model: "claude-sonnet-4-6-20250514",
     max_tokens: 4000,
     system: `Ești expert în documente financiar-contabile românești. Extrage datele din declarația expertului contabil privind activitatea agroalimentară a firmei.
 

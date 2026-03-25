@@ -43,7 +43,7 @@ Returnează un singur obiect JSON:
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
       const response = await withAILimit(() => anthropic.messages.create({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-sonnet-4-6-20250514",
         max_tokens: 2000,
         system: attempt > 1
           ? systemPrompt + "\n\nATENȚIE: Returnează EXCLUSIV JSON valid."

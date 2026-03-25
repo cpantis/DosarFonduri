@@ -77,7 +77,7 @@ Reguli:
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     const response = await withAILimit(() => anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
+      model: "claude-sonnet-4-6-20250514",
       max_tokens: 12000, // Increased from 8000 for complex documents
       system: attempt > 1
         ? `Ești expert în documente oficiale românești. Returnează EXCLUSIV un JSON valid cu structura {"fields": [...]}. Fără backticks, fără explicații.${vocabSection}`
@@ -107,7 +107,7 @@ ${text.slice(0, CHUNK_CHAR_LIMIT)}`,
       console.warn(`[genericExtractor] Attempt ${attempt}: truncated at ${responseText.length} chars, requesting continuation...`);
 
       const contResponse = await withAILimit(() => anthropic.messages.create({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-sonnet-4-6-20250514",
         max_tokens: 12000,
         system: systemPrompt + "\n\nContinuă JSON-ul trunchiat. NU repeta ce a fost generat anterior.",
         messages: [

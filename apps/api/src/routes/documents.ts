@@ -4,7 +4,7 @@ import { z } from "zod";
 import { createHash } from "crypto";
 import { updateDocElementSchema, validatePageSchema, createDocElementSchema } from "@dosarfonduri/shared";
 import { db } from "../db";
-import { documentFolders, documents, files, templateElements, rules, scoringCriteria, elementDefinitions, templatePlaceholderMapping, users, guideReferenceTables, elementRuleLinks, ruleReferenceLinks, sessionChecklist, projects, projectDocuments, projectElements } from "../db/schema";
+import { documentFolders, documents, files, templateElements, rules, scoringCriteria, elementDefinitions, templatePlaceholderMapping, users, guideReferenceTables, elementRuleLinks, ruleReferenceLinks, sessionChecklist, projects, projectDocuments, projectElements, projectEligibility } from "../db/schema";
 import { eq, and, isNull, sql, inArray } from "drizzle-orm";
 import { uploadFile, getFileUrl, deleteFile, createPresignedUploadUrl, verifyFileUploaded, isLocalStorage } from "../services/storage";
 import { AuthContext } from "../middleware/auth";
@@ -746,10 +746,12 @@ documentRoutes.delete("/documents/:id", async (c) => {
     // Atomic cascade cleanup inside transaction — ensures no orphan records on partial failure
     // Order matters: delete leaf tables first, then parents
     await db.transaction(async (tx) => {
-      // 1. Guide-specific: rules → ruleReferenceLinks, elementRuleLinks, projectEligibility cascade
+      // 1. Guide-specific: rules → projectEligibility, ruleReferenceLinks, elementRuleLinks
       const docRules = await tx.select({ id: rules.id }).from(rules).where(eq(rules.documentId, id));
       if (docRules.length > 0) {
         const ruleIds = docRules.map(r => r.id);
+        // Delete eligibility records FIRST (prevents orphans if CASCADE fails)
+        await tx.delete(projectEligibility).where(inArray(projectEligibility.ruleId, ruleIds));
         await tx.delete(ruleReferenceLinks).where(inArray(ruleReferenceLinks.ruleId, ruleIds));
         await tx.delete(elementRuleLinks).where(inArray(elementRuleLinks.ruleId, ruleIds));
       }

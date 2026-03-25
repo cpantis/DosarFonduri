@@ -315,6 +315,8 @@ authRoutes.post("/forgot-password", async (c) => {
     const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
     const resetUrl = `${frontendUrl}/reset-password?token=${rawToken}`;
 
+    console.log("[forgot-password] Sending reset email to:", user.email, "orgId:", user.organizationId || "system", "frontendUrl:", frontendUrl);
+
     const emailResult = await sendEmail({
       organizationId: user.organizationId || "system",
       to: user.email,

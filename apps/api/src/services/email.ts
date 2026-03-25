@@ -43,6 +43,7 @@ async function getFromAddress(organizationId: string): Promise<string> {
   } catch {
     // Invalid UUID or DB error — fall through to default
   }
+
   return "office@dosar-fonduri.com";
 }
 

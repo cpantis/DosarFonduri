@@ -1,7 +1,8 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { apiGet, apiPut, apiPost, apiDelete } from "@/lib/api";
-import { getToken } from "@/lib/auth";
+import { getToken, removeToken } from "@/lib/auth";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { BtnPrimary, BtnOutline, BtnSecondary, BtnDanger, IconSave, IconRefresh, IconZap, IconPlus, IconEdit, IconTrash } from "@/components/ui/Buttons";
 import { useToast } from "@/components/shared/Toast";
@@ -53,6 +54,7 @@ const SECTIONS = [
   { id: "branding", icon: "\u{1F3A8}", label: "Branding Documente" },
   { id: "notificari", icon: "\u{1F514}", label: "Notificari" },
   { id: "export", icon: "\u{1F4E4}", label: "Export & Backup" },
+  { id: "cont", icon: "\u{1F464}", label: "Cont" },
 ];
 
 const KNOWLEDGE_CATEGORIES = [
@@ -123,6 +125,26 @@ export default function SettingsPage() {
   const [newRefKey, setNewRefKey] = useState("");
   const [newRefValue, setNewRefValue] = useState("");
   const [newKnowledge, setNewKnowledge] = useState({ category: "legislatie", title: "", content: "", sourceReference: "", validFrom: "", validUntil: "" });
+
+  // Leave cabinet
+  const router = useRouter();
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const [leaveLoading, setLeaveLoading] = useState(false);
+  const [leaveError, setLeaveError] = useState("");
+
+  const handleLeaveCabinet = async () => {
+    setLeaveLoading(true);
+    setLeaveError("");
+    try {
+      await apiPost("/api/auth/leave-cabinet", {});
+      removeToken();
+      router.push("/login");
+    } catch (err: any) {
+      setLeaveError(err.message || "Eroare la parasirea cabinetului");
+    } finally {
+      setLeaveLoading(false);
+    }
+  };
 
   const loadConfig = useCallback(async () => {
     try {
@@ -1290,6 +1312,51 @@ export default function SettingsPage() {
                   <div className="text-[13px] font-semibold mb-0.5 text-slate-900">Export proiecte CSV</div>
                   <div className="text-[11px] text-slate-400">CSV cu toate proiectele, firme, elemente, deadline-uri</div>
                 </div>
+              </div>
+            </>
+          )}
+
+          {/* ═══ CONT ═══ */}
+          {activeSection === "cont" && (
+            <>
+              <div className="text-lg font-semibold mb-1 text-slate-900">Cont</div>
+              <div className="text-sm mb-7 leading-relaxed text-slate-500">
+                Gestioneaza asocierea contului tau cu cabinetul curent.
+              </div>
+
+              <div style={{ padding: 20, borderRadius: 12, border: "1px solid #e2e8f0", background: "#fff", maxWidth: 560 }}>
+                <div className="text-sm font-semibold text-slate-700 mb-2">Paraseste cabinetul curent</div>
+                <div className="text-[13px] text-slate-500 mb-4 leading-relaxed">
+                  Contul tau va fi dezasociat de acest cabinet. Nu vei mai avea acces la proiecte, firme sau documente.
+                  Vei putea ulterior sa te alaturi altui cabinet folosind un cod de activare sau o invitatie.
+                </div>
+
+                {leaveError && (
+                  <div style={{ padding: "10px 14px", borderRadius: 8, border: "1px solid #f87171", background: "rgba(248,113,113,.06)", fontSize: 13, color: "#dc2626", marginBottom: 14 }}>
+                    {leaveError}
+                  </div>
+                )}
+
+                {!showLeaveConfirm ? (
+                  <BtnDanger size="sm" onClick={() => setShowLeaveConfirm(true)}>
+                    Paraseste cabinetul
+                  </BtnDanger>
+                ) : (
+                  <div style={{ padding: 16, borderRadius: 10, border: "1px solid #fbbf24", background: "rgba(251,191,36,.06)" }}>
+                    <div className="text-sm font-semibold text-amber-700 mb-2">Esti sigur?</div>
+                    <div className="text-[13px] text-slate-600 mb-4">
+                      Aceasta actiune este ireversibila. Vei fi deconectat si redirectionat la pagina de autentificare.
+                    </div>
+                    <div style={{ display: "flex", gap: 10 }}>
+                      <BtnDanger size="sm" onClick={handleLeaveCabinet} disabled={leaveLoading}>
+                        {leaveLoading ? "Se proceseaza..." : "Confirm, paraseste cabinetul"}
+                      </BtnDanger>
+                      <BtnSecondary size="sm" onClick={() => { setShowLeaveConfirm(false); setLeaveError(""); }}>
+                        Anuleaza
+                      </BtnSecondary>
+                    </div>
+                  </div>
+                )}
               </div>
             </>
           )}

@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { db } from "../db";
 import { users, organizations, projects, aiUsageLog, auditLog } from "../db/schema";
-import { eq, and, not, sql, desc, count, sum, gte, lte, ilike } from "drizzle-orm";
+import { eq, and, not, sql, desc, count, sum, gte, lte, ilike, inArray } from "drizzle-orm";
 import type { AuthContext } from "../middleware/auth";
 import { sendEmail } from "../services/email";
 
@@ -96,21 +96,21 @@ adminRoutes.get("/users", async (c) => {
     .where(eq(users.organizationId, auth.organizationId))
     .orderBy(users.createdAt);
 
-  // Enrich with project count
-  const enriched = await Promise.all(
-    orgUsers.map(async (u) => {
-      const [projectCount] = await db
-        .select({ count: count() })
-        .from(projects)
-        .where(
-          and(
-            eq(projects.consultantId, u.id),
-            eq(projects.organizationId, auth.organizationId!)
-          )
-        );
-      return { ...u, projectCount: projectCount?.count || 0 };
-    })
-  );
+  // Batch fetch project counts per user (single query instead of N)
+  const userIds = orgUsers.map(u => u.id);
+  const projectCountRows = userIds.length > 0
+    ? await db.select({
+        consultantId: projects.consultantId,
+        count: count(),
+      }).from(projects)
+        .where(and(eq(projects.organizationId, auth.organizationId!), inArray(projects.consultantId, userIds)))
+        .groupBy(projects.consultantId)
+    : [];
+  const projectCountMap = new Map(projectCountRows.map(r => [r.consultantId, r.count]));
+  const enriched = orgUsers.map(u => ({
+    ...u,
+    projectCount: projectCountMap.get(u.id) || 0,
+  }));
 
   return c.json(enriched);
 });

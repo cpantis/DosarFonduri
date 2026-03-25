@@ -2,7 +2,7 @@ import type { AppEnv } from "../types/hono";
 import { Hono } from "hono";
 import { db } from "../db";
 import { projectDocuments, documents, templateElements, projectElements, guideReferenceTables, projects, composeSectionVersions, templatePlaceholderMapping, companies, companyFinancials, organizations } from "../db/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, inArray } from "drizzle-orm";
 import { AuthContext } from "../middleware/auth";
 import {
   generateDocument, validateBeforeGenerate,
@@ -150,10 +150,18 @@ neemiaRoutes.get("/projects/:projectId/documents", async (c) => {
     orderBy: (d, { desc }) => [desc(d.createdAt)],
   });
 
+  // Batch fetch template docs (avoid N+1)
+  const templateDocIds = [...new Set(docs.map(d => d.templateDocumentId).filter(Boolean))] as string[];
+  const templateDocs = templateDocIds.length > 0
+    ? await db.query.documents.findMany({
+        where: inArray(documents.id, templateDocIds),
+        columns: { id: true, name: true, fileType: true },
+      })
+    : [];
+  const templateDocMap = new Map(templateDocs.map(t => [t.id, t]));
+
   const enriched = await Promise.all(docs.map(async (d) => {
-    const templateDoc = await db.query.documents.findFirst({
-      where: eq(documents.id, d.templateDocumentId),
-    });
+    const templateDoc = d.templateDocumentId ? templateDocMap.get(d.templateDocumentId) : null;
     const downloadUrl = d.generatedFileId ? await getFileUrl(d.generatedFileId) : null;
 
     return {

@@ -177,33 +177,30 @@ async function detectProgramContext(projectId: string, organizationId: string, p
     }
   }
 
-  // Signal 3: Template document names
+  // Signal 3: Template document names (batched to avoid N+1)
   const projectEls = await db.query.projectElements.findMany({
     where: eq(projectElements.projectId, projectId),
     limit: 5,
   });
-  const templateDocIds = new Set<string>();
-  for (const pe of projectEls.slice(0, 5)) {
-    if (!pe.templateElementId) continue;
-    const te = await db.query.templateElements.findFirst({
-      where: eq(templateElements.id, pe.templateElementId),
-    });
-    if (te) templateDocIds.add(te.documentId);
-  }
-  for (const docId of templateDocIds) {
-    const doc = await db.query.documents.findFirst({ where: eq(documents.id, docId) });
-    if (doc) {
-      signals.push(`Template: "${doc.name}"`);
-      for (const pp of programPatterns) {
-        if (pp.pattern.test(doc.name)) {
-          if (!programDetected) { programDetected = pp.program; organism = pp.org; }
-          break;
-        }
+  const teIds = projectEls.map(pe => pe.templateElementId).filter(Boolean) as string[];
+  const templateEls = teIds.length > 0
+    ? await db.query.templateElements.findMany({ where: inArray(templateElements.id, teIds), columns: { id: true, documentId: true } })
+    : [];
+  const templateDocIds = [...new Set(templateEls.map(te => te.documentId))];
+  const templateDocsForSignals = templateDocIds.length > 0
+    ? await db.query.documents.findMany({ where: inArray(documents.id, templateDocIds), columns: { id: true, name: true } })
+    : [];
+  for (const doc of templateDocsForSignals) {
+    signals.push(`Template: "${doc.name}"`);
+    for (const pp of programPatterns) {
+      if (pp.pattern.test(doc.name)) {
+        if (!programDetected) { programDetected = pp.program; organism = pp.org; }
+        break;
       }
-      // Detect masura from document name (e.g., "M6.4", "Masura 4.1")
-      const masuraMatch = doc.name.match(/m[aă]sura?\s*(\d+\.?\d*)/i) || doc.name.match(/\bM(\d+\.?\d+)/);
-      if (masuraMatch && !masura) masura = `Măsura ${masuraMatch[1]}`;
     }
+    // Detect masura from document name (e.g., "M6.4", "Masura 4.1")
+    const masuraMatch = doc.name.match(/m[aă]sura?\s*(\d+\.?\d*)/i) || doc.name.match(/\bM(\d+\.?\d+)/);
+    if (masuraMatch && !masura) masura = `Măsura ${masuraMatch[1]}`;
   }
 
   // Signal 4: Guide rules content

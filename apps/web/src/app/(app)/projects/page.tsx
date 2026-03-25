@@ -227,6 +227,7 @@ export default function ProjectsPage() {
         .prj-metric-track{flex:1;height:4px;background:#f1f5f9;border-radius:2px;overflow:hidden;min-width:48px}
         .prj-metric-fill{height:100%;border-radius:2px;transition:width .4s ease}
         .prj-metric-val{font-size:11px;font-family:'JetBrains Mono',monospace;font-weight:600;color:#94a3b8;min-width:32px}
+        .prj-lock-badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:6px;background:rgba(251,191,36,.12);color:#b45309;white-space:nowrap}
         .prj-card-actions{position:absolute;right:16px;top:50%;transform:translateY(-50%);display:flex;align-items:center;gap:6px;opacity:0;transition:opacity .15s}
         .prj-card:hover .prj-card-actions{opacity:1}
         .prj-del-btn{width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;border:none;background:transparent;color:#cbd5e1;cursor:pointer;transition:all .15s}
@@ -314,6 +315,12 @@ export default function ProjectsPage() {
                   <div className="prj-card-top">
                     <span className="prj-card-name">{p.name}</span>
                     <StatusBadge status={p.status} />
+                    {p.lock && (
+                      <span className="prj-lock-badge" title={`Blocat de ${p.lock.lockedByName || "alt utilizator"} din ${p.lock.lockedAt ? new Date(p.lock.lockedAt).toLocaleTimeString("ro-RO", { hour: "2-digit", minute: "2-digit" }) : "—"}`}>
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                        {p.lock.lockedByName || "Blocat"}
+                      </span>
+                    )}
                     {p.scoreSummary && p.scoreSummary.maxTotalPoints > 0 && (
                       <span style={{
                         fontSize: 12, fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, padding: "2px 8px", borderRadius: 6,

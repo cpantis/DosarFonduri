@@ -7,6 +7,7 @@ import { FolderUploadButton } from "@/components/shared/FolderUploadButton";
 import { apiGet, apiPost, apiPut, apiDelete, api } from "@/lib/api";
 import { useSSE } from "@/hooks/useSSE";
 import { useToast } from "@/components/shared/Toast";
+import { useAuth } from "@/hooks/useAuth";
 import { SessionLibrary } from "@/components/documents/SessionLibrary";
 
 /* ══════════════════════════════════════════
@@ -357,6 +358,76 @@ export default function DocumentsPage() {
   const [replaceDocId, setReplaceDocId] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+  const { user } = useAuth();
+
+  // ─── Folder structure lock ───
+  const [folderLock, setFolderLock] = useState<{
+    locked: boolean;
+    lockedBy: string | null;
+    lockedByName: string | null;
+    isMe: boolean;
+  }>({ locked: false, lockedBy: null, lockedByName: null, isMe: false });
+  const [lockLoading, setLockLoading] = useState(false);
+  const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Whether the current user can edit folder structure
+  const canEditStructure = folderLock.locked && folderLock.isMe;
+
+  // Fetch lock status on mount
+  useEffect(() => {
+    apiGet<{ locked: boolean; lockedBy: string | null; lockedByName: string | null; isMe: boolean }>("/api/documents/structure-lock")
+      .then(setFolderLock)
+      .catch(() => {}); // ignore if endpoint not yet deployed
+  }, []);
+
+  // Heartbeat while we hold the lock
+  useEffect(() => {
+    if (!canEditStructure) {
+      if (heartbeatRef.current) { clearInterval(heartbeatRef.current); heartbeatRef.current = null; }
+      return;
+    }
+    heartbeatRef.current = setInterval(() => {
+      apiPost("/api/documents/structure-lock/heartbeat", {}).catch(() => {
+        // Lock lost — refresh status
+        apiGet<{ locked: boolean; lockedBy: string | null; lockedByName: string | null; isMe: boolean }>("/api/documents/structure-lock")
+          .then(setFolderLock).catch(() => {});
+      });
+    }, 5 * 60 * 1000); // every 5 minutes
+    return () => { if (heartbeatRef.current) clearInterval(heartbeatRef.current); };
+  }, [canEditStructure]);
+
+  // Release lock on page unload
+  useEffect(() => {
+    if (!canEditStructure) return;
+    const release = () => {
+      navigator.sendBeacon("/api/documents/structure-lock/release",
+        new Blob([JSON.stringify({})], { type: "application/json" }));
+    };
+    window.addEventListener("beforeunload", release);
+    return () => window.removeEventListener("beforeunload", release);
+  }, [canEditStructure]);
+
+  const toggleFolderLock = useCallback(async () => {
+    setLockLoading(true);
+    try {
+      if (canEditStructure) {
+        // Release
+        await apiDelete("/api/documents/structure-lock");
+        setFolderLock({ locked: false, lockedBy: null, lockedByName: null, isMe: false });
+      } else {
+        // Acquire
+        await apiPost("/api/documents/structure-lock", {});
+        setFolderLock({ locked: true, lockedBy: user?.id || null, lockedByName: user?.name || null, isMe: true });
+      }
+    } catch (err: any) {
+      toast("error", err.message || "Nu s-a putut modifica lock-ul");
+      // Refresh actual status
+      apiGet<{ locked: boolean; lockedBy: string | null; lockedByName: string | null; isMe: boolean }>("/api/documents/structure-lock")
+        .then(setFolderLock).catch(() => {});
+    } finally {
+      setLockLoading(false);
+    }
+  }, [canEditStructure, user, toast]);
 
   // Fetch folder tree on mount
   const fetchTree = useCallback(async () => {
@@ -434,7 +505,17 @@ export default function DocumentsPage() {
       ) {
         fetchDocs(selectedFolderRef.current);
       }
-    }, [fetchDocs]),
+      // Folder structure lock/unlock events from other users
+      if (ev.event === "folder_structure_lock") {
+        const d = ev.data as { locked: boolean; lockedBy: string | null; lockedByName: string | null };
+        setFolderLock({
+          locked: d.locked,
+          lockedBy: d.lockedBy,
+          lockedByName: d.lockedByName,
+          isMe: d.lockedBy === user?.id,
+        });
+      }
+    }, [fetchDocs, user?.id]),
   });
 
   // Build a lookup: documentId → { progress, message, status }
@@ -542,8 +623,9 @@ export default function DocumentsPage() {
   const handleContextMenu = useCallback((e: React.MouseEvent, nodeId: string) => {
     e.preventDefault();
     e.stopPropagation();
+    if (!canEditStructure) return; // Structure is locked — no context menu
     setCtxMenu({ x: e.clientX, y: e.clientY, nodeId });
-  }, []);
+  }, [canEditStructure]);
 
   const handleDocDeleteRequest = useCallback((doc: DocItem) => {
     setDeleteConfirm({ doc });
@@ -780,6 +862,31 @@ export default function DocumentsPage() {
       <div className="doc-tree-header">
         <span className="doc-tree-header-icon">{"📂"}</span>
         <span className="doc-tree-header-label">Structura programe</span>
+        <button
+          className={`doc-lock-btn ${canEditStructure ? "doc-lock-btn--unlocked" : ""} ${folderLock.locked && !folderLock.isMe ? "doc-lock-btn--other" : ""}`}
+          onClick={folderLock.locked && !folderLock.isMe ? undefined : toggleFolderLock}
+          disabled={lockLoading || (folderLock.locked && !folderLock.isMe)}
+          title={
+            canEditStructure
+              ? "Click pentru a bloca structura"
+              : folderLock.locked && !folderLock.isMe
+                ? `Structura este editată de ${folderLock.lockedByName || "alt utilizator"}`
+                : "Click pentru a debloca editarea structurii"
+          }
+        >
+          {lockLoading ? (
+            <svg width="16" height="16" viewBox="0 0 16 16" className="doc-lock-spinner"><circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" fill="none" strokeDasharray="28" strokeDashoffset="10"><animateTransform attributeName="transform" type="rotate" from="0 8 8" to="360 8 8" dur="0.8s" repeatCount="indefinite" /></circle></svg>
+          ) : canEditStructure ? (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 9.9-1" /></svg>
+          ) : (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
+          )}
+        </button>
+        {folderLock.locked && !folderLock.isMe && (
+          <span className="doc-lock-info">
+            {folderLock.lockedByName || "Alt utilizator"} editează
+          </span>
+        )}
       </div>
       <div className="doc-tree-scroll">
         {treeLoading ? (
@@ -799,7 +906,7 @@ export default function DocumentsPage() {
               Creeaza primul program pentru a incepe
               sa organizezi documentele.
             </div>
-            <button className="doc-empty-cta" onClick={() => {
+            <button className="doc-empty-cta" disabled={!canEditStructure} onClick={() => {
               apiPost<ApiFolderNode>("/api/documents/folders", {
                 name: "Program nou",
                 type: "program",
@@ -811,26 +918,28 @@ export default function DocumentsPage() {
                 setRenameVal("Program nou");
               }).catch((err: any) => toast("error", `Eroare la crearea programului: ${err.message || "necunoscută"}`));
             }}>
-              + Adauga program
+              {canEditStructure ? "+ Adauga program" : "🔒 Deblocheaza pentru a edita"}
             </button>
           </div>
         ) : (
           <>
             {renderTree(tree)}
-            <button className="doc-tree-add-btn" onClick={() => {
-              apiPost<ApiFolderNode>("/api/documents/folders", {
-                name: "Program nou",
-                type: "program",
-                parentId: null,
-              }).then(result => {
-                const newNode = mapApiFolderToTreeNode(result);
-                setTree(prev => [...prev, newNode]);
-                setRenaming(newNode.id);
-                setRenameVal("Program nou");
-              }).catch((err: any) => toast("error", `Eroare la crearea programului: ${err.message || "necunoscută"}`));
-            }}>
-              + Adauga program
-            </button>
+            {canEditStructure && (
+              <button className="doc-tree-add-btn" onClick={() => {
+                apiPost<ApiFolderNode>("/api/documents/folders", {
+                  name: "Program nou",
+                  type: "program",
+                  parentId: null,
+                }).then(result => {
+                  const newNode = mapApiFolderToTreeNode(result);
+                  setTree(prev => [...prev, newNode]);
+                  setRenaming(newNode.id);
+                  setRenameVal("Program nou");
+                }).catch((err: any) => toast("error", `Eroare la crearea programului: ${err.message || "necunoscută"}`));
+              }}>
+                + Adauga program
+              </button>
+            )}
           </>
         )}
       </div>
@@ -1510,6 +1619,17 @@ export default function DocumentsPage() {
         .doc-tree-header { padding: 16px 20px; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; gap: 10px; flex-shrink: 0; background: #fff; }
         .doc-tree-header-icon { font-size: 16px; }
         .doc-tree-header-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: #475569; flex: 1; }
+
+        .doc-lock-btn { display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 6px; border: 1px solid #e2e8f0; background: #f8fafc; color: #94a3b8; cursor: pointer; transition: all .15s ease; flex-shrink: 0; }
+        .doc-lock-btn:hover:not(:disabled) { background: #f1f5f9; color: #64748b; border-color: #cbd5e1; }
+        .doc-lock-btn--unlocked { background: rgba(37,99,235,.08); border-color: rgba(37,99,235,.2); color: #2563eb; }
+        .doc-lock-btn--unlocked:hover:not(:disabled) { background: rgba(37,99,235,.14); }
+        .doc-lock-btn--other { opacity: .6; cursor: not-allowed; }
+        .doc-lock-btn:disabled { cursor: not-allowed; }
+        .doc-lock-info { font-size: 10px; color: #f59e0b; font-weight: 500; white-space: nowrap; }
+        .doc-lock-spinner { animation: spin .8s linear infinite; }
+        @keyframes spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }
+
         .doc-tree-scroll { flex: 1; overflow-y: auto; padding: 8px 0; }
 
         .doc-tree-item { display: flex; align-items: center; gap: 7px; padding: 7px 12px; cursor: pointer; font-size: 13px; color: #0f172a; transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1); position: relative; border-radius: 6px; margin: 1px 6px; }

@@ -147,7 +147,7 @@ authRoutes.post("/login", async (c) => {
     });
   } catch (err: any) {
     console.error("Login error:", err?.message, err?.stack);
-    return c.json({ error: "Eroare la autentificare", detail: err?.message }, 500);
+    return c.json({ error: "Eroare la autentificare" }, 500);
   }
 });
 
@@ -219,8 +219,13 @@ authRoutes.post("/lookup-cui", async (c) => {
 
 // --- CHECK INVITED ---
 authRoutes.post("/check-invited", async (c) => {
-  const { email } = await c.req.json();
-  if (!email) return c.json({ invited: false });
+  let email: string;
+  try {
+    const body = z.object({ email: z.string().email() }).parse(await c.req.json());
+    email = body.email;
+  } catch {
+    return c.json({ invited: false });
+  }
 
   const user = await db.query.users.findFirst({
     where: and(eq(users.email, email), eq(users.status, "invited")),
@@ -241,7 +246,13 @@ authRoutes.post("/check-invited", async (c) => {
 
 // --- VALIDATE CODE ---
 authRoutes.post("/validate-code", async (c) => {
-  const { code } = await c.req.json();
+  let code: string;
+  try {
+    const body = z.object({ code: z.string().min(1).max(50) }).parse(await c.req.json());
+    code = body.code;
+  } catch {
+    return c.json({ valid: false, error: "Cod invalid" });
+  }
 
   const cabinetCode = await db.query.cabinetCodes.findFirst({
     where: eq(cabinetCodes.code, code.toUpperCase()),

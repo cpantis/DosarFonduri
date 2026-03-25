@@ -119,11 +119,11 @@ const DEFAULT_EXTRACTION_MODEL = "claude-sonnet-4-6";
 /** Model for deep reasoning on interpreted rules — Sonnet + ET is 3× faster than Opus */
 const INTERPRETED_RULES_MODEL = "claude-sonnet-4-6";
 
-/** Character limit for a single extraction pass — smaller chunks = more parallelism */
-const EXTRACTION_CHAR_LIMIT = 60000;
+/** Character limit for a single extraction pass (fits in 200K context window) */
+const EXTRACTION_CHAR_LIMIT = 150000;
 
 /** Max concurrent extraction chunks */
-const MAX_PARALLEL_CHUNKS = 4;
+const MAX_PARALLEL_CHUNKS = 3;
 
 // ─── UNIFIED AI + ET EXTRACTION ───
 
@@ -340,7 +340,7 @@ async function unifiedExtraction(
   for (let attempt = 0; attempt <= MAX_CONTINUATION_ATTEMPTS; attempt++) {
     const requestParams: any = {
       model: DEFAULT_EXTRACTION_MODEL,
-      max_tokens: 10000,
+      max_tokens: 16000,
       system: UNIFIED_EXTRACTION_SYSTEM,
       messages,
     };

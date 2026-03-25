@@ -1975,6 +1975,25 @@ export default function ProjectViewPage() {
     } catch (err) { console.error("Checklist move failed:", err); toast("error", "Eroare la mutarea în checklist"); }
   };
 
+  const handleChecklistRefresh = async () => {
+    if (readOnly) return;
+    try {
+      const result = await apiPost<{ refreshed: number }>(`/api/projects/${projectId}/checklist/refresh`, {});
+      toast("success", `Checklist reîmprospătat: ${result.refreshed} documente din ghid`);
+      // Re-fetch checklist
+      const data = await apiGet<any>(`/api/projects/${projectId}/checklist`);
+      setChecklistItems(mapChecklist(data.items || []));
+    } catch (err) { console.error("Checklist refresh failed:", err); toast("error", "Eroare la reîmprospătarea checklistului"); }
+  };
+
+  const handleChecklistNotes = async (itemId: string, notes: string) => {
+    if (readOnly) return;
+    try {
+      await apiPut(`/api/projects/${projectId}/checklist/${itemId}`, { notes: notes || null });
+      setChecklistItems(prev => prev.map(i => i.id === itemId ? { ...i, notes } : i));
+    } catch (err) { console.error("Checklist notes failed:", err); toast("error", "Eroare la salvarea notelor"); }
+  };
+
   // Close checklist actions menu on outside click
   useEffect(() => {
     if (!checkActionId) return;
@@ -2638,6 +2657,12 @@ export default function ProjectViewPage() {
         .check-add-bar{display:flex;gap:8px;margin-bottom:16px}
         .check-add-btn{padding:8px 16px;border-radius:8px;border:1px dashed rgba(226,232,240,.8);background:transparent;color:#94a3b8;font-size:12px;font-weight:600;cursor:pointer;font-family:'Inter',system-ui,sans-serif;transition:all .15s cubic-bezier(.4,0,.2,1);display:flex;align-items:center;gap:6px}
         .check-add-btn:hover{border-color:#7c3aed;color:#7c3aed}
+        .check-refresh-btn{padding:8px 12px;border-radius:8px;border:1px solid rgba(226,232,240,.8);background:transparent;color:#94a3b8;font-size:12px;font-weight:500;cursor:pointer;font-family:'Inter',system-ui,sans-serif;transition:all .15s;white-space:nowrap}
+        .check-refresh-btn:hover{border-color:#2563eb;color:#2563eb}
+        .check-notes-badge{font-size:10px;padding:2px 6px;border-radius:4px;background:rgba(251,191,36,.1);color:#b45309;cursor:pointer;white-space:nowrap;flex-shrink:0}
+        .check-notes-textarea{width:100%;padding:6px 8px;border-radius:6px;border:1px solid #e2e8f0;background:#f8fafc;color:#0f172a;font-size:11px;font-family:'Inter',system-ui,sans-serif;resize:vertical;outline:none}
+        .check-notes-textarea:focus{border-color:#2563eb}
+        .check-menu-notes{padding:4px 8px}
         .check-add-form{padding:14px;background:#f8fafc;border-radius:12px;border:1px solid rgba(226,232,240,.8);margin-bottom:16px;display:flex;flex-direction:column;gap:8px}
         .check-add-form-row{display:flex;gap:8px}
         .check-add-input{flex:1;padding:7px 12px;border-radius:8px;border:1px solid rgba(226,232,240,.8);background:#f0f2f5;color:#0f172a;font-size:13px;font-family:'Inter',system-ui,sans-serif;outline:none;transition:all .15s cubic-bezier(.4,0,.2,1)}
@@ -4313,6 +4338,7 @@ export default function ProjectViewPage() {
                   ) : (
                     <div className="check-add-bar">
                       <button className="check-add-btn" onClick={() => setCheckAddOpen(true)}>+ Adauga document</button>
+                      <button className="check-refresh-btn" onClick={handleChecklistRefresh} title="Reîmprospătează din ghid (păstrează itemele manuale)">&#8635; Refresh din ghid</button>
                     </div>
                   )
                 )}
@@ -4343,6 +4369,17 @@ export default function ProjectViewPage() {
                               &#128196; {item.templateName}
                             </span>
                           )}
+
+                          {/* Notes indicator + inline edit */}
+                          {item.notes && !readOnly ? (
+                            <span className="check-notes-badge" title={item.notes} onClick={(e) => {
+                              e.stopPropagation();
+                              const el = e.currentTarget.parentElement?.querySelector('.check-notes-input') as HTMLTextAreaElement;
+                              if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+                            }}>&#128221; Notă</span>
+                          ) : item.notes ? (
+                            <span className="check-notes-badge" title={item.notes}>&#128221; Notă</span>
+                          ) : null}
 
                           {/* Actions menu */}
                           {!readOnly && (
@@ -4384,6 +4421,19 @@ export default function ProjectViewPage() {
                                         {c}
                                       </button>
                                     ))}
+                                  </div>
+
+                                  <div className="check-menu-divider" />
+
+                                  {/* Notes */}
+                                  <div className="check-menu-notes">
+                                    <textarea
+                                      className="check-notes-textarea"
+                                      placeholder="Adaugă notă..."
+                                      defaultValue={item.notes || ""}
+                                      onBlur={(e) => handleChecklistNotes(item.id, e.target.value)}
+                                      rows={2}
+                                    />
                                   </div>
 
                                   <div className="check-menu-divider" />

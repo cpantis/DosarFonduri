@@ -417,7 +417,7 @@ export const processTemplateWorker = new Worker<ProcessTemplatePayload>(
       let visualCrossCheckStats: { textOnly: number; visualOnly: number; both: number; total: number } | null = null;
 
       if (doc.fileType === "pdf") {
-        // ─── PDF: XFA extraction (no visual detection — XFA PDFs render as "Please wait...") ───
+        // ─── PDF: XFA extraction + Vision verification agent ───
         await job.updateProgress(10);
         publishJobProgress(organizationId, {
           jobId: job.id || "", jobType: "template", documentId,
@@ -428,17 +428,35 @@ export const processTemplateWorker = new Worker<ProcessTemplatePayload>(
         const { extractXFAFields } = await import("../services/xfaFiller");
         const xfaFields = await extractXFAFields(buffer);
 
-        await job.updateProgress(50);
+        await job.updateProgress(30);
+        console.log(`[processTemplate] PDF XFA: ${xfaFields.length} câmpuri extrase programatic`);
+
+        // ─── Vision Verification Agent: ALWAYS cross-check with Claude Vision ───
+        // XFA extraction can miss fields (value wrappers, namespace issues, etc.)
+        // Vision catches what XFA misses. For non-XFA PDFs, Vision is the primary source.
         publishJobProgress(organizationId, {
           jobId: job.id || "", jobType: "template", documentId,
-          documentName: doc.name, progress: 50, status: "processing",
-          message: `XFA: ${xfaFields.length} câmpuri extrase programatic (zero AI cost).`,
-        }).catch((e: any) => console.warn("[processTemplate] sse xfa count:", e.message));
+          documentName: doc.name, progress: 35, status: "processing",
+          message: xfaFields.length > 0
+            ? `XFA: ${xfaFields.length} câmpuri. Verificare cu Vision agent...`
+            : `PDF fără XFA — detecție vizuală cu Claude Vision...`,
+        }).catch((e: any) => console.warn("[processTemplate] sse vision verify:", e.message));
+
+        let visualFields: Awaited<ReturnType<typeof detectFieldsVisually>> = [];
+        try {
+          visualFields = await detectFieldsVisually(buffer);
+          console.log(`[processTemplate] Vision agent: ${visualFields.length} câmpuri detectate vizual`);
+        } catch (visErr) {
+          console.warn(`[processTemplate] Vision detection failed for "${doc.name}":`, visErr);
+        }
+
+        await job.updateProgress(55);
 
         if (xfaFields.length > 0) {
-          console.log(`[processTemplate] PDF XFA: ${xfaFields.length} câmpuri extrase programatic, skip detectFieldsVisually()`);
+          // XFA found fields — merge with Vision cross-check
+          const xfaKeySet = new Set(xfaFields.map(f => f.key.toLowerCase()));
 
-          // Convert XFA fields directly to template elements
+          // Convert XFA fields to elements
           const seen = new Set<string>();
           uniqueElements = xfaFields
             .filter(f => {
@@ -455,43 +473,72 @@ export const processTemplateWorker = new Worker<ProcessTemplatePayload>(
               pageNum: 1,
               lineNum: idx,
               group: f.group || "general",
-              isRepeating: false,
-              rowIndex: null,
+              isRepeating: f.isRepeating || false,
+              rowIndex: f.rowIndex ?? null,
               detected: true,
               validated: true, // XFA fields are structurally certain
             }));
-        } else {
-          // FIX F3.1: Fallback to visual detection for non-XFA PDFs
-          console.log(`[processTemplate] No XFA fields, falling back to visual detection`);
+
+          // Add Vision-only fields that XFA missed (normalize keys for comparison)
+          let visionOnlyCount = 0;
+          for (const vf of visualFields) {
+            const vfKeyNorm = (vf.key || "").toLowerCase().replace(/[^a-z0-9_]/g, "_");
+            // Check if any XFA key contains or matches this visual key
+            const alreadyFound = [...xfaKeySet].some(xk => {
+              const xkNorm = xk.toLowerCase().replace(/[^a-z0-9_]/g, "_");
+              return xkNorm.includes(vfKeyNorm) || vfKeyNorm.includes(xkNorm) || xkNorm === vfKeyNorm;
+            });
+            if (!alreadyFound && vf.key) {
+              uniqueElements.push({
+                documentId,
+                organizationId,
+                key: `vision_${vf.key}`,
+                label: vf.label || vf.key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()),
+                fieldType: (vf.fieldType || "text") as any,
+                pageNum: vf.page || 1,
+                lineNum: uniqueElements.length,
+                group: "vision_detected",
+                isRepeating: false,
+                rowIndex: null,
+                detected: true,
+                validated: false, // Vision-only — needs human validation
+              });
+              visionOnlyCount++;
+            }
+          }
+
+          if (visionOnlyCount > 0) {
+            console.log(`[processTemplate] Vision agent found ${visionOnlyCount} additional fields missed by XFA`);
+          }
+
           publishJobProgress(organizationId, {
             jobId: job.id || "", jobType: "template", documentId,
-            documentName: doc.name, progress: 40, status: "processing",
-            message: `PDF fără XFA — detecție vizuală cu Claude Vision...`,
-          }).catch((e: any) => console.warn("[processTemplate] sse visual detection progress:", e.message));
-          try {
-            const visualFields = await detectFieldsVisually(buffer);
-            uniqueElements = visualFields.map((f, idx) => ({
-              documentId,
-              organizationId,
-              key: f.key,
-              label: f.label || f.key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()),
-              fieldType: (f.fieldType || "text") as any,
-              pageNum: f.page || 1,
-              lineNum: idx,
-              group: "general",
-              isRepeating: false,
-              rowIndex: null,
-              detected: true,
-              validated: false,
-            }));
-          } catch (visErr) {
-            console.warn(`[processTemplate] Visual detection failed for PDF "${doc.name}":`, visErr);
-            publishJobProgress(organizationId, {
-              jobId: job.id || "", jobType: "template", documentId,
-              documentName: doc.name, progress: 50, status: "processing",
-              message: `Detecția vizuală nu a funcționat — se continuă doar cu extracția text`,
-            }).catch((e: any) => console.warn("[processTemplate] sse visual fallback:", e.message));
-          }
+            documentName: doc.name, progress: 60, status: "processing",
+            message: `XFA: ${xfaFields.length} câmpuri + Vision: ${visionOnlyCount} câmpuri suplimentare`,
+          }).catch((e: any) => console.warn("[processTemplate] sse merge:", e.message));
+
+        } else {
+          // No XFA — Vision is the sole source
+          uniqueElements = visualFields.map((f, idx) => ({
+            documentId,
+            organizationId,
+            key: f.key,
+            label: f.label || f.key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()),
+            fieldType: (f.fieldType || "text") as any,
+            pageNum: f.page || 1,
+            lineNum: idx,
+            group: "general",
+            isRepeating: false,
+            rowIndex: null,
+            detected: true,
+            validated: false,
+          }));
+
+          publishJobProgress(organizationId, {
+            jobId: job.id || "", jobType: "template", documentId,
+            documentName: doc.name, progress: 60, status: "processing",
+            message: `Vision agent: ${visualFields.length} câmpuri detectate (PDF fără XFA)`,
+          }).catch((e: any) => console.warn("[processTemplate] sse vision only:", e.message));
         }
 
       } else {

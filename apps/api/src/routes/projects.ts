@@ -468,7 +468,8 @@ async function populateChecklistFromRules(projectId: string, folderId: string, _
             anexe: "Anexe",
             altele: "Alte documente",
           };
-          const category = categoryMap[req.category] || categorizeDocument({ description: name });
+          // Use AI-extracted category first, then fallback to keyword heuristic
+          const category = categoryMap[req.category] || (req.category ? req.category : categorizeDocument({ description: name }));
           const desc = req.description ? `${name} — ${req.description}` : name;
 
           checklistItems.push({

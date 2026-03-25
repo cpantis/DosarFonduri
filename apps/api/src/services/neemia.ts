@@ -7,6 +7,7 @@ import {
 } from "../db/schema";
 import { eq, and, inArray } from "drizzle-orm";
 import { logAIUsage } from "./aiUsage";
+import { anthropic, withAILimit } from "../lib/anthropic";
 import { getFileBuffer, uploadFile } from "./storage";
 import crypto from "crypto";
 import { preflightCached } from "./dbPreflight";
@@ -503,16 +504,85 @@ export async function generateDocument(params: GenerateDocParams): Promise<Reada
         if (templateDoc.fileType === "xlsx") {
           filledBuffer = await fillXlsxTemplate(templateBuffer, templateName, elementsMap);
         } else if (templateDoc.fileType === "pdf") {
-          // FIX F5.1: Integrate XFA fill for PDF templates
+          // ─── PDF XFA Fill + AI Agent Verification ───
           const { fillXFAFields, extractXFAFields } = await import("./xfaFiller");
           const xfaFields = await extractXFAFields(templateBuffer);
           if (xfaFields.length > 0) {
-            filledBuffer = await fillXFAFields(templateBuffer, elementsMap);
+            const fillResult = await fillXFAFields(templateBuffer, elementsMap);
+            filledBuffer = fillResult.buffer;
+            const report = fillResult.report;
+
+            console.log(`[neemia] XFA fill: ${report.filled_count}/${report.total_attempted} filled, ${report.failed_keys?.length || 0} failed`);
+
+            // AI Agent: If there are failed keys, try fuzzy matching via AI
+            if (report.failed_keys && report.failed_keys.length > 0 && xfaFields.length > 0) {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+                type: "status",
+                message: `${report.filled_count} câmpuri completate. Se rezolvă ${report.failed_keys.length} câmpuri neîmpotrivite cu AI...`,
+              })}\n\n`));
+
+              try {
+                // Ask AI to map failed element keys to XFA field keys
+                const xfaKeyList = xfaFields.map(f => `${f.key} (${f.label})`).join("\n");
+                const failedPairs = report.failed_keys
+                  .filter(k => elementsMap[k]?.trim())
+                  .map(k => `"${k}" = "${elementsMap[k]?.slice(0, 50)}"`)
+                  .join("\n");
+
+                if (failedPairs) {
+                  const mappingResponse = await withAILimit(() => anthropic.messages.create({
+                    model: "claude-sonnet-4-6",
+                    max_tokens: 2000,
+                    system: `Ești un agent de mapare câmpuri. Primești o listă de câmpuri XFA dintr-un template PDF de finanțare și o listă de elemente care nu s-au potrivit automat. Găsește cea mai bună potrivire pentru fiecare element.
+Returnează DOAR un JSON object: { "element_key": "xfa_key", ... }
+Dacă un element nu are potrivire clară, NU-l include. Fii precis — o potrivire greșită e mai rea decât una lipsă.`,
+                    messages: [{
+                      role: "user",
+                      content: `Câmpuri XFA disponibile:\n${xfaKeyList}\n\nElemente neîmpotrivite:\n${failedPairs}\n\nReturnează JSON cu maparea.`,
+                    }],
+                  }));
+
+                  const textBlock = mappingResponse.content.find((b: any) => b.type === "text");
+                  const mappingText = textBlock ? (textBlock as any).text : "{}";
+                  const cleaned = mappingText.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+                  const aiMapping: Record<string, string> = JSON.parse(cleaned);
+
+                  // Apply AI-resolved mappings with a second fill pass
+                  const aiValues: Record<string, string> = {};
+                  let aiMapped = 0;
+                  for (const [elemKey, xfaKey] of Object.entries(aiMapping)) {
+                    if (elementsMap[elemKey]?.trim() && xfaKey) {
+                      aiValues[xfaKey] = elementsMap[elemKey];
+                      aiMapped++;
+                    }
+                  }
+
+                  if (aiMapped > 0) {
+                    const secondPass = await fillXFAFields(filledBuffer, aiValues);
+                    filledBuffer = secondPass.buffer;
+                    console.log(`[neemia] AI agent resolved ${aiMapped} additional mappings, ${secondPass.report.filled_count} filled in second pass`);
+                    controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+                      type: "info",
+                      message: `AI a rezolvat ${secondPass.report.filled_count} câmpuri suplimentare (total: ${report.filled_count + secondPass.report.filled_count}/${report.total_attempted})`,
+                    })}\n\n`));
+                  }
+                }
+              } catch (aiErr: any) {
+                console.warn(`[neemia] AI mapping agent failed:`, aiErr.message);
+              }
+            }
+
+            if (report.filled_count === 0 && report.total_attempted > 0) {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+                type: "warning",
+                message: `ATENȚIE: Niciun câmp completat din ${report.total_attempted} încercate. Verificați maparea elementelor în Template Viewer.`,
+              })}\n\n`));
+            }
           } else {
-            console.warn(`[neemia] PDF template "${templateDoc.name}" has no XFA fields — returning original PDF`);
+            console.error(`[neemia] CRITICAL: PDF template "${templateDoc.name}" returned 0 XFA fields`);
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({
-              type: "warning",
-              message: "PDF-ul template nu conține câmpuri editabile (XFA). Folosiți DOCX pentru documente narrative.",
+              type: "error",
+              message: `PDF-ul template "${templateDoc.name}" nu conține câmpuri XFA detectabile. Reprocesați template-ul sau folosiți format DOCX.`,
             })}\n\n`));
             filledBuffer = templateBuffer;
           }

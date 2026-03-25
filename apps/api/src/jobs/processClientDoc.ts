@@ -11,6 +11,7 @@ import { encrypt } from "../lib/crypto";
 import { getFileBuffer } from "../services/storage";
 import { extractTextFromPDF, extractTextFromDOCX, extractTextFromXLSX, extractTextFromImage, extractTextFromDOC, classifyDocument, shouldPreStructure, preStructureClientText } from "../services/ocr";
 import { logAIUsage } from "../services/aiUsage";
+import { anthropic, withAILimit } from "../lib/anthropic";
 import { publishEvent, publishEligibilityUpdated, publishScoreUpdated, publishFieldExtracted, publishExtractionStarted, publishChecklistUpdated } from "../lib/sse";
 import { redis } from "../lib/redis";
 import { validateElement, logElementChange } from "../services/elementValidation";
@@ -67,15 +68,15 @@ export const CHECKLIST_TYPE_MAP: Record<string, string[]> = {
 
 /**
  * Auto-match a processed document to an unchecked checklist item and mark it done.
+ * Layer 1: Sonnet AI with consultant expertise (semantic matching — highest accuracy)
+ * Layer 2: Pattern matching fallback (fast, zero AI cost — if AI unavailable)
  */
 export async function autoMatchChecklist(
   projectId: string,
   documentId: string,
   documentTypeClass: string,
+  documentName?: string,
 ): Promise<{ matched: boolean; itemName?: string; itemId?: string }> {
-  const patterns = CHECKLIST_TYPE_MAP[documentTypeClass] || [];
-  if (patterns.length === 0) return { matched: false };
-
   // Query unchecked checklist items for this project
   const uncheckedItems = await db.select().from(projectChecklist)
     .where(and(
@@ -83,19 +84,75 @@ export async function autoMatchChecklist(
       eq(projectChecklist.done, false),
     ));
 
-  // Find first matching item by name pattern (case-insensitive)
+  if (uncheckedItems.length === 0) return { matched: false };
+
+  // Layer 1: Sonnet AI with consultant expertise (primary — highest accuracy)
+  if (documentName || documentTypeClass) {
+    try {
+      const itemList = uncheckedItems.map(i => `- "${i.name}" (id: ${i.id})`).join("\n");
+      const response = await withAILimit(() => anthropic.messages.create({
+        model: "claude-sonnet-4-6",
+        max_tokens: 200,
+        system: `Ești Solomon — consultant senior fonduri europene cu 15+ ani experiență. Ai văzut sute de dosare de finanțare și știi EXACT ce document corespunde fiecărui punct din checklist.
+
+MISIUNE: Un document tocmai a fost uploadat în dosarul de finanțare. Determină care punct din checklist corespunde acestui document.
+
+CUNOȘTINȚE DOCUMENTE DOSAR FINANȚARE:
+- Certificat constatator ONRC / Extras ONRC / Certificat de înregistrare = dovada existenței juridice
+- Bilanț ANAF / Situații financiare anuale / F10+F20+F30 = situația financiară
+- Certificat fiscal ANAF / Certificat fiscal local = dovada lipsei datoriilor
+- Plan de afaceri / Business plan / Anexa C = descrierea investiției și previziunilor
+- Memoriu justificativ / Studiu de fezabilitate / Anexa tehnica = justificarea tehnică
+- Cerere de finanțare / Formular de candidatură / Anexa 1 = documentul principal de aplicare
+- Declarație pe propria răspundere / Declarație de eligibilitate = angajamente juridice
+- Carte de identitate / CI / Buletin / Pașaport = identitate reprezentant legal
+- Ofertă de preț / Deviz estimativ / Proforma = fundamentare buget
+- Contract de arendă / Concesiune / Comodat = dovada dreptului de folosință
+- Extras de cont / Situație cont bancar = dovada cofinanțării
+
+CUM GÂNDEȘTI:
+- Analizează SEMANTIC, nu doar textual — "Situații financiare" = "Bilanț ANAF"
+- Ghidurile pot folosi terminologie diferită: "Plan de afaceri" = "Business plan" = "Anexa C"
+- Un document poate acoperi parțial un punct din checklist — tot e match
+- Dacă nu ești sigur (>95% confidence), răspunde "none" — mai bine nelinkuit decât greșit
+
+Returnează DOAR id-ul itemului potrivit, sau "none". Fără explicații.`,
+        messages: [{
+          role: "user",
+          content: `Document uploadat: "${documentName || documentTypeClass}" (clasificat ca: ${documentTypeClass})\n\nChecklist items necompletate:\n${itemList}\n\nCare item corespunde acestui document? Răspunde cu id-ul sau "none":`,
+        }],
+      }));
+
+      const text = (response.content[0] as any).text?.trim() || "none";
+      if (text !== "none") {
+        const matchedItem = uncheckedItems.find(i => text.includes(i.id));
+        if (matchedItem) {
+          await db.update(projectChecklist)
+            .set({ done: true, templateId: documentId })
+            .where(eq(projectChecklist.id, matchedItem.id));
+
+          console.log(`[AUTO-CHECKLIST] AI match: ${documentTypeClass} → "${matchedItem.name}" (project ${projectId})`);
+          return { matched: true, itemName: matchedItem.name, itemId: matchedItem.id };
+        }
+      }
+    } catch (e: any) {
+      console.warn(`[AUTO-CHECKLIST] AI matching failed, falling back to patterns:`, e.message);
+    }
+  }
+
+  // Layer 2: Pattern matching fallback (if AI unavailable or failed)
+  const patterns = CHECKLIST_TYPE_MAP[documentTypeClass] || [];
   for (const item of uncheckedItems) {
     const nameLower = item.name.toLowerCase();
     for (const pattern of patterns) {
       const parts = pattern.toLowerCase().split('%').filter(Boolean);
       const allMatch = parts.every(part => nameLower.includes(part));
       if (allMatch) {
-        // Mark as done
         await db.update(projectChecklist)
-          .set({ done: true })
+          .set({ done: true, templateId: documentId })
           .where(eq(projectChecklist.id, item.id));
 
-        console.log(`[AUTO-CHECKLIST] ${documentTypeClass} → "${item.name}" (project ${projectId})`);
+        console.log(`[AUTO-CHECKLIST] Pattern fallback: ${documentTypeClass} → "${item.name}" (project ${projectId})`);
         return { matched: true, itemName: item.name, itemId: item.id };
       }
     }
@@ -1706,7 +1763,7 @@ export const processClientDocWorker = new Worker<ProcessClientDocPayload>(
 
       if (checklistProjectId) {
         try {
-          const matchResult = await autoMatchChecklist(checklistProjectId, documentId, classification.documentType);
+          const matchResult = await autoMatchChecklist(checklistProjectId, documentId, classification.documentType, doc.name);
           if (matchResult.matched && matchResult.itemId && matchResult.itemName) {
             publishChecklistUpdated(checklistProjectId, {
               itemId: matchResult.itemId,

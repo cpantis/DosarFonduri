@@ -119,6 +119,12 @@ export default function TemplateViewerPage() {
   const [validatingPage, setValidatingPage] = useState(false);
   const [addingElement, setAddingElement] = useState(false);
 
+  // Inline edit state
+  const [editingElId, setEditingElId] = useState<string | null>(null);
+  const [editFields, setEditFields] = useState<{ label: string; fieldType: string }>({ label: "", fieldType: "text" });
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [deletingElId, setDeletingElId] = useState<string | null>(null);
+
   // Split pane
   const [splitWidth, setSplitWidth] = useState(400);
   const splitDragging = useRef(false);
@@ -317,6 +323,43 @@ export default function TemplateViewerPage() {
       toast("error", `Eroare la adăugare element: ${err.message || "necunoscută"}`);
     } finally {
       setAddingElement(false);
+    }
+  };
+
+  const handleStartEdit = (el: TemplateElement) => {
+    setEditingElId(el.id);
+    setEditFields({ label: el.label, fieldType: el.fieldType });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingElId || !editFields.label.trim()) return;
+    setSavingEdit(true);
+    try {
+      await apiPut(`/api/documents/documents/${docId}/elements/${editingElId}`, {
+        label: editFields.label.trim(),
+        fieldType: editFields.fieldType,
+      });
+      setEditingElId(null);
+      toast("success", "Element actualizat");
+      await loadTemplate();
+    } catch (err: any) {
+      toast("error", `Eroare la editare: ${err.message || "necunoscută"}`);
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const handleDeleteElement = async (id: string) => {
+    setDeletingElId(id);
+    try {
+      await apiDelete(`/api/documents/documents/${docId}/elements/${id}`);
+      toast("success", "Element șters");
+      if (selectedEl === id) setSelectedEl(null);
+      await loadTemplate();
+    } catch (err: any) {
+      toast("error", `Eroare la ștergere: ${err.message || "necunoscută"}`);
+    } finally {
+      setDeletingElId(null);
     }
   };
 
@@ -979,12 +1022,58 @@ export default function TemplateViewerPage() {
                     </div>
                     {pgEls.map(el => {
                       const isActive = selectedEl === el.id;
+                      const isEditing = editingElId === el.id;
                       const cardClass = el.validated ? "is-validated" : !el.detected ? "is-manual" : "is-detected";
                       return (
-                        <div key={el.id} className={`el-card ${cardClass} ${isActive ? "active" : ""}`} onClick={() => handleSelectElement(isActive ? null : el.id)}>
+                        <div key={el.id} className={`el-card ${cardClass} ${isActive ? "active" : ""}`} onClick={() => !isEditing && handleSelectElement(isActive ? null : el.id)}>
+                          {isEditing ? (
+                            /* ─── Inline edit mode ─── */
+                            <div onClick={ev => ev.stopPropagation()}>
+                              <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+                                <input
+                                  className="add-input" style={{ flex: 1 }}
+                                  value={editFields.label}
+                                  onChange={e => setEditFields(f => ({ ...f, label: e.target.value }))}
+                                  onKeyDown={e => { if (e.key === "Enter") handleSaveEdit(); if (e.key === "Escape") setEditingElId(null); }}
+                                  autoFocus
+                                  placeholder="Etichetă"
+                                />
+                                <select className="add-select" value={editFields.fieldType} onChange={e => setEditFields(f => ({ ...f, fieldType: e.target.value }))}>
+                                  {TYPE_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
+                                </select>
+                              </div>
+                              <div style={{ display: "flex", gap: 6 }}>
+                                <button className="add-btn" disabled={!editFields.label.trim() || savingEdit} onClick={handleSaveEdit}>
+                                  {savingEdit ? "..." : "Salvează"}
+                                </button>
+                                <button style={{ fontSize: 11, padding: "4px 10px", border: "1px solid #e2e8f0", borderRadius: 6, background: "transparent", color: "#64748b", cursor: "pointer", fontFamily: "'Inter', system-ui, sans-serif" }} onClick={() => setEditingElId(null)}>
+                                  Anulează
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            /* ─── Normal view ─── */
+                            <>
                           <div className="el-card-top">
                             <span className="el-label">{el.label}</span>
                             <span className="el-type">{el.fieldType}</span>
+                            {isActive && (
+                              <span style={{ display: "flex", gap: 3, marginLeft: 2 }}>
+                                <button
+                                  title="Editează"
+                                  onClick={ev => { ev.stopPropagation(); handleStartEdit(el); }}
+                                  style={{ background: "none", border: "none", cursor: "pointer", fontSize: 12, color: "#94a3b8", padding: "0 2px" }}
+                                >✎</button>
+                                {!el.detected && (
+                                  <button
+                                    title="Șterge element manual"
+                                    disabled={deletingElId === el.id}
+                                    onClick={ev => { ev.stopPropagation(); handleDeleteElement(el.id); }}
+                                    style={{ background: "none", border: "none", cursor: "pointer", fontSize: 12, color: "#ef4444", padding: "0 2px", opacity: deletingElId === el.id ? 0.4 : 1 }}
+                                  >✕</button>
+                                )}
+                              </span>
+                            )}
                           </div>
                           <div className="el-card-bottom">
                             <span className="el-key">{`{{${el.key}}}`}</span>
@@ -996,6 +1085,8 @@ export default function TemplateViewerPage() {
                               {validatingId === el.id ? "..." : el.validated ? "Invalidare" : "Valideaza"}
                             </button>
                           </div>
+                            </>
+                          )}
                           {/* Mapping review indicator */}
                           {(() => {
                             const mInfo = mappingData[el.key];

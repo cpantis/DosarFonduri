@@ -17,7 +17,7 @@ import { providerRoutes } from "./routes/provider";
 import { companyRoutes } from "./routes/companies";
 import { documentRoutes } from "./routes/documents";
 import { ruleRoutes } from "./routes/rules";
-import { templateRoutes } from "./routes/templates";
+
 import { projectRoutes } from "./routes/projects";
 import { dashboardRoutes } from "./routes/dashboard";
 import { solomonRoutes } from "./routes/solomon";
@@ -105,7 +105,7 @@ app.use("/api/documents/*", bodyLimit({ maxSize: 100 * 1024 * 1024 }));
 app.route("/api/companies", companyRoutes);
 app.route("/api/documents", documentRoutes);
 app.route("/api/rules", ruleRoutes);
-app.route("/api/templates", templateRoutes);
+
 app.route("/api/projects", projectRoutes);
 app.route("/api/dashboard", dashboardRoutes);
 app.route("/api/solomon", solomonRoutes);

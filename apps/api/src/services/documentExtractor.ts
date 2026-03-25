@@ -228,7 +228,7 @@ async function processChunk(
 
   const chunkText = chunkPages.map(p => `--- Pagina ${p.page} ---\n${p.text}`).join("\n\n");
 
-  const response = await withAILimit(() => anthropic.messages.create({
+  const response: any = await withAILimit(() => (anthropic.messages.create as any)({
     model: "claude-sonnet-4-6",
     max_tokens: 8000,
     system: `Ești expert în extragerea datelor structurate din documente românești de finanțare europeană.
@@ -336,11 +336,11 @@ async function analyzeWithExtendedThinking(
 
   const startMs = Date.now();
 
-  const response = await withAILimit(() => anthropic.messages.create({
+  const response: any = await withAILimit(() => (anthropic.messages.create as any)({
     model: "claude-opus-4-6",
     max_tokens: 16000,
-    thinking: { type: "adaptive" } as any,
-    output_config: { effort: "high" } as any,
+    thinking: { type: "adaptive" },
+    output_config: { effort: "high" },
     system: `Ești Solomon — expert senior în dosare de finanțare europeană.
 Analizezi documente complexe pas cu pas. Identifică TOATE datele:
 - Date implicite (calculate din context)

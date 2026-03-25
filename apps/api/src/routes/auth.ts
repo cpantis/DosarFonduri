@@ -282,8 +282,10 @@ authRoutes.post("/forgot-password", async (c) => {
   // Always return success to avoid email enumeration
   const user = await db.query.users.findFirst({ where: eq(users.email, email) });
   if (!user || user.status === "disabled") {
+    console.warn("[forgot-password] User not found or disabled:", email, user ? `status=${user.status}` : "NOT_IN_DB");
     return c.json({ ok: true, emailSent: true });
   }
+  console.log("[forgot-password] User found:", email, "status:", user.status, "orgId:", user.organizationId);
 
   try {
     // Ensure password_reset_tokens table exists (may not if migration hasn't run)

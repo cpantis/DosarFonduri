@@ -275,41 +275,6 @@ authRoutes.post("/validate-code", async (c) => {
   });
 });
 
-// --- DEBUG EMAIL (temporary — remove after fixing) ---
-authRoutes.post("/debug-email", async (c) => {
-  const { email } = z.object({ email: z.string().email() }).parse(await c.req.json());
-  const checks: Record<string, any> = {};
-
-  // 1. Check user exists
-  const user = await db.query.users.findFirst({ where: eq(users.email, email) });
-  checks.userFound = !!user;
-  checks.userStatus = user?.status || null;
-  checks.userOrgId = user?.organizationId || null;
-
-  // 2. Check RESEND_API_KEY
-  checks.resendKeySet = !!process.env.RESEND_API_KEY;
-  checks.resendKeyPrefix = process.env.RESEND_API_KEY?.slice(0, 6) || null;
-
-  // 3. Check FRONTEND_URL
-  checks.frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000 (default)";
-
-  // 4. Check from address
-  checks.senderEmailEnv = process.env.SENDER_EMAIL || null;
-
-  // 5. Try sending a test email
-  if (user && process.env.RESEND_API_KEY) {
-    const result = await sendEmail({
-      organizationId: user.organizationId || "system",
-      to: user.email,
-      subject: "Test DosarFonduri — verificare email",
-      html: "<h2>Test reusit!</h2><p>Daca vezi acest email, configurarea functioneaza corect.</p>",
-    });
-    checks.sendResult = result;
-  }
-
-  return c.json(checks);
-});
-
 // --- FORGOT PASSWORD ---
 authRoutes.post("/forgot-password", async (c) => {
   const { email } = z.object({ email: z.string().email() }).parse(await c.req.json());

@@ -2260,24 +2260,24 @@ export default function ProjectViewPage() {
         .lock-banner .lb-retry:hover{background:#fde68a;border-color:#f59e0b}
         .lock-banner .lb-retry:disabled{opacity:.5;cursor:not-allowed}
         .lock-banner .lb-time{font-size:11px;color:#94a3b8;font-weight:600}
-        .pv-container{display:flex;flex-direction:column;height:100vh;overflow:hidden;background:#ffffff}
+        .pv-container{display:flex;flex-direction:column;height:100vh;overflow:hidden;background:#f8fafc}
 
-        .pv-project-header{padding:10px 24px;background:#ffffff;display:flex;align-items:center;gap:8px;border-bottom:1px solid rgba(226,232,240,.8);flex-shrink:0;min-height:44px}
-        .pv-breadcrumb{font-size:13px;color:#64748b;display:flex;align-items:center;gap:6px}
-        .pv-breadcrumb a{color:#64748b;text-decoration:none;cursor:pointer;font-weight:400;transition:color .15s}
-        .pv-breadcrumb a:hover{color:#0f172a;text-decoration:underline}
-        .pv-breadcrumb .pv-bc-sep{color:#cbd5e1;font-size:12px}
-        .pv-title{font-size:13px;font-weight:500;color:#0f172a}
-        .pv-status-pill{display:inline-flex;align-items:center;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:.3px;border:1px solid transparent;margin-left:auto}
+        .pv-project-header{padding:14px 28px;background:#ffffff;display:flex;align-items:center;gap:10px;border-bottom:1px solid #e2e8f0;flex-shrink:0;min-height:52px}
+        .pv-breadcrumb{font-size:12px;color:#94a3b8;display:flex;align-items:center;gap:6px}
+        .pv-breadcrumb a{color:#94a3b8;text-decoration:none;cursor:pointer;font-weight:500;transition:color .15s}
+        .pv-breadcrumb a:hover{color:#4d8bff}
+        .pv-breadcrumb .pv-bc-sep{color:#cbd5e1;font-size:11px}
+        .pv-title{font-size:16px;font-weight:800;color:#0f172a;letter-spacing:-.3px}
+        .pv-status-pill{display:inline-flex;align-items:center;padding:3px 12px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:.3px;border:1px solid transparent;margin-left:auto}
 
-        .pv-tabs{display:flex;gap:0;border-bottom:1px solid rgba(226,232,240,.8);background:#ffffff;padding:0 32px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+        .pv-tabs{display:flex;gap:2px;background:#ffffff;padding:0 24px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;border-bottom:1px solid #e2e8f0;flex-shrink:0}
         .pv-tabs::-webkit-scrollbar{display:none}
-        .pv-tab{padding:12px 18px;font-size:14px;font-weight:600;color:#64748b;cursor:pointer;border-bottom:2.5px solid transparent;transition:all .15s cubic-bezier(.4,0,.2,1);background:none;border-top:none;border-left:none;border-right:none;font-family:'Inter',system-ui,sans-serif;white-space:nowrap;display:flex;align-items:center;gap:6px;position:relative}
-        .pv-tab:hover{color:#0f172a}
-        .pv-tab.active{color:#2563eb;border-bottom-color:#2563eb}
-        .pv-tab-badge{font-size:11px;font-weight:700;padding:1px 7px;border-radius:10px;font-variant-numeric:tabular-nums}
-        .pv-tab-badge.neutral{background:#f1f5f9;color:#94a3b8}
-        .pv-tab-badge.blue{background:rgba(37,99,235,.1);color:#2563eb}
+        .pv-tab{padding:0 16px;height:44px;font-size:13px;font-weight:600;color:#94a3b8;cursor:pointer;border-bottom:2px solid transparent;transition:all .15s cubic-bezier(.4,0,.2,1);background:none;border-top:none;border-left:none;border-right:none;font-family:'Inter',system-ui,sans-serif;white-space:nowrap;display:flex;align-items:center;gap:6px;position:relative}
+        .pv-tab:hover{color:#475569;background:rgba(248,250,252,.8)}
+        .pv-tab.active{color:#0f172a;border-bottom-color:#4d8bff;background:transparent}
+        .pv-tab-badge{font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;font-variant-numeric:tabular-nums;font-family:'JetBrains Mono',monospace;letter-spacing:-.3px}
+        .pv-tab-badge.neutral{background:#f1f5f9;color:#cbd5e1}
+        .pv-tab-badge.blue{background:rgba(77,139,255,.1);color:#4d8bff}
         .pv-tab-badge.green{background:rgba(52,211,153,.12);color:#059669}
         .pv-tab-badge.red{background:rgba(248,113,113,.1);color:#dc2626}
 
@@ -2985,8 +2985,8 @@ export default function ProjectViewPage() {
 
         /* ═══ RESPONSIVE ═══ */
         @media(max-width:1024px){
-          .pv-project-header{padding:10px 16px}
-          .pv-tabs{padding:0 16px}
+          .pv-project-header{padding:12px 16px}
+          .pv-tabs{padding:0 14px}
           .neemia-layout{flex-direction:column}
           .neemia-templates{width:100%!important;min-width:100%!important;max-height:220px;border-right:none;border-bottom:1px solid rgba(226,232,240,.8);overflow-x:auto;display:flex;flex-wrap:nowrap;gap:8px;align-items:flex-start}
           .neemia-templates h3{white-space:nowrap}
@@ -2998,8 +2998,8 @@ export default function ProjectViewPage() {
         }
         @media(max-width:768px){
           .pv-project-header{padding:8px 12px}
-          .pv-tabs{padding:0 12px;gap:0}
-          .pv-tab{padding:10px 12px;font-size:13px}
+          .pv-tabs{padding:0 10px;gap:0}
+          .pv-tab{padding:0 10px;height:40px;font-size:12px}
           .el-grid{grid-template-columns:1fr}
           .sg-stats{flex-direction:column;gap:8px}
           .neemia-templates{max-height:180px}

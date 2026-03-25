@@ -171,7 +171,7 @@ export async function extractWithContinuation(opts: SafeExtractOptions): Promise
     firstCallParams.output_config = { effort: "high" };
   }
 
-  const response = await withAILimit(() => anthropic.messages.create(firstCallParams));
+  const response: any = await withAILimit(() => (anthropic.messages.create as any)(firstCallParams));
   totalInput += response.usage.input_tokens;
   totalOutput += response.usage.output_tokens;
 
@@ -196,7 +196,7 @@ export async function extractWithContinuation(opts: SafeExtractOptions): Promise
         { role: "user" as const, content: "JSON-ul a fost trunchiat. Continuă EXACT de unde ai rămas. NU repeta ce ai scris deja. Continuă JSON-ul:" },
       ];
 
-      const contResponse = await withAILimit(() => anthropic.messages.create({
+      const contResponse: any = await withAILimit(() => (anthropic.messages.create as any)({
         model,
         max_tokens,
         system: system + "\n\nContinuă JSON-ul trunchiat. NU repeta ce a fost generat anterior.",
@@ -206,7 +206,7 @@ export async function extractWithContinuation(opts: SafeExtractOptions): Promise
       totalInput += contResponse.usage.input_tokens;
       totalOutput += contResponse.usage.output_tokens;
 
-      const contText = contResponse.content[0].type === "text" ? contResponse.content[0].text : "";
+      const contText = contResponse.content[0]?.type === "text" ? contResponse.content[0].text : "";
       accumulatedText += contText;
 
       console.log(`[extractWithContinuation:${label}] Continuation ${c + 1}: +${contText.length} chars (total: ${accumulatedText.length})`);

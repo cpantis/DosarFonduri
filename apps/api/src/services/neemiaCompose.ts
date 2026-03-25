@@ -449,7 +449,7 @@ IMPORTANT: Totul în română. Totul SPECIFIC pentru "${programFinantare}". Baze
 
 Răspunde DOAR cu JSON valid.`;
 
-  const response = await withAILimit(() => anthropic.messages.create({
+  const response: any = await withAILimit(() => (anthropic.messages.create as any)({
     model: "claude-sonnet-4-6", // Use Sonnet for speed — WK gen is a one-time operation
     max_tokens: 4096,
     messages: [{ role: "user", content: prompt }],
@@ -799,7 +799,7 @@ Răspunde DOAR cu JSON-ul, fără markdown code blocks, fără text suplimentar.
     apiParams.output_config = { effort: "high" };
   }
 
-  const response = await withAILimit(() => anthropic.messages.create(apiParams));
+  const response: any = await withAILimit(() => (anthropic.messages.create as any)(apiParams));
 
   const tokensInput = response.usage.input_tokens;
   const tokensOutput = response.usage.output_tokens;
@@ -921,7 +921,7 @@ Generează un DocumentBlueprint JSON cu:
 
 Răspunde DOAR cu JSON valid, fără markdown.`;
 
-  const response = await withAILimit(() => anthropic.messages.create({
+  const response: any = await withAILimit(() => (anthropic.messages.create as any)({
     model: aiModel.includes("opus") ? aiModel : "claude-sonnet-4-6",
     max_tokens: 4096,
     messages: [{ role: "user", content: prompt }],

@@ -163,10 +163,10 @@ async function classifyPages(
   organizationId: string,
 ): Promise<PageClassification> {
   const callStart = Date.now();
-  const response = await withAILimit(() => anthropic.messages.create({
+  const response: any = await withAILimit(() => (anthropic.messages.create as any)({
     model: DEFAULT_EXTRACTION_MODEL,
     max_tokens: 2000,
-    output_config: { effort: "low" } as any,
+    output_config: { effort: "low" },
     system: PAGE_CLASSIFY_SYSTEM,
     messages: [{ role: "user", content: `${PAGE_CLASSIFY_USER}${structuredText}` }],
   }));
@@ -479,16 +479,16 @@ async function unifiedExtraction(
     }
 
     const callStart = Date.now();
-    const response = await withAILimit(() => anthropic.messages.create(requestParams));
+    const response: any = await withAILimit(() => (anthropic.messages.create as any)(requestParams));
     const callDuration = Date.now() - callStart;
 
     const textBlock = response.content.find((b: any) => b.type === "text");
-    const content = textBlock ? (textBlock as any).text : "";
+    const content = textBlock ? textBlock.text : "";
     accumulatedText += content;
     totalInputTokens += response.usage.input_tokens;
     totalOutputTokens += response.usage.output_tokens;
-    const cacheRead = (response.usage as any).cache_read_input_tokens || 0;
-    const cacheWrite = (response.usage as any).cache_creation_input_tokens || 0;
+    const cacheRead = response.usage.cache_read_input_tokens || 0;
+    const cacheWrite = response.usage.cache_creation_input_tokens || 0;
     totalCacheRead += cacheRead;
     totalCacheWrite += cacheWrite;
     console.log(`[processGuide] ${chunkLabel} attempt=${attempt} ${callDuration}ms in=${response.usage.input_tokens} out=${response.usage.output_tokens} cache_r=${cacheRead} cache_w=${cacheWrite} stop=${response.stop_reason}`);
@@ -609,11 +609,11 @@ async function refineInterpretedRulesWithET(
   console.log(`[processGuide] ET refinement: ${interpretedRules.length} interpreted rules (${rulesJson.length} chars) with ${model}`);
 
   try {
-    const response = await withAILimit(() => anthropic.messages.create({
+    const response: any = await withAILimit(() => (anthropic.messages.create as any)({
       model,
       max_tokens: 12000,
-      thinking: { type: "adaptive" } as any,
-      output_config: { effort: "high" } as any,
+      thinking: { type: "adaptive" },
+      output_config: { effort: "high" },
       system: REFINE_ET_SYSTEM,
       messages: [{
         role: "user",

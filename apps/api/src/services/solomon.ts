@@ -183,7 +183,7 @@ async function detectProgramContext(projectId: string, organizationId: string, p
   // ─── Layer 1: Sonnet AI (primary — semantic analysis of all signals) ───
   try {
     const contextText = signals.join("\n");
-    const response = await withAILimit(() => anthropic.messages.create({
+    const response: any = await withAILimit(() => (anthropic.messages.create as any)({
       model: "claude-sonnet-4-6",
       max_tokens: 300,
       system: `Ești Solomon — consultant senior fonduri europene cu 15+ ani experiență. Analizezi semnalele unui proiect pentru a identifica programul de finanțare.
@@ -1262,9 +1262,9 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
   const controller_abort = new AbortController();
   const streamTimeout = setTimeout(() => controller_abort.abort(), 120_000);
 
-  let stream: ReturnType<typeof anthropic.messages.stream>;
+  let stream: any;
   try {
-    stream = anthropic.messages.stream(requestParams, { signal: controller_abort.signal });
+    stream = (anthropic.messages.stream as any)(requestParams, { signal: controller_abort.signal });
   } catch (err) {
     clearTimeout(streamTimeout);
     throw err;

@@ -18,27 +18,23 @@ export function BtnPrimary({ children, icon, size = "md", className = "", style,
   return (
     <button
       {...props}
-      className={`text-white font-semibold tracking-[0.01em] inline-flex items-center justify-center whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed ${sz} ${className}`}
+      className={`text-white font-bold inline-flex items-center justify-center whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed ${sz} ${className}`}
       style={{
-        background: "linear-gradient(135deg, #4d8bff 0%, #2563eb 100%)",
-        border: "none",
-        boxShadow: "0 2px 8px rgba(37,99,235,.25), 0 1px 2px rgba(37,99,235,.1)",
-        transition: "all .2s cubic-bezier(.4,0,.2,1)",
+        background: "#2563eb",
+        border: "1px solid #1d4ed8",
+        boxShadow: "0 1px 2px rgba(0,0,0,.08), inset 0 1px 0 rgba(255,255,255,.12)",
+        transition: "background .15s, box-shadow .15s",
         fontFamily: "'Inter', system-ui, sans-serif",
         cursor: props.disabled ? "not-allowed" : "pointer",
         ...style,
       }}
       onMouseEnter={e => {
         if (!props.disabled) {
-          e.currentTarget.style.background = "linear-gradient(135deg, #3b7aed 0%, #1d4ed8 100%)";
-          e.currentTarget.style.boxShadow = "0 4px 16px rgba(37,99,235,.35), 0 1px 3px rgba(37,99,235,.15)";
-          e.currentTarget.style.transform = "translateY(-1px)";
+          e.currentTarget.style.background = "#1d4ed8";
         }
       }}
       onMouseLeave={e => {
-        e.currentTarget.style.background = "linear-gradient(135deg, #4d8bff 0%, #2563eb 100%)";
-        e.currentTarget.style.boxShadow = "0 2px 8px rgba(37,99,235,.25), 0 1px 2px rgba(37,99,235,.1)";
-        e.currentTarget.style.transform = "translateY(0)";
+        e.currentTarget.style.background = "#2563eb";
       }}
     >
       {icon && <span className="shrink-0 [&>svg]:w-[15px] [&>svg]:h-[15px]">{icon}</span>}

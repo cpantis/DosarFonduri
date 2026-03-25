@@ -56,23 +56,15 @@ function NavItem({
   item,
   active,
   collapsed,
-  onExpandRequest,
 }: {
   item: { href: string; key: string; label: string };
   active: boolean;
   collapsed: boolean;
-  onExpandRequest: () => void;
 }) {
   return (
     <Link
       href={item.href}
       title={collapsed ? item.label : undefined}
-      onClick={(e) => {
-        if (collapsed) {
-          e.preventDefault();
-          onExpandRequest();
-        }
-      }}
       style={{
         display: "flex",
         alignItems: "center",
@@ -151,7 +143,7 @@ export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { organization, user, logout } = useAuth();
-  const { isCollapsed, toggle, expand } = useSidebar();
+  const { isCollapsed, toggle } = useSidebar();
   const [mobileOpen, setMobileOpen] = useState(false);
 
   // Close mobile sidebar on route change
@@ -239,19 +231,19 @@ export function Sidebar() {
       <nav style={{ flex: 1, overflowY: "auto", padding: isCollapsed ? "8px 0" : "8px 8px" }}>
         <SectionLabel collapsed={isCollapsed}>Principal</SectionLabel>
         {navItems.map((item) => (
-          <NavItem key={item.key} item={item} active={isActive(item.key, item.href)} collapsed={isCollapsed} onExpandRequest={expand} />
+          <NavItem key={item.key} item={item} active={isActive(item.key, item.href)} collapsed={isCollapsed} />
         ))}
 
         <SectionLabel collapsed={isCollapsed}>Configurare</SectionLabel>
         {configItems.map((item) => (
-          <NavItem key={item.key} item={item} active={isActive(item.key, item.href)} collapsed={isCollapsed} onExpandRequest={expand} />
+          <NavItem key={item.key} item={item} active={isActive(item.key, item.href)} collapsed={isCollapsed} />
         ))}
 
         {user?.role === "admin" && (
           <>
             <SectionLabel collapsed={isCollapsed}>Sistem</SectionLabel>
             {systemItems.map((item) => (
-              <NavItem key={item.key} item={item} active={isActive(item.key, item.href)} collapsed={isCollapsed} onExpandRequest={expand} />
+              <NavItem key={item.key} item={item} active={isActive(item.key, item.href)} collapsed={isCollapsed} />
             ))}
           </>
         )}

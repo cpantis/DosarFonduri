@@ -5171,14 +5171,15 @@ export default function ProjectViewPage() {
                           )}
                           {sr.requiredMissing.length > 0 && (
                             <button
-                              onClick={() => {
+                              onClick={async () => {
                                 const msg = `Solomon, am nevoie de următoarele date pentru secțiunea "${sr.sectionTitle}": ${sr.requiredMissing.join(", ")}. Te rog ajută-mă să le completez.`;
-                                setSolomonInput(msg);
                                 setActiveLeaf("solomon");
+                                if (!solomonConvId) await initSolomonConversation();
+                                setSolomonInput(msg);
                                 setTimeout(() => {
                                   const inp = document.querySelector("[data-solomon-input]") as HTMLTextAreaElement;
                                   if (inp) inp.focus();
-                                }, 300);
+                                }, 200);
                               }}
                               style={{ fontSize: 10, color: "#4d8bff", background: "none", border: "none", cursor: "pointer", padding: "3px 0", marginTop: 2 }}
                             >

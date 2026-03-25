@@ -5,7 +5,7 @@ import { createHash } from "crypto";
 import { updateDocElementSchema, validatePageSchema, createDocElementSchema } from "@dosarfonduri/shared";
 import { db } from "../db";
 import { documentFolders, documents, files, templateElements, rules, scoringCriteria, elementDefinitions, templatePlaceholderMapping, users, guideReferenceTables, elementRuleLinks, ruleReferenceLinks, sessionChecklist, projects, projectDocuments, projectElements, projectEligibility, organizations } from "../db/schema";
-import { eq, and, isNull, sql, inArray } from "drizzle-orm";
+import { eq, and, isNull, sql, inArray, or, lt } from "drizzle-orm";
 import { uploadFile, getFileUrl, deleteFile, createPresignedUploadUrl, verifyFileUploaded, isLocalStorage } from "../services/storage";
 import { AuthContext } from "../middleware/auth";
 import { processGuideQueue, processTemplateQueue, processReferenceDataQueue, processClientDocQueue, JOB_PRIORITY } from "../lib/queue";
@@ -142,7 +142,11 @@ documentRoutes.post("/structure-lock", async (c) => {
   }).where(
     and(
       eq(organizations.id, auth.organizationId),
-      sql`(${organizations.folderLockedBy} IS NULL OR ${organizations.folderLockedAt} < ${expiryCutoff} OR ${organizations.folderLockedBy} = ${auth.userId})`
+      or(
+        isNull(organizations.folderLockedBy),
+        lt(organizations.folderLockedAt, expiryCutoff),
+        eq(organizations.folderLockedBy, auth.userId),
+      )
     )
   ).returning({ id: organizations.id });
 
@@ -178,9 +182,9 @@ documentRoutes.post("/structure-lock", async (c) => {
 
   return c.json({ locked: true, lockedBy: auth.userId, lockedAt: now });
   } catch (e: any) {
-    // Migration 0121 not run — folder_locked_by column doesn't exist
-    console.warn("[structure-lock] acquire failed (migration not run?):", e.message);
-    return c.json({ error: "Funcția de blocare nu este disponibilă. Rulați migrarea 0121." }, 500);
+    // Migration 0121 not run or SQL error
+    console.error("[structure-lock] acquire failed:", e.message, e.stack?.slice(0, 300));
+    return c.json({ error: `Eroare la blocare: ${e.message?.slice(0, 100)}` }, 500);
   }
 });
 

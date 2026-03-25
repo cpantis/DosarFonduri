@@ -43,7 +43,13 @@ async function getFromAddress(organizationId: string): Promise<string> {
   } catch {
     // Invalid UUID or DB error — fall through to default
   }
-  return "office@dosar-fonduri.com";
+
+  // Fallback: use SENDER_EMAIL (re-check) or warn about missing config
+  const fallback = process.env.SENDER_EMAIL || "noreply@dosarfonduri.ro";
+  if (!process.env.SENDER_EMAIL) {
+    console.warn("[email] SENDER_EMAIL not set, using fallback:", fallback, "— this domain MUST be verified in Resend");
+  }
+  return fallback;
 }
 
 export async function sendEmail(params: EmailParams) {

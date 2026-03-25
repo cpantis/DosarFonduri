@@ -282,7 +282,7 @@ authRoutes.post("/forgot-password", async (c) => {
   // Always return success to avoid email enumeration
   const user = await db.query.users.findFirst({ where: eq(users.email, email) });
   if (!user || user.status === "disabled") {
-    return c.json({ ok: true });
+    return c.json({ ok: true, emailSent: true });
   }
 
   try {
@@ -344,7 +344,7 @@ authRoutes.post("/forgot-password", async (c) => {
     });
 
     if (!emailResult.sent) {
-      console.warn("[forgot-password] Email not sent to", user.email, "reason:", emailResult.reason, "resetUrl:", resetUrl);
+      console.warn("[forgot-password] Email not sent to", user.email, "result:", JSON.stringify(emailResult));
     }
 
     return c.json({ ok: true, emailSent: emailResult.sent });

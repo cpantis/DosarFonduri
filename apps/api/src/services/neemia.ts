@@ -507,12 +507,32 @@ export async function generateDocument(params: GenerateDocParams): Promise<Reada
           const { fillXFAFields, extractXFAFields } = await import("./xfaFiller");
           const xfaFields = await extractXFAFields(templateBuffer);
           if (xfaFields.length > 0) {
+            // Log mapping coverage before fill
+            const xfaKeys = new Set(xfaFields.map(f => f.key));
+            const elementKeys = Object.keys(elementsMap).filter(k => elementsMap[k]?.trim());
+            const matchedKeys = elementKeys.filter(k => xfaKeys.has(k));
+            const unmatchedKeys = elementKeys.filter(k => !xfaKeys.has(k));
+            console.log(`[neemia] XFA fill: ${xfaFields.length} XFA fields, ${elementKeys.length} elements with values, ${matchedKeys.length} matched, ${unmatchedKeys.length} unmatched`);
+
             filledBuffer = await fillXFAFields(templateBuffer, elementsMap);
+
+            if (matchedKeys.length === 0 && elementKeys.length > 0) {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+                type: "warning",
+                message: `ATENȚIE: Niciun element nu s-a potrivit cu câmpurile XFA din template. Template-ul are ${xfaFields.length} câmpuri dar cheile nu corespund. Verificați maparea elementelor în Template Viewer.`,
+              })}\n\n`));
+            } else if (unmatchedKeys.length > 0) {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+                type: "info",
+                message: `${matchedKeys.length}/${elementKeys.length} elemente completate în PDF. ${unmatchedKeys.length} elemente fără câmp XFA corespondent.`,
+                unmatchedKeys: unmatchedKeys.slice(0, 10),
+              })}\n\n`));
+            }
           } else {
-            console.warn(`[neemia] PDF template "${templateDoc.name}" has no XFA fields — returning original PDF`);
+            console.error(`[neemia] CRITICAL: PDF template "${templateDoc.name}" returned 0 XFA fields — document will be empty`);
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({
-              type: "warning",
-              message: "PDF-ul template nu conține câmpuri editabile (XFA). Folosiți DOCX pentru documente narrative.",
+              type: "error",
+              message: `PDF-ul template "${templateDoc.name}" nu conține câmpuri XFA detectabile. Documentul generat va fi necompletat. Reprocesați template-ul sau folosiți format DOCX.`,
             })}\n\n`));
             filledBuffer = templateBuffer;
           }

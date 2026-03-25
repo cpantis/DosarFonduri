@@ -393,6 +393,48 @@ authRoutes.post("/reset-password", async (c) => {
   return c.json({ ok: true });
 });
 
+// --- LEAVE CABINET ---
+authRoutes.post("/leave-cabinet", async (c) => {
+  const token = c.req.header("Authorization")?.replace("Bearer ", "");
+  if (!token) return c.json({ error: "Unauthorized" }, 401);
+
+  try {
+    const payload = await verify(token, process.env.JWT_SECRET!, "HS256");
+    const user = await db.query.users.findFirst({
+      where: eq(users.id, payload.sub as string),
+    });
+
+    if (!user) return c.json({ error: "User not found" }, 404);
+    if (!user.organizationId) return c.json({ error: "Nu esti asociat niciunui cabinet" }, 400);
+
+    // Check if user is the only admin in the organization
+    const orgAdmins = await db.query.users.findMany({
+      where: and(
+        eq(users.organizationId, user.organizationId),
+        eq(users.role, "admin"),
+        eq(users.status, "active"),
+      ),
+    });
+
+    if (orgAdmins.length <= 1 && user.role === "admin") {
+      return c.json({
+        error: "Esti singurul admin al cabinetului. Promoveaza alt utilizator la admin inainte de a parasi cabinetul.",
+      }, 400);
+    }
+
+    // Remove user from organization
+    await db.update(users).set({
+      organizationId: null,
+      status: "pending_cabinet",
+      role: "consultant",
+    }).where(eq(users.id, user.id));
+
+    return c.json({ ok: true });
+  } catch {
+    return c.json({ error: "Invalid token" }, 401);
+  }
+});
+
 // --- PREFERENCES ---
 authRoutes.patch("/preferences", async (c) => {
   const token = c.req.header("Authorization")?.replace("Bearer ", "");

@@ -114,7 +114,7 @@ function verifyExtractionCompleteness(
 }
 
 /** Default model for guide extraction (Sonnet = higher rate limits, 10x cheaper) */
-const DEFAULT_EXTRACTION_MODEL = "claude-sonnet-4-6-20250514";
+const DEFAULT_EXTRACTION_MODEL = "claude-sonnet-4-6";
 
 /** Character limit for a single extraction pass (200K context window) */
 const EXTRACTION_CHAR_LIMIT = 150000;

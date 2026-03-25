@@ -224,7 +224,7 @@ export const processReferenceDataWorker = new Worker<ProcessReferenceDataPayload
       await job.updateProgress(30);
 
       // Extract structured tables
-      await extractTables(text, "claude-sonnet-4-6-20250514", documentId, organizationId);
+      await extractTables(text, "claude-sonnet-4-6", documentId, organizationId);
 
       await job.updateProgress(90);
 

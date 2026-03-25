@@ -289,7 +289,7 @@ async function extractWithClaude(pdfText: string): Promise<ExtractedCompanyData 
 
     try {
       const response = await withAILimit(() => anthropic.messages.create({
-        model: "claude-sonnet-4-6-20250514",
+        model: "claude-sonnet-4-6",
         max_tokens: 8000,
         system: isRetry
           ? COMPANY_SYSTEM_PROMPT + "\n\nATENȚIE: Răspunsul tău anterior NU a fost JSON valid. Returnează EXCLUSIV un obiect JSON valid. Nimic altceva."

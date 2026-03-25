@@ -229,7 +229,7 @@ async function processChunk(
   const chunkText = chunkPages.map(p => `--- Pagina ${p.page} ---\n${p.text}`).join("\n\n");
 
   const response = await withAILimit(() => anthropic.messages.create({
-    model: "claude-sonnet-4-6-20250514",
+    model: "claude-sonnet-4-6",
     max_tokens: 8000,
     system: `Ești expert în extragerea datelor structurate din documente românești de finanțare europeană.
 Extragi fiecare câmp detectat într-un JSON structurat cu metadate.
@@ -291,7 +291,7 @@ ${chunkText.slice(0, 100000)}`,
   await logAIUsage({
     organizationId,
     agent: "ocr",
-    model: "claude-sonnet-4-6-20250514",
+    model: "claude-sonnet-4-6",
     tokensInput: response.usage.input_tokens,
     tokensOutput: response.usage.output_tokens,
     action: `extract_chunk_${chunkIndex}`,

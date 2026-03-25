@@ -1242,17 +1242,20 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
     attachments: attachments ? JSON.stringify(attachments) : null,
   });
 
-  // API call with streaming
+  // API call with streaming + prompt caching + adaptive thinking
   const requestParams: any = {
     model,
     max_tokens: useET ? 16000 : 4000,
-    system: systemPrompt,
+    system: typeof systemPrompt === "string"
+      ? [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }]
+      : systemPrompt,
     messages,
     stream: true,
   };
 
   if (useET) {
-    requestParams.thinking = { type: "enabled", budget_tokens: 8000 };
+    requestParams.thinking = { type: "adaptive" };
+    requestParams.output_config = { effort: "high" };
   }
 
   // FIX F4.1: AbortController with 120s timeout to prevent infinite stream hang

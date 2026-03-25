@@ -7,6 +7,7 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { BtnPrimary, BtnOutline, BtnSecondary, IconPlus, IconArrowLeft, IconArrowRight, IconCheck } from "@/components/ui/Buttons";
 import { SkeletonCard } from "@/components/ui/Skeleton";
+import { useToast } from "@/components/shared/Toast";
 
 const pct = (a: number, b: number) => b > 0 ? Math.round((a / b) * 100) : 0;
 
@@ -58,6 +59,7 @@ function buildProgramTree(folders: FolderNode[]): ProgramTree[] {
 
 export default function ProjectsPage() {
   const router = useRouter();
+  const { toast } = useToast();
   const [showCreate, setShowCreate] = useState(false);
   const [createStep, setCreateStep] = useState(1);
   const [createData, setCreateData] = useState<{ name: string; firmaId: string | null; folderId: string | null; program: string | null; masura: string | null; sesiune: string | null }>({ name: "", firmaId: null, folderId: null, program: null, masura: null, sesiune: null });
@@ -157,6 +159,8 @@ export default function ProjectsPage() {
     } catch (err: any) {
       const msg = err?.message || "Eroare necunoscută la crearea proiectului";
       setCreateError(msg);
+      toast("error", msg);
+    } finally {
       setCreating(false);
     }
   };
@@ -186,7 +190,8 @@ export default function ProjectsPage() {
       setDeleteTarget(null);
     } catch (err: any) {
       console.error("Delete project failed:", err);
-      alert(err?.message || "Eroare la ștergerea proiectului");
+      toast("error", err?.message || "Eroare la ștergerea proiectului");
+      setDeleteTarget(null);
     } finally {
       setDeleting(false);
     }
@@ -266,6 +271,8 @@ export default function ProjectsPage() {
                   { id: "in_progress", label: "In progres", count: projects.filter(p => p.status === "in_progress").length },
                   { id: "review", label: "Review", count: projects.filter(p => p.status === "review").length },
                   { id: "submitted", label: "Depus", count: projects.filter(p => p.status === "submitted").length },
+                  { id: "approved", label: "Aprobat", count: projects.filter(p => p.status === "approved").length },
+                  { id: "rejected", label: "Respins", count: projects.filter(p => p.status === "rejected").length },
                 ].filter(f => f.id === "all" || f.count > 0).map(f => (
                   <button key={f.id} className={`prj-filter ${statusFilter === f.id ? "on" : ""}`} onClick={() => setStatusFilter(f.id)}>
                     {f.label} <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, opacity: .6, marginLeft: 2 }}>{f.count}</span>

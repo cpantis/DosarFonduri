@@ -13,6 +13,7 @@ export interface PageResult {
   text: string;
   is_scanned: boolean;
   confidence: number;
+  imageBase64?: string; // Preserved for Vision-first extraction (CI, passport, etc.)
 }
 
 export interface PDFExtractionResult {
@@ -210,16 +211,19 @@ export async function extractPDFPages(buffer: Buffer): Promise<PageResult[]> {
   const inputPath = safeTmpPath("pdf", "pdf");
   fs.writeFileSync(inputPath, buffer);
 
-  // Script extracts text AND renders scanned pages as base64 PNG
+  // Script extracts text AND renders pages as base64 PNG
+  // For short documents (1-2 pages), always render images even if text exists
+  // (needed for Vision-first extraction of ID cards, passports, etc. that may have embedded OCR text layer)
   const script = `
 import fitz, sys, json, base64
 doc = fitz.open(sys.argv[1])
 pages = []
+force_images = len(doc) <= 2
 for page in doc:
     text = page.get_text()
     has_text = len(text.strip()) > 50
     page_data = {"page": page.number + 1, "text": text, "has_text": has_text, "image": None}
-    if not has_text:
+    if not has_text or force_images:
         pix = page.get_pixmap(dpi=200)
         page_data["image"] = base64.b64encode(pix.tobytes("png")).decode()
     pages.append(page_data)
@@ -241,15 +245,16 @@ print(json.dumps(pages))
     const results: PageResult[] = [];
     for (const p of rawPages) {
       if (p.has_text) {
-        results.push({ page: p.page, text: p.text, is_scanned: false, confidence: 1.0 });
+        // Preserve image if rendered (short documents get forced rendering for Vision-first extraction)
+        results.push({ page: p.page, text: p.text, is_scanned: false, confidence: 1.0, imageBase64: p.image || undefined });
       } else if (p.image) {
         // OCR scanned page with Claude Vision
         try {
           const ocrText = await ocrPageWithVision(p.image);
-          results.push({ page: p.page, text: ocrText, is_scanned: true, confidence: 0.85 });
+          results.push({ page: p.page, text: ocrText, is_scanned: true, confidence: 0.85, imageBase64: p.image });
         } catch (err) {
           console.error(`Vision OCR failed for page ${p.page}:`, err);
-          results.push({ page: p.page, text: p.text || "[Pagina scanata - OCR eșuat]", is_scanned: true, confidence: 0 });
+          results.push({ page: p.page, text: p.text || "[Pagina scanata - OCR eșuat]", is_scanned: true, confidence: 0, imageBase64: p.image });
         }
       } else {
         results.push({ page: p.page, text: p.text, is_scanned: false, confidence: 1.0 });

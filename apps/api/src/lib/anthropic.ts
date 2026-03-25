@@ -51,7 +51,7 @@ export { anthropic };
 // ─── Concurrency limiter for AI calls ───
 
 const MAX_CONCURRENT_AI_CALLS = parseInt(
-  process.env.MAX_CONCURRENT_AI_CALLS || String(clients.length * 3),
+  process.env.MAX_CONCURRENT_AI_CALLS || "3",
   10,
 );
 

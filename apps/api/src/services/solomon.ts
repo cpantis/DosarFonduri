@@ -117,67 +117,43 @@ async function detectProgramContext(projectId: string, organizationId: string, p
   confidence: "high" | "medium" | "low";
   signals: string[];
 }> {
+  // ─── Gather all signals (folder names, project name, template names, rule excerpts) ───
   const signals: string[] = [];
-  let programDetected: string | null = null;
-  let masura: string | null = null;
-  let sesiune: string | null = null;
-  let organism: string | null = null;
-  let confidence: "high" | "medium" | "low" = "low";
 
-  // Signal 1: Project name often contains program info
-  const nameSignals = project.name?.toLowerCase() || "";
-  const programPatterns: Array<{ pattern: RegExp; program: string; org: string }> = [
-    { pattern: /afir|pndr|feadr|gal|leader|masura\s*6/i, program: "PNDR/AFIR", org: "AFIR" },
-    { pattern: /por\b|regio|urban|competitivitate\s*regional/i, program: "POR/Regio", org: "AM POR" },
-    { pattern: /pocu|capital\s*uman|fse\+?/i, program: "POCU/FSE+", org: "AM POCU" },
-    { pattern: /pocidif|poci|infrastructur.*digital|competitivitate/i, program: "POCIDIF", org: "AM POCIDIF" },
-    { pattern: /pnrr|rezilienta|next\s*gen|reforma/i, program: "PNRR", org: "MIPE" },
-    { pattern: /horizon|orizont|cercetare.*inovare/i, program: "Horizon Europe", org: "Comisia Europeană" },
-    { pattern: /imm\s*invest|start-?up|micro.*intrepri/i, program: "IMM Invest/Start-Up", org: "FNGCIMM/MEAT" },
-    { pattern: /minimis|de\s*minimis/i, program: "Ajutor de minimis", org: "Variat" },
-    { pattern: /gber|schema\s*ajutor|ajutor\s*stat/i, program: "Schemă ajutor de stat", org: "Variat" },
-    { pattern: /pr\s*nord|pr\s*sud|pr\s*vest|pr\s*centru|program.*regional/i, program: "Program Regional 2021-2027", org: "ADR" },
-    { pattern: /pescuit|fep|popam|feampa/i, program: "POPAM/FEAMPA", org: "AM POPAM" },
-  ];
+  // Project name
+  if (project.name) signals.push(`Nume proiect: "${project.name}"`);
 
-  for (const pp of programPatterns) {
-    if (pp.pattern.test(nameSignals)) {
-      programDetected = pp.program;
-      organism = pp.org;
-      signals.push(`Numele proiectului conține referință: "${project.name}"`);
-      break;
-    }
-  }
-
-  // Signal 2: Folder hierarchy (session/program structure)
+  // Folder hierarchy
+  let folderNames: string[] = [];
   if (project.folderId) {
     const folder = await db.query.documentFolders.findFirst({
       where: eq(documentFolders.id, project.folderId),
     });
     if (folder) {
-      signals.push(`Folder proiect: "${folder.name}"`);
-      // Walk up the folder tree to find program/session context
+      folderNames.push(folder.name);
+      signals.push(`Folder sesiune: "${folder.name}"`);
       if (folder.parentId) {
         const parentFolder = await db.query.documentFolders.findFirst({
           where: eq(documentFolders.id, folder.parentId),
         });
         if (parentFolder) {
-          signals.push(`Folder părinte: "${parentFolder.name}"`);
-          for (const pp of programPatterns) {
-            if (pp.pattern.test(parentFolder.name)) {
-              if (!programDetected) { programDetected = pp.program; organism = pp.org; }
-              break;
+          folderNames.push(parentFolder.name);
+          signals.push(`Folder măsură: "${parentFolder.name}"`);
+          if (parentFolder.parentId) {
+            const grandparent = await db.query.documentFolders.findFirst({
+              where: eq(documentFolders.id, parentFolder.parentId),
+            });
+            if (grandparent) {
+              folderNames.push(grandparent.name);
+              signals.push(`Folder program: "${grandparent.name}"`);
             }
           }
-          // Check for session pattern (e.g., "Sesiunea 2024", "Apel nr. 3")
-          const sesMatch = parentFolder.name.match(/sesiune?a?\s*(\d{4}|\d+)/i) || folder.name.match(/sesiune?a?\s*(\d{4}|\d+)/i);
-          if (sesMatch) sesiune = sesMatch[0];
         }
       }
     }
   }
 
-  // Signal 3: Template document names (batched to avoid N+1)
+  // Template document names (batched)
   const projectEls = await db.query.projectElements.findMany({
     where: eq(projectElements.projectId, projectId),
     limit: 5,
@@ -192,42 +168,103 @@ async function detectProgramContext(projectId: string, organizationId: string, p
     : [];
   for (const doc of templateDocsForSignals) {
     signals.push(`Template: "${doc.name}"`);
-    for (const pp of programPatterns) {
-      if (pp.pattern.test(doc.name)) {
-        if (!programDetected) { programDetected = pp.program; organism = pp.org; }
-        break;
-      }
-    }
-    // Detect masura from document name (e.g., "M6.4", "Masura 4.1")
-    const masuraMatch = doc.name.match(/m[aă]sura?\s*(\d+\.?\d*)/i) || doc.name.match(/\bM(\d+\.?\d+)/);
-    if (masuraMatch && !masura) masura = `Măsura ${masuraMatch[1]}`;
   }
 
-  // Signal 4: Guide rules content
+  // Guide rules excerpts (first 5)
   const allRules = await db.query.rules.findMany({
     where: eq(rules.organizationId, organizationId),
-    limit: 10,
+    limit: 5,
   });
-  for (const rule of allRules.slice(0, 5)) {
-    const ruleText = rule.description + " " + (rule.sourceText || "");
-    for (const pp of programPatterns) {
-      if (pp.pattern.test(ruleText)) {
-        if (!programDetected) { programDetected = pp.program; organism = pp.org; }
-        signals.push(`Regulă din ghid menționează: ${pp.program}`);
-        break;
-      }
+  const ruleExcerpts = allRules.map(r => (r.description || "").slice(0, 100)).filter(Boolean);
+  if (ruleExcerpts.length > 0) {
+    signals.push(`Reguli ghid: ${ruleExcerpts.join(" | ")}`);
+  }
+
+  // ─── Layer 1: Sonnet AI (primary — semantic analysis of all signals) ───
+  try {
+    const contextText = signals.join("\n");
+    const response = await withAILimit(() => anthropic.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 300,
+      system: `Ești Solomon — consultant senior fonduri europene cu 15+ ani experiență. Analizezi semnalele unui proiect pentru a identifica programul de finanțare.
+
+PROGRAME CUNOSCUTE:
+- PNDR/AFIR (Programul Național de Dezvoltare Rurală) — AFIR, GAL, LEADER, Măsuri 4.x/6.x/7.x
+- POR/Regio (Programul Operațional Regional) — dezvoltare urbană, competitivitate regională
+- PR 2021-2027 (Programele Regionale) — ADR Nord-Est/Sud-Est/Sud/Sud-Vest/Vest/Nord-Vest/Centru/BI
+- POCU/FSE+ (Capital Uman) — formare, ocupare, incluziune socială
+- POCIDIF (Competitivitate, Inovare, Digitalizare) — IMM-uri, digitalizare, cercetare
+- PNRR (Planul Național de Redresare și Reziliență) — reforme, investiții Next Generation EU
+- Horizon Europe — cercetare-inovare la nivel european
+- IMM Invest / Start-Up Nation — credite garantate, granturi IMM
+- POPAM/FEAMPA — pescuit, acvacultură
+- Scheme ajutor de stat / de minimis — finanțări directe
+
+Returnează DOAR un JSON valid (fără backticks):
+{"program": "Numele programului" | null, "masura": "Măsura X.Y" | null, "sesiune": "Sesiunea/Apelul" | null, "organism": "Organismul responsabil" | null, "confidence": "high" | "medium" | "low"}`,
+      messages: [{
+        role: "user",
+        content: `Identifică programul de finanțare din aceste semnale:\n\n${contextText}`,
+      }],
+    }));
+
+    const textBlock = response.content.find((b: any) => b.type === "text");
+    const responseText = textBlock ? (textBlock as any).text : "{}";
+    const cleaned = responseText.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+    const result = JSON.parse(cleaned);
+
+    console.log(`[solomon] AI program detection: ${result.program || "none"} (${result.confidence}), signals: ${signals.length}`);
+
+    return {
+      programDetected: result.program || null,
+      masura: result.masura || null,
+      sesiune: result.sesiune || null,
+      organism: result.organism || null,
+      confidence: result.confidence || "low",
+      signals,
+    };
+  } catch (e: any) {
+    console.warn(`[solomon] AI program detection failed, falling back to patterns:`, e.message);
+  }
+
+  // ─── Layer 2: Pattern matching fallback (if AI unavailable) ───
+  let programDetected: string | null = null;
+  let masura: string | null = null;
+  let sesiune: string | null = null;
+  let organism: string | null = null;
+  let confidence: "high" | "medium" | "low" = "low";
+
+  const programPatterns: Array<{ pattern: RegExp; program: string; org: string }> = [
+    { pattern: /afir|pndr|feadr|gal|leader|masura\s*6/i, program: "PNDR/AFIR", org: "AFIR" },
+    { pattern: /por\b|regio|urban|competitivitate\s*regional/i, program: "POR/Regio", org: "AM POR" },
+    { pattern: /pocu|capital\s*uman|fse\+?/i, program: "POCU/FSE+", org: "AM POCU" },
+    { pattern: /pocidif|poci|infrastructur.*digital|competitivitate/i, program: "POCIDIF", org: "AM POCIDIF" },
+    { pattern: /pnrr|rezilienta|next\s*gen|reforma/i, program: "PNRR", org: "MIPE" },
+    { pattern: /horizon|orizont|cercetare.*inovare/i, program: "Horizon Europe", org: "Comisia Europeană" },
+    { pattern: /imm\s*invest|start-?up|micro.*intrepri/i, program: "IMM Invest/Start-Up", org: "FNGCIMM/MEAT" },
+    { pattern: /minimis|de\s*minimis/i, program: "Ajutor de minimis", org: "Variat" },
+    { pattern: /gber|schema\s*ajutor|ajutor\s*stat/i, program: "Schemă ajutor de stat", org: "Variat" },
+    { pattern: /pr\s*nord|pr\s*sud|pr\s*vest|pr\s*centru|program.*regional/i, program: "Program Regional 2021-2027", org: "ADR" },
+    { pattern: /pescuit|fep|popam|feampa/i, program: "POPAM/FEAMPA", org: "AM POPAM" },
+  ];
+
+  const allText = [project.name || "", ...folderNames, ...templateDocsForSignals.map(d => d.name)].join(" ");
+  for (const pp of programPatterns) {
+    if (pp.pattern.test(allText)) {
+      programDetected = pp.program;
+      organism = pp.org;
+      break;
     }
   }
 
-  // Detect masura from project name
-  const masuraFromName = nameSignals.match(/m[aă]sura?\s*(\d+\.?\d*)/i) || nameSignals.match(/\bM(\d+\.?\d+)/);
-  if (masuraFromName && !masura) masura = `Măsura ${masuraFromName[1]}`;
+  const masuraMatch = allText.match(/m[aă]sura?\s*(\d+\.?\d*)/i) || allText.match(/\bM(\d+\.?\d+)/);
+  if (masuraMatch) masura = `Măsura ${masuraMatch[1]}`;
 
-  // Determine confidence
-  const signalCount = signals.length;
-  if (programDetected && signalCount >= 3) confidence = "high";
-  else if (programDetected && signalCount >= 1) confidence = "medium";
-  else confidence = "low";
+  const sesMatch = allText.match(/sesiune?a?\s*(\d{4}|\d+)/i);
+  if (sesMatch) sesiune = sesMatch[0];
+
+  if (programDetected && signals.length >= 3) confidence = "high";
+  else if (programDetected) confidence = "medium";
 
   return { programDetected, masura, sesiune, organism, confidence, signals };
 }

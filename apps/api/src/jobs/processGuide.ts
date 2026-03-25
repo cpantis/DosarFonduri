@@ -116,8 +116,8 @@ function verifyExtractionCompleteness(
 /** Default model for fast structured extraction (fixed rules, scoring, elements, docs) */
 const DEFAULT_EXTRACTION_MODEL = "claude-sonnet-4-6";
 
-/** Character limit for a single extraction pass (fits in 200K context window) */
-const EXTRACTION_CHAR_LIMIT = 150000;
+/** Character limit for a single extraction pass — keep chunks moderate for faster output */
+const EXTRACTION_CHAR_LIMIT = 80000;
 
 /** Max concurrent extraction chunks */
 const MAX_PARALLEL_CHUNKS = 3;

@@ -108,12 +108,35 @@ export async function autoMatchChecklist(
     try {
       const itemList = uncheckedItems.map(i => `- "${i.name}" (id: ${i.id})`).join("\n");
       const response = await withAILimit(() => anthropic.messages.create({
-        model: "claude-haiku-4-5-20251001",
+        model: "claude-sonnet-4-6",
         max_tokens: 200,
-        system: `Ești un agent de mapare documente. Primești un document uploadat și o listă de checklist items dintr-un dosar de finanțare. Găsește EXACT un item care corespunde documentului. Returnează DOAR id-ul itemului potrivit, sau "none" dacă niciun item nu se potrivește. Fără explicații.`,
+        system: `Ești Solomon — consultant senior fonduri europene cu 15+ ani experiență. Ai văzut sute de dosare de finanțare și știi EXACT ce document corespunde fiecărui punct din checklist.
+
+MISIUNE: Un document tocmai a fost uploadat în dosarul de finanțare. Determină care punct din checklist corespunde acestui document.
+
+CUNOȘTINȚE DOCUMENTE DOSAR FINANȚARE:
+- Certificat constatator ONRC / Extras ONRC / Certificat de înregistrare = dovada existenței juridice
+- Bilanț ANAF / Situații financiare anuale / F10+F20+F30 = situația financiară
+- Certificat fiscal ANAF / Certificat fiscal local = dovada lipsei datoriilor
+- Plan de afaceri / Business plan / Anexa C = descrierea investiției și previziunilor
+- Memoriu justificativ / Studiu de fezabilitate / Anexa tehnica = justificarea tehnică
+- Cerere de finanțare / Formular de candidatură / Anexa 1 = documentul principal de aplicare
+- Declarație pe propria răspundere / Declarație de eligibilitate = angajamente juridice
+- Carte de identitate / CI / Buletin / Pașaport = identitate reprezentant legal
+- Ofertă de preț / Deviz estimativ / Proforma = fundamentare buget
+- Contract de arendă / Concesiune / Comodat = dovada dreptului de folosință
+- Extras de cont / Situație cont bancar = dovada cofinanțării
+
+CUM GÂNDEȘTI:
+- Analizează SEMANTIC, nu doar textual — "Situații financiare" = "Bilanț ANAF"
+- Ghidurile pot folosi terminologie diferită: "Plan de afaceri" = "Business plan" = "Anexa C"
+- Un document poate acoperi parțial un punct din checklist — tot e match
+- Dacă nu ești sigur (>95% confidence), răspunde "none" — mai bine nelinkuit decât greșit
+
+Returnează DOAR id-ul itemului potrivit, sau "none". Fără explicații.`,
         messages: [{
           role: "user",
-          content: `Document uploadat: "${documentName || documentTypeClass}" (tip: ${documentTypeClass})\n\nChecklist items nepotrivite:\n${itemList}\n\nRăspunde cu id-ul itemului potrivit sau "none":`,
+          content: `Document uploadat: "${documentName || documentTypeClass}" (clasificat ca: ${documentTypeClass})\n\nChecklist items necompletate:\n${itemList}\n\nCare item corespunde acestui document? Răspunde cu id-ul sau "none":`,
         }],
       }));
 

@@ -1,4 +1,4 @@
-import fitz, json, sys, re
+import fitz, json, sys, re, zlib
 import xml.etree.ElementTree as ET
 
 
@@ -6,13 +6,15 @@ def extract_xfa_fields(pdf_path):
     doc = fitz.open(pdf_path)
     xref_len = doc.xref_length()
 
+    # Corner case #1: Search ALL xref streams for datasets, not just first 200 chars
     datasets_xml = None
     for i in range(1, xref_len):
         try:
             stream = doc.xref_stream(i)
             if stream:
                 text = stream.decode('utf-8', errors='ignore')
-                if '<xfa:datasets' in text[:200]:
+                # Search in first 1000 chars (some PDFs have long XML headers)
+                if '<xfa:datasets' in text[:1000] or '<datasets' in text[:1000]:
                     datasets_xml = text
                     break
         except:
@@ -22,32 +24,67 @@ def extract_xfa_fields(pdf_path):
         doc.close()
         return []
 
-    clean_xml = re.sub(r'\sxmlns[^"]*"[^"]*"', '', datasets_xml)
-    clean_xml = re.sub(r'xfa:', '', clean_xml)
-    root = ET.fromstring(clean_xml)
+    # Corner case #2: Preserve non-xfa namespaces, only clean xfa prefix
+    # Remove all namespace declarations to simplify parsing
+    clean_xml = re.sub(r'\sxmlns(?::[a-zA-Z0-9]+)?="[^"]*"', '', datasets_xml)
+    # Remove ALL namespace prefixes (xfa:, dd:, tpl:, xdp:, etc.)
+    clean_xml = re.sub(r'<(/?)([a-zA-Z0-9]+):', r'<\1', clean_xml)
 
-    data_el = root.find('.//data')
-    if data_el is None or len(data_el) == 0:
+    try:
+        root = ET.fromstring(clean_xml)
+    except ET.ParseError:
+        # Try to repair common XML issues
+        clean_xml = clean_xml.replace('&', '&amp;').replace('&amp;amp;', '&amp;')
+        try:
+            root = ET.fromstring(clean_xml)
+        except:
+            doc.close()
+            return []
+
+    # Corner case #3: Find the right <data> element (skip metadata ones)
+    data_el = None
+    for candidate in root.iter('data'):
+        children = list(candidate)
+        if len(children) > 0:
+            # Pick the data element that has the most children (actual form data)
+            if data_el is None or len(children) > len(list(data_el)):
+                data_el = candidate
+
+    if data_el is None or len(list(data_el)) == 0:
         doc.close()
         return []
-
-    form_root = data_el[0]
 
     fields = []
     skip_names = {
         'pdfIdentifierCode', 'pdfMajorVersion', 'pdfMinorVersion',
-        'pdfBuildNumber', 'pdfVersion', 'textVersion', 'testinternafir'
+        'pdfBuildNumber', 'pdfVersion', 'textVersion', 'testinternafir',
+        'instanceManager', '_', '#text'
     }
+    # Corner case #7: Extended skip patterns for system/metadata fields
+    skip_patterns = ['instanceManager', 'templateDesigner', '_default']
 
-    def guess_type(name):
+    def should_skip(name):
+        if name in skip_names:
+            return True
+        if name.startswith('_') or name.startswith('#'):
+            return True
+        for pat in skip_patterns:
+            if pat.lower() in name.lower():
+                return True
+        return False
+
+    def guess_type(name, value=""):
         nl = name.lower()
-        if any(k in nl for k in ['pret', 'valoare', 'total', 'suma', 'cantitate', 'procent', 'scor']):
+        vl = (value or "").lower().strip()
+        if any(k in nl for k in ['pret', 'valoare', 'total', 'suma', 'cantitate', 'procent', 'scor', 'numar', 'nr_']):
             return 'number'
-        if any(k in nl for k in ['descriere', 'detaliere', 'observatii']):
+        if any(k in nl for k in ['descriere', 'detaliere', 'observatii', 'justificar', 'obiectiv']):
             return 'textarea'
-        if any(k in nl for k in ['check', 'categ']):
+        if any(k in nl for k in ['check', 'categ', 'tip_', 'forma_']):
             return 'select'
-        if any(k in nl for k in ['semnatura']):
+        if vl in ('da', 'nu', 'yes', 'no', '0', '1') and len(vl) <= 3:
+            return 'select'
+        if any(k in nl for k in ['semnatura', 'signature']):
             return 'signature'
         if any(k in nl for k in ['data', 'date']):
             return 'date'
@@ -57,7 +94,43 @@ def extract_xfa_fields(pdf_path):
         result = re.sub(r'([A-Z])', r' \1', name).strip()
         return re.sub(r'_', ' ', result)
 
-    def extract(parent_el, parent_path, group_name):
+    def extract_value(el):
+        """Corner case #5: Handle <value><text>content</text></value> wrappers"""
+        children = list(el)
+        if len(children) == 0:
+            return (el.text or "").strip()
+
+        # Check for value wrapper pattern: <field><value><text>content</text></value></field>
+        for child in children:
+            tag = child.tag.lower()
+            if tag in ('value', 'rawvalue', 'text', 'string', 'integer', 'float', 'decimal', 'boolean'):
+                # This is a value wrapper — extract text from it or its children
+                if child.text and child.text.strip():
+                    return child.text.strip()
+                for grandchild in child:
+                    if grandchild.text and grandchild.text.strip():
+                        return grandchild.text.strip()
+
+        return (el.text or "").strip()
+
+    def is_leaf_field(el):
+        """Corner case #5: Determine if an element is a data field (not a group).
+        Fields may have value wrapper children like <value>, <text>, etc."""
+        children = list(el)
+        if len(children) == 0:
+            return True
+
+        # If all children are value wrappers, this is still a leaf field
+        wrapper_tags = {'value', 'rawvalue', 'text', 'string', 'integer',
+                       'float', 'decimal', 'boolean', 'date', 'time', 'dateTime',
+                       'exdata', 'image'}
+        child_tags = {ch.tag.lower() for ch in children}
+        if child_tags.issubset(wrapper_tags):
+            return True
+
+        return False
+
+    def extract_recursive(parent_el, parent_path, group_name):
         children = list(parent_el)
         if not children:
             return
@@ -70,56 +143,62 @@ def extract_xfa_fields(pdf_path):
 
         for ch in children:
             tag = ch.tag
-            sub_children = list(ch)
+            if should_skip(tag):
+                continue
+
             is_repeating = tag_counts[tag] > 1
 
             if is_repeating:
                 idx = tag_indices.get(tag, 0)
                 tag_indices[tag] = idx + 1
 
+                # Process leaf children of this repeating element
                 for leaf in ch:
-                    if len(list(leaf)) == 0:
+                    if should_skip(leaf.tag):
+                        continue
+                    if is_leaf_field(leaf):
                         name = leaf.tag
-                        if name in skip_names:
-                            continue
                         key = f"{parent_path}.{tag}[{idx}].{name}"
-                        value = (leaf.text or "").strip()
+                        value = extract_value(leaf)
                         fields.append({
                             "key": key,
                             "label": f"{tag} #{idx+1} — {camel_to_label(name)}",
                             "currentValue": value,
-                            "fieldType": guess_type(name),
+                            "fieldType": guess_type(name, value),
                             "group": group_name,
                             "isRepeating": True,
                             "rowIndex": idx
                         })
+                    else:
+                        # Nested group inside repeating element
+                        extract_recursive(leaf, f"{parent_path}.{tag}[{idx}]", group_name)
 
-                for nested in ch:
-                    if len(list(nested)) > 0:
-                        extract(nested, f"{parent_path}.{tag}[{idx}]", group_name)
-
-            elif sub_children:
-                new_group = tag if parent_path == "" else group_name
-                new_path = f"{parent_path}.{tag}" if parent_path else tag
-                extract(ch, new_path, new_group)
-
-            else:
+            elif is_leaf_field(ch):
+                # Simple leaf field
                 name = tag
-                if name in skip_names:
-                    continue
                 key = f"{parent_path}.{name}" if parent_path else name
-                value = (ch.text or "").strip()
+                value = extract_value(ch)
                 fields.append({
                     "key": key,
                     "label": camel_to_label(name),
                     "currentValue": value,
-                    "fieldType": guess_type(name),
+                    "fieldType": guess_type(name, value),
                     "group": group_name or "general",
                     "isRepeating": False,
                     "rowIndex": None
                 })
+            else:
+                # Container/group — recurse
+                new_group = tag if parent_path == "" else group_name
+                new_path = f"{parent_path}.{tag}" if parent_path else tag
+                extract_recursive(ch, new_path, new_group)
 
-    extract(form_root, "", "")
+    # Corner case #4: Process ALL top-level children of <data>, not just the first
+    for form_root in data_el:
+        if should_skip(form_root.tag):
+            continue
+        extract_recursive(form_root, "", form_root.tag if len(list(data_el)) > 1 else "")
+
     doc.close()
     return fields
 
@@ -138,7 +217,7 @@ def fill_xfa_pdf(input_path, output_path, data):
             stream = doc.xref_stream(i)
             if stream:
                 text = stream.decode('utf-8', errors='ignore')
-                if '<xfa:datasets' in text[:200]:
+                if '<xfa:datasets' in text[:1000] or '<datasets' in text[:1000]:
                     ds_xref = i
                     ds_xml = text
                     break
@@ -150,22 +229,36 @@ def fill_xfa_pdf(input_path, output_path, data):
         doc.close()
         return {"filled_count": 0, "error": "No datasets stream"}
 
-    clean_xml = re.sub(r'\sxmlns[^"]*"[^"]*"', '', ds_xml)
-    clean_xml = re.sub(r'xfa:', '', clean_xml)
+    clean_xml = re.sub(r'\sxmlns(?::[a-zA-Z0-9]+)?="[^"]*"', '', ds_xml)
+    clean_xml = re.sub(r'<(/?)([a-zA-Z0-9]+):', r'<\1', clean_xml)
     root = ET.fromstring(clean_xml)
 
-    data_el = root.find('.//data')
-    form_root = data_el[0]
+    data_el = None
+    for candidate in root.iter('data'):
+        children = list(candidate)
+        if len(children) > 0:
+            if data_el is None or len(children) > len(list(data_el)):
+                data_el = candidate
+
+    if not data_el:
+        doc.save(output_path)
+        doc.close()
+        return {"filled_count": 0, "error": "No data element"}
+
+    # For fill, we need to find the right form root
+    # If key starts with a top-level child name, navigate from data_el
+    # Otherwise navigate from first child (backward compat)
+    top_level_tags = {ch.tag for ch in data_el}
 
     filled = 0
 
-    def set_by_path(root_el, path_str, value):
+    def set_by_path(start_el, path_str, value):
         nonlocal filled
         parts = []
         for part in re.split(r'\.(?![^\[]*\])', path_str):
             parts.append(part)
 
-        current = root_el
+        current = start_el
         for part in parts:
             match = re.match(r'^([^\[]+)\[(\d+)\]$', part)
             if match:
@@ -183,14 +276,31 @@ def fill_xfa_pdf(input_path, output_path, data):
                 current = child
 
         safe_value = str(value).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-        current.text = safe_value
+        # Handle value wrappers
+        value_child = current.find('value')
+        if value_child is not None:
+            text_child = value_child.find('text')
+            if text_child is not None:
+                text_child.text = safe_value
+            else:
+                value_child.text = safe_value
+        else:
+            current.text = safe_value
         filled += 1
         return True
 
     for key_path, value in data.items():
         if not value or not str(value).strip():
             continue
-        set_by_path(form_root, key_path, value)
+
+        # Try to resolve starting point: data_el or its first child
+        first_part = key_path.split('.')[0].split('[')[0]
+        if first_part in top_level_tags:
+            set_by_path(data_el, key_path, value)
+        else:
+            # Backward compat: try from first child
+            if len(list(data_el)) > 0:
+                set_by_path(list(data_el)[0], key_path, value)
 
     output_xml = ET.tostring(root, encoding='unicode')
     output_xml = output_xml.replace(

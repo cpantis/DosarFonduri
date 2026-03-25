@@ -39,14 +39,20 @@ export async function extractXFAFields(buffer: Buffer): Promise<XFAField[]> {
   }
 }
 
+export interface XFAFillReport {
+  filled_count: number;
+  failed_keys: string[];
+  total_attempted: number;
+}
+
 /**
  * Fill XFA fields in a PDF with provided values using indexed path navigation.
- * Returns the filled PDF buffer.
+ * Returns the filled PDF buffer + fill report with failed keys.
  */
 export async function fillXFAFields(
   buffer: Buffer,
   values: Record<string, string>,
-): Promise<Buffer> {
+): Promise<{ buffer: Buffer; report: XFAFillReport }> {
   const tmpDir = os.tmpdir();
   const inputPath = path.join(tmpDir, `xfa_fill_${Date.now()}.pdf`);
   const outputPath = path.join(tmpDir, `xfa_filled_${Date.now()}.pdf`);
@@ -60,9 +66,9 @@ export async function fillXFAFields(
       `python3 ${XFA_SCRIPT} fill ${inputPath} ${outputPath} ${valuesPath}`,
       { encoding: "utf-8", timeout: 60000 }
     );
-    const report = JSON.parse(result.trim());
-    console.log(`XFA fill: ${report.filled_count} fields filled`);
-    return fs.readFileSync(outputPath);
+    const report: XFAFillReport = JSON.parse(result.trim());
+    console.log(`XFA fill: ${report.filled_count}/${report.total_attempted} fields filled, ${report.failed_keys?.length || 0} failed`);
+    return { buffer: fs.readFileSync(outputPath), report };
   } finally {
     [inputPath, outputPath, valuesPath].forEach(p => {
       try { fs.unlinkSync(p); } catch {}

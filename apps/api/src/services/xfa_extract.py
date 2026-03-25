@@ -251,6 +251,34 @@ def fill_xfa_pdf(input_path, output_path, data):
     top_level_tags = {ch.tag for ch in data_el}
 
     filled = 0
+    failed_keys = []
+
+    # Build a flat map of all fillable paths for fuzzy matching
+    all_xfa_paths = {}
+    def index_paths(el, prefix=""):
+        for ch in el:
+            tag = ch.tag
+            path = f"{prefix}.{tag}" if prefix else tag
+            sub = list(ch)
+            if len(sub) == 0 or all(s.tag.lower() in ('value', 'rawvalue', 'text', 'string', 'integer', 'float', 'decimal', 'boolean') for s in sub):
+                all_xfa_paths[path.lower()] = (el if not prefix else None, path)
+                # Also index by last segment for fuzzy matching
+                all_xfa_paths[tag.lower()] = (el if not prefix else None, path)
+            else:
+                # Check for repeating
+                tag_counts = {}
+                for s in sub:
+                    tag_counts[s.tag] = tag_counts.get(s.tag, 0) + 1
+                idx_map = {}
+                for s in sub:
+                    if tag_counts[s.tag] > 1:
+                        idx = idx_map.get(s.tag, 0)
+                        idx_map[s.tag] = idx + 1
+                        index_paths(s, f"{path}[{idx}]")
+                    else:
+                        index_paths(s, path)
+    for form_root in data_el:
+        index_paths(form_root, form_root.tag if len(list(data_el)) > 1 else "")
 
     def set_by_path(start_el, path_str, value):
         nonlocal filled
@@ -293,14 +321,28 @@ def fill_xfa_pdf(input_path, output_path, data):
         if not value or not str(value).strip():
             continue
 
+        success = False
         # Try to resolve starting point: data_el or its first child
         first_part = key_path.split('.')[0].split('[')[0]
         if first_part in top_level_tags:
-            set_by_path(data_el, key_path, value)
+            success = set_by_path(data_el, key_path, value)
         else:
             # Backward compat: try from first child
             if len(list(data_el)) > 0:
-                set_by_path(list(data_el)[0], key_path, value)
+                success = set_by_path(list(data_el)[0], key_path, value)
+
+        # Fuzzy fallback: try matching by last key segment
+        if not success:
+            last_segment = key_path.rsplit('.', 1)[-1].split('[')[0].lower()
+            if last_segment in all_xfa_paths:
+                _, resolved_path = all_xfa_paths[last_segment]
+                if first_part in top_level_tags:
+                    success = set_by_path(data_el, resolved_path, value)
+                elif len(list(data_el)) > 0:
+                    success = set_by_path(list(data_el)[0], resolved_path, value)
+
+        if not success:
+            failed_keys.append(key_path)
 
     output_xml = ET.tostring(root, encoding='unicode')
     output_xml = output_xml.replace(
@@ -313,7 +355,7 @@ def fill_xfa_pdf(input_path, output_path, data):
     doc.update_stream(ds_xref, output_xml.encode('utf-8'))
     doc.save(output_path, garbage=0, deflate=False)
     doc.close()
-    return {"filled_count": filled}
+    return {"filled_count": filled, "failed_keys": failed_keys, "total_attempted": len([k for k, v in data.items() if v and str(v).strip()])}
 
 
 if __name__ == "__main__":

@@ -367,17 +367,25 @@ export default function DocumentsPage() {
     lockedByName: string | null;
     isMe: boolean;
   }>({ locked: false, lockedBy: null, lockedByName: null, isMe: false });
+  const [lockFeatureAvailable, setLockFeatureAvailable] = useState(true);
   const [lockLoading, setLockLoading] = useState(false);
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Whether the current user can edit folder structure
-  const canEditStructure = folderLock.locked && folderLock.isMe;
+  // If lock feature is not available (migration not run), allow all edits
+  const canEditStructure = !lockFeatureAvailable || (folderLock.locked && folderLock.isMe);
 
   // Fetch lock status on mount
   useEffect(() => {
     apiGet<{ locked: boolean; lockedBy: string | null; lockedByName: string | null; isMe: boolean }>("/api/documents/structure-lock")
-      .then(setFolderLock)
-      .catch(() => {}); // ignore if endpoint not yet deployed
+      .then(data => {
+        setFolderLock(data);
+        setLockFeatureAvailable(true);
+      })
+      .catch(() => {
+        // Endpoint not deployed or migration not run — disable lock feature
+        setLockFeatureAvailable(false);
+      });
   }, []);
 
   // Heartbeat while we hold the lock
@@ -862,30 +870,34 @@ export default function DocumentsPage() {
       <div className="doc-tree-header">
         <span className="doc-tree-header-icon">{"📂"}</span>
         <span className="doc-tree-header-label">Structura programe</span>
-        <button
-          className={`doc-lock-btn ${canEditStructure ? "doc-lock-btn--unlocked" : ""} ${folderLock.locked && !folderLock.isMe ? "doc-lock-btn--other" : ""}`}
-          onClick={folderLock.locked && !folderLock.isMe ? undefined : toggleFolderLock}
-          disabled={lockLoading || (folderLock.locked && !folderLock.isMe)}
-          title={
-            canEditStructure
-              ? "Click pentru a bloca structura"
-              : folderLock.locked && !folderLock.isMe
-                ? `Structura este editată de ${folderLock.lockedByName || "alt utilizator"}`
-                : "Click pentru a debloca editarea structurii"
-          }
-        >
-          {lockLoading ? (
-            <svg width="16" height="16" viewBox="0 0 16 16" className="doc-lock-spinner"><circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" fill="none" strokeDasharray="28" strokeDashoffset="10"><animateTransform attributeName="transform" type="rotate" from="0 8 8" to="360 8 8" dur="0.8s" repeatCount="indefinite" /></circle></svg>
-          ) : canEditStructure ? (
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 9.9-1" /></svg>
-          ) : (
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
-          )}
-        </button>
-        {folderLock.locked && !folderLock.isMe && (
-          <span className="doc-lock-info">
-            {folderLock.lockedByName || "Alt utilizator"} editează
-          </span>
+        {lockFeatureAvailable && (
+          <>
+            <button
+              className={`doc-lock-btn ${folderLock.locked && folderLock.isMe ? "doc-lock-btn--unlocked" : ""} ${folderLock.locked && !folderLock.isMe ? "doc-lock-btn--other" : ""}`}
+              onClick={folderLock.locked && !folderLock.isMe ? undefined : toggleFolderLock}
+              disabled={lockLoading || (folderLock.locked && !folderLock.isMe)}
+              title={
+                folderLock.locked && folderLock.isMe
+                  ? "Click pentru a bloca structura"
+                  : folderLock.locked && !folderLock.isMe
+                    ? `Structura este editată de ${folderLock.lockedByName || "alt utilizator"}`
+                    : "Click pentru a debloca editarea structurii"
+              }
+            >
+              {lockLoading ? (
+                <svg width="16" height="16" viewBox="0 0 16 16" className="doc-lock-spinner"><circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" fill="none" strokeDasharray="28" strokeDashoffset="10"><animateTransform attributeName="transform" type="rotate" from="0 8 8" to="360 8 8" dur="0.8s" repeatCount="indefinite" /></circle></svg>
+              ) : folderLock.locked && folderLock.isMe ? (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 9.9-1" /></svg>
+              ) : (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
+              )}
+            </button>
+            {folderLock.locked && !folderLock.isMe && (
+              <span className="doc-lock-info">
+                {folderLock.lockedByName || "Alt utilizator"} editează
+              </span>
+            )}
+          </>
         )}
       </div>
       <div className="doc-tree-scroll">

@@ -62,18 +62,25 @@ function isFolderLockExpired(lockedAt: Date | null): boolean {
 
 /** Check if the current user holds the folder structure lock. Returns error string or null if OK. */
 async function requireFolderLock(orgId: string, userId: string): Promise<string | null> {
-  const org = await db.query.organizations.findFirst({
-    where: eq(organizations.id, orgId),
-    columns: { folderLockedBy: true, folderLockedAt: true },
-  });
-  if (!org) return "Organization not found";
-  if (!org.folderLockedBy || isFolderLockExpired(org.folderLockedAt)) {
-    return "Structura nu este deblocată. Apasă pe lacăt pentru a edita.";
+  try {
+    const org = await db.query.organizations.findFirst({
+      where: eq(organizations.id, orgId),
+      columns: { folderLockedBy: true, folderLockedAt: true },
+    });
+    if (!org) return "Organization not found";
+    // If columns don't exist yet (migration 0121 not run), folderLockedBy will be undefined — allow access
+    if (org.folderLockedBy === undefined) return null;
+    if (!org.folderLockedBy || isFolderLockExpired(org.folderLockedAt)) {
+      return "Structura nu este deblocată. Apasă pe lacăt pentru a edita.";
+    }
+    if (org.folderLockedBy !== userId) {
+      return "Structura este editată de alt utilizator.";
+    }
+    return null; // OK — user holds the lock
+  } catch {
+    // If folder_locked_by column doesn't exist (migration not run), allow access
+    return null;
   }
-  if (org.folderLockedBy !== userId) {
-    return "Structura este editată de alt utilizator.";
-  }
-  return null; // OK — user holds the lock
 }
 
 // GET /structure-lock — check lock status
@@ -81,31 +88,41 @@ documentRoutes.get("/structure-lock", async (c) => {
   const auth = c.get("auth") as AuthContext;
   if (!auth.organizationId) return c.json({ error: "No organization" }, 403);
 
-  const org = await db.query.organizations.findFirst({
-    where: eq(organizations.id, auth.organizationId),
-    columns: { folderLockedBy: true, folderLockedAt: true },
-  });
-  if (!org) return c.json({ error: "Not found" }, 404);
-
-  const expired = isFolderLockExpired(org.folderLockedAt);
-  const locked = !!org.folderLockedBy && !expired;
-
-  let lockedByName: string | null = null;
-  if (locked && org.folderLockedBy) {
-    const user = await db.query.users.findFirst({
-      where: eq(users.id, org.folderLockedBy),
-      columns: { name: true },
+  try {
+    const org = await db.query.organizations.findFirst({
+      where: eq(organizations.id, auth.organizationId),
+      columns: { folderLockedBy: true, folderLockedAt: true },
     });
-    lockedByName = user?.name || null;
-  }
+    if (!org) return c.json({ error: "Not found" }, 404);
 
-  return c.json({
-    locked,
-    lockedBy: locked ? org.folderLockedBy : null,
-    lockedByName,
-    lockedAt: locked ? org.folderLockedAt : null,
-    isMe: locked && org.folderLockedBy === auth.userId,
-  });
+    // If columns don't exist yet (migration 0121 not run), return unlocked
+    if (org.folderLockedBy === undefined) {
+      return c.json({ locked: false, lockedBy: null, lockedByName: null, lockedAt: null, isMe: false });
+    }
+
+    const expired = isFolderLockExpired(org.folderLockedAt);
+    const locked = !!org.folderLockedBy && !expired;
+
+    let lockedByName: string | null = null;
+    if (locked && org.folderLockedBy) {
+      const user = await db.query.users.findFirst({
+        where: eq(users.id, org.folderLockedBy),
+        columns: { name: true },
+      });
+      lockedByName = user?.name || null;
+    }
+
+    return c.json({
+      locked,
+      lockedBy: locked ? org.folderLockedBy : null,
+      lockedByName,
+      lockedAt: locked ? org.folderLockedAt : null,
+      isMe: locked && org.folderLockedBy === auth.userId,
+    });
+  } catch {
+    // Migration not run — return unlocked (feature not available yet)
+    return c.json({ locked: false, lockedBy: null, lockedByName: null, lockedAt: null, isMe: false });
+  }
 });
 
 // POST /structure-lock — acquire lock (atomic)
@@ -116,6 +133,8 @@ documentRoutes.post("/structure-lock", async (c) => {
   // Atomic acquire: only succeed if no one else holds a non-expired lock
   const now = new Date();
   const expiryCutoff = new Date(Date.now() - FOLDER_LOCK_TIMEOUT_MS);
+
+  try {
 
   const [updated] = await db.update(organizations).set({
     folderLockedBy: auth.userId,
@@ -158,6 +177,11 @@ documentRoutes.post("/structure-lock", async (c) => {
   });
 
   return c.json({ locked: true, lockedBy: auth.userId, lockedAt: now });
+  } catch (e: any) {
+    // Migration 0121 not run — folder_locked_by column doesn't exist
+    console.warn("[structure-lock] acquire failed (migration not run?):", e.message);
+    return c.json({ error: "Funcția de blocare nu este disponibilă. Rulați migrarea 0121." }, 500);
+  }
 });
 
 // POST /structure-lock/heartbeat — extend lock

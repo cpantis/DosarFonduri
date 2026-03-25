@@ -171,6 +171,23 @@ export function publishJobProgress(
   );
 }
 
+/** Folder structure lock/unlock event (org-scoped) */
+export function publishFolderStructureLock(
+  organizationId: string,
+  data: {
+    locked: boolean;
+    lockedBy: string | null;
+    lockedByName: string | null;
+    message: string;
+  },
+): Promise<void> {
+  return publishEvent(
+    `org:${organizationId}:uploads`,
+    "folder_structure_lock",
+    data,
+  );
+}
+
 /**
  * Create an SSE ReadableStream that subscribes to Redis pub/sub channels.
  * Used by the /api/events SSE endpoint.

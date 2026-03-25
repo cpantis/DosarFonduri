@@ -4,12 +4,12 @@ import { z } from "zod";
 import { createHash } from "crypto";
 import { updateDocElementSchema, validatePageSchema, createDocElementSchema } from "@dosarfonduri/shared";
 import { db } from "../db";
-import { documentFolders, documents, files, templateElements, rules, scoringCriteria, elementDefinitions, templatePlaceholderMapping, users, guideReferenceTables, elementRuleLinks, ruleReferenceLinks, sessionChecklist, projects, projectDocuments, projectElements, projectEligibility } from "../db/schema";
+import { documentFolders, documents, files, templateElements, rules, scoringCriteria, elementDefinitions, templatePlaceholderMapping, users, guideReferenceTables, elementRuleLinks, ruleReferenceLinks, sessionChecklist, projects, projectDocuments, projectElements, projectEligibility, organizations } from "../db/schema";
 import { eq, and, isNull, sql, inArray } from "drizzle-orm";
 import { uploadFile, getFileUrl, deleteFile, createPresignedUploadUrl, verifyFileUploaded, isLocalStorage } from "../services/storage";
 import { AuthContext } from "../middleware/auth";
 import { processGuideQueue, processTemplateQueue, processReferenceDataQueue, processClientDocQueue, JOB_PRIORITY } from "../lib/queue";
-import { publishUploadEvent } from "../lib/sse";
+import { publishUploadEvent, publishFolderStructureLock } from "../lib/sse";
 import { isRedisReady } from "../lib/redis";
 
 export const documentRoutes = new Hono<AppEnv>();
@@ -51,6 +51,182 @@ async function ensureDocumentColumns() {
   }
 }
 
+// ─── FOLDER STRUCTURE LOCK ───
+// Lock timeout: 15 minutes of inactivity (shorter than project lock — structure edits are quick)
+const FOLDER_LOCK_TIMEOUT_MS = 15 * 60 * 1000;
+
+function isFolderLockExpired(lockedAt: Date | null): boolean {
+  if (!lockedAt) return true;
+  return Date.now() - lockedAt.getTime() > FOLDER_LOCK_TIMEOUT_MS;
+}
+
+/** Check if the current user holds the folder structure lock. Returns error string or null if OK. */
+async function requireFolderLock(orgId: string, userId: string): Promise<string | null> {
+  const org = await db.query.organizations.findFirst({
+    where: eq(organizations.id, orgId),
+    columns: { folderLockedBy: true, folderLockedAt: true },
+  });
+  if (!org) return "Organization not found";
+  if (!org.folderLockedBy || isFolderLockExpired(org.folderLockedAt)) {
+    return "Structura nu este deblocată. Apasă pe lacăt pentru a edita.";
+  }
+  if (org.folderLockedBy !== userId) {
+    return "Structura este editată de alt utilizator.";
+  }
+  return null; // OK — user holds the lock
+}
+
+// GET /structure-lock — check lock status
+documentRoutes.get("/structure-lock", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  if (!auth.organizationId) return c.json({ error: "No organization" }, 403);
+
+  const org = await db.query.organizations.findFirst({
+    where: eq(organizations.id, auth.organizationId),
+    columns: { folderLockedBy: true, folderLockedAt: true },
+  });
+  if (!org) return c.json({ error: "Not found" }, 404);
+
+  const expired = isFolderLockExpired(org.folderLockedAt);
+  const locked = !!org.folderLockedBy && !expired;
+
+  let lockedByName: string | null = null;
+  if (locked && org.folderLockedBy) {
+    const user = await db.query.users.findFirst({
+      where: eq(users.id, org.folderLockedBy),
+      columns: { name: true },
+    });
+    lockedByName = user?.name || null;
+  }
+
+  return c.json({
+    locked,
+    lockedBy: locked ? org.folderLockedBy : null,
+    lockedByName,
+    lockedAt: locked ? org.folderLockedAt : null,
+    isMe: locked && org.folderLockedBy === auth.userId,
+  });
+});
+
+// POST /structure-lock — acquire lock (atomic)
+documentRoutes.post("/structure-lock", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  if (!auth.organizationId) return c.json({ error: "No organization" }, 403);
+
+  // Atomic acquire: only succeed if no one else holds a non-expired lock
+  const now = new Date();
+  const expiryCutoff = new Date(Date.now() - FOLDER_LOCK_TIMEOUT_MS);
+
+  const [updated] = await db.update(organizations).set({
+    folderLockedBy: auth.userId,
+    folderLockedAt: now,
+  }).where(
+    and(
+      eq(organizations.id, auth.organizationId),
+      sql`(${organizations.folderLockedBy} IS NULL OR ${organizations.folderLockedAt} < ${expiryCutoff} OR ${organizations.folderLockedBy} = ${auth.userId})`
+    )
+  ).returning({ id: organizations.id });
+
+  if (!updated) {
+    // Someone else holds the lock — find who
+    const org = await db.query.organizations.findFirst({
+      where: eq(organizations.id, auth.organizationId),
+      columns: { folderLockedBy: true },
+    });
+    let lockedByName = "alt utilizator";
+    if (org?.folderLockedBy) {
+      const user = await db.query.users.findFirst({
+        where: eq(users.id, org.folderLockedBy),
+        columns: { name: true },
+      });
+      lockedByName = user?.name || lockedByName;
+    }
+    return c.json({ error: `Structura este editată de ${lockedByName}` }, 423);
+  }
+
+  // Resolve user name for SSE broadcast
+  const user = await db.query.users.findFirst({
+    where: eq(users.id, auth.userId),
+    columns: { name: true },
+  });
+
+  await publishFolderStructureLock(auth.organizationId, {
+    locked: true,
+    lockedBy: auth.userId,
+    lockedByName: user?.name || null,
+    message: `${user?.name || "Un utilizator"} editează structura de foldere`,
+  });
+
+  return c.json({ locked: true, lockedBy: auth.userId, lockedAt: now });
+});
+
+// POST /structure-lock/heartbeat — extend lock
+documentRoutes.post("/structure-lock/heartbeat", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  if (!auth.organizationId) return c.json({ error: "No organization" }, 403);
+
+  const [updated] = await db.update(organizations).set({
+    folderLockedAt: new Date(),
+  }).where(
+    and(
+      eq(organizations.id, auth.organizationId),
+      eq(organizations.folderLockedBy, auth.userId),
+    )
+  ).returning({ id: organizations.id });
+
+  if (!updated) return c.json({ error: "Lock not owned by you" }, 403);
+  return c.json({ ok: true });
+});
+
+// DELETE /structure-lock — release lock
+documentRoutes.delete("/structure-lock", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  if (!auth.organizationId) return c.json({ error: "No organization" }, 403);
+
+  // Allow admin/consultant to force-release others' locks
+  const isForce = c.req.query("force") === "true" && (auth.role === "admin" || auth.role === "consultant");
+
+  const whereClause = isForce
+    ? eq(organizations.id, auth.organizationId)
+    : and(eq(organizations.id, auth.organizationId), eq(organizations.folderLockedBy, auth.userId));
+
+  await db.update(organizations).set({
+    folderLockedBy: null,
+    folderLockedAt: null,
+  }).where(whereClause);
+
+  await publishFolderStructureLock(auth.organizationId, {
+    locked: false,
+    lockedBy: null,
+    lockedByName: null,
+    message: "Structura de foldere este disponibilă pentru editare",
+  });
+
+  return c.json({ ok: true });
+});
+
+// POST /structure-lock/release — via sendBeacon (page unload)
+documentRoutes.post("/structure-lock/release", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  if (!auth.organizationId) return c.json({ error: "No organization" }, 403);
+
+  await db.update(organizations).set({
+    folderLockedBy: null,
+    folderLockedAt: null,
+  }).where(
+    and(eq(organizations.id, auth.organizationId), eq(organizations.folderLockedBy, auth.userId))
+  );
+
+  await publishFolderStructureLock(auth.organizationId, {
+    locked: false,
+    lockedBy: null,
+    lockedByName: null,
+    message: "Structura de foldere este disponibilă pentru editare",
+  });
+
+  return c.json({ ok: true });
+});
+
 // --- FOLDER TREE ---
 documentRoutes.get("/folders", async (c) => {
   const auth = c.get("auth") as AuthContext;
@@ -84,6 +260,8 @@ const folderSchema = z.object({
 
 documentRoutes.post("/folders", async (c) => {
   const auth = c.get("auth") as AuthContext;
+  const lockErr = await requireFolderLock(auth.organizationId!, auth.userId);
+  if (lockErr) return c.json({ error: lockErr }, 423);
   const body = folderSchema.parse(await c.req.json());
 
   const siblings = await db.query.documentFolders.findMany({
@@ -108,6 +286,8 @@ documentRoutes.post("/folders", async (c) => {
 // --- RENAME FOLDER ---
 documentRoutes.put("/folders/:id", async (c) => {
   const auth = c.get("auth") as AuthContext;
+  const lockErr = await requireFolderLock(auth.organizationId!, auth.userId);
+  if (lockErr) return c.json({ error: lockErr }, 423);
   const id = c.req.param("id");
   const { name } = await c.req.json();
 
@@ -121,6 +301,8 @@ documentRoutes.put("/folders/:id", async (c) => {
 // --- DELETE FOLDER ---
 documentRoutes.delete("/folders/:id", async (c) => {
   const auth = c.get("auth") as AuthContext;
+  const lockErr = await requireFolderLock(auth.organizationId!, auth.userId);
+  if (lockErr) return c.json({ error: lockErr }, 423);
   const id = c.req.param("id");
 
   // Delete R2 files for all documents and Neemia outputs in this folder tree

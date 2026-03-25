@@ -68,6 +68,8 @@ export const organizations = pgTable("organizations", {
     draftWatermark?: boolean;   // watermark "DRAFT" pe documente de lucru (default: true)
     draftWatermarkText?: string; // text watermark custom (default: "DRAFT")
   }>(),
+  folderLockedBy: uuid("folder_locked_by").references(() => users.id, { onDelete: "set null" }),
+  folderLockedAt: timestamp("folder_locked_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull().$onUpdate(() => new Date()),
 });

@@ -343,18 +343,15 @@ authRoutes.post("/forgot-password", async (c) => {
       ].join(""),
     });
 
-    return c.json({
-      ok: true,
-      emailSent: emailResult.sent,
-      ...(!emailResult.sent ? { resetUrl } : {}),
-    });
+    if (!emailResult.sent) {
+      console.warn("[forgot-password] Email not sent to", user.email, "reason:", emailResult.reason, "resetUrl:", resetUrl);
+    }
+
+    return c.json({ ok: true, emailSent: emailResult.sent });
   } catch (err: any) {
     console.error("[forgot-password] Error:", err.message);
-    return c.json({
-      ok: true,
-      emailSent: false,
-      error: err.message?.substring(0, 150),
-    });
+    // Always return ok:true to prevent email enumeration
+    return c.json({ ok: true, emailSent: false });
   }
 });
 

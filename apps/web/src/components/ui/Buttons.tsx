@@ -7,18 +7,39 @@ interface BtnProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const SIZE_MAP = {
-  sm: "text-[12px] h-[34px] px-4 gap-1.5 rounded-lg",
-  md: "text-[14px] h-[42px] px-6 gap-2 rounded-[10px]",
-  lg: "text-[14px] h-[44px] px-7 gap-2.5 rounded-xl",
-  xl: "text-[15px] h-[48px] px-8 gap-2.5 rounded-xl",
+  sm: "text-[12px] h-[34px] px-5 gap-1.5 rounded-[10px]",
+  md: "text-[13px] h-[40px] px-6 gap-2 rounded-[10px]",
+  lg: "text-[14px] h-[44px] px-8 gap-2.5 rounded-xl",
+  xl: "text-[15px] h-[48px] px-9 gap-2.5 rounded-xl",
 };
 
-export function BtnPrimary({ children, icon, size = "md", className = "", ...props }: BtnProps) {
+export function BtnPrimary({ children, icon, size = "md", className = "", style, ...props }: BtnProps) {
   const sz = SIZE_MAP[size];
   return (
     <button
       {...props}
-      className={`bg-blue-500 hover:bg-blue-600 text-white font-semibold tracking-[0.01em] transition-all inline-flex items-center justify-center whitespace-nowrap min-w-[100px] disabled:opacity-50 disabled:cursor-not-allowed shadow-sm shadow-blue-500/20 hover:shadow-md hover:shadow-blue-500/25 ${sz} ${className}`}
+      className={`text-white font-semibold tracking-[0.01em] inline-flex items-center justify-center whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed ${sz} ${className}`}
+      style={{
+        background: "linear-gradient(135deg, #4d8bff 0%, #2563eb 100%)",
+        border: "none",
+        boxShadow: "0 2px 8px rgba(37,99,235,.25), 0 1px 2px rgba(37,99,235,.1)",
+        transition: "all .2s cubic-bezier(.4,0,.2,1)",
+        fontFamily: "'Inter', system-ui, sans-serif",
+        cursor: props.disabled ? "not-allowed" : "pointer",
+        ...style,
+      }}
+      onMouseEnter={e => {
+        if (!props.disabled) {
+          e.currentTarget.style.background = "linear-gradient(135deg, #3b7aed 0%, #1d4ed8 100%)";
+          e.currentTarget.style.boxShadow = "0 4px 16px rgba(37,99,235,.35), 0 1px 3px rgba(37,99,235,.15)";
+          e.currentTarget.style.transform = "translateY(-1px)";
+        }
+      }}
+      onMouseLeave={e => {
+        e.currentTarget.style.background = "linear-gradient(135deg, #4d8bff 0%, #2563eb 100%)";
+        e.currentTarget.style.boxShadow = "0 2px 8px rgba(37,99,235,.25), 0 1px 2px rgba(37,99,235,.1)";
+        e.currentTarget.style.transform = "translateY(0)";
+      }}
     >
       {icon && <span className="shrink-0 [&>svg]:w-[15px] [&>svg]:h-[15px]">{icon}</span>}
       {children}

@@ -3787,6 +3787,20 @@ export default function ProjectViewPage() {
                                 onToggle={() => toggleRuleExpand(r.id)}
                                 categoryColor={categoryColors[r.category] || "#94a3b8"}
                                 categoryLabel={categoryLabels[r.category] || r.category}
+                                readOnly={readOnly}
+                                onOverride={async (ruleId, status, notes) => {
+                                  try {
+                                    await apiPut(`/api/projects/${projectId}/eligibility/${ruleId}`, { overrideResult: status === "passed" ? "passed" : status === "failed" ? "failed" : "not_applicable", notes });
+                                    const eligData = await apiGet<any>(`/api/projects/${projectId}/eligibility`);
+                                    setEligibilityRules(mapEligibilityRules(eligData.flat || []));
+                                    setGuideRules(mapGuideRules(eligData.grouped || []));
+                                    toast("success", `Status regulă actualizat: ${status === "passed" ? "Trecut" : status === "failed" ? "Respins" : "N/A"}`);
+                                  } catch (err: any) { toast("error", err.message || "Eroare la override"); }
+                                }}
+                                onNavigateToElement={(elementKey) => {
+                                  setActiveLeaf("elemente");
+                                  setElemSearch(elementKey);
+                                }}
                               />
                             );
                           })}

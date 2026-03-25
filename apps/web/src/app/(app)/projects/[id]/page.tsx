@@ -1203,7 +1203,7 @@ export default function ProjectViewPage() {
     if (!sel || sel.isCollapsed) return;
     const text = sel.toString().trim();
     if (text.length < 5) return;
-    const msgEl = (sel.anchorNode?.parentElement as HTMLElement)?.closest?.(".chat-msg.assistant");
+    const msgEl = (sel.anchorNode?.parentElement as HTMLElement)?.closest?.(".solomon-msg-left");
     if (!msgEl) return;
     const range = sel.getRangeAt(0);
     const rect = range.getBoundingClientRect();

@@ -113,6 +113,9 @@ export default function ProviderDashboardPage() {
   const [emailSubject, setEmailSubject] = useState("");
   const [emailMessage, setEmailMessage] = useState("");
   const [emailSending, setEmailSending] = useState(false);
+  // Reassign modal state
+  const [reassignModal, setReassignModal] = useState<{ id: string; name: string; email: string; currentCabinetId: string | null } | null>(null);
+  const [reassignTarget, setReassignTarget] = useState("");
 
   const loadData = useCallback(async () => {
     try {
@@ -259,6 +262,19 @@ export default function ProviderDashboardPage() {
     try {
       await providerDelete(`/api/provider/users/${id}`);
       setPlatformUsers((prev) => prev.filter((u) => u.id !== id));
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const handleReassignUser = async () => {
+    if (!reassignModal || !reassignTarget) return;
+    try {
+      const result = await providerPut(`/api/provider/users/${reassignModal.id}/reassign`, { targetCabinetId: reassignTarget });
+      alert(`${reassignModal.name} mutat in cabinetul ${result.movedTo}`);
+      setReassignModal(null);
+      setReassignTarget("");
+      loadData();
     } catch (err: any) {
       alert(err.message);
     }
@@ -595,7 +611,7 @@ export default function ProviderDashboardPage() {
 
                 <div className="border border-slate-200 rounded-lg overflow-hidden bg-white">
                   {/* Table header */}
-                  <div className="grid items-center border-b border-slate-200" style={{ gridTemplateColumns: "1fr 1fr 100px 80px 140px 60px" }}>
+                  <div className="grid items-center border-b border-slate-200" style={{ gridTemplateColumns: "1fr 1fr 100px 80px 140px 80px" }}>
                     {["Utilizator", "Cabinet", "Rol", "Status", "Ultima activitate", ""].map((h, i) => (
                       <div key={i} className="px-4 py-2.5 text-[10px] font-bold uppercase text-slate-400" style={{ letterSpacing: ".5px" }}>{h}</div>
                     ))}
@@ -606,7 +622,7 @@ export default function ProviderDashboardPage() {
                     const statusColorClass = u.status === "active" ? "text-emerald-500" : u.status === "invited" ? "text-amber-500" : u.status === "disabled" ? "text-red-500" : "text-slate-400";
                     const statusBgClass = u.status === "active" ? "bg-emerald-500/10" : u.status === "invited" ? "bg-amber-500/10" : u.status === "disabled" ? "bg-red-500/10" : "bg-slate-400/10";
                     return (
-                      <div key={u.id} className="grid items-center transition-colors hover:bg-slate-100 border-b border-slate-100" style={{ gridTemplateColumns: "1fr 1fr 100px 80px 140px 60px" }}>
+                      <div key={u.id} className="grid items-center transition-colors hover:bg-slate-100 border-b border-slate-100" style={{ gridTemplateColumns: "1fr 1fr 100px 80px 140px 80px" }}>
                         <div className="px-4 py-2.5">
                           <div className="text-[13px] font-semibold">{u.name}</div>
                           <div className="text-[11px] text-slate-400 font-mono">{u.email}</div>
@@ -628,7 +644,14 @@ export default function ProviderDashboardPage() {
                         <div className="px-4 py-2.5 text-[11px] text-slate-400">
                           {u.lastActiveAt ? new Date(u.lastActiveAt).toLocaleDateString("ro-RO", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "Niciodata"}
                         </div>
-                        <div className="px-4 py-2.5">
+                        <div className="px-4 py-2.5 flex gap-1.5">
+                          <button
+                            className="px-2 py-1 text-[11px] font-semibold cursor-pointer transition-all rounded-lg border border-blue-500/25 bg-transparent text-blue-500 font-sans"
+                            onClick={() => setReassignModal({ id: u.id, name: u.name, email: u.email, currentCabinetId: u.organizationId })}
+                            title="Muta in alt cabinet"
+                          >
+                            ↗
+                          </button>
                           <button
                             className="px-2 py-1 text-[11px] font-semibold cursor-pointer transition-all rounded-lg border border-red-500/25 bg-transparent text-red-500 font-sans"
                             onClick={() => handleDeleteUser(u.id, u.email)}
@@ -645,6 +668,46 @@ export default function ProviderDashboardPage() {
                     <div className="text-center py-10 text-slate-400">Niciun utilizator gasit</div>
                   )}
                 </div>
+
+                {/* Reassign modal */}
+                {reassignModal && (
+                  <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999 }} onClick={() => setReassignModal(null)}>
+                    <div style={{ background: "#fff", borderRadius: 12, padding: 24, width: 420, boxShadow: "0 20px 60px rgba(0,0,0,.15)" }} onClick={(e) => e.stopPropagation()}>
+                      <div className="text-[15px] font-bold mb-1">Muta utilizator in alt cabinet</div>
+                      <div className="text-[13px] text-slate-500 mb-4">{reassignModal.name} ({reassignModal.email})</div>
+
+                      <label className="block text-[11px] font-semibold uppercase mb-1.5 text-slate-400" style={{ letterSpacing: ".7px" }}>Cabinet destinatie</label>
+                      <select
+                        className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded-lg bg-slate-50 mb-4 outline-none"
+                        value={reassignTarget}
+                        onChange={(e) => setReassignTarget(e.target.value)}
+                      >
+                        <option value="">Selecteaza cabinetul...</option>
+                        {cabinets
+                          .filter((c) => c.id !== reassignModal.currentCabinetId)
+                          .map((c) => (
+                            <option key={c.id} value={c.id}>{c.name} ({c.code})</option>
+                          ))}
+                      </select>
+
+                      <div className="flex gap-2">
+                        <button
+                          className="px-4 py-2 text-[13px] font-semibold rounded-lg bg-blue-500 text-white cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                          disabled={!reassignTarget}
+                          onClick={handleReassignUser}
+                        >
+                          Muta
+                        </button>
+                        <button
+                          className="px-4 py-2 text-[13px] font-semibold rounded-lg border border-slate-200 text-slate-600 cursor-pointer"
+                          onClick={() => { setReassignModal(null); setReassignTarget(""); }}
+                        >
+                          Anuleaza
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </>
             )}
 

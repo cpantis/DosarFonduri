@@ -482,7 +482,7 @@ function getExtractorModel(documentType: string): string {
     case "extras_cont":
       return "claude-haiku-4-5-20251001";
     default:
-      return "claude-sonnet-4-6-20250514";
+      return "claude-sonnet-4-6";
   }
 }
 
@@ -1490,7 +1490,7 @@ export const processClientDocWorker = new Worker<ProcessClientDocPayload>(
           await logAIUsage({
             organizationId,
             agent: "ocr",
-            model: "claude-sonnet-4-6-20250514",
+            model: "claude-sonnet-4-6",
             tokensInput: Math.min(Math.round(text.length / 4), 30000),
             tokensOutput: Math.min(Math.round(text.length / 4), 25000),
             action: "pre_structure_client_doc",

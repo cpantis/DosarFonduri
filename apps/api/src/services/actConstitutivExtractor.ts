@@ -68,7 +68,7 @@ ${pdfText.slice(0, 120000)}`;
 
     try {
       const response = await withAILimit(() => anthropic.messages.create({
-        model: "claude-sonnet-4-6-20250514",
+        model: "claude-sonnet-4-6",
         max_tokens: 8000, // Increased from 6000
         system: isRetry
           ? systemPrompt + "\n\nATENȚIE: Răspunsul tău anterior NU a fost JSON valid. Returnează EXCLUSIV JSON."
@@ -85,7 +85,7 @@ ${pdfText.slice(0, 120000)}`;
       if (response.stop_reason === "max_tokens") {
         console.warn(`[actConstitutivExtractor] Attempt ${attempt}: truncated at ${fullText.length} chars, requesting continuation...`);
         const contResponse = await withAILimit(() => anthropic.messages.create({
-          model: "claude-sonnet-4-6-20250514",
+          model: "claude-sonnet-4-6",
           max_tokens: 8000,
           system: systemPrompt + "\n\nContinuă JSON-ul trunchiat. NU repeta ce a fost generat anterior.",
           messages: [

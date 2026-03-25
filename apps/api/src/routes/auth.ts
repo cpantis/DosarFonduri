@@ -281,9 +281,11 @@ authRoutes.post("/forgot-password", async (c) => {
 
   // Always return success to avoid email enumeration
   const user = await db.query.users.findFirst({ where: eq(users.email, email) });
-  if (!user || user.status === "disabled") {
+  if (!user) {
+    console.warn("[forgot-password] User not found:", email);
     return c.json({ ok: true, emailSent: true });
   }
+  console.log("[forgot-password] User found:", email, "status:", user.status, "orgId:", user.organizationId);
 
   try {
     // Ensure password_reset_tokens table exists (may not if migration hasn't run)
@@ -385,9 +387,9 @@ authRoutes.post("/reset-password", async (c) => {
     return c.json({ error: "Link-ul a expirat. Solicita un nou link de resetare." }, 400);
   }
 
-  // Update password
+  // Update password + reactivate if disabled (user proved email ownership)
   const newPasswordHash = await bcrypt.hash(password, 12);
-  await db.execute(sql`UPDATE users SET password_hash = ${newPasswordHash} WHERE id = ${resetToken.user_id}::uuid`);
+  await db.execute(sql`UPDATE users SET password_hash = ${newPasswordHash}, status = CASE WHEN status = 'disabled' THEN 'active' ELSE status END WHERE id = ${resetToken.user_id}::uuid`);
 
   // Mark token as used
   await db.execute(sql`UPDATE password_reset_tokens SET used_at = NOW() WHERE id = ${resetToken.id}::uuid`);

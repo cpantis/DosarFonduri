@@ -29,7 +29,7 @@ import { extractDocumentMediu } from "../services/mediuExtractor";
 import { extractExtrasCont } from "../services/extrasContExtractor";
 import { extractDeclaratie } from "../services/declaratieExtractor";
 import { extractCertificatFiscal } from "../services/certificatFiscalExtractor";
-import { extractCarteIdentitate } from "../services/carteIdentitateExtractor";
+import { extractCarteIdentitate, extractCarteIdentitateFromImage } from "../services/carteIdentitateExtractor";
 import { extractFactura } from "../services/facturaExtractor";
 import { extractDiploma } from "../services/diplomaExtractor";
 import { extractActConstitutiv } from "../services/actConstitutivExtractor";
@@ -406,7 +406,12 @@ function detectCompoundDocument(text: string): SubDocument[] | null {
  * generic AI extractor for any unrecognized type — so new document
  * types work immediately without code changes.
  */
-async function runExtractor(documentType: string, text: string, vocabulary?: string[]): Promise<ExtractionResult | null> {
+async function runExtractor(
+  documentType: string,
+  text: string,
+  vocabulary?: string[],
+  pageImages?: Array<{ page: number; imageBase64: string }>,
+): Promise<ExtractionResult | null> {
   const start = Date.now();
 
   switch (documentType) {
@@ -433,8 +438,14 @@ async function runExtractor(documentType: string, text: string, vocabulary?: str
       return extractCertificatFiscal(text);
     case "declaratie_expert_contabil":
       return extractDeclaratie(text);
-    case "carte_identitate":
+    case "carte_identitate": {
+      // Vision-first: use page image directly if available (much better than OCR text for ID cards)
+      if (pageImages && pageImages.length > 0) {
+        console.log(`[processClientDoc] CI Vision-first extraction from page image (${pageImages.length} pages)`);
+        return extractCarteIdentitateFromImage(pageImages[0].imageBase64, "image/png");
+      }
       return extractCarteIdentitate(text);
+    }
     case "factura":
       return extractFactura(text);
     case "diploma_studii":
@@ -1411,8 +1422,14 @@ export const processClientDocWorker = new Worker<ProcessClientDocPayload>(
 
       // Step 1: Extract text
       let text = "";
+      let pdfPageImages: Array<{ page: number; imageBase64: string }> = []; // For Vision-first extraction (CI, passport)
       if (doc.fileType === "pdf") {
-        text = (await extractTextFromPDF(buffer)).text;
+        const pdfResult = await extractTextFromPDF(buffer);
+        text = pdfResult.text;
+        // Preserve page images for Vision-first document types (e.g. carte_identitate)
+        pdfPageImages = pdfResult.pages
+          .filter(p => p.imageBase64)
+          .map(p => ({ page: p.page, imageBase64: p.imageBase64! }));
       } else if (doc.fileType === "docx") {
         text = await extractTextFromDOCX(buffer, fileName);
       } else if (doc.fileType === "doc") {
@@ -1421,6 +1438,9 @@ export const processClientDocWorker = new Worker<ProcessClientDocPayload>(
         text = await extractTextFromXLSX(buffer, fileName);
       } else if (doc.fileType === "png" || doc.fileType === "jpg" || doc.fileType === "jpeg") {
         text = await extractTextFromImage(buffer, fileName);
+        // Preserve raw image for Vision-first extraction (CI, passport)
+        const mediaType = doc.fileType === "png" ? "image/png" : "image/jpeg";
+        pdfPageImages = [{ page: 1, imageBase64: buffer.toString("base64") }];
       } else {
         throw new Error(`Format nesuportat: ${doc.fileType}`);
       }
@@ -1543,7 +1563,7 @@ export const processClientDocWorker = new Worker<ProcessClientDocPayload>(
                 `suggested="${sub.suggestedType}", classified="${subType}"`,
               );
 
-              const subResult = await runExtractor(subType, sub.text, vocab);
+              const subResult = await runExtractor(subType, sub.text, vocab, pdfPageImages);
               if (subResult) {
                 // Prefix field keys with sub-doc type to avoid collisions
                 for (const field of subResult.extracted_fields) {
@@ -1566,7 +1586,7 @@ export const processClientDocWorker = new Worker<ProcessClientDocPayload>(
             }
           } else {
             // Single document — normal extraction (uses pre-structured text if available)
-            extractionResult = await runExtractor(classification.documentType, extractionText, vocab);
+            extractionResult = await runExtractor(classification.documentType, extractionText, vocab, pdfPageImages);
           }
 
           await job.updateProgress(80);

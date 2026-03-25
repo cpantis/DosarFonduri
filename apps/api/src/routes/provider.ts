@@ -404,6 +404,52 @@ providerRoutes.delete("/users/:id", providerAuth, async (c) => {
   return c.json({ ok: true, disabledEmail: user.email });
 });
 
+// ─── REASSIGN USER — move user between provider's own cabinets ──────────────
+providerRoutes.put("/users/:id/reassign", providerAuth, async (c) => {
+  const id = c.req.param("id");
+  const providerId = c.get("providerId") as string;
+  const { targetCabinetId } = z.object({
+    targetCabinetId: z.string().uuid(),
+  }).parse(await c.req.json());
+
+  const user = await db.query.users.findFirst({ where: eq(users.id, id) });
+  if (!user) return c.json({ error: "Utilizator negăsit" }, 404);
+
+  // Verify source cabinet belongs to provider (or user has no cabinet)
+  if (user.organizationId && !(await verifyProviderOwnsCabinet(providerId, user.organizationId))) {
+    return c.json({ error: "Utilizatorul nu aparține cabinetelor dumneavoastră" }, 403);
+  }
+
+  // Verify target cabinet belongs to provider
+  if (!(await verifyProviderOwnsCabinet(providerId, targetCabinetId))) {
+    return c.json({ error: "Cabinetul destinație nu vă aparține" }, 403);
+  }
+
+  // Check target cabinet user limit
+  const targetOrg = await db.query.organizations.findFirst({
+    where: eq(organizations.id, targetCabinetId),
+  });
+  if (!targetOrg) return c.json({ error: "Cabinet destinație negăsit" }, 404);
+
+  const currentUsers = await db.query.users.findMany({
+    where: and(
+      eq(users.organizationId, targetCabinetId),
+      not(eq(users.status, "disabled")),
+    ),
+  });
+  if (currentUsers.length >= (targetOrg.maxUsers || 1)) {
+    return c.json({ error: `Cabinetul destinație a atins limita de ${targetOrg.maxUsers} utilizatori` }, 400);
+  }
+
+  // Move user to target cabinet and reactivate
+  await db.update(users).set({
+    organizationId: targetCabinetId,
+    status: "active",
+  }).where(eq(users.id, id));
+
+  return c.json({ ok: true, movedTo: targetOrg.name });
+});
+
 // Revenue stats — only for provider's own cabinets
 providerRoutes.get("/revenue", providerAuth, async (c) => {
   const providerId = c.get("providerId") as string;

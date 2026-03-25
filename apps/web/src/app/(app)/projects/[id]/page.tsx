@@ -2745,9 +2745,9 @@ export default function ProjectViewPage() {
         .chat-input-toolbar{display:flex;align-items:center;gap:4px;padding:0 4px 4px 8px}
         .chat-input{flex:1;padding:10px 12px 4px 12px;border-radius:8px;border:none;background:transparent;color:#0f172a;font-size:14px;font-family:'Inter',system-ui,sans-serif;line-height:1.5;resize:none;outline:none;min-height:68px;max-height:200px;overflow-y:auto}
         .chat-input::placeholder{color:#94a3b8}
-        .chat-btn{width:36px;height:36px;border-radius:50%;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s cubic-bezier(.4,0,.2,1);flex-shrink:0}
-        .chat-btn.send{background:#2563eb;color:#ffffff;font-size:16px}
-        .chat-btn.send:hover{background:#1d4ed8}
+        .chat-btn{width:36px;height:36px;border-radius:12px;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s cubic-bezier(.4,0,.2,1);flex-shrink:0}
+        .chat-btn.send{background:linear-gradient(135deg,#4d8bff 0%,#2563eb 100%);color:#ffffff;font-size:16px;box-shadow:0 2px 8px rgba(37,99,235,.25)}
+        .chat-btn.send:hover{background:linear-gradient(135deg,#3b7aed 0%,#1d4ed8 100%);box-shadow:0 4px 16px rgba(37,99,235,.35);transform:scale(1.05)}
         .solomon-elements-panel{width:300px;min-width:260px;border-left:1px solid rgba(226,232,240,.8);background:#f8fafc;display:flex;flex-direction:column;overflow:hidden}
         .sep-header{padding:16px 16px 12px;border-bottom:1px solid rgba(226,232,240,.8);display:flex;flex-direction:column;gap:8px}
         .sep-header-top{display:flex;align-items:center;justify-content:space-between}
@@ -4878,12 +4878,12 @@ export default function ProjectViewPage() {
                             </button>
                             <div style={{ flex: 1 }} />
                             {solomonStreaming ? (
-                              <button className="chat-btn send" onClick={handleSolomonStop} title="Oprește generarea" style={{ background: "#64748b" }}>
+                              <button className="chat-btn send" onClick={handleSolomonStop} title="Oprește generarea" style={{ background: "linear-gradient(135deg, #94a3b8 0%, #64748b 100%)", boxShadow: "0 2px 8px rgba(100,116,139,.25)" }}>
                                 <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="1" y="1" width="12" height="12" rx="2.5"/></svg>
                               </button>
                             ) : (
                               <button className="chat-btn send" onClick={handleSolomonSend}>
-                                &#10148;
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
                               </button>
                             )}
                           </div>

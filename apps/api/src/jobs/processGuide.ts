@@ -340,7 +340,7 @@ async function unifiedExtraction(
   for (let attempt = 0; attempt <= MAX_CONTINUATION_ATTEMPTS; attempt++) {
     const requestParams: any = {
       model: DEFAULT_EXTRACTION_MODEL,
-      max_tokens: 16000,
+      max_tokens: 32000,
       system: UNIFIED_EXTRACTION_SYSTEM,
       messages,
     };
@@ -454,6 +454,14 @@ async function refineInterpretedRulesWithET(
   organizationId: string,
 ): Promise<any[]> {
   if (interpretedRules.length === 0) return [];
+
+  // Skip ET refinement if all rules already have high confidence (nothing to refine)
+  const avgConfidence = interpretedRules.reduce((sum, r) => sum + (r.confidence || 0.5), 0) / interpretedRules.length;
+  const lowConfidenceCount = interpretedRules.filter(r => (r.confidence || 0.5) < 0.85).length;
+  if (lowConfidenceCount === 0 && avgConfidence >= 0.9) {
+    console.log(`[processGuide] Skip ET refinement: all ${interpretedRules.length} rules have high confidence (avg=${avgConfidence.toFixed(2)})`);
+    return interpretedRules;
+  }
 
   // Serialize rules for AI (much smaller payload than full guide text)
   const rulesJson = JSON.stringify(interpretedRules, null, 2);
@@ -1625,23 +1633,25 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         status: "processing",
         message: `Creare link-uri reguli ↔ elemente...`,
       }).catch((e: any) => console.warn("[processGuide] sse linking progress:", e.message));
-      const linkResult = await autoLinkRulesAndReferences(documentId, organizationId);
-
-      // ─── STEP 6: Auto-map template placeholders to element definitions ───
-      // FIX F3.2: Backfill ALL templates in the org, not just specific types
-      let templateMappings = 0;
-      if (elemDefCount > 0) {
-        const templateDocs = await db.query.documents.findMany({
-          where: and(
-            eq(documents.organizationId, organizationId),
-            eq(documents.processingType, "template"),
-          ),
-        });
-        for (const tDoc of templateDocs) {
-          templateMappings += await autoMapTemplatePlaceholders(tDoc.id, organizationId);
-        }
-        console.log(`[processGuide] Backfill mapping: ${templateDocs.length} template-uri re-procesate, ${templateMappings} mapări create`);
-      }
+      // Run Step 5 + Step 6 in parallel (independent of each other)
+      const [linkResult, templateMappings] = await Promise.all([
+        autoLinkRulesAndReferences(documentId, organizationId),
+        (async () => {
+          if (elemDefCount === 0) return 0;
+          const templateDocs = await db.query.documents.findMany({
+            where: and(
+              eq(documents.organizationId, organizationId),
+              eq(documents.processingType, "template"),
+            ),
+          });
+          let mappings = 0;
+          for (const tDoc of templateDocs) {
+            mappings += await autoMapTemplatePlaceholders(tDoc.id, organizationId);
+          }
+          console.log(`[processGuide] Backfill mapping: ${templateDocs.length} template-uri re-procesate, ${mappings} mapări create`);
+          return mappings;
+        })(),
+      ]);
 
       // ─── FINALIZE ───
       const pageCount = preStructPageCount;

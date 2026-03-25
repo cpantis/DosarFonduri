@@ -1506,10 +1506,10 @@ export default function DocumentsPage() {
         @keyframes shimmer { 0% { background-position: 200% 0 } 100% { background-position: -200% 0 } }
 
         /* ─── Tree panel ─── */
-        .doc-tree-panel { display: flex; flex-direction: column; overflow: hidden; background: #ffffff; height: 100%; border-right: 1px solid rgba(226,232,240,.8); }
-        .doc-tree-header { padding: 14px 18px; border-bottom: 1px solid rgba(226,232,240,.8); display: flex; align-items: center; gap: 8px; flex-shrink: 0; background: #ffffff; }
-        .doc-tree-header-icon { font-size: 14px; opacity: .55; }
-        .doc-tree-header-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: #64748b; flex: 1; }
+        .doc-tree-panel { display: flex; flex-direction: column; overflow: hidden; background: #ffffff; height: 100%; border-right: 1px solid #e2e8f0; }
+        .doc-tree-header { padding: 16px 20px; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; gap: 10px; flex-shrink: 0; background: #fff; }
+        .doc-tree-header-icon { font-size: 16px; }
+        .doc-tree-header-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: #475569; flex: 1; }
         .doc-tree-scroll { flex: 1; overflow-y: auto; padding: 8px 0; }
 
         .doc-tree-item { display: flex; align-items: center; gap: 7px; padding: 7px 12px; cursor: pointer; font-size: 13px; color: #0f172a; transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1); position: relative; border-radius: 6px; margin: 1px 6px; }
@@ -1561,8 +1561,8 @@ export default function DocumentsPage() {
         .doc-list-scroll { flex: 1; overflow-y: auto; padding: 12px 20px; display: flex; flex-direction: column; gap: 6px; background: #f8fafc; }
 
         /* ─── Document card ─── */
-        .doc-card { display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-radius: 12px; border: 1px solid rgba(226,232,240,.8); background: #ffffff; cursor: pointer; transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1); animation: docSlideIn .25s ease both; box-shadow: 0 1px 2px rgba(0,0,0,.05); }
-        .doc-card:hover { border-color: rgba(226,232,240,1); background: #f8fafc; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+        .doc-card { display: flex; align-items: center; gap: 14px; padding: 14px 18px; border-radius: 14px; border: 1px solid #e2e8f0; background: #ffffff; cursor: pointer; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); animation: docSlideIn .25s ease both; }
+        .doc-card:hover { border-color: #cbd5e1; box-shadow: 0 4px 20px rgba(0,0,0,.04); transform: translateY(-1px); }
         .doc-card.active { border-color: rgba(37,99,235,.3); background: rgba(37,99,235,.04); box-shadow: 0 0 0 1px rgba(37,99,235,.1); }
         .doc-card-icon { font-size: 26px; flex-shrink: 0; }
         .doc-card-info { flex: 1; min-width: 0; }
@@ -1710,16 +1710,17 @@ export default function DocumentsPage() {
 
       {/* ─── TOPBAR ─── */}
       <PageHeader title="Documente">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-1.5 text-xs text-slate-500">
-            <span className="font-mono font-bold text-sm text-slate-900">{totalDocs}</span> documente
-          </div>
-          <div className="flex items-center gap-1.5 text-xs text-slate-500">
-            <span className="font-mono font-bold text-sm text-emerald-600">{procesate}</span> procesate
-          </div>
-          <div className="flex items-center gap-1.5 text-xs text-slate-500">
-            <span className="font-mono font-bold text-sm text-blue-600">{templates}</span> template-uri
-          </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          {[
+            { value: totalDocs, label: "documente", color: "#0f172a" },
+            { value: procesate, label: "procesate", color: "#059669" },
+            { value: templates, label: "template-uri", color: "#4d8bff" },
+          ].map(s => (
+            <div key={s.label} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 16, fontFamily: "'JetBrains Mono', monospace", fontWeight: 800, color: s.color }}>{s.value}</span>
+              <span style={{ fontSize: 12, color: "#94a3b8", fontWeight: 500 }}>{s.label}</span>
+            </div>
+          ))}
         </div>
       </PageHeader>
 

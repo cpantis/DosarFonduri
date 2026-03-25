@@ -193,36 +193,85 @@ export default function ProjectsPage() {
   };
 
   return (
-    <div className="animate-[fadeIn_.2s_ease-out]">
-      <div className="px-6 py-6">
-        {/* Search + filters + action */}
-        <div className="flex items-center gap-3 mb-4 flex-wrap">
+    <div style={{ animation: "prjFadeIn .25s ease-out" }}>
+      <style>{`
+        @keyframes prjFadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+        .prj-header{margin-bottom:28px}
+        .prj-header-title{font-size:26px;font-weight:800;color:#0f172a;letter-spacing:-.5px;line-height:1.2}
+        .prj-header-sub{font-size:13px;color:#94a3b8;margin-top:6px;font-weight:500;display:flex;align-items:center;gap:12px}
+        .prj-header-stat{display:inline-flex;align-items:center;gap:4px;font-weight:600;color:#64748b}
+        .prj-header-stat .num{font-family:'JetBrains Mono',monospace;font-weight:700;color:#0f172a}
+        .prj-toolbar{display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap}
+        .prj-search-wrap{position:relative;flex:1 1 260px;max-width:380px}
+        .prj-search-icon{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:#94a3b8;pointer-events:none}
+        .prj-search{border:1px solid #e2e8f0;border-radius:12px;padding:10px 14px 10px 42px;font-size:14px;background:#fff;color:#0f172a;outline:none;width:100%;transition:all .15s;font-family:'Inter',system-ui,sans-serif}
+        .prj-search:focus{border-color:#4d8bff;box-shadow:0 0 0 3px rgba(77,139,255,.1)}
+        .prj-search::placeholder{color:#cbd5e1}
+        .prj-filters{display:flex;align-items:center;gap:4px;padding:3px;background:#f8fafc;border-radius:12px;border:1px solid #f1f5f9}
+        .prj-filter{font-size:11px;font-weight:600;padding:6px 12px;border-radius:9px;border:none;cursor:pointer;transition:all .15s;background:transparent;color:#94a3b8;font-family:'Inter',system-ui,sans-serif}
+        .prj-filter:hover{color:#64748b}
+        .prj-filter.on{background:#fff;color:#0f172a;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+        .prj-sort{padding:8px 12px;font-size:12px;border:1px solid #e2e8f0;border-radius:10px;background:#fff;color:#475569;font-family:'Inter',system-ui,sans-serif;cursor:pointer;font-weight:500;outline:none}
+        .prj-sort:focus{border-color:#4d8bff}
+        .prj-card{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:20px 22px;margin-bottom:10px;cursor:pointer;transition:all .2s;position:relative;overflow:hidden}
+        .prj-card:hover{border-color:#cbd5e1;box-shadow:0 4px 20px rgba(0,0,0,.04);transform:translateY(-1px)}
+        .prj-card-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px}
+        .prj-card-name{font-size:15px;font-weight:700;color:#0f172a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;transition:color .15s}
+        .prj-card:hover .prj-card-name{color:#4d8bff}
+        .prj-card-meta{font-size:12px;color:#94a3b8;display:flex;align-items:center;gap:8px;margin-bottom:12px}
+        .prj-card-meta .sep{width:1px;height:12px;background:#e2e8f0}
+        .prj-metrics{display:flex;gap:16px}
+        .prj-metric{display:flex;flex-direction:column;gap:4px;min-width:100px}
+        .prj-metric-label{font-size:10px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.4px}
+        .prj-metric-bar{display:flex;align-items:center;gap:6px}
+        .prj-metric-track{flex:1;height:4px;background:#f1f5f9;border-radius:2px;overflow:hidden;min-width:48px}
+        .prj-metric-fill{height:100%;border-radius:2px;transition:width .4s ease}
+        .prj-metric-val{font-size:11px;font-family:'JetBrains Mono',monospace;font-weight:600;color:#94a3b8;min-width:32px}
+        .prj-card-actions{position:absolute;right:16px;top:50%;transform:translateY(-50%);display:flex;align-items:center;gap:6px;opacity:0;transition:opacity .15s}
+        .prj-card:hover .prj-card-actions{opacity:1}
+        .prj-del-btn{width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;border:none;background:transparent;color:#cbd5e1;cursor:pointer;transition:all .15s}
+        .prj-del-btn:hover{background:rgba(239,68,68,.08);color:#ef4444}
+        .prj-arrow{color:#cbd5e1;transition:color .15s}
+        .prj-card:hover .prj-arrow{color:#94a3b8}
+        .prj-skel{height:90px;border-radius:14px;margin-bottom:10px;background:linear-gradient(90deg,#f1f5f9 25%,#e2e8f0 50%,#f1f5f9 75%);background-size:200% 100%;animation:prjSkelShine 1.5s infinite}
+        @keyframes prjSkelShine{0%{background-position:200% 0}100%{background-position:-200% 0}}
+      `}</style>
+
+      <div style={{ padding: "32px 40px 48px" }}>
+        {/* ─── HEADER ─── */}
+        <div className="prj-header">
+          <h1 className="prj-header-title">Proiecte</h1>
+          {!loading && (
+            <div className="prj-header-sub">
+              <span className="prj-header-stat"><span className="num">{projects.length}</span> proiecte</span>
+              <span className="prj-header-stat"><span className="num">{projects.filter(p => p.status === "in_progress").length}</span> in lucru</span>
+              <span className="prj-header-stat"><span className="num">{projects.filter(p => p.status === "submitted" || p.status === "approved").length}</span> depuse</span>
+            </div>
+          )}
+        </div>
+
+        {/* ─── TOOLBAR ─── */}
+        <div className="prj-toolbar">
           {!loading && projects.length > 0 && (
             <>
-              <input
-                className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg bg-white outline-none focus:border-blue-500 transition-colors"
-                placeholder="Caută proiect..."
-                value={searchFilter}
-                onChange={e => setSearchFilter(e.target.value)}
-                style={{ width: 200 }}
-              />
-              <div className="flex rounded-lg p-0.5 gap-0.5 bg-slate-100">
+              <div className="prj-search-wrap">
+                <svg className="prj-search-icon" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                <input className="prj-search" placeholder="Caută proiect sau firmă..." value={searchFilter} onChange={e => setSearchFilter(e.target.value)} />
+              </div>
+              <div className="prj-filters">
                 {[
-                  { id: "all", label: "Toate" },
-                  { id: "draft", label: "Draft" },
-                  { id: "in_progress", label: "În progres" },
-                  { id: "review", label: "Review" },
-                  { id: "submitted", label: "Depus" },
-                  { id: "approved", label: "Aprobat" },
-                  { id: "rejected", label: "Respins" },
-                ].map(f => (
-                  <button key={f.id}
-                    className={`px-2.5 py-1 rounded-md text-[11px] font-semibold border-none cursor-pointer transition-all ${statusFilter === f.id ? "bg-blue-600 text-white shadow-sm" : "bg-transparent text-slate-400 hover:text-slate-600"}`}
-                    onClick={() => setStatusFilter(f.id)}
-                  >{f.label}</button>
+                  { id: "all", label: "Toate", count: projects.length },
+                  { id: "draft", label: "Draft", count: projects.filter(p => p.status === "draft").length },
+                  { id: "in_progress", label: "In progres", count: projects.filter(p => p.status === "in_progress").length },
+                  { id: "review", label: "Review", count: projects.filter(p => p.status === "review").length },
+                  { id: "submitted", label: "Depus", count: projects.filter(p => p.status === "submitted").length },
+                ].filter(f => f.id === "all" || f.count > 0).map(f => (
+                  <button key={f.id} className={`prj-filter ${statusFilter === f.id ? "on" : ""}`} onClick={() => setStatusFilter(f.id)}>
+                    {f.label} <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, opacity: .6, marginLeft: 2 }}>{f.count}</span>
+                  </button>
                 ))}
               </div>
-              <select className="px-2 py-1.5 text-[12px] border border-slate-200 rounded-lg bg-white" value={sortBy} onChange={e => setSortBy(e.target.value as any)}>
+              <select className="prj-sort" value={sortBy} onChange={e => setSortBy(e.target.value as any)}>
                 <option value="date">Sort: Dată</option>
                 <option value="name">Sort: Nume</option>
                 <option value="value">Sort: Valoare</option>
@@ -234,14 +283,13 @@ export default function ProjectsPage() {
           </div>
         </div>
 
+        {/* ─── CONTENT ─── */}
         {loading ? (
-          <div className="space-y-3">
-            <SkeletonCard /><SkeletonCard /><SkeletonCard />
-          </div>
+          <div>{[1, 2, 3].map(i => <div key={i} className="prj-skel" />)}</div>
         ) : projects.length === 0 ? (
           <EmptyState icon={"\u{1F4C1}"} title="Niciun proiect încă" description="Crează un proiect nou pentru a începe pregătirea dosarului." actionLabel="Crează primul proiect" onAction={openCreate} />
         ) : (
-          <div className="space-y-2">
+          <div>
             {projects
               .filter(p => statusFilter === "all" || p.status === statusFilter)
               .filter(p => !searchFilter || p.name?.toLowerCase().includes(searchFilter.toLowerCase()) || p.company?.denumire?.toLowerCase().includes(searchFilter.toLowerCase()))
@@ -259,76 +307,69 @@ export default function ProjectsPage() {
               const eligPct = pct(eligibility.passed, eligibility.total);
               const elemPct = pct(elements.filled, elements.total);
               const docsPct = pct(docs.done, docs.total);
+              const hasMetrics = eligibility.total > 0 || elements.total > 0 || docs.total > 0;
               return (
-                <div
-                  key={p.id}
-                  className="bg-white rounded-xl border border-slate-200/80 p-5 hover:shadow-sm hover:border-slate-300/80 transition-all cursor-pointer group overflow-hidden"
-                  onClick={() => router.push(`/projects/${p.id}`)}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2.5 flex-wrap">
-                        <span className="text-[15px] font-semibold text-slate-900 group-hover:text-blue-600 transition-colors truncate max-w-full">{p.name}</span>
-                        <StatusBadge status={p.status} />
-                        {p.scoreSummary && p.scoreSummary.maxTotalPoints > 0 && (
-                          <span className="text-[12px] font-mono font-bold tabular-nums px-1.5 py-0.5 rounded" style={{
-                            background: p.scoreSummary.percentage >= 80 ? "rgba(52,211,153,.15)" : p.scoreSummary.percentage >= 60 ? "rgba(251,191,36,.15)" : "rgba(248,113,113,.15)",
-                            color: p.scoreSummary.percentage >= 80 ? "#059669" : p.scoreSummary.percentage >= 60 ? "#d97706" : "#dc2626",
-                          }}>{p.scoreSummary.totalPoints}/{p.scoreSummary.maxTotalPoints}</span>
-                        )}
-                        {p.valoare && <span className="text-[13px] font-mono font-semibold text-emerald-600 tabular-nums">{formatValoare(p.valoare)}</span>}
-                      </div>
-                      <div className="text-[13px] text-slate-500 mt-1 flex items-center gap-2 flex-wrap">
-                        <span className="truncate max-w-[200px]">{p.company?.denumire || "—"}</span>
-                        {programPath.masura && <><span className="text-slate-200">·</span><span className="text-slate-400 truncate max-w-[200px]">{programPath.masura}</span></>}
-                        {p.updatedAt && <><span className="text-slate-200">·</span><span className="text-slate-400">{formatRelativeTime(p.updatedAt)}</span></>}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-5 shrink-0">
-                      {/* Progress indicators */}
+                <div key={p.id} className="prj-card" onClick={() => router.push(`/projects/${p.id}`)}>
+                  {/* Row 1: Name + badges */}
+                  <div className="prj-card-top">
+                    <span className="prj-card-name">{p.name}</span>
+                    <StatusBadge status={p.status} />
+                    {p.scoreSummary && p.scoreSummary.maxTotalPoints > 0 && (
+                      <span style={{
+                        fontSize: 12, fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, padding: "2px 8px", borderRadius: 6,
+                        background: p.scoreSummary.percentage >= 80 ? "rgba(52,211,153,.15)" : p.scoreSummary.percentage >= 60 ? "rgba(251,191,36,.15)" : "rgba(248,113,113,.15)",
+                        color: p.scoreSummary.percentage >= 80 ? "#059669" : p.scoreSummary.percentage >= 60 ? "#d97706" : "#dc2626",
+                      }}>{p.scoreSummary.totalPoints}/{p.scoreSummary.maxTotalPoints} pct</span>
+                    )}
+                    {p.valoare && <span style={{ fontSize: 13, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600, color: "#059669" }}>{formatValoare(p.valoare)}</span>}
+                  </div>
+
+                  {/* Row 2: Meta */}
+                  <div className="prj-card-meta">
+                    <span>{p.company?.denumire || "—"}</span>
+                    {programPath.masura && <><div className="sep" /><span>{programPath.masura}</span></>}
+                    {p.updatedAt && <><div className="sep" /><span>{formatRelativeTime(p.updatedAt)}</span></>}
+                  </div>
+
+                  {/* Row 3: Progress metrics */}
+                  {hasMetrics && (
+                    <div className="prj-metrics">
                       {eligibility.total > 0 && (
-                        <div className="text-right">
-                          <div className="text-[11px] text-slate-400 mb-1">Eligibilitate</div>
-                          <div className="flex items-center gap-2">
-                            <div className="w-16 h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                              <div className="h-full rounded-full transition-all" style={{ width: `${eligPct}%`, background: eligPct >= 80 ? "#059669" : eligPct >= 50 ? "#2563eb" : "#d97706" }} />
-                            </div>
-                            <span className="text-[12px] font-medium text-slate-600 tabular-nums">{eligibility.passed}/{eligibility.total}</span>
+                        <div className="prj-metric">
+                          <span className="prj-metric-label">Eligibilitate</span>
+                          <div className="prj-metric-bar">
+                            <div className="prj-metric-track"><div className="prj-metric-fill" style={{ width: `${eligPct}%`, background: eligPct >= 80 ? "#059669" : eligPct >= 50 ? "#4d8bff" : "#d97706" }} /></div>
+                            <span className="prj-metric-val">{eligibility.passed}/{eligibility.total}</span>
                           </div>
                         </div>
                       )}
                       {elements.total > 0 && (
-                        <div className="text-right">
-                          <div className="text-[11px] text-slate-400 mb-1">Elemente</div>
-                          <div className="flex items-center gap-2">
-                            <div className="w-16 h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                              <div className="h-full rounded-full transition-all" style={{ width: `${elemPct}%`, background: elemPct >= 80 ? "#059669" : elemPct >= 50 ? "#2563eb" : "#d97706" }} />
-                            </div>
-                            <span className="text-[12px] font-medium text-slate-600 tabular-nums">{elements.filled}/{elements.total}</span>
+                        <div className="prj-metric">
+                          <span className="prj-metric-label">Elemente</span>
+                          <div className="prj-metric-bar">
+                            <div className="prj-metric-track"><div className="prj-metric-fill" style={{ width: `${elemPct}%`, background: elemPct >= 80 ? "#059669" : elemPct >= 50 ? "#4d8bff" : "#d97706" }} /></div>
+                            <span className="prj-metric-val">{elements.filled}/{elements.total}</span>
                           </div>
                         </div>
                       )}
-                      {/* GAP 18: Docs generated progress */}
                       {docs.total > 0 && (
-                        <div className="text-right">
-                          <div className="text-[11px] text-slate-400 mb-1">Documente</div>
-                          <div className="flex items-center gap-2">
-                            <div className="w-16 h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                              <div className="h-full rounded-full transition-all" style={{ width: `${docsPct}%`, background: docsPct >= 80 ? "#a78bfa" : "#94a3b8" }} />
-                            </div>
-                            <span className="text-[12px] font-medium text-slate-600 tabular-nums">{docs.done}/{docs.total}</span>
+                        <div className="prj-metric">
+                          <span className="prj-metric-label">Documente</span>
+                          <div className="prj-metric-bar">
+                            <div className="prj-metric-track"><div className="prj-metric-fill" style={{ width: `${docsPct}%`, background: docsPct >= 80 ? "#a78bfa" : "#94a3b8" }} /></div>
+                            <span className="prj-metric-val">{docs.done}/{docs.total}</span>
                           </div>
                         </div>
                       )}
-                      <button
-                        className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-300 hover:text-red-500 hover:bg-red-50 transition-all opacity-0 group-hover:opacity-100"
-                        title="Șterge proiectul"
-                        onClick={(e) => openDeleteConfirm(p, e)}
-                      >
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                      </button>
-                      <svg className="w-4 h-4 text-slate-300 group-hover:text-slate-400 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                     </div>
+                  )}
+
+                  {/* Hover actions */}
+                  <div className="prj-card-actions">
+                    <button className="prj-del-btn" title="Sterge proiectul" onClick={(e) => openDeleteConfirm(p, e)}>
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                    </button>
+                    <svg className="prj-arrow" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                   </div>
                 </div>
               );

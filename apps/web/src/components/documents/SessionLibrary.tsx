@@ -151,23 +151,44 @@ export function SessionLibrary({ folderId }: { folderId: string }) {
   ];
 
   return (
-    <div className="flex flex-col h-full overflow-hidden" style={{ background: "#f8fafc" }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", background: "#f8fafc" }}>
       {/* Header */}
-      <div className="px-5 pt-4 pb-2 flex-shrink-0">
-        <div className="flex items-center gap-2 mb-1">
-          <span style={{ fontSize: 18 }}>{"\uD83D\uDCDA"}</span>
-          <h2 className="text-[15px] font-extrabold text-slate-900">Biblioteca Sesiune</h2>
+      <div style={{ padding: "24px 28px 16px", flexShrink: 0, background: "#fff", borderBottom: "1px solid #e2e8f0" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+          <div style={{ width: 36, height: 36, borderRadius: 10, background: "linear-gradient(135deg, #4d8bff 0%, #a78bfa 100%)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, color: "#fff", boxShadow: "0 2px 8px rgba(77,139,255,.25)" }}>
+            {"\uD83D\uDCDA"}
+          </div>
+          <div>
+            <h2 style={{ fontSize: 18, fontWeight: 800, color: "#0f172a", letterSpacing: "-.3px", margin: 0, fontFamily: "'Inter', system-ui, sans-serif" }}>Biblioteca Sesiune</h2>
+            <p style={{ fontSize: 12, color: "#94a3b8", margin: 0, marginTop: 2 }}>{data.sessionName} — date agregate din ghiduri si template-uri</p>
+          </div>
         </div>
-        <p className="text-[11px] text-slate-500">{data.sessionName} — date agregate din toate ghidurile si template-urile</p>
+
+        {/* Stats summary */}
+        <div style={{ display: "flex", gap: 16, marginTop: 14, paddingTop: 14, borderTop: "1px solid #f1f5f9" }}>
+          {[
+            { label: "Reguli", value: data.rules.total, color: "#4d8bff", icon: "\uD83D\uDEE1" },
+            { label: "Scoring", value: data.scoring.total, color: "#7c3aed", icon: "\uD83C\uDFAF" },
+            { label: "Elemente", value: data.elements.total, color: "#059669", icon: "\uD83E\uDDE9" },
+            { label: "Tabele", value: data.tables.total, color: "#d97706", icon: "\uD83D\uDCCA" },
+            { label: "Checklist", value: data.checklist.total, color: "#0891b2", icon: "\u2705" },
+          ].map(s => (
+            <div key={s.label} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 14 }}>{s.icon}</span>
+              <span style={{ fontSize: 15, fontFamily: "'JetBrains Mono', monospace", fontWeight: 800, color: s.value > 0 ? s.color : "#cbd5e1" }}>{s.value}</span>
+              <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 500 }}>{s.label}</span>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Tabs */}
-      <div className="px-5 flex-shrink-0">
+      <div style={{ padding: "0 28px", flexShrink: 0, background: "#fff" }}>
         <Tabs tabs={tabs} active={activeTab} onChange={setActiveTab} />
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto px-5 py-3" style={{ scrollbarWidth: "thin" }}>
+      <div style={{ flex: 1, overflowY: "auto", padding: "16px 28px", scrollbarWidth: "thin" as any }}>
         {activeTab === "rules" && <RulesTab rules={data.rules} />}
         {activeTab === "scoring" && <ScoringTab scoring={data.scoring} />}
         {activeTab === "elements" && <ElementsTab elements={data.elements} />}
@@ -697,14 +718,17 @@ function Pill({ active, onClick, label, count, color }: { active: boolean; onCli
   return (
     <button
       onClick={onClick}
-      className={`text-[11px] font-medium px-2.5 py-1 rounded-full border transition-all flex items-center gap-1.5 ${
-        active
-          ? "border-blue-300 bg-blue-50 text-blue-700"
-          : "border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-700"
-      }`}
+      style={{
+        fontSize: 12, fontWeight: 600, padding: "6px 14px", borderRadius: 10,
+        border: active ? "1.5px solid #4d8bff" : "1px solid #e2e8f0",
+        background: active ? "rgba(77,139,255,.06)" : "#fff",
+        color: active ? "#2563eb" : "#64748b",
+        cursor: "pointer", transition: "all .15s", display: "inline-flex", alignItems: "center", gap: 5,
+        fontFamily: "'Inter', system-ui, sans-serif",
+      }}
     >
       {label}
-      <span className="font-mono font-semibold text-[10px]" style={color ? { color } : undefined}>{count}</span>
+      <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, fontWeight: 700, color: active ? "#2563eb" : (color || "#94a3b8") }}>{count}</span>
     </button>
   );
 }
@@ -739,8 +763,9 @@ function ConfidenceBar({ value }: { value: number }) {
 
 function StatChip({ label, value, color }: { label: string; value: number; color?: string }) {
   return (
-    <div className="flex items-center gap-1.5 text-[11px] text-slate-500">
-      {label}: <span className="font-mono font-bold" style={color ? { color } : undefined}>{value}</span>
+    <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 12px", borderRadius: 8, background: "#f8fafc", border: "1px solid #f1f5f9" }}>
+      <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 500 }}>{label}</span>
+      <span style={{ fontSize: 13, fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: color || "#0f172a" }}>{value}</span>
     </div>
   );
 }
@@ -756,10 +781,10 @@ function DetailCell({ label, value, mono }: { label: string; value: string; mono
 
 function EmptyTab({ icon, message, sub }: { icon: string; message: string; sub?: string }) {
   return (
-    <div className="flex flex-col items-center justify-center py-16 text-center">
-      <span style={{ fontSize: 36, opacity: 0.25 }}>{icon}</span>
-      <div className="text-[13px] font-semibold text-slate-400 mt-3">{message}</div>
-      {sub && <div className="text-[11px] text-slate-400 mt-1">{sub}</div>}
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "48px 20px", textAlign: "center" }}>
+      <div style={{ width: 56, height: 56, borderRadius: 16, background: "#f1f5f9", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, marginBottom: 12 }}>{icon}</div>
+      <div style={{ fontSize: 14, fontWeight: 600, color: "#64748b" }}>{message}</div>
+      {sub && <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 4 }}>{sub}</div>}
     </div>
   );
 }

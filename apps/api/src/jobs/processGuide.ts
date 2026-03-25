@@ -340,7 +340,7 @@ async function unifiedExtraction(
   for (let attempt = 0; attempt <= MAX_CONTINUATION_ATTEMPTS; attempt++) {
     const requestParams: any = {
       model: DEFAULT_EXTRACTION_MODEL,
-      max_tokens: 32000,
+      max_tokens: 16000,
       system: UNIFIED_EXTRACTION_SYSTEM,
       messages,
     };
@@ -354,13 +354,16 @@ async function unifiedExtraction(
       };
     }
 
+    const callStart = Date.now();
     const response = await withAILimit(() => anthropic.messages.create(requestParams));
+    const callDuration = Date.now() - callStart;
 
     const textBlock = response.content.find((b: any) => b.type === "text");
     const content = textBlock ? (textBlock as any).text : "";
     accumulatedText += content;
     totalInputTokens += response.usage.input_tokens;
     totalOutputTokens += response.usage.output_tokens;
+    console.log(`[processGuide] ${chunkLabel} attempt=${attempt} ${callDuration}ms in=${response.usage.input_tokens} out=${response.usage.output_tokens} stop=${response.stop_reason}`);
 
     await logAIUsage({
       organizationId,
@@ -480,11 +483,11 @@ async function refineInterpretedRulesWithET(
   try {
     const response = await withAILimit(() => anthropic.messages.create({
       model,
-      max_tokens: 24000,
+      max_tokens: 16000,
       temperature: 1, // Required for ET
       thinking: {
         type: "enabled",
-        budget_tokens: 15000,
+        budget_tokens: 8000,
       },
       system: REFINE_ET_SYSTEM,
       messages: [{

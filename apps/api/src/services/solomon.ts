@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { anthropic, withAILimit } from "../lib/anthropic";
+import { anthropic, withAILimit, acquireAISlot } from "../lib/anthropic";
 import { db } from "../db";
 import {
   projects, projectElements, templateElements,
@@ -1258,6 +1258,9 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
     requestParams.output_config = { effort: "high" };
   }
 
+  // Acquire interactive AI slot (priority over batch processing)
+  const releaseSlot = await acquireAISlot("interactive");
+
   // FIX F4.1: AbortController with 120s timeout to prevent infinite stream hang
   const controller_abort = new AbortController();
   const streamTimeout = setTimeout(() => controller_abort.abort(), 120_000);
@@ -1267,6 +1270,7 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
     stream = (anthropic.messages.stream as any)(requestParams, { signal: controller_abort.signal });
   } catch (err) {
     clearTimeout(streamTimeout);
+    releaseSlot();
     throw err;
   }
 
@@ -1714,10 +1718,12 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
         });
 
         clearTimeout(streamTimeout);
+        releaseSlot();
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "done" })}\n\n`));
         controller.close();
       } catch (error) {
         clearTimeout(streamTimeout);
+        releaseSlot();
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "error", message: (error as Error).message })}\n\n`));
         controller.close();
       }

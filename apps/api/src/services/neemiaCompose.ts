@@ -465,7 +465,7 @@ Răspunde DOAR cu JSON valid.`;
     action: "writing_kit_generate",
   });
 
-  const textContent = response.content.find(c => c.type === "text");
+  const textContent = response.content.find((c: any) => c.type === "text");
   if (!textContent || textContent.type !== "text") throw new Error("WK generation: empty response");
 
   let rawText = textContent.text.trim();
@@ -816,7 +816,7 @@ Răspunde DOAR cu JSON-ul, fără markdown code blocks, fără text suplimentar.
   });
 
   // Parse AI response
-  const textContent = response.content.find(c => c.type === "text");
+  const textContent = response.content.find((c: any) => c.type === "text");
   if (!textContent || textContent.type !== "text") {
     throw new Error("AI response empty");
   }
@@ -937,7 +937,7 @@ Răspunde DOAR cu JSON valid, fără markdown.`;
     action: "blueprint_generate",
   });
 
-  const textContent = response.content.find(c => c.type === "text");
+  const textContent = response.content.find((c: any) => c.type === "text");
   if (!textContent || textContent.type !== "text") throw new Error("Blueprint AI response empty");
 
   let rawText = textContent.text.trim();

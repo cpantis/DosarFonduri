@@ -11,6 +11,7 @@ import { encrypt } from "../lib/crypto";
 import { getFileBuffer } from "../services/storage";
 import { extractTextFromPDF, extractTextFromDOCX, extractTextFromXLSX, extractTextFromImage, extractTextFromDOC, classifyDocument, shouldPreStructure, preStructureClientText } from "../services/ocr";
 import { logAIUsage } from "../services/aiUsage";
+import { anthropic, withAILimit } from "../lib/anthropic";
 import { publishEvent, publishEligibilityUpdated, publishScoreUpdated, publishFieldExtracted, publishExtractionStarted, publishChecklistUpdated } from "../lib/sse";
 import { redis } from "../lib/redis";
 import { validateElement, logElementChange } from "../services/elementValidation";
@@ -67,15 +68,14 @@ export const CHECKLIST_TYPE_MAP: Record<string, string[]> = {
 
 /**
  * Auto-match a processed document to an unchecked checklist item and mark it done.
+ * Uses pattern matching first, then AI fuzzy matching as fallback for precision.
  */
 export async function autoMatchChecklist(
   projectId: string,
   documentId: string,
   documentTypeClass: string,
+  documentName?: string,
 ): Promise<{ matched: boolean; itemName?: string; itemId?: string }> {
-  const patterns = CHECKLIST_TYPE_MAP[documentTypeClass] || [];
-  if (patterns.length === 0) return { matched: false };
-
   // Query unchecked checklist items for this project
   const uncheckedItems = await db.select().from(projectChecklist)
     .where(and(
@@ -83,21 +83,54 @@ export async function autoMatchChecklist(
       eq(projectChecklist.done, false),
     ));
 
-  // Find first matching item by name pattern (case-insensitive)
+  if (uncheckedItems.length === 0) return { matched: false };
+
+  // Layer 1: Pattern matching (fast, zero AI cost)
+  const patterns = CHECKLIST_TYPE_MAP[documentTypeClass] || [];
   for (const item of uncheckedItems) {
     const nameLower = item.name.toLowerCase();
     for (const pattern of patterns) {
       const parts = pattern.toLowerCase().split('%').filter(Boolean);
       const allMatch = parts.every(part => nameLower.includes(part));
       if (allMatch) {
-        // Mark as done
         await db.update(projectChecklist)
-          .set({ done: true })
+          .set({ done: true, templateId: documentId })
           .where(eq(projectChecklist.id, item.id));
 
-        console.log(`[AUTO-CHECKLIST] ${documentTypeClass} → "${item.name}" (project ${projectId})`);
+        console.log(`[AUTO-CHECKLIST] Pattern match: ${documentTypeClass} → "${item.name}" (project ${projectId})`);
         return { matched: true, itemName: item.name, itemId: item.id };
       }
+    }
+  }
+
+  // Layer 2: AI fuzzy matching (when patterns fail — catches edge cases)
+  if (uncheckedItems.length > 0 && (documentName || documentTypeClass)) {
+    try {
+      const itemList = uncheckedItems.map(i => `- "${i.name}" (id: ${i.id})`).join("\n");
+      const response = await withAILimit(() => anthropic.messages.create({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 200,
+        system: `Ești un agent de mapare documente. Primești un document uploadat și o listă de checklist items dintr-un dosar de finanțare. Găsește EXACT un item care corespunde documentului. Returnează DOAR id-ul itemului potrivit, sau "none" dacă niciun item nu se potrivește. Fără explicații.`,
+        messages: [{
+          role: "user",
+          content: `Document uploadat: "${documentName || documentTypeClass}" (tip: ${documentTypeClass})\n\nChecklist items nepotrivite:\n${itemList}\n\nRăspunde cu id-ul itemului potrivit sau "none":`,
+        }],
+      }));
+
+      const text = (response.content[0] as any).text?.trim() || "none";
+      if (text !== "none") {
+        const matchedItem = uncheckedItems.find(i => text.includes(i.id));
+        if (matchedItem) {
+          await db.update(projectChecklist)
+            .set({ done: true, templateId: documentId })
+            .where(eq(projectChecklist.id, matchedItem.id));
+
+          console.log(`[AUTO-CHECKLIST] AI match: ${documentTypeClass} → "${matchedItem.name}" (project ${projectId})`);
+          return { matched: true, itemName: matchedItem.name, itemId: matchedItem.id };
+        }
+      }
+    } catch (e: any) {
+      console.warn(`[AUTO-CHECKLIST] AI matching failed:`, e.message);
     }
   }
 
@@ -1706,7 +1739,7 @@ export const processClientDocWorker = new Worker<ProcessClientDocPayload>(
 
       if (checklistProjectId) {
         try {
-          const matchResult = await autoMatchChecklist(checklistProjectId, documentId, classification.documentType);
+          const matchResult = await autoMatchChecklist(checklistProjectId, documentId, classification.documentType, doc.name);
           if (matchResult.matched && matchResult.itemId && matchResult.itemName) {
             publishChecklistUpdated(checklistProjectId, {
               itemId: matchResult.itemId,

@@ -116,8 +116,8 @@ function verifyExtractionCompleteness(
 /** Default model for fast structured extraction (fixed rules, scoring, elements, docs) */
 const DEFAULT_EXTRACTION_MODEL = "claude-sonnet-4-6";
 
-/** Model for deep reasoning on interpreted rules (decision trees, exceptions, cascading) */
-const INTERPRETED_RULES_MODEL = "claude-opus-4-6";
+/** Model for deep reasoning on interpreted rules — Sonnet + ET is 3× faster than Opus */
+const INTERPRETED_RULES_MODEL = "claude-sonnet-4-6";
 
 /** Character limit for a single extraction pass — smaller chunks = more parallelism */
 const EXTRACTION_CHAR_LIMIT = 60000;
@@ -340,7 +340,7 @@ async function unifiedExtraction(
   for (let attempt = 0; attempt <= MAX_CONTINUATION_ATTEMPTS; attempt++) {
     const requestParams: any = {
       model: DEFAULT_EXTRACTION_MODEL,
-      max_tokens: 16000,
+      max_tokens: 10000,
       system: UNIFIED_EXTRACTION_SYSTEM,
       messages,
     };
@@ -354,13 +354,16 @@ async function unifiedExtraction(
       };
     }
 
+    const callStart = Date.now();
     const response = await withAILimit(() => anthropic.messages.create(requestParams));
+    const callDuration = Date.now() - callStart;
 
     const textBlock = response.content.find((b: any) => b.type === "text");
     const content = textBlock ? (textBlock as any).text : "";
     accumulatedText += content;
     totalInputTokens += response.usage.input_tokens;
     totalOutputTokens += response.usage.output_tokens;
+    console.log(`[processGuide] ${chunkLabel} attempt=${attempt} ${callDuration}ms in=${response.usage.input_tokens} out=${response.usage.output_tokens} stop=${response.stop_reason}`);
 
     await logAIUsage({
       organizationId,
@@ -455,6 +458,14 @@ async function refineInterpretedRulesWithET(
 ): Promise<any[]> {
   if (interpretedRules.length === 0) return [];
 
+  // Skip ET refinement if all rules already have high confidence (nothing to refine)
+  const avgConfidence = interpretedRules.reduce((sum, r) => sum + (r.confidence || 0.5), 0) / interpretedRules.length;
+  const lowConfidenceCount = interpretedRules.filter(r => (r.confidence || 0.5) < 0.85).length;
+  if (lowConfidenceCount === 0 && avgConfidence >= 0.9) {
+    console.log(`[processGuide] Skip ET refinement: all ${interpretedRules.length} rules have high confidence (avg=${avgConfidence.toFixed(2)})`);
+    return interpretedRules;
+  }
+
   // Serialize rules for AI (much smaller payload than full guide text)
   const rulesJson = JSON.stringify(interpretedRules, null, 2);
 
@@ -472,11 +483,11 @@ async function refineInterpretedRulesWithET(
   try {
     const response = await withAILimit(() => anthropic.messages.create({
       model,
-      max_tokens: 24000,
+      max_tokens: 12000,
       temperature: 1, // Required for ET
       thinking: {
         type: "enabled",
-        budget_tokens: 15000,
+        budget_tokens: 6000,
       },
       system: REFINE_ET_SYSTEM,
       messages: [{
@@ -1625,23 +1636,25 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         status: "processing",
         message: `Creare link-uri reguli ↔ elemente...`,
       }).catch((e: any) => console.warn("[processGuide] sse linking progress:", e.message));
-      const linkResult = await autoLinkRulesAndReferences(documentId, organizationId);
-
-      // ─── STEP 6: Auto-map template placeholders to element definitions ───
-      // FIX F3.2: Backfill ALL templates in the org, not just specific types
-      let templateMappings = 0;
-      if (elemDefCount > 0) {
-        const templateDocs = await db.query.documents.findMany({
-          where: and(
-            eq(documents.organizationId, organizationId),
-            eq(documents.processingType, "template"),
-          ),
-        });
-        for (const tDoc of templateDocs) {
-          templateMappings += await autoMapTemplatePlaceholders(tDoc.id, organizationId);
-        }
-        console.log(`[processGuide] Backfill mapping: ${templateDocs.length} template-uri re-procesate, ${templateMappings} mapări create`);
-      }
+      // Run Step 5 + Step 6 in parallel (independent of each other)
+      const [linkResult, templateMappings] = await Promise.all([
+        autoLinkRulesAndReferences(documentId, organizationId),
+        (async () => {
+          if (elemDefCount === 0) return 0;
+          const templateDocs = await db.query.documents.findMany({
+            where: and(
+              eq(documents.organizationId, organizationId),
+              eq(documents.processingType, "template"),
+            ),
+          });
+          let mappings = 0;
+          for (const tDoc of templateDocs) {
+            mappings += await autoMapTemplatePlaceholders(tDoc.id, organizationId);
+          }
+          console.log(`[processGuide] Backfill mapping: ${templateDocs.length} template-uri re-procesate, ${mappings} mapări create`);
+          return mappings;
+        })(),
+      ]);
 
       // ─── FINALIZE ───
       const pageCount = preStructPageCount;

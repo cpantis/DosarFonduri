@@ -68,7 +68,8 @@ export const CHECKLIST_TYPE_MAP: Record<string, string[]> = {
 
 /**
  * Auto-match a processed document to an unchecked checklist item and mark it done.
- * Uses pattern matching first, then AI fuzzy matching as fallback for precision.
+ * Layer 1: Sonnet AI with consultant expertise (semantic matching — highest accuracy)
+ * Layer 2: Pattern matching fallback (fast, zero AI cost — if AI unavailable)
  */
 export async function autoMatchChecklist(
   projectId: string,
@@ -85,26 +86,8 @@ export async function autoMatchChecklist(
 
   if (uncheckedItems.length === 0) return { matched: false };
 
-  // Layer 1: Pattern matching (fast, zero AI cost)
-  const patterns = CHECKLIST_TYPE_MAP[documentTypeClass] || [];
-  for (const item of uncheckedItems) {
-    const nameLower = item.name.toLowerCase();
-    for (const pattern of patterns) {
-      const parts = pattern.toLowerCase().split('%').filter(Boolean);
-      const allMatch = parts.every(part => nameLower.includes(part));
-      if (allMatch) {
-        await db.update(projectChecklist)
-          .set({ done: true, templateId: documentId })
-          .where(eq(projectChecklist.id, item.id));
-
-        console.log(`[AUTO-CHECKLIST] Pattern match: ${documentTypeClass} → "${item.name}" (project ${projectId})`);
-        return { matched: true, itemName: item.name, itemId: item.id };
-      }
-    }
-  }
-
-  // Layer 2: AI fuzzy matching (when patterns fail — catches edge cases)
-  if (uncheckedItems.length > 0 && (documentName || documentTypeClass)) {
+  // Layer 1: Sonnet AI with consultant expertise (primary — highest accuracy)
+  if (documentName || documentTypeClass) {
     try {
       const itemList = uncheckedItems.map(i => `- "${i.name}" (id: ${i.id})`).join("\n");
       const response = await withAILimit(() => anthropic.messages.create({
@@ -153,7 +136,25 @@ Returnează DOAR id-ul itemului potrivit, sau "none". Fără explicații.`,
         }
       }
     } catch (e: any) {
-      console.warn(`[AUTO-CHECKLIST] AI matching failed:`, e.message);
+      console.warn(`[AUTO-CHECKLIST] AI matching failed, falling back to patterns:`, e.message);
+    }
+  }
+
+  // Layer 2: Pattern matching fallback (if AI unavailable or failed)
+  const patterns = CHECKLIST_TYPE_MAP[documentTypeClass] || [];
+  for (const item of uncheckedItems) {
+    const nameLower = item.name.toLowerCase();
+    for (const pattern of patterns) {
+      const parts = pattern.toLowerCase().split('%').filter(Boolean);
+      const allMatch = parts.every(part => nameLower.includes(part));
+      if (allMatch) {
+        await db.update(projectChecklist)
+          .set({ done: true, templateId: documentId })
+          .where(eq(projectChecklist.id, item.id));
+
+        console.log(`[AUTO-CHECKLIST] Pattern fallback: ${documentTypeClass} → "${item.name}" (project ${projectId})`);
+        return { matched: true, itemName: item.name, itemId: item.id };
+      }
     }
   }
 

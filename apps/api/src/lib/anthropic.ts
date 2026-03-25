@@ -14,16 +14,17 @@ import Anthropic from "@anthropic-ai/sdk";
 
 function buildClients(): Anthropic[] {
   const multiKeys = process.env.ANTHROPIC_API_KEYS;
+  console.log(`[anthropic] ANTHROPIC_API_KEYS env: ${multiKeys ? `found (${multiKeys.split(",").length} keys, first 10 chars: ${multiKeys.slice(0, 10)}...)` : "NOT SET"}`);
   if (multiKeys) {
     const keys: string[] = multiKeys.split(",").map((k: string) => k.trim()).filter(Boolean);
     if (keys.length > 0) {
-      console.log(`[anthropic] Initialized ${keys.length} API key(s) for round-robin rotation`);
+      console.log(`[anthropic] Initialized ${keys.length} API key(s) for round-robin rotation. MAX_CONCURRENT=${keys.length * 3}`);
       return keys.map((apiKey: string) => new Anthropic({ apiKey, maxRetries: 4 }));
     }
   }
 
   // Fallback: single ANTHROPIC_API_KEY (SDK reads it automatically)
-  console.log("[anthropic] Using single API key");
+  console.log("[anthropic] Falling back to single ANTHROPIC_API_KEY");
   return [new Anthropic({ maxRetries: 4 })];
 }
 
@@ -50,7 +51,7 @@ export { anthropic };
 // ─── Concurrency limiter for AI calls ───
 
 const MAX_CONCURRENT_AI_CALLS = parseInt(
-  process.env.MAX_CONCURRENT_AI_CALLS || String(clients.length * 3),
+  process.env.MAX_CONCURRENT_AI_CALLS || "3",
   10,
 );
 

@@ -426,6 +426,81 @@ async function unifiedExtraction(
   return result;
 }
 
+// ─── PASS 2: REFINE INTERPRETED RULES WITH ET ───
+
+const REFINE_ET_SYSTEM = `Ești Solomon — consultant senior fonduri europene. Primești reguli interpretate extrase dintr-un ghid de finanțare.
+
+MISIUNEA: Rafinează fiecare regulă cu raționament profund:
+1. Identifică TOATE ramurile decision tree (nu doar cazul principal)
+2. Detectează excepții, cazuri speciale, condiții cascadate
+3. Verifică dacă description/source_text captează complet regula
+4. Ajustează confidence bazat pe ambiguitate
+5. Adaugă needs_review=true dacă regula e ambiguă sau incompletă
+6. Completează review_reason cu explicație precisă
+
+Returnează DOAR un array JSON cu regulile rafinate (aceeași structură, dar îmbunătățite).
+Fără backticks, fără explicații, doar JSON valid.`;
+
+/**
+ * Pass 2: Refine interpreted rules using Extended Thinking.
+ * Only processes rules that need deep reasoning — much faster than running ET on entire guide.
+ * Typically 5-20 rules vs 60+ pages of text.
+ */
+async function refineInterpretedRulesWithET(
+  interpretedRules: any[],
+  organizationId: string,
+): Promise<any[]> {
+  if (interpretedRules.length === 0) return [];
+
+  // Serialize rules for AI (much smaller payload than full guide text)
+  const rulesJson = JSON.stringify(interpretedRules, null, 2);
+
+  // Skip ET refinement if rules payload is trivially small
+  if (rulesJson.length < 200) return interpretedRules;
+
+  console.log(`[processGuide] ET refinement: ${interpretedRules.length} interpreted rules (${rulesJson.length} chars)`);
+
+  try {
+    const response = await withAILimit(() => anthropic.messages.create({
+      model: DEFAULT_EXTRACTION_MODEL,
+      max_tokens: 16000,
+      temperature: 1, // Required for ET
+      thinking: {
+        type: "enabled",
+        budget_tokens: 10000,
+      },
+      system: REFINE_ET_SYSTEM,
+      messages: [{
+        role: "user",
+        content: `Rafinează aceste ${interpretedRules.length} reguli interpretate cu raționament profund:\n\n${rulesJson}`,
+      }],
+    }));
+
+    const textBlock = response.content.find((b: any) => b.type === "text");
+    const content = textBlock ? (textBlock as any).text : "[]";
+
+    await logAIUsage({
+      organizationId,
+      agent: "ghid_rules",
+      model: DEFAULT_EXTRACTION_MODEL,
+      tokensInput: response.usage.input_tokens,
+      tokensOutput: response.usage.output_tokens,
+      action: "et_refine_interpreted_rules",
+    });
+
+    const cleaned = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+    const refined = JSON.parse(cleaned);
+    if (Array.isArray(refined) && refined.length > 0) {
+      console.log(`[processGuide] ET refinement complete: ${refined.length} rules refined`);
+      return refined;
+    }
+  } catch (e: any) {
+    console.error(`[processGuide] ET refinement failed, using unrefined rules:`, e.message);
+  }
+
+  return interpretedRules; // Fallback to original rules if refinement fails
+}
+
 // ─── DEDUPLICATION ───
 
 function deduplicateRules(allRules: any[]): any[] {
@@ -1328,8 +1403,8 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         progress: 30,
         status: "processing",
         message: needsPreStructure
-          ? `Pre-structurare completă: ${preStructPageCount} pagini, ${preStructTableCount} tabele. Extragere reguli cu AI + ET...`
-          : `Text nativ extras: ${preStructPageCount} pagini. Extragere reguli cu AI + ET...`,
+          ? `Pre-structurare completă: ${preStructPageCount} pagini, ${preStructTableCount} tabele. Extragere reguli...`
+          : `Text nativ extras: ${preStructPageCount} pagini. Extragere reguli...`,
       }).catch((e: any) => console.warn("[processGuide] sse extraction start:", e.message));
 
       // ─── STEP 3: Unified AI extraction (Sonnet default, ~$0.04/chunk) ───
@@ -1340,7 +1415,9 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
 
       const opusStart = Date.now();
       const chunks = splitStructuredText(structuredText);
-      console.log(`[processGuide] Processing "${doc.name}" with ${chunks.length} chunk(s), model=${DEFAULT_EXTRACTION_MODEL}, ET=${useET}`);
+      // Pass 1 always runs WITHOUT ET (fast structured extraction)
+      // Pass 2 runs WITH ET only on interpreted rules (if ET enabled)
+      console.log(`[processGuide] Processing "${doc.name}" with ${chunks.length} chunk(s), model=${DEFAULT_EXTRACTION_MODEL}, ET=${useET ? "pass2-only" : "off"}`);
 
       let allFixed: any[] = [];
       let allInterpreted: any[] = [];
@@ -1353,8 +1430,8 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
       let totalAIOutputTokens = 0;
 
       if (chunks.length === 1) {
-        // Single pass — most common case
-        const result = await unifiedExtraction(chunks[0], organizationId, "full", useET);
+        // Single pass — most common case (Pass 1: fast extraction without ET)
+        const result = await unifiedExtraction(chunks[0], organizationId, "full", false);
         allFixed = result.fixedRules;
         allInterpreted = result.interpretedRules;
         allScoring = result.scoringCriteria;
@@ -1372,7 +1449,7 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         async function opusWorker() {
           let idx: number | undefined;
           while ((idx = chunkQueue.shift()) !== undefined) {
-            chunkResults[idx] = await unifiedExtraction(chunks[idx], organizationId, `chunk_${idx + 1}`, useET);
+            chunkResults[idx] = await unifiedExtraction(chunks[idx], organizationId, `chunk_${idx + 1}`, false);
 
             const chunkProgress = 30 + Math.round(((idx + 1) / chunks.length) * 55);
             publishJobProgress(organizationId, {
@@ -1382,7 +1459,7 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
               documentName: doc.name,
               progress: chunkProgress,
               status: "processing",
-              message: `AI + ET: chunk ${idx + 1}/${chunks.length} procesat`,
+              message: `Extragere: chunk ${idx + 1}/${chunks.length} procesat`,
             }).catch((e: any) => console.warn("[processGuide] sse chunk progress:", e.message));
           }
         }
@@ -1422,8 +1499,28 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         console.log(`[processGuide] Dedup: fixed ${beforeDedup.fixed}→${allFixed.length}, interp ${beforeDedup.interp}→${allInterpreted.length}, scoring ${beforeDedup.scoring}→${allScoring.length}, elemDefs ${beforeDedup.elemDefs}→${allElementDefs.length}, docReqs ${beforeDedup.docReqs}→${allDocRequirements.length}`);
       }
 
+      const pass1Duration = Date.now() - opusStart;
+      console.log(`[processGuide] Pass 1 (fast extraction): ${pass1Duration}ms — ${allFixed.length} fixed, ${allInterpreted.length} interpreted, ${allScoring.length} scoring, ${allElementDefs.length} element defs, ${allDocRequirements.length} doc requirements`);
+
+      // ─── STEP 3b: Pass 2 — ET refinement on interpreted rules only ───
+      if (useET && allInterpreted.length > 0) {
+        publishJobProgress(organizationId, {
+          jobId: job.id || "",
+          jobType: "ghid",
+          documentId,
+          documentName: doc.name,
+          progress: 75,
+          status: "processing",
+          message: `Rafinare ${allInterpreted.length} reguli interpretate cu Extended Thinking...`,
+        }).catch((e: any) => console.warn("[processGuide] sse et refine:", e.message));
+
+        const etStart = Date.now();
+        allInterpreted = await refineInterpretedRulesWithET(allInterpreted, organizationId);
+        const etDuration = Date.now() - etStart;
+        console.log(`[processGuide] Pass 2 (ET refinement): ${etDuration}ms for ${allInterpreted.length} interpreted rules`);
+      }
+
       const opusDuration = Date.now() - opusStart;
-      console.log(`[processGuide] AI + ET extraction: ${opusDuration}ms — ${allFixed.length} fixed, ${allInterpreted.length} interpreted, ${allScoring.length} scoring, ${allElementDefs.length} element defs, ${allDocRequirements.length} doc requirements`);
 
       // ─── STEP 4: Save to DB ───
       await job.updateProgress(85);

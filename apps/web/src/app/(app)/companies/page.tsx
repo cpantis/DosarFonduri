@@ -130,19 +130,39 @@ export default function CompaniesPage() {
   const openAdd = () => { setShowAdd(true); setCui(""); setCuiRes(null); setAddMode("auto"); setAddForma("SRL"); setUploadFile(null); setCuiSearchResults([]); };
 
   return (
-    <div className="animate-[fadeIn_.2s_ease-out]">
+    <div className="co-page">
       <style>{`
-        .co-card{padding:20px;border-radius:12px;border:1px solid rgba(226,232,240,.8);background:#ffffff;transition:all .15s;cursor:pointer;display:flex;align-items:center;justify-content:space-between;text-decoration:none;margin-bottom:8px;overflow:hidden}
-        .co-card:hover{border-color:#cbd5e1;box-shadow:0 1px 3px rgba(0,0,0,.04)}
-        .co-stat{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:13px;color:#64748b}
-        .co-stat .sep{color:#e2e8f0}
-        .co-search{border:1px solid rgba(226,232,240,.8);border-radius:8px;padding:8px 12px 8px 36px;font-size:13px;background:#ffffff;color:#0f172a;outline:none;width:100%;transition:all .15s;font-family:'Inter',system-ui,sans-serif}
-        .co-search:focus{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.08)}
-        .co-search::placeholder{color:#94a3b8}
-        .co-filter{font-size:12px;font-weight:500;padding:6px 12px;border-radius:8px;border:none;cursor:pointer;transition:all .15s;background:transparent;color:#64748b}
-        .co-filter:hover{background:#f1f5f9;color:#0f172a}
-        .co-filter.on{background:#0f172a;color:#ffffff}
-        .co-skeleton{height:72px;border-radius:12px;margin-bottom:8px}
+        .co-page{animation:coFadeIn .25s ease-out}
+        @keyframes coFadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+        .co-header{margin-bottom:28px}
+        .co-header-title{font-size:26px;font-weight:800;color:#0f172a;letter-spacing:-.5px;line-height:1.2}
+        .co-header-sub{font-size:13px;color:#94a3b8;margin-top:6px;font-weight:500;display:flex;align-items:center;gap:12px}
+        .co-header-stat{display:inline-flex;align-items:center;gap:4px;font-weight:600;color:#64748b}
+        .co-header-stat .num{font-family:'JetBrains Mono',monospace;font-weight:700;color:#0f172a}
+        .co-toolbar{display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap}
+        .co-card{padding:20px 22px;border-radius:14px;border:1px solid #e2e8f0;background:#ffffff;transition:all .2s;cursor:pointer;display:flex;align-items:center;gap:16px;text-decoration:none;margin-bottom:10px;overflow:hidden;position:relative}
+        .co-card:hover{border-color:#cbd5e1;box-shadow:0 4px 20px rgba(0,0,0,.04);transform:translateY(-1px)}
+        .co-avatar{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800;color:#fff;flex-shrink:0;letter-spacing:-.5px}
+        .co-card-body{flex:1;min-width:0}
+        .co-stat{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:12px;color:#94a3b8;margin-top:6px}
+        .co-stat-item{display:flex;align-items:center;gap:4px}
+        .co-stat-item .label{color:#cbd5e1;font-weight:500}
+        .co-stat-item .val{color:#64748b;font-weight:500}
+        .co-stat-item .val.mono{font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums}
+        .co-stat-sep{width:1px;height:12px;background:#e2e8f0}
+        .co-card-arrow{color:#cbd5e1;flex-shrink:0;transition:color .15s}
+        .co-card:hover .co-card-arrow{color:#94a3b8}
+        .co-search-wrap{position:relative;flex:1 1 280px;max-width:400px}
+        .co-search-icon{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:#94a3b8;pointer-events:none}
+        .co-search{border:1px solid #e2e8f0;border-radius:12px;padding:10px 14px 10px 42px;font-size:14px;background:#ffffff;color:#0f172a;outline:none;width:100%;transition:all .15s;font-family:'Inter',system-ui,sans-serif}
+        .co-search:focus{border-color:#4d8bff;box-shadow:0 0 0 3px rgba(77,139,255,.1)}
+        .co-search::placeholder{color:#cbd5e1}
+        .co-filters{display:flex;align-items:center;gap:4px;padding:3px;background:#f8fafc;border-radius:12px;border:1px solid #f1f5f9}
+        .co-filter{font-size:12px;font-weight:600;padding:7px 14px;border-radius:9px;border:none;cursor:pointer;transition:all .15s;background:transparent;color:#94a3b8;font-family:'Inter',system-ui,sans-serif}
+        .co-filter:hover{color:#64748b}
+        .co-filter.on{background:#fff;color:#0f172a;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+        .co-skeleton{height:80px;border-radius:14px;margin-bottom:10px;background:linear-gradient(90deg,#f1f5f9 25%,#e2e8f0 50%,#f1f5f9 75%);background-size:200% 100%;animation:coSkelShine 1.5s infinite}
+        @keyframes coSkelShine{0%{background-position:200% 0}100%{background-position:-200% 0}}
         .co-dropdown{border-radius:12px;border:1px solid rgba(226,232,240,.8);background:#ffffff;box-shadow:0 4px 12px rgba(0,0,0,.06);overflow:hidden;margin-bottom:12px}
         .co-dropdown-item{padding:12px 16px;cursor:pointer;transition:all .15s;font-size:13px;border-bottom:1px solid #f8fafc}
         .co-dropdown-item:last-child{border-bottom:none}
@@ -167,13 +187,27 @@ export default function CompaniesPage() {
         .co-mode-btn.on{background:#ffffff;color:#0f172a;box-shadow:0 1px 3px rgba(0,0,0,.06);font-weight:600}
       `}</style>
 
-      <div className="px-6 py-6">
-        {/* Search + filter bar + action */}
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
+      <div style={{ padding: "32px 40px 48px" }}>
+        {/* ─── HEADER ─── */}
+        <div className="co-header">
+          <h1 className="co-header-title">Firme</h1>
+          {!loading && (
+            <div className="co-header-sub">
+              <span className="co-header-stat"><span className="num">{companies.length}</span> firme</span>
+              <span className="co-header-stat"><span className="num">{companies.filter(c => c.stare !== "radiata").length}</span> active</span>
+              {companies.some(c => isPF(c.formaJuridica)) && (
+                <span className="co-header-stat"><span className="num">{companies.filter(c => isPF(c.formaJuridica)).length}</span> PF/II/IF</span>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* ─── TOOLBAR: Search + Filters + Add ─── */}
+        <div className="co-toolbar">
           {!loading && companies.length > 0 && (
             <>
-              <div style={{ position: "relative", flex: "1 1 240px", maxWidth: 360 }}>
-                <svg style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", width: 16, height: 16, color: "#94a3b8" }} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+              <div className="co-search-wrap">
+                <svg className="co-search-icon" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
                 <input
                   value={search}
                   onChange={e => setSearch(e.target.value)}
@@ -181,19 +215,19 @@ export default function CompaniesPage() {
                   className="co-search"
                 />
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+              <div className="co-filters">
                 {[
-                  { key: "all", label: "Toate" },
-                  { key: "activ", label: "Active" },
-                  { key: "soc", label: "Societăți" },
-                  { key: "pf", label: "PF/II/IF" },
+                  { key: "all", label: "Toate", count: companies.length },
+                  { key: "activ", label: "Active", count: companies.filter(c => c.stare !== "radiata").length },
+                  { key: "soc", label: "Societăți", count: companies.filter(c => ["SRL", "SA", "SNC", "SCS", "SCA"].includes(c.formaJuridica || "")).length },
+                  { key: "pf", label: "PF/II/IF", count: companies.filter(c => isPF(c.formaJuridica || "")).length },
                 ].map(f => (
                   <button
                     key={f.key}
                     onClick={() => setFilter(f.key)}
                     className={`co-filter ${filter === f.key ? "on" : ""}`}
                   >
-                    {f.label}
+                    {f.label} <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, opacity: .7, marginLeft: 2 }}>{f.count}</span>
                   </button>
                 ))}
               </div>
@@ -262,6 +296,10 @@ export default function CompaniesPage() {
                 else if (emp < 250 && ca < 50_000_000) { immLabel = "Mijlocie"; immColor = "#a78bfa"; }
                 else { immLabel = "Mare"; immColor = "#fb923c"; }
               }
+              // Avatar color based on forma juridica
+              const avatarColors: Record<string, string> = { SRL: "#4d8bff", SA: "#7c3aed", SNC: "#0891b2", SCS: "#0891b2", SCA: "#0891b2", PFA: "#059669", II: "#059669", IF: "#059669", SNC_PF: "#059669" };
+              const avatarBg = avatarColors[forma] || "#64748b";
+              const initials = (c.denumire || "?").split(/\s+/).slice(0, 2).map((w: string) => w[0]).join("").toUpperCase();
               return (
                 <a
                   key={c.id}
@@ -269,28 +307,33 @@ export default function CompaniesPage() {
                   className="co-card"
                   style={hasRestrictions ? { borderColor: "rgba(248,113,113,.4)" } : isProcessing ? { borderColor: "rgba(251,191,36,.4)" } : undefined}
                 >
-                  <div style={{ minWidth: 0 }}>
-                    {/* F1.2: Processing status indicator */}
+                  {/* Avatar */}
+                  <div className="co-avatar" style={{ background: avatarBg }}>
+                    {initials}
+                  </div>
+
+                  <div className="co-card-body">
+                    {/* Status banners */}
                     {isProcessing && (
                       <div style={{ fontSize: 11, fontWeight: 700, color: "#d97706", marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}>
                         <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: "#fbbf24", animation: "statusPulse 1.5s ease infinite" }} />
                         Se procesează datele firmei...
                       </div>
                     )}
-                    {/* Insolvency/restriction banner */}
                     {hasRestrictions && (
                       <div style={{ fontSize: 11, fontWeight: 700, color: "#dc2626", marginBottom: 4 }}>
                         {"\u26A0"} {c.stare === "dizolvata" ? "Dizolvare" : c.stare === "lichidare" ? "Lichidare" : "Radiată"}
                       </div>
                     )}
-                    {/* Processing error indicator */}
                     {c.processingStatus === "error" && c.processingError && (
                       <div style={{ fontSize: 11, fontWeight: 700, color: "#dc2626", marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}>
-                        ⚠️ Eroare procesare: {c.processingError.slice(0, 80)}{c.processingError.length > 80 ? "…" : ""}
+                        Eroare procesare: {c.processingError.slice(0, 80)}{c.processingError.length > 80 ? "..." : ""}
                       </div>
                     )}
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6, flexWrap: "wrap" }}>
-                      <span style={{ fontSize: 15, fontWeight: 600, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>{c.denumire}</span>
+
+                    {/* Row 1: Name + badges */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                      <span style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>{c.denumire}</span>
                       <TypeBadge type={forma} />
                       <StatusBadge status={c.stare || "funcțiune"} />
                       {immLabel && (
@@ -299,16 +342,43 @@ export default function CompaniesPage() {
                         </span>
                       )}
                     </div>
+
+                    {/* Row 2: Structured meta info */}
                     <div className="co-stat">
-                      {/* F1.1: Hide raw PROC-* CUI, show friendly text instead */}
-                      <span style={{ fontFamily: "'JetBrains Mono', monospace", fontVariantNumeric: "tabular-nums", color: "#94a3b8", fontSize: 12 }}>CUI: {cuiDisplay}</span>
-                      {c.caen && <><span className="sep">{"\u00B7"}</span><span title={getCaenDescription(c.caen) || undefined}>CAEN: {c.caen}{getCaenDescription(c.caen) ? ` — ${getCaenDescription(c.caen)!.slice(0, 40)}${getCaenDescription(c.caen)!.length > 40 ? "…" : ""}` : ""}</span></>}
-                      {c.judet && <><span className="sep">{"\u00B7"}</span><span>{c.judet}</span></>}
-                      {capitalSocialNum != null && capitalSocialNum > 0 && <><span className="sep">{"\u00B7"}</span><span style={{ fontFamily: "'JetBrains Mono', monospace" }}>Cap: {capitalSocialNum.toLocaleString("ro-RO")} RON</span></>}
-                      {c.anInfiintare && <><span className="sep">{"\u00B7"}</span><span>Din {c.anInfiintare}</span></>}
+                      <div className="co-stat-item">
+                        <span className="label">CUI</span>
+                        <span className="val mono">{cuiDisplay}</span>
+                      </div>
+                      {c.caen && (<>
+                        <div className="co-stat-sep" />
+                        <div className="co-stat-item">
+                          <span className="label">CAEN</span>
+                          <span className="val" title={getCaenDescription(c.caen) || undefined}>{c.caen}{getCaenDescription(c.caen) ? ` — ${getCaenDescription(c.caen)!.slice(0, 35)}${getCaenDescription(c.caen)!.length > 35 ? "..." : ""}` : ""}</span>
+                        </div>
+                      </>)}
+                      {c.judet && (<>
+                        <div className="co-stat-sep" />
+                        <div className="co-stat-item">
+                          <span className="val">{c.judet}</span>
+                        </div>
+                      </>)}
+                      {capitalSocialNum != null && capitalSocialNum > 0 && (<>
+                        <div className="co-stat-sep" />
+                        <div className="co-stat-item">
+                          <span className="label">Cap.</span>
+                          <span className="val mono">{capitalSocialNum.toLocaleString("ro-RO")} RON</span>
+                        </div>
+                      </>)}
+                      {c.anInfiintare && (<>
+                        <div className="co-stat-sep" />
+                        <div className="co-stat-item">
+                          <span className="val">Din {c.anInfiintare}</span>
+                        </div>
+                      </>)}
                     </div>
                   </div>
-                  <svg style={{ width: 16, height: 16, color: "#cbd5e1", flexShrink: 0, marginLeft: 16 }} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+
+                  <svg className="co-card-arrow" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                 </a>
               );
             })}

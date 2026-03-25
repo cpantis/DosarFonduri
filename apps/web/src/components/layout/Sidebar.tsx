@@ -36,18 +36,15 @@ const systemItems = [
 const EXPANDED_WIDTH = 248;
 const COLLAPSED_WIDTH = 56;
 
-/* ─── Collapse / Expand toggle icon (inline SVG, no dependency) ─── */
 function CollapseIcon({ collapsed }: { collapsed: boolean }) {
   return collapsed ? (
-    // PanelLeftOpen
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <rect x="3" y="3" width="18" height="18" rx="2" />
       <path d="M9 3v18" />
       <path d="m14 9 3 3-3 3" />
     </svg>
   ) : (
-    // PanelLeftClose
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <rect x="3" y="3" width="18" height="18" rx="2" />
       <path d="M9 3v18" />
       <path d="m16 15-3-3 3-3" />
@@ -59,45 +56,38 @@ function NavItem({
   item,
   active,
   collapsed,
-  onExpandRequest,
 }: {
   item: { href: string; key: string; label: string };
   active: boolean;
   collapsed: boolean;
-  onExpandRequest: () => void;
 }) {
   return (
     <Link
       href={item.href}
       title={collapsed ? item.label : undefined}
-      onClick={(e) => {
-        if (collapsed) {
-          e.preventDefault();
-          onExpandRequest();
-        }
-      }}
       style={{
         display: "flex",
         alignItems: "center",
         gap: collapsed ? 0 : 10,
         padding: collapsed ? "10px 0" : "10px 14px",
         justifyContent: collapsed ? "center" : "flex-start",
-        borderRadius: 8,
+        borderRadius: 10,
         fontSize: 13,
         fontWeight: active ? 600 : 500,
         color: active ? "#0f172a" : "#64748b",
-        background: active ? "rgba(37,99,235,.08)" : "transparent",
+        background: active ? "rgba(77,139,255,.08)" : "transparent",
         textDecoration: "none",
-        transition: "all .15s",
+        transition: "all .2s cubic-bezier(.4,0,.2,1)",
         marginBottom: 2,
         width: collapsed ? 40 : undefined,
         height: collapsed ? 40 : undefined,
         marginLeft: collapsed ? "auto" : undefined,
         marginRight: collapsed ? "auto" : undefined,
+        position: "relative",
       }}
       onMouseEnter={e => {
         if (!active) {
-          e.currentTarget.style.background = "rgba(0,0,0,.04)";
+          e.currentTarget.style.background = "#f1f5f9";
           e.currentTarget.style.color = "#0f172a";
         }
       }}
@@ -108,7 +98,16 @@ function NavItem({
         }
       }}
     >
-      <span style={{ width: 20, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><NavIcon name={item.key} /></span>
+      {/* Active indicator bar */}
+      {active && !collapsed && (
+        <span style={{
+          position: "absolute", left: 0, top: 8, bottom: 8, width: 3,
+          borderRadius: "0 3px 3px 0", background: "#4d8bff",
+        }} />
+      )}
+      <span style={{ width: 20, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, opacity: active ? 1 : 0.7 }}>
+        <NavIcon name={item.key} />
+      </span>
       {!collapsed && <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.label}</span>}
     </Link>
   );
@@ -116,21 +115,27 @@ function NavItem({
 
 function SectionLabel({ children, collapsed }: { children: React.ReactNode; collapsed: boolean }) {
   if (collapsed) {
-    return <div style={{ height: 1, background: "#e2e8f0", margin: "8px 12px" }} />;
+    return <div style={{ height: 1, background: "#f1f5f9", margin: "10px 10px" }} />;
   }
   return (
     <div style={{
       fontSize: 10,
       textTransform: "uppercase",
       letterSpacing: "0.14em",
-      color: "#94a3b8",
-      fontWeight: 600,
+      color: "#cbd5e1",
+      fontWeight: 700,
       padding: "0 14px",
-      marginTop: 24,
-      marginBottom: 6,
+      marginTop: 28,
+      marginBottom: 8,
       whiteSpace: "nowrap",
       overflow: "hidden",
-    }}>{children}</div>
+      display: "flex",
+      alignItems: "center",
+      gap: 8,
+    }}>
+      <span>{children}</span>
+      <span style={{ flex: 1, height: 1, background: "#f1f5f9" }} />
+    </div>
   );
 }
 
@@ -138,7 +143,7 @@ export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { organization, user, logout } = useAuth();
-  const { isCollapsed, toggle, expand } = useSidebar();
+  const { isCollapsed, toggle } = useSidebar();
   const [mobileOpen, setMobileOpen] = useState(false);
 
   // Close mobile sidebar on route change
@@ -192,47 +197,53 @@ export function Sidebar() {
       style={{
         width: mobileOpen ? EXPANDED_WIDTH : isCollapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH,
         minHeight: "100vh",
-        background: "#ffffff",
+        background: "#fafbfc",
         display: "flex",
         flexDirection: "column",
         flexShrink: 0,
-        borderRight: "1px solid #e2e8f0",
-        transition: "width 200ms ease",
+        borderRight: "1px solid #e8ecf0",
+        transition: "width 200ms cubic-bezier(.4,0,.2,1)",
         overflow: "hidden",
       }}
     >
       {/* Logo */}
-      <div style={{ padding: isCollapsed ? "20px 0 12px" : "20px 20px 12px", display: "flex", justifyContent: isCollapsed ? "center" : "flex-start" }}>
+      <div style={{
+        padding: isCollapsed ? "24px 0 20px" : "24px 20px 20px",
+        display: "flex",
+        justifyContent: isCollapsed ? "center" : "flex-start",
+        borderBottom: "1px solid #f1f5f9",
+      }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{
-            width: 32, height: 32, borderRadius: 8, flexShrink: 0,
-            background: "#2563eb", display: "flex", alignItems: "center", justifyContent: "center",
-            color: "#ffffff", fontSize: 11, fontWeight: 700,
-            boxShadow: "0 4px 12px rgba(37,99,235,.2)",
+            width: 34, height: 34, borderRadius: 10, flexShrink: 0,
+            background: "linear-gradient(135deg, #4d8bff 0%, #2563eb 100%)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            color: "#ffffff", fontSize: 11, fontWeight: 800, letterSpacing: "-.3px",
+            boxShadow: "0 4px 14px rgba(37,99,235,.25)",
           }}>DF</div>
           {!isCollapsed && (
-            <span style={{ color: "#0f172a", fontWeight: 600, fontSize: 15, letterSpacing: "-0.01em", whiteSpace: "nowrap" }}>DosarFonduri</span>
+            <span style={{ color: "#0f172a", fontWeight: 700, fontSize: 15, letterSpacing: "-0.02em", whiteSpace: "nowrap" }}>DosarFonduri</span>
           )}
         </div>
       </div>
 
       {/* Navigation */}
-      <nav style={{ flex: 1, overflowY: "auto", padding: isCollapsed ? "4px 0" : "4px 8px" }}>
+      <nav style={{ flex: 1, overflowY: "auto", padding: isCollapsed ? "8px 0" : "8px 8px" }}>
         <SectionLabel collapsed={isCollapsed}>Principal</SectionLabel>
         {navItems.map((item) => (
-          <NavItem key={item.key} item={item} active={isActive(item.key, item.href)} collapsed={isCollapsed} onExpandRequest={expand} />
+          <NavItem key={item.key} item={item} active={isActive(item.key, item.href)} collapsed={isCollapsed} />
         ))}
 
         <SectionLabel collapsed={isCollapsed}>Configurare</SectionLabel>
         {configItems.map((item) => (
-          <NavItem key={item.key} item={item} active={isActive(item.key, item.href)} collapsed={isCollapsed} onExpandRequest={expand} />
+          <NavItem key={item.key} item={item} active={isActive(item.key, item.href)} collapsed={isCollapsed} />
         ))}
 
         {user?.role === "admin" && (
           <>
             <SectionLabel collapsed={isCollapsed}>Sistem</SectionLabel>
             {systemItems.map((item) => (
-              <NavItem key={item.key} item={item} active={isActive(item.key, item.href)} collapsed={isCollapsed} onExpandRequest={expand} />
+              <NavItem key={item.key} item={item} active={isActive(item.key, item.href)} collapsed={isCollapsed} />
             ))}
           </>
         )}
@@ -240,22 +251,22 @@ export function Sidebar() {
 
       {/* Toggle button */}
       <div style={{
-        padding: isCollapsed ? "8px 0" : "8px 8px",
+        padding: isCollapsed ? "6px 0" : "6px 8px",
         display: "flex",
         justifyContent: isCollapsed ? "center" : "flex-end",
       }}>
         <button
           onClick={toggle}
-          title={isCollapsed ? "Extinde sidebar (⌘B)" : "Restrânge sidebar (⌘B)"}
+          title={isCollapsed ? "Extinde sidebar" : "Restrânge sidebar"}
           style={{
-            width: 32, height: 32, borderRadius: 8,
+            width: 30, height: 30, borderRadius: 8,
             display: "flex", alignItems: "center", justifyContent: "center",
             background: "transparent", border: "none",
-            color: "#94a3b8", cursor: "pointer",
+            color: "#cbd5e1", cursor: "pointer",
             transition: "all .15s",
           }}
-          onMouseEnter={e => { e.currentTarget.style.background = "rgba(0,0,0,.04)"; e.currentTarget.style.color = "#64748b"; }}
-          onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#94a3b8"; }}
+          onMouseEnter={e => { e.currentTarget.style.background = "#f1f5f9"; e.currentTarget.style.color = "#94a3b8"; }}
+          onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#cbd5e1"; }}
         >
           <CollapseIcon collapsed={isCollapsed} />
         </button>
@@ -264,18 +275,21 @@ export function Sidebar() {
       {/* User footer */}
       {user && (
         <div style={{
-          padding: isCollapsed ? "12px 0" : "12px 16px",
-          borderTop: "1px solid #e2e8f0",
+          padding: isCollapsed ? "14px 0" : "14px 16px",
+          borderTop: "1px solid #f1f5f9",
           display: "flex",
           flexDirection: isCollapsed ? "column" : "row",
           justifyContent: isCollapsed ? "center" : "flex-start",
           alignItems: "center",
           gap: isCollapsed ? 6 : 10,
+          background: "#f8fafc",
         }}>
           <div style={{
-            width: 28, height: 28, borderRadius: "50%", flexShrink: 0,
-            background: "rgba(77,139,255,.15)", display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 10, fontWeight: 700, color: "#4d8bff",
+            width: 32, height: 32, borderRadius: 10, flexShrink: 0,
+            background: "linear-gradient(135deg, rgba(77,139,255,.2) 0%, rgba(167,139,250,.2) 100%)",
+            border: "1px solid rgba(77,139,255,.15)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 12, fontWeight: 700, color: "#4d8bff",
           }}
           title={isCollapsed ? (user.name || user.email || "Utilizator") : undefined}
           >
@@ -284,21 +298,21 @@ export function Sidebar() {
           {!isCollapsed && (
             <>
               <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontSize: 12, color: "#0f172a", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.name || user.email}</div>
-                <div style={{ fontSize: 10, color: "#94a3b8", textTransform: "capitalize" }}>{user.role || "consultant"}</div>
+                <div style={{ fontSize: 13, color: "#0f172a", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.name || user.email}</div>
+                <div style={{ fontSize: 10, color: "#94a3b8", textTransform: "capitalize", fontWeight: 500 }}>{user.role || "consultant"}</div>
               </div>
               <button
                 onClick={() => { logout(); router.push("/login"); }}
                 title="Deconectare"
                 style={{
-                  width: 28, height: 28, borderRadius: 6, flexShrink: 0,
+                  width: 30, height: 30, borderRadius: 8, flexShrink: 0,
                   display: "flex", alignItems: "center", justifyContent: "center",
                   background: "transparent", border: "none",
-                  color: "#94a3b8", cursor: "pointer",
-                  transition: "all .15s",
+                  color: "#cbd5e1", cursor: "pointer",
+                  transition: "all .2s",
                 }}
                 onMouseEnter={e => { e.currentTarget.style.background = "rgba(248,113,113,.08)"; e.currentTarget.style.color = "#f87171"; }}
-                onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#94a3b8"; }}
+                onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#cbd5e1"; }}
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
@@ -316,11 +330,11 @@ export function Sidebar() {
                 width: 28, height: 28, borderRadius: 6,
                 display: "flex", alignItems: "center", justifyContent: "center",
                 background: "transparent", border: "none",
-                color: "#94a3b8", cursor: "pointer",
-                transition: "all .15s",
+                color: "#cbd5e1", cursor: "pointer",
+                transition: "all .2s",
               }}
               onMouseEnter={e => { e.currentTarget.style.background = "rgba(248,113,113,.08)"; e.currentTarget.style.color = "#f87171"; }}
-              onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#94a3b8"; }}
+              onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#cbd5e1"; }}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />

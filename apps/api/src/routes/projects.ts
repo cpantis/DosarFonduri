@@ -1021,10 +1021,20 @@ projectRoutes.get("/:id/eligibility", async (c) => {
     }
   }
 
+  // Filter out orphaned eligibility records (rule was deleted but eligibility record remains)
+  const validResults = result.filter(e => ruleMap.has(e.ruleId));
+  // Clean up orphans in background (don't block the response)
+  const orphanIds = result.filter(e => !ruleMap.has(e.ruleId)).map(e => e.id);
+  if (orphanIds.length > 0) {
+    db.delete(projectEligibility).where(inArray(projectEligibility.id, orphanIds)).catch(err => {
+      console.warn(`[projects] Failed to clean ${orphanIds.length} orphan eligibility records:`, err.message);
+    });
+  }
+
   // Enrich each eligibility record
-  const enriched = result.map(e => {
-    const rule = ruleMap.get(e.ruleId);
-    const sourceDoc = rule?.documentId ? docMap.get(rule.documentId) : null;
+  const enriched = validResults.map(e => {
+    const rule = ruleMap.get(e.ruleId)!;
+    const sourceDoc = rule.documentId ? docMap.get(rule.documentId) : null;
 
     // Build linkedElements with actual values
     const links = elemLinksByRule.get(e.ruleId) || [];

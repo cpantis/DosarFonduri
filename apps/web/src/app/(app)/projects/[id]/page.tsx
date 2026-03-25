@@ -4951,7 +4951,7 @@ export default function ProjectViewPage() {
                             <div key={el.id} className={`sep-row ${el.status} clickable`} onClick={() => {
                               if (el.value) {
                                 // Navigate to Elemente tab and open detail panel
-                                setActiveLeaf("elements");
+                                setActiveLeaf("elemente");
                                 setTimeout(() => openDetailPanel(el.id), 100);
                               } else {
                                 // Send directly — include key so Solomon can emit ELEMENTS_JSON

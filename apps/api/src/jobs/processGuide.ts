@@ -113,7 +113,7 @@ function verifyExtractionCompleteness(
   };
 }
 
-/** Default model for fast structured extraction (fixed rules, scoring, elements, docs) */
+/** Sonnet 4.6 with adaptive thinking + effort control + prompt caching */
 const DEFAULT_EXTRACTION_MODEL = "claude-sonnet-4-6";
 
 /** Character limit for a single extraction pass — keep chunks moderate for faster output */
@@ -166,6 +166,7 @@ async function classifyPages(
   const response = await withAILimit(() => anthropic.messages.create({
     model: DEFAULT_EXTRACTION_MODEL,
     max_tokens: 2000,
+    output_config: { effort: "low" } as any,
     system: PAGE_CLASSIFY_SYSTEM,
     messages: [{ role: "user", content: `${PAGE_CLASSIFY_USER}${structuredText}` }],
   }));
@@ -437,35 +438,44 @@ async function unifiedExtraction(
   scoringCriteria: any[];
   elementDefinitions: any[];
   documentRequirements: any[];
-  _meta: { truncated: boolean; continuations: number; totalInputTokens: number; totalOutputTokens: number };
+  _meta: { truncated: boolean; continuations: number; totalInputTokens: number; totalOutputTokens: number; cacheReadTokens: number; cacheWriteTokens: number };
 }> {
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
+  let totalCacheRead = 0;
+  let totalCacheWrite = 0;
   let accumulatedText = "";
   let continuations = 0;
   let wasTruncated = false;
 
-  // Build initial messages
+  // System prompt with cache breakpoint on guide text
+  // The guide text is cached so subsequent calls (continuations, other chunks with same text) hit cache
+  const cachedSystem: any[] = [
+    { type: "text", text: UNIFIED_EXTRACTION_SYSTEM },
+    { type: "text", text: `<guide_text>\n${structuredText}\n</guide_text>`, cache_control: { type: "ephemeral" } },
+  ];
+
+  // User message contains only extraction instructions (small, varies per call)
   const messages: Array<{ role: string; content: string }> = [{
     role: "user",
-    content: `${UNIFIED_EXTRACTION_USER}${structuredText}`,
+    content: UNIFIED_EXTRACTION_USER,
   }];
 
   for (let attempt = 0; attempt <= MAX_CONTINUATION_ATTEMPTS; attempt++) {
     const requestParams: any = {
       model: DEFAULT_EXTRACTION_MODEL,
       max_tokens: 16000,
-      system: UNIFIED_EXTRACTION_SYSTEM,
+      system: cachedSystem,
       messages,
     };
 
-    if (useET && attempt === 0) {
-      // Only use ET on first pass — continuations don't need thinking
-      requestParams.temperature = 1; // Required by Anthropic API when ET is enabled
-      requestParams.thinking = {
-        type: "enabled",
-        budget_tokens: 10000,
-      };
+    if (useET) {
+      // Adaptive thinking — model decides how much to think based on complexity
+      requestParams.thinking = { type: "adaptive" };
+      requestParams.output_config = { effort: "high" };
+    } else {
+      // Fast extraction — medium effort, no explicit thinking
+      requestParams.output_config = { effort: "medium" };
     }
 
     const callStart = Date.now();
@@ -477,7 +487,11 @@ async function unifiedExtraction(
     accumulatedText += content;
     totalInputTokens += response.usage.input_tokens;
     totalOutputTokens += response.usage.output_tokens;
-    console.log(`[processGuide] ${chunkLabel} attempt=${attempt} ${callDuration}ms in=${response.usage.input_tokens} out=${response.usage.output_tokens} stop=${response.stop_reason}`);
+    const cacheRead = (response.usage as any).cache_read_input_tokens || 0;
+    const cacheWrite = (response.usage as any).cache_creation_input_tokens || 0;
+    totalCacheRead += cacheRead;
+    totalCacheWrite += cacheWrite;
+    console.log(`[processGuide] ${chunkLabel} attempt=${attempt} ${callDuration}ms in=${response.usage.input_tokens} out=${response.usage.output_tokens} cache_r=${cacheRead} cache_w=${cacheWrite} stop=${response.stop_reason}`);
 
     await logAIUsage({
       organizationId,
@@ -510,7 +524,7 @@ async function unifiedExtraction(
 
   // Parse the accumulated JSON
   const cleaned = accumulatedText.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-  const meta = { truncated: wasTruncated, continuations, totalInputTokens, totalOutputTokens };
+  const meta = { truncated: wasTruncated, continuations, totalInputTokens, totalOutputTokens, cacheReadTokens: totalCacheRead, cacheWriteTokens: totalCacheWrite };
 
   // Try direct parse first
   let parsed: any = null;
@@ -598,11 +612,8 @@ async function refineInterpretedRulesWithET(
     const response = await withAILimit(() => anthropic.messages.create({
       model,
       max_tokens: 12000,
-      temperature: 1, // Required for ET
-      thinking: {
-        type: "enabled",
-        budget_tokens: 6000,
-      },
+      thinking: { type: "adaptive" } as any,
+      output_config: { effort: "high" } as any,
       system: REFINE_ET_SYSTEM,
       messages: [{
         role: "user",

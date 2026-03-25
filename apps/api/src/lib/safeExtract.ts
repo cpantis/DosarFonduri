@@ -167,11 +167,8 @@ export async function extractWithContinuation(opts: SafeExtractOptions): Promise
   };
 
   if (extendedThinking) {
-    firstCallParams.temperature = 1;
-    firstCallParams.thinking = {
-      type: "enabled",
-      budget_tokens: extendedThinking.budget_tokens,
-    };
+    firstCallParams.thinking = { type: "adaptive" };
+    firstCallParams.output_config = { effort: "high" };
   }
 
   const response = await withAILimit(() => anthropic.messages.create(firstCallParams));

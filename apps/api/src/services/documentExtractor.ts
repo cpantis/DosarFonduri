@@ -339,7 +339,8 @@ async function analyzeWithExtendedThinking(
   const response = await withAILimit(() => anthropic.messages.create({
     model: "claude-opus-4-6",
     max_tokens: 16000,
-    thinking: { type: "enabled", budget_tokens: 10000 },
+    thinking: { type: "adaptive" } as any,
+    output_config: { effort: "high" } as any,
     system: `Ești Solomon — expert senior în dosare de finanțare europeană.
 Analizezi documente complexe pas cu pas. Identifică TOATE datele:
 - Date implicite (calculate din context)

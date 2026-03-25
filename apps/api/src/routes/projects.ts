@@ -44,8 +44,11 @@ function isLockExpired(lockedAt: Date | null): boolean {
   return Date.now() - lockedAt.getTime() > LOCK_TIMEOUT_MS;
 }
 
-async function requireLock(projectId: string, userId: string): Promise<string | null> {
-  const project = await db.query.projects.findFirst({ where: eq(projects.id, projectId) });
+async function requireLock(projectId: string, userId: string, organizationId?: string): Promise<string | null> {
+  const whereClause = organizationId
+    ? and(eq(projects.id, projectId), eq(projects.organizationId, organizationId))
+    : eq(projects.id, projectId);
+  const project = await db.query.projects.findFirst({ where: whereClause });
   if (!project) return "Not found";
   if (!project.lockedBy || isLockExpired(project.lockedAt)) return "Proiectul nu este blocat de tine";
   if (project.lockedBy !== userId) return "Proiectul este blocat de alt utilizator";
@@ -698,7 +701,7 @@ projectRoutes.post("/:id/elements", async (c) => {
   const auth = c.get("auth") as AuthContext;
   const { id } = c.req.param();
 
-  const lockErr = await requireLock(id, auth.userId);
+  const lockErr = await requireLock(id, auth.userId, auth.organizationId!);
   if (lockErr) return c.json({ error: lockErr }, 423);
 
   const body = createProjectElementSchema.parse(await c.req.json());
@@ -815,7 +818,7 @@ projectRoutes.put("/:id/elements/:eid", async (c) => {
   const auth = c.get("auth") as AuthContext;
   const { id, eid } = c.req.param();
 
-  const lockErr = await requireLock(id, auth.userId);
+  const lockErr = await requireLock(id, auth.userId, auth.organizationId!);
   if (lockErr) return c.json({ error: lockErr }, 423);
 
   const body = updateElementSchema.parse(await c.req.json());
@@ -835,7 +838,9 @@ projectRoutes.put("/:id/elements/:eid", async (c) => {
   }
 
   const [updated] = await db.update(projectElements).set(updateData)
-    .where(eq(projectElements.id, eid)).returning();
+    .where(and(eq(projectElements.id, eid), eq(projectElements.projectId, id))).returning();
+
+  if (!updated) return c.json({ error: "Element not found" }, 404);
 
   // === CASCADE: Validate → Eligibility → Score → SSE ===
 
@@ -883,9 +888,11 @@ projectRoutes.put("/:id/elements/:eid", async (c) => {
   });
 
   // 4. Re-check eligibility
+  let eligibilityError = false;
   try {
     await checkEligibility(id, auth.organizationId!);
   } catch (e: any) {
+    eligibilityError = true;
     console.error("[projects] checkEligibility failed after element update:", e.message);
   }
 
@@ -898,7 +905,9 @@ projectRoutes.put("/:id/elements/:eid", async (c) => {
     passed: eligibility.filter(e => e.status === "passed").length,
     failed: eligibility.filter(e => e.status === "failed").length,
     pending: eligibility.filter(e => e.status === "pending").length,
-    message: `Eligibilitate re-evaluată: ${eligibility.filter(e => e.status === "passed").length}/${eligibility.length} trecute`,
+    message: eligibilityError
+      ? `Eroare la re-evaluarea eligibilității`
+      : `Eligibilitate re-evaluată: ${eligibility.filter(e => e.status === "passed").length}/${eligibility.length} trecute`,
   });
 
   // 5. Recompute scoring
@@ -925,20 +934,18 @@ projectRoutes.put("/:id/elements-bulk/confirm", async (c) => {
   const auth = c.get("auth") as AuthContext;
   const { id } = c.req.param();
 
-  const lockErr = await requireLock(id, auth.userId);
+  const lockErr = await requireLock(id, auth.userId, auth.organizationId!);
   if (lockErr) return c.json({ error: lockErr }, 423);
 
   const { elementIds } = bulkConfirmElementsSchema.parse(await c.req.json());
 
-  const results = await Promise.all(elementIds.map((eid: string) =>
-    db.update(projectElements).set({
-      confirmed: true,
-      confirmedBy: auth.userId,
-      updatedAt: new Date(),
-    }).where(eq(projectElements.id, eid)).returning()
-  ));
+  const results = await db.update(projectElements).set({
+    confirmed: true,
+    confirmedBy: auth.userId,
+    updatedAt: new Date(),
+  }).where(and(inArray(projectElements.id, elementIds), eq(projectElements.projectId, id))).returning();
 
-  return c.json({ confirmed: results.flat().length });
+  return c.json({ confirmed: results.length });
 });
 
 // ─── ELIGIBILITY ───
@@ -1155,7 +1162,7 @@ projectRoutes.put("/:id/eligibility/:eid", async (c) => {
   const id = c.req.param("id");
   const { eid } = c.req.param();
 
-  const lockErr = await requireLock(id, auth.userId);
+  const lockErr = await requireLock(id, auth.userId, auth.organizationId!);
   if (lockErr) return c.json({ error: lockErr }, 423);
 
   const body = overrideEligibilitySchema.parse(await c.req.json());
@@ -1166,7 +1173,7 @@ projectRoutes.put("/:id/eligibility/:eid", async (c) => {
     overrideBy: auth.userId,
     status: body.overrideResult === "not_applicable" ? "not_applicable" : body.overrideResult,
     notes: body.notes || null,
-  }).where(eq(projectEligibility.id, eid)).returning();
+  }).where(and(eq(projectEligibility.id, eid), eq(projectEligibility.projectId, id))).returning();
 
   return c.json(updated);
 });
@@ -1241,16 +1248,19 @@ projectRoutes.get("/:id/checklist", async (c) => {
     orderBy: (c, { asc }) => [asc(c.category), asc(c.sortOrder)],
   });
 
-  // Enrich with template names
-  const enriched = await Promise.all(items.map(async (item) => {
-    let templateName: string | null = null;
-    if (item.templateId) {
-      const tmplDoc = await db.query.documents.findFirst({
-        where: eq(documents.id, item.templateId),
-      });
-      templateName = tmplDoc?.name || null;
-    }
-    return { ...item, templateName };
+  // Batch fetch template names (avoid N+1)
+  const templateIds = [...new Set(items.map(i => i.templateId).filter(Boolean))] as string[];
+  const templateMap = new Map<string, string>();
+  if (templateIds.length > 0) {
+    const tmplDocs = await db.query.documents.findMany({
+      where: inArray(documents.id, templateIds),
+      columns: { id: true, name: true },
+    });
+    for (const t of tmplDocs) templateMap.set(t.id, t.name);
+  }
+  const enriched = items.map(item => ({
+    ...item,
+    templateName: item.templateId ? templateMap.get(item.templateId) || null : null,
   }));
 
   const totalDone = items.filter(i => i.done).length;
@@ -1273,7 +1283,7 @@ projectRoutes.post("/:id/checklist", async (c) => {
   const auth = c.get("auth") as AuthContext;
   const id = c.req.param("id");
 
-  const lockErr = await requireLock(id, auth.userId);
+  const lockErr = await requireLock(id, auth.userId, auth.organizationId!);
   if (lockErr) return c.json({ error: lockErr }, 423);
 
   const body = createChecklistItemSchema.parse(await c.req.json());
@@ -1293,7 +1303,7 @@ projectRoutes.put("/:id/checklist/:itemId", async (c) => {
   const id = c.req.param("id");
   const { itemId } = c.req.param();
 
-  const lockErr = await requireLock(id, auth.userId);
+  const lockErr = await requireLock(id, auth.userId, auth.organizationId!);
   if (lockErr) return c.json({ error: lockErr }, 423);
 
   const body = updateChecklistItemSchema.parse(await c.req.json());
@@ -1305,7 +1315,7 @@ projectRoutes.put("/:id/checklist/:itemId", async (c) => {
   if (body.category !== undefined) updateData.category = body.category;
 
   const [updated] = await db.update(projectChecklist).set(updateData)
-    .where(eq(projectChecklist.id, itemId)).returning();
+    .where(and(eq(projectChecklist.id, itemId), eq(projectChecklist.projectId, id))).returning();
 
   return c.json(updated);
 });
@@ -1319,7 +1329,7 @@ projectRoutes.delete("/:id/checklist/:itemId", async (c) => {
     return c.json({ error: "Not found" }, 404);
   }
 
-  const lockErr = await requireLock(id, auth.userId);
+  const lockErr = await requireLock(id, auth.userId, auth.organizationId!);
   if (lockErr) return c.json({ error: lockErr }, 423);
 
   await db.delete(projectChecklist).where(
@@ -1338,7 +1348,7 @@ projectRoutes.post("/:id/checklist/refresh", async (c) => {
   });
   if (!project) return c.json({ error: "Not found" }, 404);
 
-  const lockErr = await requireLock(id, auth.userId);
+  const lockErr = await requireLock(id, auth.userId, auth.organizationId!);
   if (lockErr) return c.json({ error: lockErr }, 423);
 
   // Delete only guide-sourced items (preserve manual items)
@@ -1550,7 +1560,7 @@ projectRoutes.put("/:id", async (c) => {
   const auth = c.get("auth") as AuthContext;
   const id = c.req.param("id");
 
-  const lockErr = await requireLock(id, auth.userId);
+  const lockErr = await requireLock(id, auth.userId, auth.organizationId!);
   if (lockErr) return c.json({ error: lockErr }, 423);
 
   const body = updateProjectSchema.parse(await c.req.json());

@@ -192,37 +192,61 @@ documentRoutes.get("/folders/:folderId/documents", async (c) => {
     for (const u of uploaders) uploaderMap.set(u.id, u.name);
   }
 
-  // Enrich with processing summary counts for processed documents
-  const enriched = await Promise.all(docs.map(async (doc) => {
+  // Batch fetch processing summary counts (avoid N+1)
+  const processedDocs = docs.filter(d => d.status === "processed");
+  const ghidDocIds = processedDocs.filter(d => d.processingType === "ghid").map(d => d.id);
+  const templateDocIds = processedDocs.filter(d => d.processingType === "template").map(d => d.id);
+
+  // Batch aggregate counts for ghid docs
+  const rulesCountMap = new Map<string, number>();
+  const scoringCountMap = new Map<string, number>();
+  const elemDefCountMap = new Map<string, number>();
+  if (ghidDocIds.length > 0) {
+    const [rulesCounts, scoringCounts, elemDefCounts] = await Promise.all([
+      db.select({ documentId: rules.documentId, count: sql<number>`count(*)` })
+        .from(rules).where(inArray(rules.documentId, ghidDocIds)).groupBy(rules.documentId),
+      db.select({ documentId: scoringCriteria.documentId, count: sql<number>`count(*)` })
+        .from(scoringCriteria).where(inArray(scoringCriteria.documentId, ghidDocIds)).groupBy(scoringCriteria.documentId),
+      db.select({ documentId: elementDefinitions.guideDocumentId, count: sql<number>`count(*)` })
+        .from(elementDefinitions).where(inArray(elementDefinitions.guideDocumentId, ghidDocIds)).groupBy(elementDefinitions.guideDocumentId),
+    ]);
+    for (const r of rulesCounts) rulesCountMap.set(r.documentId, Number(r.count));
+    for (const r of scoringCounts) scoringCountMap.set(r.documentId, Number(r.count));
+    for (const r of elemDefCounts) if (r.documentId) elemDefCountMap.set(r.documentId, Number(r.count));
+  }
+
+  // Batch aggregate counts for template docs
+  const templateElCountMap = new Map<string, number>();
+  if (templateDocIds.length > 0) {
+    const teCounts = await db.select({ documentId: templateElements.documentId, count: sql<number>`count(*)` })
+      .from(templateElements).where(inArray(templateElements.documentId, templateDocIds)).groupBy(templateElements.documentId);
+    for (const r of teCounts) templateElCountMap.set(r.documentId, Number(r.count));
+  }
+
+  const enriched = docs.map(doc => {
     const base = { ...doc, _uploadedByName: doc.uploadedBy ? uploaderMap.get(doc.uploadedBy) || null : null };
     if (doc.status !== "processed") return base;
 
-    try {
-      if (doc.processingType === "ghid") {
-        const [rulesResult] = await db.select({ count: sql<number>`count(*)` }).from(rules).where(eq(rules.documentId, doc.id));
-        const [scoringResult] = await db.select({ count: sql<number>`count(*)` }).from(scoringCriteria).where(eq(scoringCriteria.documentId, doc.id));
-        const [elemDefResult] = await db.select({ count: sql<number>`count(*)` }).from(elementDefinitions).where(eq(elementDefinitions.guideDocumentId, doc.id));
-        return {
-          ...base,
-          _summary: {
-            rulesCount: Number(rulesResult?.count || 0),
-            scoringCount: Number(scoringResult?.count || 0),
-            elementsCount: Number(elemDefResult?.count || 0),
-            trustScore: doc.trustScore ? Number(doc.trustScore) : null,
-            completenessReport: doc.completenessReport || null,
-          },
-        };
-      }
-      if (doc.processingType === "template") {
-        const [elResult] = await db.select({ count: sql<number>`count(*)` }).from(templateElements).where(eq(templateElements.documentId, doc.id));
-        return {
-          ...base,
-          _summary: { fieldsCount: Number(elResult?.count || 0) },
-        };
-      }
-    } catch { /* non-critical enrichment */ }
+    if (doc.processingType === "ghid") {
+      return {
+        ...base,
+        _summary: {
+          rulesCount: rulesCountMap.get(doc.id) || 0,
+          scoringCount: scoringCountMap.get(doc.id) || 0,
+          elementsCount: elemDefCountMap.get(doc.id) || 0,
+          trustScore: doc.trustScore ? Number(doc.trustScore) : null,
+          completenessReport: doc.completenessReport || null,
+        },
+      };
+    }
+    if (doc.processingType === "template") {
+      return {
+        ...base,
+        _summary: { fieldsCount: templateElCountMap.get(doc.id) || 0 },
+      };
+    }
     return base;
-  }));
+  });
 
   return c.json(enriched);
 });
@@ -1013,7 +1037,7 @@ documentRoutes.put("/documents/:docId/elements/:elId", async (c) => {
 
   const [updated] = await db.update(templateElements)
     .set(updateData)
-    .where(eq(templateElements.id, elId))
+    .where(and(eq(templateElements.id, elId), eq(templateElements.documentId, docId), eq(templateElements.organizationId, auth.organizationId!)))
     .returning();
 
   return c.json(updated);
@@ -1084,7 +1108,7 @@ documentRoutes.delete("/documents/:docId/elements/:elId", async (c) => {
   if (!doc) return c.json({ error: "Not found" }, 404);
 
   await db.delete(templateElements).where(
-    and(eq(templateElements.id, elId), eq(templateElements.documentId, docId))
+    and(eq(templateElements.id, elId), eq(templateElements.documentId, docId), eq(templateElements.organizationId, auth.organizationId!))
   );
 
   return c.json({ ok: true });

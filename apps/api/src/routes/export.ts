@@ -2,7 +2,7 @@ import type { AppEnv } from "../types/hono";
 import { Hono } from "hono";
 import { db } from "../db";
 import { projects, projectElements, templateElements, orgConfig, auditLog, companies } from "../db/schema";
-import { eq } from "drizzle-orm";
+import { eq, inArray, sql, and } from "drizzle-orm";
 import type { AuthContext } from "../middleware/auth";
 
 export const exportRoutes = new Hono<AppEnv>();
@@ -17,26 +17,40 @@ exportRoutes.get("/projects", async (c) => {
     where: eq(projects.organizationId, auth.organizationId),
   });
 
-  const enriched = await Promise.all(allProjects.map(async (p) => {
-    const elements = await db.query.projectElements.findMany({
-      where: eq(projectElements.projectId, p.id),
-    });
+  // Batch fetch all elements for all projects
+  const projectIds = allProjects.map(p => p.id);
+  const allElements = projectIds.length > 0
+    ? await db.query.projectElements.findMany({
+        where: inArray(projectElements.projectId, projectIds),
+      })
+    : [];
 
-    const elementsWithLabels = await Promise.all(elements.map(async (e) => {
-      const te = e.templateElementId ? await db.query.templateElements.findFirst({
-        where: eq(templateElements.id, e.templateElementId),
-      }) : null;
-      return {
-        key: te?.key,
-        label: te?.label,
-        value: e.value,
-        source: e.source,
-        confirmed: e.confirmed,
-      };
-    }));
+  // Batch fetch all referenced template elements
+  const teIds = [...new Set(allElements.map(e => e.templateElementId).filter(Boolean))] as string[];
+  const allTemplateEls = teIds.length > 0
+    ? await db.query.templateElements.findMany({
+        where: inArray(templateElements.id, teIds),
+        columns: { id: true, key: true, label: true },
+      })
+    : [];
+  const teMap = new Map(allTemplateEls.map(t => [t.id, t]));
 
-    return { ...p, elements: elementsWithLabels };
-  }));
+  // Group elements by project and enrich
+  const enriched = allProjects.map(p => {
+    const elements = allElements
+      .filter(e => e.projectId === p.id)
+      .map(e => {
+        const te = e.templateElementId ? teMap.get(e.templateElementId) : null;
+        return {
+          key: te?.key,
+          label: te?.label,
+          value: e.value,
+          source: e.source,
+          confirmed: e.confirmed,
+        };
+      });
+    return { ...p, elements };
+  });
 
   c.header("Content-Type", "application/json");
   c.header("Content-Disposition", `attachment; filename="dosarfonduri_projects_${new Date().toISOString().slice(0, 10)}.json"`);
@@ -76,17 +90,21 @@ exportRoutes.get("/projects-csv", async (c) => {
     : [];
   const companyMap = Object.fromEntries(allCompanies.map(c => [c.id, c]));
 
-  // Count elements per project
+  // Batch count elements per project (single query instead of N)
+  const csvProjectIds = allProjects.map(p => p.id);
+  const elementCountRows = csvProjectIds.length > 0
+    ? await db.select({
+        projectId: projectElements.projectId,
+        total: sql<number>`count(*)::int`,
+        filled: sql<number>`count(case when ${projectElements.value} IS NOT NULL and ${projectElements.value} != '' then 1 end)::int`,
+        confirmed: sql<number>`count(case when ${projectElements.confirmed} = true then 1 end)::int`,
+      }).from(projectElements)
+        .where(inArray(projectElements.projectId, csvProjectIds))
+        .groupBy(projectElements.projectId)
+    : [];
   const elementCounts: Record<string, { total: number; filled: number; confirmed: number }> = {};
-  for (const p of allProjects) {
-    const els = await db.query.projectElements.findMany({
-      where: eq(projectElements.projectId, p.id),
-    });
-    elementCounts[p.id] = {
-      total: els.length,
-      filled: els.filter(e => e.value && e.value.trim() !== "").length,
-      confirmed: els.filter(e => e.confirmed).length,
-    };
+  for (const row of elementCountRows) {
+    elementCounts[row.projectId] = { total: row.total, filled: row.filled, confirmed: row.confirmed };
   }
 
   const escapeCsv = (val: string | null | undefined) => {

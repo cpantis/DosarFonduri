@@ -169,7 +169,7 @@ const STATUS_MAP: Record<string, { label: string; color: string; bg: string }> =
 const pct = (a: number, b: number) => b > 0 ? Math.round((a / b) * 100) : 0;
 const formatRON = (v: number | null | undefined) => v != null ? `${Number(v).toLocaleString("ro-RO", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} RON` : "-";
 
-type LeafType = "sumar" | "eligibilitate" | "solomon" | "elemente" | "reguli" | "scor" | "tabele" | "checklist" | "neemia";
+type LeafType = "sumar" | "solomon" | "elemente" | "reguli" | "scor" | "tabele" | "checklist" | "neemia";
 
 function parseAdresa(adresa: string | undefined): { localitate: string; judet: string } {
   if (!adresa) return { localitate: "-", judet: "-" };
@@ -402,6 +402,7 @@ export default function ProjectViewPage() {
   const [refTablesLoading, setRefTablesLoading] = useState(false);
   const [ghidCategoryFilter, setGhidCategoryFilter] = useState<string>("all");
   const [ghidTypeFilter, setGhidTypeFilter] = useState<string>("all");
+  const [ghidStatusFilter, setGhidStatusFilter] = useState<string>("all");
   const [expandedRuleIds, setExpandedRuleIds] = useState<Set<string>>(new Set());
   const [ghidViewerData, setGhidViewerData] = useState<{
     guides: Array<{
@@ -3111,10 +3112,9 @@ export default function ProjectViewPage() {
         <div className="pv-tabs">
           {([
             { key: "sumar" as LeafType, label: "Sumar" },
-            { key: "eligibilitate" as LeafType, label: "Eligibilitate" },
             { key: "solomon" as LeafType, label: orgLabels.solomonLabel, badge: `${elemFilled}/${elemTotal}`, badgeClass: elemFilled === elemTotal && elemTotal > 0 ? "green" : elemFilled > 0 ? "blue" : "neutral" },
             { key: "elemente" as LeafType, label: "Elemente" },
-            { key: "reguli" as LeafType, label: "Reguli" },
+            { key: "reguli" as LeafType, label: "Reguli", badge: eligTotal > 0 ? `${eligPassed}/${eligTotal}` : undefined, badgeClass: eligTotal > 0 ? (eligPassed === eligTotal ? "green" : eligPassed > 0 ? "blue" : "neutral") : undefined },
             { key: "scor" as LeafType, label: "Scor" },
             { key: "tabele" as LeafType, label: "Tabele" },
             { key: "checklist" as LeafType, label: "Checklist doc" },
@@ -3352,7 +3352,7 @@ export default function ProjectViewPage() {
                 </div>
 
                 <div className="sumar-actions">
-                  <button className="sa-btn primary" onClick={() => setActiveLeaf("eligibilitate")}>&#128737; Verifică eligibilitate</button>
+                  <button className="sa-btn primary" onClick={() => setActiveLeaf("reguli")}>&#128737; Verifică eligibilitate</button>
                   <button className="sa-btn" onClick={() => setActiveLeaf("solomon")}>&#129302; Deschide {orgLabels.solomonLabel}</button>
                   <button className="sa-btn" onClick={() => setActiveLeaf("neemia")}>&#128196; Generează documente</button>
                 </div>
@@ -3360,59 +3360,107 @@ export default function ProjectViewPage() {
               );
             })()}
 
-            {/* ELIGIBILITATE */}
-            {activeLeaf === "eligibilitate" && (() => {
-              const eligCategoryLabels: Record<string, string> = {
+            {/* REGULI (combined ghid rules + eligibility status) */}
+            {activeLeaf === "reguli" && (() => {
+              const categoryLabels: Record<string, string> = {
                 eligibilitate: "Eligibilitate", financiar: "Financiar", tehnic: "Tehnic", administrativ: "Administrativ",
                 achizitii: "Achiziții", documente: "Documente", selectie: "Selecție", intensitate: "Intensitate",
                 eligibilitate_complexa: "Elig. complexă", documentare: "Documentare", ajutor_stat: "Ajutor stat",
               };
-              const eligCategoryColors: Record<string, string> = {
+              const categoryColors: Record<string, string> = {
                 eligibilitate: "#2563eb", financiar: "#059669", tehnic: "#7c3aed", administrativ: "#64748b",
                 achizitii: "#ea580c", documente: "#d97706", selectie: "#dc2626", intensitate: "#0891b2",
                 eligibilitate_complexa: "#2563eb", documentare: "#d97706", ajutor_stat: "#7c3aed",
               };
-              const eligStatusColors: Record<string, string> = { pass: "#059669", fail: "#dc2626", pending: "#d97706" };
-              const eligStatusIcons: Record<string, string> = { pass: "✓", fail: "✕", pending: "?" };
-              const eligStatusLabels: Record<string, string> = { pass: "ELIGIBIL", fail: "NEELIGIBIL", pending: "PENDING" };
+              const semanticTagLabels: Record<string, string> = {
+                THRESHOLD: "Prag", SCORING: "Punctaj", TEMPORAL: "Temporal",
+                DOCUMENT_BASED: "Document", DEPENDENCY: "Dependență", EXCLUSION: "Excludere",
+                EXCEPTION: "Excepție", PROPORTIONAL: "Proporțional", CLASSIFICATION: "Clasificare",
+              };
+              const semanticTagIcons: Record<string, string> = {
+                THRESHOLD: "●", SCORING: "★", TEMPORAL: "◷",
+                DOCUMENT_BASED: "◩", DEPENDENCY: "⇄", EXCLUSION: "⊘",
+                EXCEPTION: "⚑", PROPORTIONAL: "%", CLASSIFICATION: "◈",
+              };
+              const categories = [...new Set(guideRules.map(r => r.category))].filter(Boolean);
+              const catFiltered = ghidCategoryFilter === "all" ? guideRules : guideRules.filter(r => r.category === ghidCategoryFilter);
+              const typeFiltered = ghidTypeFilter === "fixed" ? catFiltered.filter(r => r.type === "fixed")
+                : ghidTypeFilter === "interpreted" ? catFiltered.filter(r => r.type === "interpreted")
+                : catFiltered;
+              // Apply status filter
+              const filteredRules = ghidStatusFilter === "all" ? typeFiltered
+                : typeFiltered.filter(r => {
+                    const es = eligStatusById[r.id];
+                    if (ghidStatusFilter === "pass") return es?.status === "pass";
+                    if (ghidStatusFilter === "fail") return es?.status === "fail";
+                    if (ghidStatusFilter === "pending") return !es || es.status === "pending";
+                    return true;
+                  });
+              const fixedCount = guideRules.filter(r => r.type === "fixed").length;
+              const interpCount = guideRules.filter(r => r.type === "interpreted").length;
+              const toggleRuleExpand = (id: string) => {
+                setExpandedRuleIds(prev => {
+                  const next = new Set(prev);
+                  next.has(id) ? next.delete(id) : next.add(id);
+                  return next;
+                });
+              };
 
-              if (eligibilityRules.length === 0) {
+              const guideTrustScore = (project as any)?.guideTrustScore as number | null;
+              // Build eligibility status map: projectEligibility.id → status
+              const eligStatusById: Record<string, { status: string; overrideResult: boolean | null; notes: string | null }> = {};
+              for (const er of eligibilityRules) {
+                eligStatusById[er.id] = { status: er.status, overrideResult: (er as any).overrideResult ?? null, notes: (er as any).notes ?? null };
+              }
+              const preEligRules = eligibilityRules.filter(r => r.isPreEligibility);
+              const eligPassCount = eligibilityRules.filter(r => r.status === "pass").length;
+              const eligFailCount = eligibilityRules.filter(r => r.status === "fail").length;
+              const eligPendingCount = eligibilityRules.filter(r => r.status === "pending").length;
+              const eligStatusIcons: Record<string, string> = { pass: "\u2713", fail: "\u2715", pending: "?" };
+
+              if (guideRules.length === 0 && eligibilityRules.length === 0) {
                 return (
-                  <div className="elig-panel" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 200, color: "#8892a8" }}>
-                    <div style={{ fontSize: 32, marginBottom: 8 }}>&#128737;</div>
-                    <div style={{ fontSize: 14, fontWeight: 600 }}>Nicio regulă de eligibilitate</div>
-                    <div style={{ fontSize: 12, marginTop: 4 }}>Procesează un ghid de finanțare pentru a vedea regulile de eligibilitate</div>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 200, color: "#8892a8", padding: 24 }}>
+                    <div style={{ fontSize: 32, marginBottom: 8 }}>&#128214;</div>
+                    <div style={{ fontSize: 14, fontWeight: 600 }}>Nicio regulă extrasă încă</div>
+                    <div style={{ fontSize: 12, marginTop: 4 }}>Uploadează un ghid de finanțare pentru a extrage regulile automat</div>
                   </div>
                 );
               }
-              const preEligRules = eligibilityRules.filter(r => r.isPreEligibility);
-              const projectRules = eligibilityRules.filter(r => !r.isPreEligibility);
 
               return (
-              <div className="elig-panel">
-                <div className="elig-summary">
-                  <div className="elig-stat">
-                    <div className="number text-emerald-500">{eligibilityRules.filter(r => r.status === "pass").length}</div>
-                    <div className="label">Trecute</div>
+              <div className="ghid-layout">
+                {/* Eligibility summary stats */}
+                {eligibilityRules.length > 0 && (
+                  <div className="elig-summary" style={{ marginBottom: 10 }}>
+                    <div className="elig-stat">
+                      <div className="number text-emerald-500">{eligPassCount}</div>
+                      <div className="label">Trecute</div>
+                    </div>
+                    <div className="elig-stat">
+                      <div className="number text-red-500">{eligFailCount}</div>
+                      <div className="label">Eșuate</div>
+                    </div>
+                    <div className="elig-stat">
+                      <div className="number text-amber-500">{eligPendingCount}</div>
+                      <div className="label">Pending</div>
+                    </div>
+                    <div className="elig-stat">
+                      <div className="number">{eligibilityRules.length}</div>
+                      <div className="label">Total</div>
+                    </div>
+                    <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+                      <button className="sa-btn primary" style={{ display: "inline-flex", fontSize: 12, padding: "5px 14px" }} onClick={handleRecheckEligibility} disabled={recheckLoading}>
+                        {recheckLoading ? "Se verifică..." : "\u{1F504} Re-verifică"}
+                      </button>
+                    </div>
                   </div>
-                  <div className="elig-stat">
-                    <div className="number text-red-500">{eligibilityRules.filter(r => r.status === "fail").length}</div>
-                    <div className="label">Eșuate</div>
-                  </div>
-                  <div className="elig-stat">
-                    <div className="number text-amber-500">{eligibilityRules.filter(r => r.status === "pending").length}</div>
-                    <div className="label">Pending</div>
-                  </div>
-                  <div className="elig-stat">
-                    <div className="number">{eligibilityRules.length}</div>
-                    <div className="label">Total</div>
-                  </div>
-                </div>
+                )}
 
                 {/* Pre-eligibilitate firmă (from companyElements — instant, no AI) */}
                 {preEligRules.length > 0 && (
-                  <>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px 6px", marginTop: 4 }}>
+                  <div style={{ marginBottom: 10, borderRadius: 10, border: "1px solid rgba(226,232,240,.6)", overflow: "hidden" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: "#f8fafc" }}>
                       <span style={{ fontSize: 13 }}>{"\u{1F3E2}"}</span>
                       <span style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", textTransform: "uppercase", letterSpacing: ".5px" }}>Pre-eligibilitate firmă</span>
                       <span style={{ fontSize: 10, color: "#64748b", fontWeight: 500 }}>— date ONRC & financiare</span>
@@ -3445,115 +3493,9 @@ export default function ProjectViewPage() {
                         );
                       })}
                     </div>
-                  </>
-                )}
-
-                {/* Eligibilitate proiect (all other rules) */}
-                {projectRules.length > 0 && (
-                  <>
-                    {preEligRules.length > 0 && (
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px 6px", marginTop: 8, borderTop: "1px solid rgba(226,232,240,.6)" }}>
-                        <span style={{ fontSize: 13 }}>{"\u{1F4CB}"}</span>
-                        <span style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", textTransform: "uppercase", letterSpacing: ".5px" }}>Eligibilitate proiect</span>
-                        <span style={{ fontSize: 10, color: "#64748b", fontWeight: 500 }}>— date proiect & AI</span>
-                        <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 700, color: "#059669" }}>
-                          {projectRules.filter(r => r.status === "pass").length}/{projectRules.length}
-                        </span>
-                      </div>
-                    )}
-                    <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-                      {projectRules.map(rule => {
-                        const ct = rule.condition?.field ? formatConditionText(rule.condition) : null;
-                        return (
-                        <div className={`elig-rule ${rule.status}-bg`} key={rule.id}>
-                          <div className={`elig-icon ${rule.status}`}>
-                            {eligStatusIcons[rule.status]}
-                          </div>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <span className={`elig-name ${rule.status}-text`}>
-                              {rule.name}
-                              {rule.status === "pending" && rule.detail && (
-                                <span style={{ fontWeight: 400 }}> — {rule.detail}</span>
-                              )}
-                            </span>
-                            {ct && (
-                              <div style={{ marginTop: 4, fontSize: 11, fontWeight: 600, color: "#2563eb", display: "flex", alignItems: "center", gap: 4 }}>
-                                <span>{"\u{1F9EA}"}</span> {ct}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        );
-                      })}
-                    </div>
-                  </>
-                )}
-
-                <div style={{ marginTop: 16 }}>
-                  <button className="sa-btn primary" style={{ display: "inline-flex" }} onClick={handleRecheckEligibility} disabled={recheckLoading}>
-                    {recheckLoading ? "Se verifică..." : "\u{1F504} Re-verifică eligibilitate"}
-                  </button>
-                </div>
-              </div>
-              );
-            })()}
-
-            {/* REGULI (combined ghid rules + eligibility status) */}
-            {activeLeaf === "reguli" && (() => {
-              const categoryLabels: Record<string, string> = {
-                eligibilitate: "Eligibilitate", financiar: "Financiar", tehnic: "Tehnic", administrativ: "Administrativ",
-                achizitii: "Achiziții", documente: "Documente", selectie: "Selecție", intensitate: "Intensitate",
-                eligibilitate_complexa: "Elig. complexă", documentare: "Documentare", ajutor_stat: "Ajutor stat",
-              };
-              const categoryColors: Record<string, string> = {
-                eligibilitate: "#2563eb", financiar: "#059669", tehnic: "#7c3aed", administrativ: "#64748b",
-                achizitii: "#ea580c", documente: "#d97706", selectie: "#dc2626", intensitate: "#0891b2",
-                eligibilitate_complexa: "#2563eb", documentare: "#d97706", ajutor_stat: "#7c3aed",
-              };
-              const semanticTagLabels: Record<string, string> = {
-                THRESHOLD: "Prag", SCORING: "Punctaj", TEMPORAL: "Temporal",
-                DOCUMENT_BASED: "Document", DEPENDENCY: "Dependență", EXCLUSION: "Excludere",
-                EXCEPTION: "Excepție", PROPORTIONAL: "Proporțional", CLASSIFICATION: "Clasificare",
-              };
-              const semanticTagIcons: Record<string, string> = {
-                THRESHOLD: "●", SCORING: "★", TEMPORAL: "◷",
-                DOCUMENT_BASED: "◩", DEPENDENCY: "⇄", EXCLUSION: "⊘",
-                EXCEPTION: "⚑", PROPORTIONAL: "%", CLASSIFICATION: "◈",
-              };
-              const categories = [...new Set(guideRules.map(r => r.category))].filter(Boolean);
-              const catFiltered = ghidCategoryFilter === "all" ? guideRules : guideRules.filter(r => r.category === ghidCategoryFilter);
-              const filteredRules = ghidTypeFilter === "fixed" ? catFiltered.filter(r => r.type === "fixed")
-                : ghidTypeFilter === "interpreted" ? catFiltered.filter(r => r.type === "interpreted")
-                : catFiltered;
-              const fixedCount = guideRules.filter(r => r.type === "fixed").length;
-              const interpCount = guideRules.filter(r => r.type === "interpreted").length;
-              const toggleRuleExpand = (id: string) => {
-                setExpandedRuleIds(prev => {
-                  const next = new Set(prev);
-                  next.has(id) ? next.delete(id) : next.add(id);
-                  return next;
-                });
-              };
-
-              const guideTrustScore = (project as any)?.guideTrustScore as number | null;
-              // Build eligibility status map: projectEligibility.id → status
-              const eligStatusById: Record<string, { status: string; overrideResult: boolean | null; notes: string | null }> = {};
-              for (const er of eligibilityRules) {
-                eligStatusById[er.id] = { status: er.status, overrideResult: (er as any).overrideResult ?? null, notes: (er as any).notes ?? null };
-              }
-
-              if (guideRules.length === 0) {
-                return (
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 200, color: "#8892a8", padding: 24 }}>
-                    <div style={{ fontSize: 32, marginBottom: 8 }}>&#128214;</div>
-                    <div style={{ fontSize: 14, fontWeight: 600 }}>Nicio regulă extrasă încă</div>
-                    <div style={{ fontSize: 12, marginTop: 4 }}>Uploadează un ghid de finanțare pentru a extrage regulile automat</div>
                   </div>
-                );
-              }
+                )}
 
-              return (
-              <div className="ghid-layout">
                 {guideTrustScore != null && guideTrustScore < 0.7 && (
                   <div style={{
                     padding: "10px 14px",
@@ -3746,6 +3688,25 @@ export default function ProjectViewPage() {
                               {categoryLabels[cat] || cat} {guideRules.filter(r => r.category === cat).length}
                             </button>
                           ))}
+                          {eligibilityRules.length > 0 && (<>
+                            <span style={{ width: 1, height: 16, background: "rgba(226,232,240,.8)", margin: "0 4px" }} />
+                            {[
+                              { key: "all", label: "Toate", color: "#64748b" },
+                              { key: "pass", label: `Trecute (${eligPassCount})`, color: "#059669" },
+                              { key: "fail", label: `Eșuate (${eligFailCount})`, color: "#dc2626" },
+                              { key: "pending", label: `Pending (${eligPendingCount})`, color: "#d97706" },
+                            ].map(s => (
+                              <button key={s.key} onClick={() => setGhidStatusFilter(s.key)} style={{
+                                fontSize: 12, fontWeight: 600, padding: "4px 14px", borderRadius: 20,
+                                border: ghidStatusFilter === s.key ? `1.5px solid ${s.color}` : "1px solid rgba(226,232,240,.8)",
+                                background: ghidStatusFilter === s.key ? `color-mix(in srgb, ${s.color} 8%, transparent)` : "#fff",
+                                color: ghidStatusFilter === s.key ? s.color : "#64748b",
+                                cursor: "pointer", transition: "all .15s",
+                              }}>
+                                {s.label}
+                              </button>
+                            ))}
+                          </>)}
                         </div>
                       </div>
                       {/* Scrollable rule cards */}

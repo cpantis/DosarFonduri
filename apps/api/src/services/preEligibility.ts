@@ -8,6 +8,7 @@ import {
   buildCompanyData, overlayCompanyElements, getRulesForSession,
   evaluateFixedRule,
 } from "./eligibility";
+import { anthropic, withAILimit } from "../lib/anthropic";
 
 export interface RuleElementInfo {
   elementKey: string;
@@ -201,106 +202,130 @@ export async function checkPreEligibility(
     refLinksByRule.set(link.ruleId, existing);
   }
 
-  // 9. Determine which fields are company-relevant (strict whitelist approach)
+  // 9. AI-first classification of company-relevant rules
   //
-  // Only include rules that check fields we KNOW belong to the company/beneficiary.
-  // Fields about the project, investment, contract, budget, etc. are excluded.
-  //
-  // Strategy: whitelist core company fields from buildCompanyData() +
-  //           known beneficiary/financial patterns, and blocklist project patterns.
+  // Layer 1: Sonnet with consultant mindset determines which rules check
+  //          company/beneficiary eligibility vs project/investment specifics.
+  // Layer 2: Heuristic fallback if AI unavailable.
 
-  // Core fields from buildCompanyData (always available for a company)
-  const COMPANY_CORE_FIELDS = new Set([
-    "forma_juridica", "cui", "cod_caen", "stare", "an_infiintare", "vechime_ani",
-    "capital_social", "angajati", "cifra_afaceri", "profit_net", "capitaluri_proprii",
-    "judet", "localitate",
-  ]);
+  const fixedRulesWithConditions = allRules
+    .filter(r => r.type === "fixed" && (r.condition as any)?.field)
+    .map(r => ({
+      id: r.id,
+      field: String((r.condition as any).field),
+      description: (r.description || "").slice(0, 150),
+    }));
 
-  // Prefixes that indicate per-year financials (also from buildCompanyData)
-  const COMPANY_YEAR_PREFIXES = [
-    "cifra_afaceri_", "profit_net_", "angajati_", "capitaluri_proprii_",
-  ];
+  // Layer 1: Sonnet AI classification (primary)
+  let companyRelevantRuleIds = new Set<string>();
+  let aiClassified = false;
 
-  // Additional known company/beneficiary field patterns (from extractors, ONRC, etc.)
-  const COMPANY_EXTRA_PATTERNS = [
-    "forma_", "tip_beneficiar", "categoria_beneficiar", "tip_solicitant",
-    "varsta_firma", "ani_activitate", "ani_functionare",
-    "numar_angajati", "numar_salariati", "media_angajati",
-    "rata_solvabilitate", "rata_lichiditate", "rata_rentabilitate",
-    "rezultat_exploatare", "profit_brut", "profit_mediu", "pierdere",
-    "datorii_totale", "active_totale", "venituri_totale", "cheltuieli_totale",
-    "valoare_productie", "capitaluri",
-    "regiune", "zona_eligibila", "zona_",
-    "dimensiune_economica", "exploatatie",
-    "suprafata_agricola", "suprafata_teren", "suprafata_",
-    "efectiv_animal", "uvm_", "upe_", "cap_animal",
-    "are_datorii", "nu_are_datorii", "cazier_fiscal", "cazier_judiciar",
-    "nu_este_in_", "este_in_", "nu_se_afla", "se_afla",
-    "inregistrat_", "inscris_", "autorizat_", "acreditat_",
-    "varsta_", "tinar_fermier", "tanar_fermier", "fermier_tanar",
-    "cod_caen_", "caen_",
-  ];
+  if (fixedRulesWithConditions.length > 0) {
+    try {
+      const ruleList = fixedRulesWithConditions.map(r => `${r.id}|${r.field}|${r.description}`).join("\n");
+      const response = await withAILimit(() => anthropic.messages.create({
+        model: "claude-sonnet-4-6",
+        max_tokens: 1000,
+        system: `Ești Solomon — consultant senior fonduri europene. Analizezi reguli de eligibilitate dintr-un ghid de finanțare.
 
-  // Fields that are definitively NOT about the company (project/investment/contract)
-  const PROJECT_BLOCKLIST_PATTERNS = [
-    "valoare_proiect", "valoare_investit", "valoare_eligibil", "valoare_total_proiect",
-    "valoare_contract", "valoare_achizit", "valoare_sprijin",
-    "cofinantare", "are_cofinantare", "intensitate_ajutor", "ajutor_solicitat", "sprijin_solicitat",
-    "durata_implementare", "durata_contract", "durata_proiect",
-    "procent_avans", "procent_transfer", "avans_procent", "avans_",
-    "numar_transe", "transe_plata",
-    "tip_investit", "componenta", "sub_masura", "masura", "axa",
-    "punctaj_", "prag_", "scor_",
-    "plan_afaceri", "studiu_fezabilitate",
-    "cost_", "buget_", "deviz_",
-    "termen_depunere", "termen_implementare", "data_depunere",
-    "raport_profit_mediu_sprijin", "_sprijin",
-  ];
+MISIUNE: Determină care reguli verifică ELIGIBILITATEA SOLICITANTULUI (firma/persoana care aplică).
 
-  function isCompanyRelevantField(fieldKey: string): boolean {
-    const lower = fieldKey.toLowerCase();
+REGULI DESPRE SOLICITANT (include):
+- Forma juridică (SRL, PFA, II, IF, SA, ONG, GAL, etc.)
+- Cod CAEN principal/secundar, activități eligibile
+- Vechime firmă, ani de activitate, an înființare
+- Date financiare: cifra de afaceri, profit, angajați, capital social, solvabilitate, lichiditate
+- Localizare: județ, regiune, zonă eligibilă, rural/urban
+- Categorie IMM (micro, mică, mijlocie, mare)
+- Statut fiscal: datorii, cazier, insolvență, reorganizare
+- Exploatație agricolă: suprafață, efectiv animal, UVM, producție standard
+- Certificări, autorizații, acreditări ale firmei
+- Vârsta fermierului (tânăr fermier)
 
-    // 1. Exact match on core fields
-    if (COMPANY_CORE_FIELDS.has(lower)) return true;
+REGULI DESPRE PROIECT (exclude):
+- Valoare investiție/proiect/contract/achiziții
+- Cofinanțare, intensitate ajutor, sprijin solicitat
+- Durată implementare, termene depunere
+- Buget, costuri, devize estimative
+- Punctaj selecție, praguri de calitate
+- Plan de afaceri, studiu fezabilitate (ca documente)
+- Tip investiție, componente, sub-măsuri
 
-    // 2. Per-year financial fields (cifra_afaceri_2023, profit_net_2024, etc.)
-    if (COMPANY_YEAR_PREFIXES.some(p => lower.startsWith(p))) return true;
+Returnează DOAR id-urile regulilor DESPRE SOLICITANT, separate prin virgulă. Fără explicații.`,
+        messages: [{
+          role: "user",
+          content: `Clasifică aceste ${fixedRulesWithConditions.length} reguli (id|camp|descriere):\n${ruleList}`,
+        }],
+      }));
 
-    // 3. Blocked project/investment patterns — reject before accepting extras
-    if (PROJECT_BLOCKLIST_PATTERNS.some(p => lower.startsWith(p) || lower.includes(p))) return false;
-
-    // 4. Known company/beneficiary patterns
-    if (COMPANY_EXTRA_PATTERNS.some(p => lower.startsWith(p) || lower.includes(p))) return true;
-
-    // 5. Check element definition category (only trust financial, legal, beneficiary, location, farm)
-    const ed = elemDefByKey.get(lower);
-    if (ed && ed.category && ["financial", "legal", "beneficiary", "location", "farm"].includes(ed.category)) {
-      return true;
+      const text = (response.content[0] as any).text?.trim() || "";
+      const ids = text.split(/[,\s\n]+/).map((id: string) => id.trim()).filter(Boolean);
+      companyRelevantRuleIds = new Set(ids);
+      aiClassified = true;
+      console.log(`[preEligibility] AI classified ${companyRelevantRuleIds.size}/${fixedRulesWithConditions.length} rules as company-relevant`);
+    } catch (e: any) {
+      console.warn(`[preEligibility] AI classification failed, using heuristic fallback:`, e.message);
     }
+  }
 
-    // 6. Default: not company-relevant (conservative — better to miss a rule
-    //    than show an irrelevant project rule in company eligibility)
-    return false;
+  // Layer 2: Heuristic fallback (if AI unavailable)
+  if (!aiClassified) {
+    const COMPANY_CORE_FIELDS = new Set([
+      "forma_juridica", "cui", "cod_caen", "stare", "an_infiintare", "vechime_ani",
+      "capital_social", "angajati", "cifra_afaceri", "profit_net", "capitaluri_proprii",
+      "judet", "localitate",
+    ]);
+    const COMPANY_YEAR_PREFIXES = ["cifra_afaceri_", "profit_net_", "angajati_", "capitaluri_proprii_"];
+    const COMPANY_EXTRA_PATTERNS = [
+      "forma_", "tip_beneficiar", "categoria_beneficiar", "tip_solicitant",
+      "varsta_firma", "ani_activitate", "numar_angajati", "numar_salariati",
+      "rata_solvabilitate", "rata_lichiditate", "rata_rentabilitate",
+      "rezultat_exploatare", "profit_brut", "datorii_totale", "active_totale",
+      "regiune", "zona_eligibila", "dimensiune_economica", "suprafata_agricola",
+      "efectiv_animal", "uvm_", "are_datorii", "cazier_fiscal",
+      "nu_este_in_", "este_in_", "inregistrat_", "autorizat_",
+      "tinar_fermier", "tanar_fermier", "cod_caen_", "caen_",
+    ];
+    const PROJECT_BLOCKLIST = [
+      "valoare_proiect", "valoare_investit", "valoare_eligibil", "valoare_contract",
+      "cofinantare", "intensitate_ajutor", "durata_implementare", "durata_proiect",
+      "tip_investit", "punctaj_", "prag_", "scor_", "cost_", "buget_", "deviz_",
+      "termen_depunere", "plan_afaceri", "studiu_fezabilitate", "_sprijin",
+    ];
+
+    for (const r of fixedRulesWithConditions) {
+      const lower = r.field.toLowerCase();
+      if (COMPANY_CORE_FIELDS.has(lower)) { companyRelevantRuleIds.add(r.id); continue; }
+      if (COMPANY_YEAR_PREFIXES.some(p => lower.startsWith(p))) { companyRelevantRuleIds.add(r.id); continue; }
+      if (PROJECT_BLOCKLIST.some(p => lower.startsWith(p) || lower.includes(p))) continue;
+      if (COMPANY_EXTRA_PATTERNS.some(p => lower.startsWith(p) || lower.includes(p))) { companyRelevantRuleIds.add(r.id); continue; }
+      const ed = elemDefByKey.get(lower);
+      if (ed?.category && ["financial", "legal", "beneficiary", "location", "farm"].includes(ed.category)) {
+        companyRelevantRuleIds.add(r.id);
+      }
+    }
+    console.log(`[preEligibility] Heuristic classified ${companyRelevantRuleIds.size}/${fixedRulesWithConditions.length} rules as company-relevant`);
   }
 
   const companyDataKeys = new Set(Object.keys(companyData));
 
-  // 10. Evaluate rules — only include rules relevant to company data
+  // 10. Evaluate rules — only include company-relevant rules
   const results: PreEligibilityRule[] = [];
   const allMissingElements: string[] = [];
 
   for (const rule of allRules) {
     const condition = rule.condition as any;
 
-    // Skip interpreted rules entirely (need AI + project context)
+    // Skip interpreted rules (need AI + project context)
     if (rule.type === "interpreted") continue;
 
-    // Skip fixed rules with no condition (nothing to check)
+    // Skip fixed rules with no condition
     if (!condition?.field) continue;
 
-    // Skip rules whose condition.field is NOT company-relevant
+    // Skip rules NOT classified as company-relevant
+    if (!companyRelevantRuleIds.has(rule.id)) continue;
+
     const fieldKey = String(condition.field).toLowerCase();
-    if (!isCompanyRelevantField(fieldKey)) continue;
 
     // Build element info for this rule
     const elements: RuleElementInfo[] = [];

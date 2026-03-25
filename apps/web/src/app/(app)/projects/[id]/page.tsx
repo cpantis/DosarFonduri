@@ -1229,7 +1229,7 @@ export default function ProjectViewPage() {
   }, []);
 
   const handleRefineSubmit = async () => {
-    if (!refineInput.trim() || !refinePopup || !solomonConvId) return;
+    if (readOnly || !refineInput.trim() || !refinePopup || !solomonConvId) return;
     setSolomonStreaming(true);
     try {
       const token = typeof window !== "undefined" ? localStorage.getItem("df-token") : null;
@@ -3787,6 +3787,20 @@ export default function ProjectViewPage() {
                                 onToggle={() => toggleRuleExpand(r.id)}
                                 categoryColor={categoryColors[r.category] || "#94a3b8"}
                                 categoryLabel={categoryLabels[r.category] || r.category}
+                                readOnly={readOnly}
+                                onOverride={async (ruleId, status, notes) => {
+                                  try {
+                                    await apiPut(`/api/projects/${projectId}/eligibility/${ruleId}`, { overrideResult: status === "passed" ? "passed" : status === "failed" ? "failed" : "not_applicable", notes });
+                                    const eligData = await apiGet<any>(`/api/projects/${projectId}/eligibility`);
+                                    setEligibilityRules(mapEligibilityRules(eligData.flat || []));
+                                    setGuideRules(mapGuideRules(eligData.grouped || []));
+                                    toast("success", `Status regulă actualizat: ${status === "passed" ? "Trecut" : status === "failed" ? "Respins" : "N/A"}`);
+                                  } catch (err: any) { toast("error", err.message || "Eroare la override"); }
+                                }}
+                                onNavigateToElement={(elementKey) => {
+                                  setActiveLeaf("elemente");
+                                  setElemSearch(elementKey);
+                                }}
                               />
                             );
                           })}
@@ -4371,13 +4385,7 @@ export default function ProjectViewPage() {
                           )}
 
                           {/* Notes indicator + inline edit */}
-                          {item.notes && !readOnly ? (
-                            <span className="check-notes-badge" title={item.notes} onClick={(e) => {
-                              e.stopPropagation();
-                              const el = e.currentTarget.parentElement?.querySelector('.check-notes-input') as HTMLTextAreaElement;
-                              if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
-                            }}>&#128221; Notă</span>
-                          ) : item.notes ? (
+                          {item.notes ? (
                             <span className="check-notes-badge" title={item.notes}>&#128221; Notă</span>
                           ) : null}
 
@@ -4439,7 +4447,7 @@ export default function ProjectViewPage() {
                                   <div className="check-menu-divider" />
 
                                   {/* Delete */}
-                                  <button className="check-menu-item danger" onClick={() => handleChecklistDelete(item.id)}>
+                                  <button className="check-menu-item danger" onClick={() => { if (confirm(`Sigur vrei să ștergi "${item.name}" din checklist?`)) handleChecklistDelete(item.id); }}>
                                     &#128465; Sterge document
                                   </button>
                                 </div>
@@ -4986,10 +4994,12 @@ export default function ProjectViewPage() {
                                 <div className="sep-row-value proposed">{el.value}</div>
                               </div>
                             </div>
-                            <div className="sep-row-actions">
-                              <button className="sep-mini-btn confirm" onClick={() => handleConfirmElement(solomonElements.indexOf(el))} title="Confirmă">&#10003;</button>
-                              <button className="sep-mini-btn reject" onClick={() => handleRejectElement(solomonElements.indexOf(el))} title="Respinge">&#10005;</button>
-                            </div>
+                            {!readOnly && (
+                              <div className="sep-row-actions">
+                                <button className="sep-mini-btn confirm" onClick={() => handleConfirmElement(solomonElements.indexOf(el))} title="Confirmă">&#10003;</button>
+                                <button className="sep-mini-btn reject" onClick={() => handleRejectElement(solomonElements.indexOf(el))} title="Respinge">&#10005;</button>
+                              </div>
+                            )}
                           </div>
                         ))}
                       </div>
@@ -5408,6 +5418,7 @@ export default function ProjectViewPage() {
                                     style={{ color: "#d97706" }}
                                     onClick={async (e) => {
                                       e.stopPropagation();
+                                      if (!confirm(`Restaurezi versiunea v${v.version}? Versiunea curentă va fi înlocuită.`)) return;
                                       try {
                                         await apiPost(`/api/neemia/documents/${v.id}/rollback`, {});
                                         await refreshNeemiaDocs();

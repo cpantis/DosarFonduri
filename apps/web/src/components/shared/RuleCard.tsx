@@ -41,6 +41,9 @@ export interface RuleCardProps {
   onToggle: () => void;
   categoryColor: string;
   categoryLabel: string;
+  readOnly?: boolean;
+  onOverride?: (ruleId: string, status: "passed" | "failed" | "not_applicable", notes: string) => void;
+  onNavigateToElement?: (elementKey: string) => void;
 }
 
 // ── Shared constants ──
@@ -226,7 +229,9 @@ export function formatConditionText(condition: any): string | null {
 
 // ── The Card ──
 
-export function RuleCard({ rule, isOpen, onToggle, categoryColor, categoryLabel }: RuleCardProps) {
+export function RuleCard({ rule, isOpen, onToggle, categoryColor, categoryLabel, readOnly, onOverride, onNavigateToElement }: RuleCardProps) {
+  const [overrideOpen, setOverrideOpen] = React.useState(false);
+  const [overrideNotes, setOverrideNotes] = React.useState("");
   const r = rule;
   const conf = r.confidence;
   const rc = r.condition;
@@ -484,7 +489,7 @@ export function RuleCard({ rule, isOpen, onToggle, categoryColor, categoryLabel 
                       }}>
                         {el.elementKey}
                       </span>
-                      {/* Show value if available (project context) */}
+                      {/* Show actual value vs expected for clarity */}
                       {hasValue && !el.isMissing && (
                         <span style={{
                           fontSize: 12, fontWeight: 600, fontFamily: "'JetBrains Mono', monospace",
@@ -495,7 +500,16 @@ export function RuleCard({ rule, isOpen, onToggle, categoryColor, categoryLabel 
                           = {String(el.value)}
                         </span>
                       )}
-                      {hasValue && el.isMissing && (
+                      {r.condition && r.condition.field === el.elementKey && r.condition.value != null && (
+                        <span style={{
+                          fontSize: 11, fontFamily: "'JetBrains Mono', monospace",
+                          padding: "2px 8px", borderRadius: 4,
+                          background: "rgba(37,99,235,.06)", color: "#2563eb",
+                        }}>
+                          {OPERATOR_LABELS[r.condition.operator] || r.condition.operator} {formatConditionValue(r.condition.value)}
+                        </span>
+                      )}
+                      {el.isMissing && (
                         <span style={{
                           fontSize: 11, fontStyle: "italic",
                           padding: "2px 10px", borderRadius: 6,
@@ -509,6 +523,12 @@ export function RuleCard({ rule, isOpen, onToggle, categoryColor, categoryLabel 
                         <span style={{ fontSize: 10, color: "#94a3b8", marginLeft: "auto" }}>
                           {catLabels[el.category] || el.category}
                         </span>
+                      )}
+                      {onNavigateToElement && (
+                        <button onClick={(e) => { e.stopPropagation(); onNavigateToElement(el.elementKey); }}
+                          style={{ fontSize: 10, color: "#2563eb", background: "none", border: "none", cursor: "pointer", padding: "2px 6px", textDecoration: "underline", flexShrink: 0 }}>
+                          Deschide
+                        </button>
                       )}
                     </div>
                   );
@@ -528,10 +548,10 @@ export function RuleCard({ rule, isOpen, onToggle, categoryColor, categoryLabel 
             </Section>
           )}
 
-          {/* Eligibility status */}
+          {/* Eligibility status + Override */}
           {r.eligStatus && (
             <Section title="Status eligibilitate">
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                 <span style={{
                   fontSize: 12, fontWeight: 700, padding: "4px 14px", borderRadius: 6,
                   color: r.eligStatus.status === "pass" ? "#059669" : r.eligStatus.status === "fail" ? "#dc2626" : "#d97706",
@@ -542,7 +562,36 @@ export function RuleCard({ rule, isOpen, onToggle, categoryColor, categoryLabel 
                 {r.eligStatus.notes && (
                   <span style={{ fontSize: 12, color: "#64748b", fontStyle: "italic" }}>{r.eligStatus.notes}</span>
                 )}
+                {onOverride && !readOnly && (
+                  <button onClick={(e) => { e.stopPropagation(); setOverrideOpen(!overrideOpen); }}
+                    style={{ marginLeft: "auto", fontSize: 11, color: "#64748b", background: "rgba(226,232,240,.4)", border: "1px solid #e2e8f0", borderRadius: 6, padding: "3px 10px", cursor: "pointer" }}>
+                    ✎ Override
+                  </button>
+                )}
               </div>
+              {overrideOpen && onOverride && !readOnly && (
+                <div style={{ marginTop: 10, padding: 12, background: "#f8fafc", borderRadius: 8, border: "1px solid #e2e8f0" }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: "#475569", marginBottom: 6 }}>Setează manual statusul:</div>
+                  <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+                    <button onClick={() => { onOverride(r.id, "passed", overrideNotes); setOverrideOpen(false); setOverrideNotes(""); }}
+                      style={{ fontSize: 11, fontWeight: 600, padding: "4px 12px", borderRadius: 6, border: "1px solid rgba(5,150,105,.3)", background: "rgba(5,150,105,.08)", color: "#059669", cursor: "pointer" }}>
+                      ✓ Trece
+                    </button>
+                    <button onClick={() => { onOverride(r.id, "failed", overrideNotes); setOverrideOpen(false); setOverrideNotes(""); }}
+                      style={{ fontSize: 11, fontWeight: 600, padding: "4px 12px", borderRadius: 6, border: "1px solid rgba(220,38,38,.3)", background: "rgba(220,38,38,.08)", color: "#dc2626", cursor: "pointer" }}>
+                      ✗ Respinge
+                    </button>
+                    <button onClick={() => { onOverride(r.id, "not_applicable", overrideNotes); setOverrideOpen(false); setOverrideNotes(""); }}
+                      style={{ fontSize: 11, fontWeight: 600, padding: "4px 12px", borderRadius: 6, border: "1px solid rgba(148,163,184,.3)", background: "rgba(148,163,184,.08)", color: "#64748b", cursor: "pointer" }}>
+                      N/A
+                    </button>
+                  </div>
+                  <input placeholder="Justificare (opțional)..." value={overrideNotes} onChange={e => setOverrideNotes(e.target.value)}
+                    style={{ width: "100%", padding: "6px 10px", borderRadius: 6, border: "1px solid #e2e8f0", fontSize: 12, fontFamily: "'Inter', system-ui, sans-serif" }}
+                    onKeyDown={e => { if (e.key === "Escape") { setOverrideOpen(false); setOverrideNotes(""); } }}
+                  />
+                </div>
+              )}
             </Section>
           )}
         </div>

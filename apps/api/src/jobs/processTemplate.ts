@@ -650,7 +650,7 @@ export const processTemplateWorker = new Worker<ProcessTemplatePayload>(
 
       await logAIUsage({
         organizationId,
-        agent: "ghid_rules",
+        agent: "template_processing",
         model: "claude-sonnet-4-20250514",
         tokensInput: classifyTokenUsage.input,
         tokensOutput: classifyTokenUsage.output,

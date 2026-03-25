@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { apiGet, apiPut, apiPost, apiDelete } from "@/lib/api";
+import { useToast } from "@/components/shared/Toast";
 
 /* ═══ TYPES ═══ */
 interface TemplateElement {
@@ -53,6 +54,7 @@ const TYPE_OPTIONS = ["text", "number", "textarea", "date", "table", "signature"
 export default function TemplateViewerPage() {
   const params = useParams();
   const router = useRouter();
+  const { toast } = useToast();
   const docId = params.id as string;
 
   const [template, setTemplate] = useState<TemplateData | null>(null);
@@ -111,6 +113,11 @@ export default function TemplateViewerPage() {
   const [elementRuleLinks, setElementRuleLinks] = useState<Record<string, RuleLinkFull[]>>({});
   const [expandedRuleId, setExpandedRuleId] = useState<string | null>(null);
   const [elementScoring, setElementScoring] = useState<Record<string, Array<{ criterionName: string; maxPoints: number }>>>({});
+
+  // Loading states for actions
+  const [validatingId, setValidatingId] = useState<string | null>(null);
+  const [validatingPage, setValidatingPage] = useState(false);
+  const [addingElement, setAddingElement] = useState(false);
 
   // Split pane
   const [splitWidth, setSplitWidth] = useState(400);
@@ -247,7 +254,8 @@ export default function TemplateViewerPage() {
   // ─── ACTIONS ───
   const handleValidate = async (id: string) => {
     const el = allElements.find(e => e.id === id);
-    if (!el) return;
+    if (!el || validatingId) return;
+    setValidatingId(id);
     try {
       await apiPut(`/api/documents/documents/${docId}/elements/${id}`, { validated: !el.validated });
       setTemplate(prev => {
@@ -262,22 +270,37 @@ export default function TemplateViewerPage() {
           })),
         };
       });
-    } catch {}
+    } catch (err: any) {
+      toast("error", `Eroare la validare: ${err.message || "necunoscută"}`);
+    } finally {
+      setValidatingId(null);
+    }
   };
 
   const handleValidatePage = async (pageNum: number) => {
+    if (validatingPage) return;
     const pageEls = allElements.filter(e => (e.pageNum || 1) === pageNum);
     const allVal = pageEls.every(e => e.validated);
+    setValidatingPage(true);
     try {
       await apiPut(`/api/documents/documents/${docId}/elements-validate-page`, { pageNum, validated: !allVal });
       await loadTemplate();
-    } catch {}
+      toast("success", `Pagina ${pageNum} — ${allVal ? "devalidată" : "validată"}`);
+    } catch (err: any) {
+      toast("error", `Eroare la validarea paginii: ${err.message || "necunoscută"}`);
+    } finally {
+      setValidatingPage(false);
+    }
   };
 
   const handleAddElement = async () => {
     if (!newEl.key || !newEl.label) return;
     // Validate key format: alphanumeric, underscores, hyphens only
-    if (!/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(newEl.key)) return;
+    if (!/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(newEl.key)) {
+      toast("warning", "Cheia trebuie să înceapă cu literă și să conțină doar litere, cifre, _ sau -");
+      return;
+    }
+    setAddingElement(true);
     try {
       await apiPost(`/api/documents/documents/${docId}/elements`, {
         key: newEl.key,
@@ -288,8 +311,13 @@ export default function TemplateViewerPage() {
       });
       setNewEl({ key: "", label: "", type: "text" });
       setShowAddForm(false);
+      toast("success", "Element adăugat");
       await loadTemplate();
-    } catch {}
+    } catch (err: any) {
+      toast("error", `Eroare la adăugare element: ${err.message || "necunoscută"}`);
+    } finally {
+      setAddingElement(false);
+    }
   };
 
   const handleSelectElement = (id: string | null) => {
@@ -323,7 +351,9 @@ export default function TemplateViewerPage() {
         ...prev,
         validated: prev.validated + (info.mappingValidated ? -1 : 1),
       }));
-    } catch {}
+    } catch (err: any) {
+      toast("error", `Eroare la validarea mapping-ului: ${err.message || "necunoscută"}`);
+    }
   };
 
   // ─── COMPOSE CONFIG HANDLERS ───
@@ -333,12 +363,17 @@ export default function TemplateViewerPage() {
       const result = await apiPost<any>(`/api/neemia/templates/${docId}/detect-compose-markers`, {});
       if (result.composeMarkers?.length > 0) {
         setComposeSections(result.composeMarkers);
+        toast("success", `${result.composeMarkers.length} markeri detectați`);
+      } else {
+        toast("info", "Niciun marker COMPOSE detectat în template");
       }
       setAvailableRefTables(result.availableReferenceTables || []);
       if (result.suggestion === "compose") {
         setGenMode("compose");
       }
-    } catch {}
+    } catch (err: any) {
+      toast("error", `Eroare la detectarea markerilor: ${err.message || "necunoscută"}`);
+    }
     setComposeDetecting(false);
   };
 
@@ -354,7 +389,10 @@ export default function TemplateViewerPage() {
       } else {
         await apiPut(`/api/neemia/templates/${docId}/generation-mode`, { mode: genMode });
       }
-    } catch {}
+      toast("success", "Configurația a fost salvată");
+    } catch (err: any) {
+      toast("error", `Eroare la salvare: ${err.message || "necunoscută"}`);
+    }
     setComposeSaving(false);
   };
 
@@ -954,8 +992,8 @@ export default function TemplateViewerPage() {
                             <span className={`el-status ${el.validated ? "validated" : !el.detected ? "manual" : "detected"}`}>
                               {el.validated ? "Validat" : !el.detected ? "+Manual" : "Extras"}
                             </span>
-                            <button className={`el-validate ${el.validated ? "on" : ""}`} onClick={(ev) => { ev.stopPropagation(); handleValidate(el.id); }}>
-                              {el.validated ? "Invalidare" : "Valideaza"}
+                            <button className={`el-validate ${el.validated ? "on" : ""}`} disabled={validatingId === el.id} onClick={(ev) => { ev.stopPropagation(); handleValidate(el.id); }}>
+                              {validatingId === el.id ? "..." : el.validated ? "Invalidare" : "Valideaza"}
                             </button>
                           </div>
                           {/* Mapping review indicator */}
@@ -1189,7 +1227,7 @@ export default function TemplateViewerPage() {
                     </select>
                     <span className="text-[11px] text-violet-500 self-center">Pag. {currentPageNum}</span>
                   </div>
-                  <button className="add-btn" disabled={!newEl.key || !newEl.label} onClick={handleAddElement}>Adauga element</button>
+                  <button className="add-btn" disabled={!newEl.key || !newEl.label || addingElement} onClick={handleAddElement}>{addingElement ? "Se adaugă..." : "Adauga element"}</button>
                 </div>
               )}
             </div>
@@ -1232,8 +1270,8 @@ export default function TemplateViewerPage() {
                 })}
               </div>
               {currentPage && (
-                <button className="tv-val-all" onClick={() => handleValidatePage(currentPageNum)}>
-                  {currentPage.elements.every(e => e.validated) ? "Invalideaza pagina" : "Valideaza pagina"}
+                <button className="tv-val-all" disabled={validatingPage} onClick={() => handleValidatePage(currentPageNum)}>
+                  {validatingPage ? "Se validează..." : currentPage.elements.every(e => e.validated) ? "Invalideaza pagina" : "Valideaza pagina"}
                 </button>
               )}
             </div>

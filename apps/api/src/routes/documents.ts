@@ -743,59 +743,59 @@ documentRoutes.delete("/documents/:id", async (c) => {
   const fileId = doc.fileId;
 
   try {
-    // Manual cascade cleanup — ensures clean deletion even if DB FK constraints
-    // were created without ON DELETE CASCADE (migration 0000 used "no action")
+    // Atomic cascade cleanup inside transaction — ensures no orphan records on partial failure
     // Order matters: delete leaf tables first, then parents
+    await db.transaction(async (tx) => {
+      // 1. Guide-specific: rules → ruleReferenceLinks, elementRuleLinks, projectEligibility cascade
+      const docRules = await tx.select({ id: rules.id }).from(rules).where(eq(rules.documentId, id));
+      if (docRules.length > 0) {
+        const ruleIds = docRules.map(r => r.id);
+        await tx.delete(ruleReferenceLinks).where(inArray(ruleReferenceLinks.ruleId, ruleIds));
+        await tx.delete(elementRuleLinks).where(inArray(elementRuleLinks.ruleId, ruleIds));
+      }
 
-    // 1. Guide-specific: rules → ruleReferenceLinks, elementRuleLinks, projectEligibility cascade
-    const docRules = await db.select({ id: rules.id }).from(rules).where(eq(rules.documentId, id));
-    if (docRules.length > 0) {
-      const ruleIds = docRules.map(r => r.id);
-      await db.delete(ruleReferenceLinks).where(inArray(ruleReferenceLinks.ruleId, ruleIds)).catch(() => {});
-      await db.delete(elementRuleLinks).where(inArray(elementRuleLinks.ruleId, ruleIds)).catch(() => {});
-    }
+      // 2. Guide-specific: elementDefinitions → set null on projectElements (preserve project data)
+      const docElemDefs = await tx.select({ id: elementDefinitions.id }).from(elementDefinitions)
+        .where(eq(elementDefinitions.guideDocumentId, id));
+      if (docElemDefs.length > 0) {
+        const defIds = docElemDefs.map(d => d.id);
+        // Unlink from project elements (don't delete them — preserve projects)
+        await tx.update(projectElements).set({ elementDefId: null })
+          .where(inArray(projectElements.elementDefId, defIds));
+        // Delete elementRuleLinks for these defs
+        await tx.delete(elementRuleLinks).where(inArray(elementRuleLinks.elementDefId, defIds));
+        // Delete templatePlaceholderMappings for these defs
+        await tx.delete(templatePlaceholderMapping).where(inArray(templatePlaceholderMapping.elementDefId, defIds));
+      }
 
-    // 2. Guide-specific: elementDefinitions → set null on projectElements (preserve project data)
-    const docElemDefs = await db.select({ id: elementDefinitions.id }).from(elementDefinitions)
-      .where(eq(elementDefinitions.guideDocumentId, id));
-    if (docElemDefs.length > 0) {
-      const defIds = docElemDefs.map(d => d.id);
-      // Unlink from project elements (don't delete them — user said to preserve projects)
-      await db.update(projectElements).set({ elementDefId: null })
-        .where(inArray(projectElements.elementDefId, defIds)).catch(() => {});
-      // Delete elementRuleLinks for these defs
-      await db.delete(elementRuleLinks).where(inArray(elementRuleLinks.elementDefId, defIds)).catch(() => {});
-      // Delete templatePlaceholderMappings for these defs
-      await db.delete(templatePlaceholderMapping).where(inArray(templatePlaceholderMapping.elementDefId, defIds)).catch(() => {});
-    }
+      // 3. Reference tables
+      await tx.delete(guideReferenceTables).where(eq(guideReferenceTables.documentId, id));
 
-    // 3. Reference tables
-    await db.delete(guideReferenceTables).where(eq(guideReferenceTables.documentId, id)).catch(() => {});
+      // 4. Scoring criteria
+      await tx.delete(scoringCriteria).where(eq(scoringCriteria.documentId, id));
 
-    // 4. Scoring criteria
-    await db.delete(scoringCriteria).where(eq(scoringCriteria.documentId, id)).catch(() => {});
+      // 5. Rules themselves
+      await tx.delete(rules).where(eq(rules.documentId, id));
 
-    // 5. Rules themselves
-    await db.delete(rules).where(eq(rules.documentId, id)).catch(() => {});
+      // 6. Element definitions
+      await tx.delete(elementDefinitions).where(eq(elementDefinitions.guideDocumentId, id));
 
-    // 6. Element definitions
-    await db.delete(elementDefinitions).where(eq(elementDefinitions.guideDocumentId, id)).catch(() => {});
+      // 7. Template-specific: template elements, placeholder mappings
+      await tx.delete(templateElements).where(eq(templateElements.documentId, id));
+      await tx.delete(templatePlaceholderMapping).where(eq(templatePlaceholderMapping.templateDocumentId, id));
 
-    // 7. Template-specific: template elements, placeholder mappings
-    await db.delete(templateElements).where(eq(templateElements.documentId, id)).catch(() => {});
-    await db.delete(templatePlaceholderMapping).where(eq(templatePlaceholderMapping.templateDocumentId, id)).catch(() => {});
+      // 8. Project documents (generated docs from this template)
+      await tx.delete(projectDocuments).where(eq(projectDocuments.templateDocumentId, id));
 
-    // 8. Project documents (generated docs from this template)
-    await db.delete(projectDocuments).where(eq(projectDocuments.templateDocumentId, id)).catch(() => {});
+      // 9. Session checklist — set null for template_id
+      await tx.update(sessionChecklist).set({ templateId: null })
+        .where(eq(sessionChecklist.templateId, id));
 
-    // 9. Session checklist — set null for template_id
-    await db.update(sessionChecklist).set({ templateId: null })
-      .where(eq(sessionChecklist.templateId, id)).catch(() => {});
+      // 10. Now delete the document itself (should succeed with all refs cleaned)
+      await tx.delete(documents).where(eq(documents.id, id));
+    });
 
-    // 10. Now delete the document itself (should succeed with all refs cleaned)
-    await db.delete(documents).where(eq(documents.id, id));
-
-    // 11. Delete the file from storage + files table
+    // Storage cleanup outside transaction (external side-effect, best-effort)
     await deleteFile(fileId).catch((e: any) => {
       console.warn(`[documents] Storage cleanup failed for fileId ${fileId}:`, e.message);
     });
@@ -996,7 +996,7 @@ documentRoutes.put("/documents/:docId/elements/:elId", async (c) => {
   const body = updateDocElementSchema.parse(await c.req.json());
 
   const el = await db.query.templateElements.findFirst({
-    where: and(eq(templateElements.id, elId), eq(templateElements.documentId, docId)),
+    where: and(eq(templateElements.id, elId), eq(templateElements.documentId, docId), eq(templateElements.organizationId, auth.organizationId!)),
   });
   if (!el) return c.json({ error: "Element not found" }, 404);
 
@@ -1023,17 +1023,24 @@ documentRoutes.put("/documents/:docId/elements-validate-page", async (c) => {
   const docId = c.req.param("docId");
   const { pageNum, validated } = validatePageSchema.parse(await c.req.json());
 
-  const elements = await db.query.templateElements.findMany({
-    where: and(eq(templateElements.documentId, docId), eq(templateElements.pageNum, pageNum)),
+  // Verify document belongs to org
+  const doc = await db.query.documents.findFirst({
+    where: and(eq(documents.id, docId), eq(documents.organizationId, auth.organizationId!)),
+    columns: { id: true },
   });
+  if (!doc) return c.json({ error: "Document not found" }, 404);
 
-  for (const el of elements) {
-    await db.update(templateElements)
-      .set({ validated, validatedBy: validated ? auth.userId : null })
-      .where(eq(templateElements.id, el.id));
-  }
+  // Batch update in a single query instead of N+1 loop
+  const result = await db.update(templateElements)
+    .set({ validated, validatedBy: validated ? auth.userId : null })
+    .where(and(
+      eq(templateElements.documentId, docId),
+      eq(templateElements.organizationId, auth.organizationId!),
+      eq(templateElements.pageNum, pageNum),
+    ))
+    .returning({ id: templateElements.id });
 
-  return c.json({ ok: true, count: elements.length });
+  return c.json({ ok: true, count: result.length });
 });
 
 // --- ADD MANUAL TEMPLATE ELEMENT ---

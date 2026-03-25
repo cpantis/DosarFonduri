@@ -116,14 +116,128 @@ function verifyExtractionCompleteness(
 /** Default model for fast structured extraction (fixed rules, scoring, elements, docs) */
 const DEFAULT_EXTRACTION_MODEL = "claude-sonnet-4-6";
 
-/** Model for deep reasoning on interpreted rules — Sonnet + ET is 3× faster than Opus */
-const INTERPRETED_RULES_MODEL = "claude-sonnet-4-6";
-
 /** Character limit for a single extraction pass (fits in 200K context window) */
 const EXTRACTION_CHAR_LIMIT = 150000;
 
 /** Max concurrent extraction chunks */
 const MAX_PARALLEL_CHUNKS = 3;
+
+// ─── STEP 0: PAGE CLASSIFICATION ───
+
+const PAGE_CLASSIFY_SYSTEM = `Clasifică fiecare pagină dintr-un ghid de finanțare în categorii. Returnează DOAR JSON valid.`;
+
+const PAGE_CLASSIFY_USER = `Analizează rapid acest ghid de finanțare și clasifică fiecare pagină după conținut.
+
+Categorii:
+- "fixed": Condiții binare, praguri numerice, forme juridice, coduri CAEN, plafoane, liste eligibile/neeligibile, cheltuieli, TVA, deadline-uri
+- "interpreted": Intensitate sprijin variabilă, decision trees, excepții, cazuri speciale, ajutor de stat, condiții cascadate, reguli cu "în funcție de"/"depinde de"
+- "scoring": Grila de punctaj, criterii de selecție, tabele cu punctaje, evaluare tehnico-financiară
+- "documents": Lista documentelor necesare, cerințe documentare, anexe obligatorii
+- "info": Informații generale, descriere program, definiții, context (nu conțin reguli)
+
+Returnează un JSON cu o singură cheie:
+{
+  "pages": {
+    "1": "info",
+    "2": "fixed",
+    "3": "interpreted",
+    ...
+  }
+}
+
+Fii RAPID — nu analiza conținutul profund, doar scanează tiparul textului.
+
+TEXT:
+`;
+
+interface PageClassification {
+  fixed: number[];
+  interpreted: number[];
+  scoring: number[];
+  documents: number[];
+  info: number[];
+}
+
+async function classifyPages(
+  structuredText: string,
+  organizationId: string,
+): Promise<PageClassification> {
+  const callStart = Date.now();
+  const response = await withAILimit(() => anthropic.messages.create({
+    model: DEFAULT_EXTRACTION_MODEL,
+    max_tokens: 2000,
+    system: PAGE_CLASSIFY_SYSTEM,
+    messages: [{ role: "user", content: `${PAGE_CLASSIFY_USER}${structuredText}` }],
+  }));
+  const callDuration = Date.now() - callStart;
+
+  await logAIUsage({
+    organizationId,
+    agent: "ghid_rules",
+    model: DEFAULT_EXTRACTION_MODEL,
+    tokensInput: response.usage.input_tokens,
+    tokensOutput: response.usage.output_tokens,
+    action: "page_classification",
+  });
+
+  console.log(`[processGuide] Page classification: ${callDuration}ms in=${response.usage.input_tokens} out=${response.usage.output_tokens}`);
+
+  const textBlock = response.content.find((b: any) => b.type === "text");
+  const content = textBlock ? (textBlock as any).text : "{}";
+  const cleaned = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+
+  try {
+    const parsed = JSON.parse(cleaned);
+    const pages = parsed.pages || parsed;
+
+    const result: PageClassification = { fixed: [], interpreted: [], scoring: [], documents: [], info: [] };
+    for (const [pageStr, category] of Object.entries(pages)) {
+      const pageNum = parseInt(pageStr, 10);
+      if (isNaN(pageNum)) continue;
+      const cat = String(category).toLowerCase();
+      if (cat in result) {
+        (result as any)[cat].push(pageNum);
+      } else {
+        result.fixed.push(pageNum); // default to fixed
+      }
+    }
+
+    console.log(`[processGuide] Classification: fixed=${result.fixed.length} interpreted=${result.interpreted.length} scoring=${result.scoring.length} documents=${result.documents.length} info=${result.info.length}`);
+    return result;
+  } catch (e: any) {
+    console.warn(`[processGuide] Classification parse failed, treating all pages as fixed:`, e.message);
+    // Fallback: all pages as fixed
+    const pageCount = (structuredText.match(/--- Pagina \d+/g) || []).length;
+    return {
+      fixed: Array.from({ length: pageCount }, (_, i) => i + 1),
+      interpreted: [],
+      scoring: [],
+      documents: [],
+      info: [],
+    };
+  }
+}
+
+/** Extract pages by number from the full structured text */
+function extractPagesByNumbers(structuredText: string, pageNumbers: number[]): string {
+  if (pageNumbers.length === 0) return "";
+  const pageSet = new Set(pageNumbers);
+  const pageDelimiter = /--- Pagina (\d+) ---/g;
+  const pageStarts: Array<{ page: number; start: number }> = [];
+  let match: RegExpExecArray | null;
+  while ((match = pageDelimiter.exec(structuredText)) !== null) {
+    pageStarts.push({ page: parseInt(match[1], 10), start: match.index });
+  }
+
+  const parts: string[] = [];
+  for (let i = 0; i < pageStarts.length; i++) {
+    if (pageSet.has(pageStarts[i].page)) {
+      const end = i + 1 < pageStarts.length ? pageStarts[i + 1].start : structuredText.length;
+      parts.push(structuredText.slice(pageStarts[i].start, end));
+    }
+  }
+  return parts.join("\n");
+}
 
 // ─── UNIFIED AI + ET EXTRACTION ───
 
@@ -476,7 +590,7 @@ async function refineInterpretedRulesWithET(
   const config = await db.query.orgConfig.findFirst({
     where: eq(orgConfig.organizationId, organizationId),
   });
-  const model = config?.reguliInterpModel || INTERPRETED_RULES_MODEL;
+  const model = config?.reguliInterpModel || DEFAULT_EXTRACTION_MODEL;
 
   console.log(`[processGuide] ET refinement: ${interpretedRules.length} interpreted rules (${rulesJson.length} chars) with ${model}`);
 
@@ -1427,17 +1541,42 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
           : `Text nativ extras: ${preStructPageCount} pagini. Extragere reguli...`,
       }).catch((e: any) => console.warn("[processGuide] sse extraction start:", e.message));
 
-      // ─── STEP 3: Unified AI extraction (Sonnet default, ~$0.04/chunk) ───
+      // ─── STEP 3: Classified extraction — classify pages, then extract in parallel ───
       const config = await db.query.orgConfig.findFirst({
         where: eq(orgConfig.organizationId, organizationId),
       });
       const useET = config?.reguliInterpET ?? true;
 
       const opusStart = Date.now();
-      const chunks = splitStructuredText(structuredText);
-      // Pass 1 always runs WITHOUT ET (fast structured extraction)
-      // Pass 2 runs WITH ET only on interpreted rules (if ET enabled)
-      console.log(`[processGuide] Processing "${doc.name}" with ${chunks.length} chunk(s), model=${DEFAULT_EXTRACTION_MODEL}, ET=${useET ? "pass2-only" : "off"}`);
+
+      // Step 0: Classify pages (1 fast Sonnet call, ~5s)
+      publishJobProgress(organizationId, {
+        jobId: job.id || "",
+        jobType: "ghid",
+        documentId,
+        documentName: doc.name,
+        progress: 32,
+        status: "processing",
+        message: `Clasificare pagini...`,
+      }).catch((e: any) => console.warn("[processGuide] sse classify:", e.message));
+
+      const classification = await classifyPages(structuredText, organizationId);
+
+      // Build text slices per category
+      const fixedPages = [...classification.fixed, ...classification.documents];
+      const interpretedPages = classification.interpreted;
+      const scoringPages = classification.scoring;
+      // Merge scoring into fixed if too small to warrant separate call
+      if (scoringPages.length > 0 && scoringPages.length <= 3) {
+        fixedPages.push(...scoringPages);
+        scoringPages.length = 0;
+      }
+
+      const fixedText = extractPagesByNumbers(structuredText, fixedPages);
+      const interpretedText = extractPagesByNumbers(structuredText, interpretedPages);
+      const scoringText = scoringPages.length > 0 ? extractPagesByNumbers(structuredText, scoringPages) : "";
+
+      console.log(`[processGuide] Classified extraction: fixed=${fixedPages.length}pag(${fixedText.length}ch) interp=${interpretedPages.length}pag(${interpretedText.length}ch) scoring=${scoringPages.length}pag(${scoringText.length}ch)`);
 
       let allFixed: any[] = [];
       let allInterpreted: any[] = [];
@@ -1449,96 +1588,87 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
       let totalAIInputTokens = 0;
       let totalAIOutputTokens = 0;
 
-      if (chunks.length === 1) {
-        // Single pass — most common case (Pass 1: fast extraction without ET)
-        const result = await unifiedExtraction(chunks[0], organizationId, "full", false);
-        allFixed = result.fixedRules;
-        allInterpreted = result.interpretedRules;
-        allScoring = result.scoringCriteria;
-        allElementDefs = result.elementDefinitions;
-        allDocRequirements = result.documentRequirements;
-        extractionTruncated = result._meta.truncated;
-        totalContinuations = result._meta.continuations;
-        totalAIInputTokens = result._meta.totalInputTokens;
-        totalAIOutputTokens = result._meta.totalOutputTokens;
-      } else {
-        // Multiple chunks — process with limited concurrency, then merge + dedup
-        const chunkResults: Array<Awaited<ReturnType<typeof unifiedExtraction>>> = new Array(chunks.length);
-        const chunkQueue = chunks.map((_, i) => i);
+      // Run extractions in parallel — each focused on its category
+      const extractionTasks: Array<Promise<void>> = [];
 
-        async function opusWorker() {
-          let idx: number | undefined;
-          while ((idx = chunkQueue.shift()) !== undefined) {
-            chunkResults[idx] = await unifiedExtraction(chunks[idx], organizationId, `chunk_${idx + 1}`, false);
-
-            const chunkProgress = 30 + Math.round(((idx + 1) / chunks.length) * 55);
-            publishJobProgress(organizationId, {
-              jobId: job.id || "",
-              jobType: "ghid",
-              documentId,
-              documentName: doc.name,
-              progress: chunkProgress,
-              status: "processing",
-              message: `Extragere: chunk ${idx + 1}/${chunks.length} procesat`,
-            }).catch((e: any) => console.warn("[processGuide] sse chunk progress:", e.message));
-          }
+      if (fixedText.length > 0) {
+        // Fixed rules: may need chunking if text is large
+        const fixedChunks = splitStructuredText(fixedText);
+        for (let i = 0; i < fixedChunks.length; i++) {
+          extractionTasks.push(
+            unifiedExtraction(fixedChunks[i], organizationId, `fixed_${i + 1}`, false).then(result => {
+              allFixed.push(...result.fixedRules);
+              allScoring.push(...result.scoringCriteria);
+              allElementDefs.push(...result.elementDefinitions);
+              allDocRequirements.push(...result.documentRequirements);
+              // Also collect any interpreted rules found in "fixed" pages
+              allInterpreted.push(...result.interpretedRules);
+              if (result._meta.truncated) extractionTruncated = true;
+              totalContinuations += result._meta.continuations;
+              totalAIInputTokens += result._meta.totalInputTokens;
+              totalAIOutputTokens += result._meta.totalOutputTokens;
+            }),
+          );
         }
-
-        const opusWorkers = Array.from(
-          { length: Math.min(MAX_PARALLEL_CHUNKS, chunks.length) },
-          () => opusWorker(),
-        );
-        await Promise.all(opusWorkers);
-
-        for (const result of chunkResults) {
-          allFixed.push(...result.fixedRules);
-          allInterpreted.push(...result.interpretedRules);
-          allScoring.push(...result.scoringCriteria);
-          allElementDefs.push(...result.elementDefinitions);
-          allDocRequirements.push(...result.documentRequirements);
-          if (result._meta.truncated) extractionTruncated = true;
-          totalContinuations += result._meta.continuations;
-          totalAIInputTokens += result._meta.totalInputTokens;
-          totalAIOutputTokens += result._meta.totalOutputTokens;
-        }
-
-        // Deduplicate across chunks (overlap pages will produce duplicates)
-        const beforeDedup = { fixed: allFixed.length, interp: allInterpreted.length, scoring: allScoring.length, elemDefs: allElementDefs.length, docReqs: allDocRequirements.length };
-        allFixed = deduplicateRules(allFixed);
-        allInterpreted = deduplicateRules(allInterpreted);
-        allScoring = deduplicateScoring(allScoring);
-        allElementDefs = deduplicateElementDefs(allElementDefs);
-        // Deduplicate document requirements by name (case-insensitive)
-        const seenDocNames = new Set<string>();
-        allDocRequirements = allDocRequirements.filter(d => {
-          const key = (d.name || "").toLowerCase().trim();
-          if (seenDocNames.has(key)) return false;
-          seenDocNames.add(key);
-          return true;
-        });
-        console.log(`[processGuide] Dedup: fixed ${beforeDedup.fixed}→${allFixed.length}, interp ${beforeDedup.interp}→${allInterpreted.length}, scoring ${beforeDedup.scoring}→${allScoring.length}, elemDefs ${beforeDedup.elemDefs}→${allElementDefs.length}, docReqs ${beforeDedup.docReqs}→${allDocRequirements.length}`);
       }
+
+      if (interpretedText.length > 0) {
+        // Interpreted rules: use ET for deep reasoning
+        const interpChunks = splitStructuredText(interpretedText);
+        for (let i = 0; i < interpChunks.length; i++) {
+          extractionTasks.push(
+            unifiedExtraction(interpChunks[i], organizationId, `interp_${i + 1}`, useET).then(result => {
+              allInterpreted.push(...result.interpretedRules);
+              // Also collect any fixed rules found in "interpreted" pages
+              allFixed.push(...result.fixedRules);
+              allScoring.push(...result.scoringCriteria);
+              allElementDefs.push(...result.elementDefinitions);
+              allDocRequirements.push(...result.documentRequirements);
+              if (result._meta.truncated) extractionTruncated = true;
+              totalContinuations += result._meta.continuations;
+              totalAIInputTokens += result._meta.totalInputTokens;
+              totalAIOutputTokens += result._meta.totalOutputTokens;
+            }),
+          );
+        }
+      }
+
+      if (scoringText.length > 0) {
+        extractionTasks.push(
+          unifiedExtraction(scoringText, organizationId, "scoring", false).then(result => {
+            allScoring.push(...result.scoringCriteria);
+            allFixed.push(...result.fixedRules);
+            allInterpreted.push(...result.interpretedRules);
+            allElementDefs.push(...result.elementDefinitions);
+            allDocRequirements.push(...result.documentRequirements);
+            if (result._meta.truncated) extractionTruncated = true;
+            totalContinuations += result._meta.continuations;
+            totalAIInputTokens += result._meta.totalInputTokens;
+            totalAIOutputTokens += result._meta.totalOutputTokens;
+          }),
+        );
+      }
+
+      // Execute all tasks with concurrency limit (withAILimit handles this)
+      await Promise.all(extractionTasks);
+
+      // Deduplicate across tasks
+      allFixed = deduplicateRules(allFixed);
+      allInterpreted = deduplicateRules(allInterpreted);
+      allScoring = deduplicateScoring(allScoring);
+      allElementDefs = deduplicateElementDefs(allElementDefs);
+      const seenDocNames = new Set<string>();
+      allDocRequirements = allDocRequirements.filter(d => {
+        const key = (d.name || "").toLowerCase().trim();
+        if (seenDocNames.has(key)) return false;
+        seenDocNames.add(key);
+        return true;
+      });
 
       const pass1Duration = Date.now() - opusStart;
-      console.log(`[processGuide] Pass 1 (fast extraction): ${pass1Duration}ms — ${allFixed.length} fixed, ${allInterpreted.length} interpreted, ${allScoring.length} scoring, ${allElementDefs.length} element defs, ${allDocRequirements.length} doc requirements`);
+      console.log(`[processGuide] Classified extraction complete: ${pass1Duration}ms — ${allFixed.length} fixed, ${allInterpreted.length} interpreted, ${allScoring.length} scoring, ${allElementDefs.length} element defs, ${allDocRequirements.length} doc requirements`);
 
-      // ─── STEP 3b: Pass 2 — ET refinement on interpreted rules only ───
-      if (useET && allInterpreted.length > 0) {
-        publishJobProgress(organizationId, {
-          jobId: job.id || "",
-          jobType: "ghid",
-          documentId,
-          documentName: doc.name,
-          progress: 75,
-          status: "processing",
-          message: `Rafinare ${allInterpreted.length} reguli interpretate cu Opus + Extended Thinking...`,
-        }).catch((e: any) => console.warn("[processGuide] sse et refine:", e.message));
-
-        const etStart = Date.now();
-        allInterpreted = await refineInterpretedRulesWithET(allInterpreted, organizationId);
-        const etDuration = Date.now() - etStart;
-        console.log(`[processGuide] Pass 2 (ET refinement): ${etDuration}ms for ${allInterpreted.length} interpreted rules`);
-      }
+      // No separate Pass 2 needed — ET already ran on interpreted pages during extraction
 
       const opusDuration = Date.now() - opusStart;
 
@@ -1668,8 +1798,8 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
 
       // Quality metrics stored on the document
       const qualityMetrics = {
-        pipeline: needsPreStructure ? `pymupdf+sonnet_prestruct+${DEFAULT_EXTRACTION_MODEL}` : `pymupdf+${DEFAULT_EXTRACTION_MODEL}`,
-        chunks: chunks.length,
+        pipeline: needsPreStructure ? `pymupdf+sonnet_prestruct+classified_${DEFAULT_EXTRACTION_MODEL}` : `pymupdf+classified_${DEFAULT_EXTRACTION_MODEL}`,
+        classification: { fixed: classification.fixed.length, interpreted: classification.interpreted.length, scoring: classification.scoring.length, documents: classification.documents.length, info: classification.info.length },
         truncated: extractionTruncated,
         continuations: totalContinuations,
         tokens: { input: totalAIInputTokens, output: totalAIOutputTokens },

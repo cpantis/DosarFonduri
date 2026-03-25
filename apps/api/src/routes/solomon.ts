@@ -312,7 +312,7 @@ solomonRoutes.put("/conversations/:convId/model", async (c) => {
   const convId = c.req.param("convId");
   const body = updateModelSchema.parse(await c.req.json());
 
-  const validModels = ["claude-sonnet-4-20250514", "claude-opus-4-6"];
+  const validModels = ["claude-sonnet-4-6-20250514", "claude-opus-4-6"];
   if (!validModels.includes(body.model)) return c.json({ error: "Model invalid" }, 400);
 
   const conv = await verifyConversationOrg(convId, auth.organizationId!);

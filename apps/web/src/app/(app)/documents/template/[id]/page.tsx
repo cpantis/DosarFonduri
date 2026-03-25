@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { apiGet, apiPut, apiPost, apiDelete } from "@/lib/api";
+import { useToast } from "@/components/shared/Toast";
 
 /* ═══ TYPES ═══ */
 interface TemplateElement {
@@ -53,6 +54,7 @@ const TYPE_OPTIONS = ["text", "number", "textarea", "date", "table", "signature"
 export default function TemplateViewerPage() {
   const params = useParams();
   const router = useRouter();
+  const { toast } = useToast();
   const docId = params.id as string;
 
   const [template, setTemplate] = useState<TemplateData | null>(null);
@@ -111,6 +113,17 @@ export default function TemplateViewerPage() {
   const [elementRuleLinks, setElementRuleLinks] = useState<Record<string, RuleLinkFull[]>>({});
   const [expandedRuleId, setExpandedRuleId] = useState<string | null>(null);
   const [elementScoring, setElementScoring] = useState<Record<string, Array<{ criterionName: string; maxPoints: number }>>>({});
+
+  // Loading states for actions
+  const [validatingId, setValidatingId] = useState<string | null>(null);
+  const [validatingPage, setValidatingPage] = useState(false);
+  const [addingElement, setAddingElement] = useState(false);
+
+  // Inline edit state
+  const [editingElId, setEditingElId] = useState<string | null>(null);
+  const [editFields, setEditFields] = useState<{ label: string; fieldType: string }>({ label: "", fieldType: "text" });
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [deletingElId, setDeletingElId] = useState<string | null>(null);
 
   // Split pane
   const [splitWidth, setSplitWidth] = useState(400);
@@ -247,7 +260,8 @@ export default function TemplateViewerPage() {
   // ─── ACTIONS ───
   const handleValidate = async (id: string) => {
     const el = allElements.find(e => e.id === id);
-    if (!el) return;
+    if (!el || validatingId) return;
+    setValidatingId(id);
     try {
       await apiPut(`/api/documents/documents/${docId}/elements/${id}`, { validated: !el.validated });
       setTemplate(prev => {
@@ -262,22 +276,37 @@ export default function TemplateViewerPage() {
           })),
         };
       });
-    } catch {}
+    } catch (err: any) {
+      toast("error", `Eroare la validare: ${err.message || "necunoscută"}`);
+    } finally {
+      setValidatingId(null);
+    }
   };
 
   const handleValidatePage = async (pageNum: number) => {
+    if (validatingPage) return;
     const pageEls = allElements.filter(e => (e.pageNum || 1) === pageNum);
     const allVal = pageEls.every(e => e.validated);
+    setValidatingPage(true);
     try {
       await apiPut(`/api/documents/documents/${docId}/elements-validate-page`, { pageNum, validated: !allVal });
       await loadTemplate();
-    } catch {}
+      toast("success", `Pagina ${pageNum} — ${allVal ? "devalidată" : "validată"}`);
+    } catch (err: any) {
+      toast("error", `Eroare la validarea paginii: ${err.message || "necunoscută"}`);
+    } finally {
+      setValidatingPage(false);
+    }
   };
 
   const handleAddElement = async () => {
     if (!newEl.key || !newEl.label) return;
     // Validate key format: alphanumeric, underscores, hyphens only
-    if (!/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(newEl.key)) return;
+    if (!/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(newEl.key)) {
+      toast("warning", "Cheia trebuie să înceapă cu literă și să conțină doar litere, cifre, _ sau -");
+      return;
+    }
+    setAddingElement(true);
     try {
       await apiPost(`/api/documents/documents/${docId}/elements`, {
         key: newEl.key,
@@ -288,8 +317,50 @@ export default function TemplateViewerPage() {
       });
       setNewEl({ key: "", label: "", type: "text" });
       setShowAddForm(false);
+      toast("success", "Element adăugat");
       await loadTemplate();
-    } catch {}
+    } catch (err: any) {
+      toast("error", `Eroare la adăugare element: ${err.message || "necunoscută"}`);
+    } finally {
+      setAddingElement(false);
+    }
+  };
+
+  const handleStartEdit = (el: TemplateElement) => {
+    setEditingElId(el.id);
+    setEditFields({ label: el.label, fieldType: el.fieldType });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingElId || !editFields.label.trim()) return;
+    setSavingEdit(true);
+    try {
+      await apiPut(`/api/documents/documents/${docId}/elements/${editingElId}`, {
+        label: editFields.label.trim(),
+        fieldType: editFields.fieldType,
+      });
+      setEditingElId(null);
+      toast("success", "Element actualizat");
+      await loadTemplate();
+    } catch (err: any) {
+      toast("error", `Eroare la editare: ${err.message || "necunoscută"}`);
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const handleDeleteElement = async (id: string) => {
+    setDeletingElId(id);
+    try {
+      await apiDelete(`/api/documents/documents/${docId}/elements/${id}`);
+      toast("success", "Element șters");
+      if (selectedEl === id) setSelectedEl(null);
+      await loadTemplate();
+    } catch (err: any) {
+      toast("error", `Eroare la ștergere: ${err.message || "necunoscută"}`);
+    } finally {
+      setDeletingElId(null);
+    }
   };
 
   const handleSelectElement = (id: string | null) => {
@@ -323,7 +394,9 @@ export default function TemplateViewerPage() {
         ...prev,
         validated: prev.validated + (info.mappingValidated ? -1 : 1),
       }));
-    } catch {}
+    } catch (err: any) {
+      toast("error", `Eroare la validarea mapping-ului: ${err.message || "necunoscută"}`);
+    }
   };
 
   // ─── COMPOSE CONFIG HANDLERS ───
@@ -333,12 +406,17 @@ export default function TemplateViewerPage() {
       const result = await apiPost<any>(`/api/neemia/templates/${docId}/detect-compose-markers`, {});
       if (result.composeMarkers?.length > 0) {
         setComposeSections(result.composeMarkers);
+        toast("success", `${result.composeMarkers.length} markeri detectați`);
+      } else {
+        toast("info", "Niciun marker COMPOSE detectat în template");
       }
       setAvailableRefTables(result.availableReferenceTables || []);
       if (result.suggestion === "compose") {
         setGenMode("compose");
       }
-    } catch {}
+    } catch (err: any) {
+      toast("error", `Eroare la detectarea markerilor: ${err.message || "necunoscută"}`);
+    }
     setComposeDetecting(false);
   };
 
@@ -354,7 +432,10 @@ export default function TemplateViewerPage() {
       } else {
         await apiPut(`/api/neemia/templates/${docId}/generation-mode`, { mode: genMode });
       }
-    } catch {}
+      toast("success", "Configurația a fost salvată");
+    } catch (err: any) {
+      toast("error", `Eroare la salvare: ${err.message || "necunoscută"}`);
+    }
     setComposeSaving(false);
   };
 
@@ -661,7 +742,7 @@ export default function TemplateViewerPage() {
                   <input
                     value={composeAiModel}
                     onChange={e => setComposeAiModel(e.target.value)}
-                    placeholder="claude-sonnet-4-20250514 (default din org)"
+                    placeholder="claude-sonnet-4-6-20250514 (default din org)"
                     className="flex-1 max-w-[320px] px-2.5 py-1 rounded border border-slate-200 bg-slate-50 text-slate-900 text-xs font-mono"
                   />
                   <button
@@ -941,12 +1022,58 @@ export default function TemplateViewerPage() {
                     </div>
                     {pgEls.map(el => {
                       const isActive = selectedEl === el.id;
+                      const isEditing = editingElId === el.id;
                       const cardClass = el.validated ? "is-validated" : !el.detected ? "is-manual" : "is-detected";
                       return (
-                        <div key={el.id} className={`el-card ${cardClass} ${isActive ? "active" : ""}`} onClick={() => handleSelectElement(isActive ? null : el.id)}>
+                        <div key={el.id} className={`el-card ${cardClass} ${isActive ? "active" : ""}`} onClick={() => !isEditing && handleSelectElement(isActive ? null : el.id)}>
+                          {isEditing ? (
+                            /* ─── Inline edit mode ─── */
+                            <div onClick={ev => ev.stopPropagation()}>
+                              <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+                                <input
+                                  className="add-input" style={{ flex: 1 }}
+                                  value={editFields.label}
+                                  onChange={e => setEditFields(f => ({ ...f, label: e.target.value }))}
+                                  onKeyDown={e => { if (e.key === "Enter") handleSaveEdit(); if (e.key === "Escape") setEditingElId(null); }}
+                                  autoFocus
+                                  placeholder="Etichetă"
+                                />
+                                <select className="add-select" value={editFields.fieldType} onChange={e => setEditFields(f => ({ ...f, fieldType: e.target.value }))}>
+                                  {TYPE_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
+                                </select>
+                              </div>
+                              <div style={{ display: "flex", gap: 6 }}>
+                                <button className="add-btn" disabled={!editFields.label.trim() || savingEdit} onClick={handleSaveEdit}>
+                                  {savingEdit ? "..." : "Salvează"}
+                                </button>
+                                <button style={{ fontSize: 11, padding: "4px 10px", border: "1px solid #e2e8f0", borderRadius: 6, background: "transparent", color: "#64748b", cursor: "pointer", fontFamily: "'Inter', system-ui, sans-serif" }} onClick={() => setEditingElId(null)}>
+                                  Anulează
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            /* ─── Normal view ─── */
+                            <>
                           <div className="el-card-top">
                             <span className="el-label">{el.label}</span>
                             <span className="el-type">{el.fieldType}</span>
+                            {isActive && (
+                              <span style={{ display: "flex", gap: 3, marginLeft: 2 }}>
+                                <button
+                                  title="Editează"
+                                  onClick={ev => { ev.stopPropagation(); handleStartEdit(el); }}
+                                  style={{ background: "none", border: "none", cursor: "pointer", fontSize: 12, color: "#94a3b8", padding: "0 2px" }}
+                                >✎</button>
+                                {!el.detected && (
+                                  <button
+                                    title="Șterge element manual"
+                                    disabled={deletingElId === el.id}
+                                    onClick={ev => { ev.stopPropagation(); handleDeleteElement(el.id); }}
+                                    style={{ background: "none", border: "none", cursor: "pointer", fontSize: 12, color: "#ef4444", padding: "0 2px", opacity: deletingElId === el.id ? 0.4 : 1 }}
+                                  >✕</button>
+                                )}
+                              </span>
+                            )}
                           </div>
                           <div className="el-card-bottom">
                             <span className="el-key">{`{{${el.key}}}`}</span>
@@ -954,10 +1081,12 @@ export default function TemplateViewerPage() {
                             <span className={`el-status ${el.validated ? "validated" : !el.detected ? "manual" : "detected"}`}>
                               {el.validated ? "Validat" : !el.detected ? "+Manual" : "Extras"}
                             </span>
-                            <button className={`el-validate ${el.validated ? "on" : ""}`} onClick={(ev) => { ev.stopPropagation(); handleValidate(el.id); }}>
-                              {el.validated ? "Invalidare" : "Valideaza"}
+                            <button className={`el-validate ${el.validated ? "on" : ""}`} disabled={validatingId === el.id} onClick={(ev) => { ev.stopPropagation(); handleValidate(el.id); }}>
+                              {validatingId === el.id ? "..." : el.validated ? "Invalidare" : "Valideaza"}
                             </button>
                           </div>
+                            </>
+                          )}
                           {/* Mapping review indicator */}
                           {(() => {
                             const mInfo = mappingData[el.key];
@@ -1189,7 +1318,7 @@ export default function TemplateViewerPage() {
                     </select>
                     <span className="text-[11px] text-violet-500 self-center">Pag. {currentPageNum}</span>
                   </div>
-                  <button className="add-btn" disabled={!newEl.key || !newEl.label} onClick={handleAddElement}>Adauga element</button>
+                  <button className="add-btn" disabled={!newEl.key || !newEl.label || addingElement} onClick={handleAddElement}>{addingElement ? "Se adaugă..." : "Adauga element"}</button>
                 </div>
               )}
             </div>
@@ -1232,8 +1361,8 @@ export default function TemplateViewerPage() {
                 })}
               </div>
               {currentPage && (
-                <button className="tv-val-all" onClick={() => handleValidatePage(currentPageNum)}>
-                  {currentPage.elements.every(e => e.validated) ? "Invalideaza pagina" : "Valideaza pagina"}
+                <button className="tv-val-all" disabled={validatingPage} onClick={() => handleValidatePage(currentPageNum)}>
+                  {validatingPage ? "Se validează..." : currentPage.elements.every(e => e.validated) ? "Invalideaza pagina" : "Valideaza pagina"}
                 </button>
               )}
             </div>

@@ -496,11 +496,11 @@ export default function DocumentsPage() {
       setExpandedNodes(prev => ({ ...prev, [parentId]: true, [newNode.id]: true }));
       setRenaming(newNode.id);
       setRenameVal(childInfo.defaultName);
-    } catch (err) {
-      console.error("Failed to create folder:", err);
+    } catch (err: any) {
+      toast("error", `Eroare la crearea folderului: ${err.message || "necunoscută"}`);
     }
     setCtxMenu(null);
-  }, [tree]);
+  }, [tree, toast]);
 
   const handleRename = useCallback((nodeId: string) => {
     const findLabel = (nodes: TreeNode[]): string | null => {
@@ -520,24 +520,24 @@ export default function DocumentsPage() {
       try {
         await apiPut(`/api/documents/folders/${renaming}`, { name: renameVal.trim() });
         setTree(prev => updateNodeInTree(prev, renaming, n => ({ ...n, label: renameVal.trim() })));
-      } catch (err) {
-        console.error("Failed to rename folder:", err);
+      } catch (err: any) {
+        toast("error", `Eroare la redenumire: ${err.message || "necunoscută"}`);
       }
     }
     setRenaming(null);
     setRenameVal("");
-  }, [renaming, renameVal]);
+  }, [renaming, renameVal, toast]);
 
   const handleDelete = useCallback(async (nodeId: string) => {
     try {
       await apiDelete(`/api/documents/folders/${nodeId}`);
       if (selectedFolder === nodeId) setSelectedFolder(null);
       setTree(prev => removeNodeFromTree(prev, nodeId));
-    } catch (err) {
-      console.error("Failed to delete folder:", err);
+    } catch (err: any) {
+      toast("error", `Eroare la ștergerea folderului: ${err.message || "necunoscută"}`);
     }
     setCtxMenu(null);
-  }, [selectedFolder]);
+  }, [selectedFolder, toast]);
 
   const handleContextMenu = useCallback((e: React.MouseEvent, nodeId: string) => {
     e.preventDefault();
@@ -809,7 +809,7 @@ export default function DocumentsPage() {
                 setTree(prev => [...prev, newNode]);
                 setRenaming(newNode.id);
                 setRenameVal("Program nou");
-              }).catch(err => console.error("Failed to create program:", err));
+              }).catch((err: any) => toast("error", `Eroare la crearea programului: ${err.message || "necunoscută"}`));
             }}>
               + Adauga program
             </button>
@@ -827,7 +827,7 @@ export default function DocumentsPage() {
                 setTree(prev => [...prev, newNode]);
                 setRenaming(newNode.id);
                 setRenameVal("Program nou");
-              }).catch(err => console.error("Failed to create program:", err));
+              }).catch((err: any) => toast("error", `Eroare la crearea programului: ${err.message || "necunoscută"}`));
             }}>
               + Adauga program
             </button>

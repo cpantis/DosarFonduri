@@ -289,29 +289,62 @@ export async function autoMapTemplatePlaceholders(
   }
 
   // ═══ Phase 2: Fuzzy text matching fallback (for elements AI missed or if AI failed) ═══
-  // Catches exact/normalized matches that AI might have skipped
+  // Uses already-loaded defs (no extra DB queries). Catches exact/normalized matches AI missed.
   const fuzzyUnmatched: typeof tmplElements = [];
-  for (const te of aiUnmatched) {
-    const match = defs.length > 0
-      ? await findElementDefinition(te.key, organizationId, 0.7)
-      : null;
+  if (defs.length > 0 && aiUnmatched.length > 0) {
+    // Build lookup structures once (not per-element)
+    const exactMap = new Map(defs.map(d => [d.elementKey, d]));
+    const normalizedMap = new Map(defs.map(d => [normalize(d.elementKey), d]));
 
-    if (match) {
-      try {
-        await db.insert(templatePlaceholderMapping).values({
-          templateDocumentId,
-          placeholderKey: te.key,
-          elementDefId: match.id,
-          mappedBy: "auto",
-          confidence: String(Number(match.score) || 0.85),
-        }).onConflictDoNothing();
-        mapped++;
-      } catch {
-        // already mapped (conflict) — skip
+    for (const te of aiUnmatched) {
+      const normalizedInput = normalize(te.key);
+
+      // 1. Exact match
+      let match = exactMap.get(te.key);
+      let matchScore = match ? 1.0 : 0;
+
+      // 2. Normalized exact match
+      if (!match) {
+        match = normalizedMap.get(normalizedInput);
+        matchScore = match ? 0.95 : 0;
       }
-    } else {
-      fuzzyUnmatched.push(te as any);
+
+      // 3. Fuzzy match via similarity
+      if (!match) {
+        let bestScore = 0;
+        for (const def of defs) {
+          const score = similarity(normalizedInput, normalize(def.elementKey));
+          if (score > bestScore) { bestScore = score; match = def; matchScore = score; }
+        }
+        // Fallback: display name similarity
+        if (matchScore < 0.7) {
+          for (const def of defs) {
+            const score = similarity(normalizedInput, normalize(def.displayName)) * 0.85;
+            if (score > matchScore) { matchScore = score; match = def; }
+          }
+        }
+        if (matchScore < 0.7) match = undefined;
+      }
+
+      if (match) {
+        try {
+          await db.insert(templatePlaceholderMapping).values({
+            templateDocumentId,
+            placeholderKey: te.key,
+            elementDefId: match.id,
+            mappedBy: "auto",
+            confidence: String(Number(matchScore) || 0.85),
+          }).onConflictDoNothing();
+          mapped++;
+        } catch {
+          // already mapped (conflict) — skip
+        }
+      } else {
+        fuzzyUnmatched.push(te as any);
+      }
     }
+  } else {
+    fuzzyUnmatched.push(...(aiUnmatched as any[]));
   }
 
   // ═══ Phase 3: Auto-create element_definitions for truly unmatched placeholders ═══
@@ -365,7 +398,7 @@ async function aiSemanticMapping(
 
   try {
     const response = await withAILimit(() => anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
+      model: "claude-sonnet-4-6-20250514",
       max_tokens: 4000,
       system: `Ești expert în maparea câmpurilor de formulare la definiții de elemente pentru fonduri europene din România.
 
@@ -393,7 +426,7 @@ Returnează DOAR un JSON array valid. Fără backticks, fără explicații.`,
     await logAIUsage({
       organizationId,
       agent: "template_mapping",
-      model: "claude-sonnet-4-20250514",
+      model: "claude-sonnet-4-6-20250514",
       tokensInput: response.usage.input_tokens,
       tokensOutput: response.usage.output_tokens,
       action: "ai_semantic_mapping",
@@ -519,7 +552,7 @@ export async function extractElementDefinitionsFromGuide(
   organizationId: string,
 ): Promise<number> {
   const response = await withAILimit(() => anthropic.messages.create({
-    model: "claude-sonnet-4-20250514",
+    model: "claude-sonnet-4-6-20250514",
     max_tokens: 8000,
     system: ELEMENT_EXTRACTION_SYSTEM,
     messages: [{
@@ -534,7 +567,7 @@ export async function extractElementDefinitionsFromGuide(
   await logAIUsage({
     organizationId,
     agent: "ghid_rules",
-    model: "claude-sonnet-4-20250514",
+    model: "claude-sonnet-4-6-20250514",
     tokensInput: response.usage.input_tokens,
     tokensOutput: response.usage.output_tokens,
     action: "extract_element_definitions",

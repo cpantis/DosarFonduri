@@ -20,7 +20,7 @@ export async function extractRegistruImobilizari(pdfText: string): Promise<Extra
   const start = Date.now();
 
   const response = await withAILimit(() => anthropic.messages.create({
-    model: "claude-sonnet-4-20250514",
+    model: "claude-sonnet-4-6-20250514",
     max_tokens: 10000,
     system: `Ești expert în contabilitate românească. Extrage registrul de imobilizări corporale (mijloace fixe) din documentul primit.
 
@@ -64,7 +64,7 @@ ${pdfText.slice(0, 120000)}`,
   if (response.stop_reason === "max_tokens") {
     console.warn(`[registruExtractor] Truncated at ${fullText.length} chars, requesting continuation...`);
     const contResponse = await withAILimit(() => anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
+      model: "claude-sonnet-4-6-20250514",
       max_tokens: 10000,
       system: `Ești expert în contabilitate românească. Continuă JSON-ul trunchiat. NU repeta ce a fost generat anterior.`,
       messages: [

@@ -91,7 +91,7 @@ const AGENT_COLORS: Record<string, string> = { solomon: "#4d8bff", neemia: "#a78
 const AGENT_DOT_COLORS: Record<string, string> = { solomon: "#4d8bff", neemia: "#a78bfa", ocr: "#fb923c", ghid_rules: "#fbbf24" };
 const MODEL_COLORS: Record<string, string> = {
   "claude-haiku-4-5-20251001": "#34d399",
-  "claude-sonnet-4-20250514": "#4d8bff",
+  "claude-sonnet-4-6-20250514": "#4d8bff",
   "claude-opus-4-6": "#a78bfa",
 };
 
@@ -454,7 +454,7 @@ export default function AdminPage() {
                   {costs.byModel.map((m: any) => {
                     const modelNames: Record<string, string> = {
                       "claude-haiku-4-5-20251001": "Haiku",
-                      "claude-sonnet-4-20250514": "Sonnet",
+                      "claude-sonnet-4-6-20250514": "Sonnet",
                       "claude-opus-4-6": "Opus",
                     };
                     return (

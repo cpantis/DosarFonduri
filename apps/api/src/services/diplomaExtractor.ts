@@ -10,7 +10,7 @@ export async function extractDiploma(pdfText: string): Promise<ExtractionResult>
   const start = Date.now();
 
   const response = await withAILimit(() => anthropic.messages.create({
-    model: "claude-sonnet-4-20250514",
+    model: "claude-sonnet-4-6-20250514",
     max_tokens: 2000,
     system: `Ești expert în documente de studii românești. Extrage datele structurate din diploma/certificatul primit.
 

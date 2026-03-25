@@ -527,7 +527,7 @@ export const processTemplateWorker = new Worker<ProcessTemplatePayload>(
 
         await job.updateProgress(55);
         const classified = placeholders.length > 0
-          ? await classifyElements(placeholders, "claude-sonnet-4-20250514", classifyTokenUsage)
+          ? await classifyElements(placeholders, "claude-sonnet-4-6-20250514", classifyTokenUsage)
           : [];
 
         await job.updateProgress(70);
@@ -650,8 +650,8 @@ export const processTemplateWorker = new Worker<ProcessTemplatePayload>(
 
       await logAIUsage({
         organizationId,
-        agent: "ghid_rules",
-        model: "claude-sonnet-4-20250514",
+        agent: "template_mapping",
+        model: "claude-sonnet-4-6-20250514",
         tokensInput: classifyTokenUsage.input,
         tokensOutput: classifyTokenUsage.output,
         action: "classify_template_elements",

@@ -749,7 +749,7 @@ export default function ProjectViewPage() {
     }
   }, [activeLeaf]);
 
-  async function initSolomonConversation() {
+  async function initSolomonConversation(): Promise<string | null> {
     try {
       const convs = await apiGet<any[]>(`/api/solomon/projects/${projectId}/conversations`);
       if (convs && convs.length > 0) {
@@ -773,6 +773,7 @@ export default function ProjectViewPage() {
           }
         }
         setSolomonElements(elems);
+        return conv.id;
       } else {
         const newConv = await apiPost<any>(`/api/solomon/projects/${projectId}/conversations`, {});
         setSolomonConvId(newConv.id);
@@ -780,9 +781,11 @@ export default function ProjectViewPage() {
         if (newConv.greeting) {
           setSolomonMessages([{ role: "assistant", text: newConv.greeting, extractions: [] }]);
         }
+        return newConv.id;
       }
     } catch (err) {
       console.error("Failed to init Solomon conversation:", err);
+      return null;
     }
   }
 
@@ -811,18 +814,32 @@ export default function ProjectViewPage() {
   };
 
   // Ask Solomon about a specific element — prefill chat input and switch to Solomon tab
-  const askSolomonAbout = (el: { key: string; label: string; value?: string | null; status: string }) => {
+  const askSolomonAbout = async (el: { key: string; label: string; value?: string | null; status: string }) => {
     setActiveLeaf("solomon");
     const valueInfo = el.value ? `Valoarea curentă: "${el.value}"` : "Nu are valoare completată";
     const statusHint = el.status === "conflict" ? " (are conflict)" : el.status === "propus_ai" ? " (propus de AI, neconfirmat)" : "";
-    setSolomonInput(`Ajută-mă cu elementul "${el.label}" (${el.key})${statusHint}. ${valueInfo}. Ce valoare ar trebui completată și de unde o obțin?`);
+    const prompt = `Ajută-mă cu elementul "${el.label}" (${el.key})${statusHint}. ${valueInfo}. Ce valoare ar trebui completată și de unde o obțin?`;
+    // Ensure conversation is initialized before setting input
+    if (!solomonConvId) {
+      await initSolomonConversation();
+    }
+    setSolomonInput(prompt);
     setTimeout(() => {
       (document.querySelector("[data-solomon-input]") as HTMLTextAreaElement)?.focus();
-    }, 150);
+    }, 200);
   };
 
   const handleSolomonSend = async () => {
-    if (readOnly || !solomonInput.trim() || !solomonConvId || solomonStreaming) return;
+    if (readOnly || !solomonInput.trim() || solomonStreaming) return;
+    let convId = solomonConvId;
+    if (!convId) {
+      // Conversation not initialized yet — init now and get ID directly
+      convId = await initSolomonConversation();
+      if (!convId) {
+        toast("error", "Conversația Solomon nu este pregătită. Reîncearcă.");
+        return;
+      }
+    }
     const userText = solomonInput;
     setSolomonMessages(prev => [...prev, { role: "user", text: userText, extractions: null }]);
     setSolomonInput("");
@@ -847,7 +864,7 @@ export default function ProjectViewPage() {
       const abortCtrl = new AbortController();
       solomonAbortRef.current = abortCtrl;
       const token = typeof window !== "undefined" ? localStorage.getItem("df-token") : null;
-      const res = await fetch(`${API_URL}/api/solomon/conversations/${solomonConvId}/messages`, {
+      const res = await fetch(`${API_URL}/api/solomon/conversations/${convId}/messages`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

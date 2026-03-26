@@ -289,21 +289,52 @@ CLASIFICARE SEMANTICĂ per regulă: THRESHOLD, SCORING, TEMPORAL, DOCUMENT_BASED
    Cod, nume, punctaj maxim, categorie, logica evaluare (lookup/range/boolean/formula).
    Capturează structura COMPLETĂ a tabelelor de punctaj.
 
-4. DEFINIȚII ELEMENTE (câmpuri de colectat):
-   TOATE câmpurile necesare, inclusiv IMPLICITE. Dacă o regulă se referă la un câmp nelistat, ADAUGĂ-L.
-   CARDINALITATE: "3 oferte" → min_count=3.
+4. DEFINIȚII ELEMENTE — GÂNDEȘTE CA UN CONSULTANT CARE PREGĂTEȘTE DOSARUL:
+   Parcurge FIECARE regulă și criteriu de selecție extras mai sus și întreabă-te:
+   "Ce DATE îi trebuie consultantului pentru a verifica această regulă sau a calcula acest punctaj?"
+
+   METODA DE EXTRAGERE (obligatorie, pas cu pas):
+   a) Pentru FIECARE regulă fixă → ce câmp verifică? Creează elementul.
+      Ex: "Forma juridică trebuie SRL/SA" → element: forma_juridica (enum)
+      Ex: "Exploatația ≥ 8.000 SO" → element: dimensiune_economica_so (number, unit: EUR)
+   b) Pentru FIECARE regulă interpretată → ce factori intră în arbore? Creează un element per factor.
+      Ex: INT1 depinde de: categorie fermă, vârstă administrator, angajament agromediu, zonă ANC
+      → 4 elemente separate: categorie_ferma_so, varsta_administrator, angajament_agromediu, zona_anc
+   c) Pentru FIECARE criteriu de selecție → ce date sunt evaluate? Creează elementul.
+      Ex: P2 "Membru formă asociativă = 10p" → element: membru_forma_asociativa (enum: da/nu)
+      Ex: P3 "Utilaje no-till = 10p" → element: utilaje_no_till (enum: da/nu)
+      Ex: P7 "Studii superioare agricol = 3p" → element: studii_manager_nivel (enum), studii_manager_domeniu (enum)
+   d) Pentru FIECARE condiție din checklist documente → ce informație condiționează documentul?
+      Ex: "Doar pentru forme asociative" → element: membru_forma_asociativa (dacă nu e deja creat)
+
+   REGULA DE AUR: Dacă un consultant are nevoie de o informație pentru a completa cererea de finanțare
+   sau pentru a evalua un criteriu de punctaj, acea informație TREBUIE să fie un element.
+   NU te limita la lista de câmpuri predefinite — creează câmpuri noi specifice programului.
+   Folosește snake_case descriptiv: membru_forma_asociativa, suprafata_sfecla_zahar, utilaje_no_till.
+
+   CARDINALITATE: "3 oferte" → min_count=3. "Minimum 2 surse" → min_count=2.
 
 5. DOCUMENTE NECESARE (checklist complet):
    TOATE documentele de depus — din secțiunea dedicată + mențiuni dispersate ("va prezenta", "va anexa").
    FIECARE document separat. Un document lipsă = dosar respins.
+   Include CONDIȚIILE: "doar pentru forme asociative", "doar dacă valoare > 100.000 EUR", etc.
 
 Fii EXHAUSTIV dar PRECIS — mai bine o regulă cu needs_review decât una omisă.
 Returnează DOAR JSON valid. Fără backticks, fără explicații.`;
 
-const CONSULTANT_USER = `Citește INTEGRAL acest ghid și extrage TOTUL — ca un consultant care nu își permite să rateze nimic.
+const CONSULTANT_USER = `Citește INTEGRAL acest ghid și extrage TOTUL — ca un consultant care pregătește dosarul de la zero.
 
-CÂMPURI DISPONIBILE PENTRU condition.field:
+CÂMPURI PREDEFINITE — folosește aceste chei canonice DACĂ se potrivesc:
 ${FIELD_LIST_FOR_PROMPT}
+
+IMPORTANT: Lista de mai sus e doar un punct de plecare. Dacă ghidul menționează un concept care NU are cheie canonică,
+CREEAZĂ o cheie nouă descriptivă în snake_case. Exemple:
+- "Membru formă asociativă" → membru_forma_asociativa
+- "Utilaje no-till" → utilaje_no_till
+- "Suprafață sfeclă de zahăr" → suprafata_sfecla_zahar
+- "Studii manager" → studii_manager_nivel + studii_manager_domeniu
+- "Vechime agroalimentară" → vechime_agroalimentar_ani
+NU omite un element doar pentru că nu e în lista predefinită. Ghidul e fundația — extrage TOT.
 
 Returnează un singur obiect JSON cu 5 chei:
 {

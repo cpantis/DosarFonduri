@@ -22,7 +22,7 @@ import {
   organizations, solomonKnowledge, composeSectionVersions,
   projectChecklist, elementDefinitions,
 } from "../db/schema";
-import { eq, and, inArray, isNull, or, like } from "drizzle-orm";
+import { eq, and, inArray, isNull, or, like, not } from "drizzle-orm";
 import { getFileBuffer, uploadFile } from "./storage";
 import { extractTextFromDOCX } from "./ocr";
 import { logAIUsage } from "./aiUsage";
@@ -621,6 +621,16 @@ ${s.instructions ? `- Instrucțiuni specifice: ${s.instructions}` : ""}${bluepri
     ))
     .orderBy(solomonKnowledge.priority);
 
+  // Load strategic references + manual knowledge for citation context
+  const knowledgeBase = await db.select().from(solomonKnowledge)
+    .where(and(
+      eq(solomonKnowledge.organizationId, organizationId),
+      eq(solomonKnowledge.enabled, true),
+      not(like(solomonKnowledge.category, "wk_%")),
+    ))
+    .orderBy(solomonKnowledge.priority)
+    .limit(50);
+
   // Deduplicate: if program-specific WK covers same topic as generic, prefer program-specific
   const writingKitFiltered = (() => {
     const programEntries = writingKit.filter(wk => wk.category.startsWith("wk_prog_"));
@@ -677,6 +687,14 @@ ${s.instructions ? `- Instrucțiuni specifice: ${s.instructions}` : ""}${bluepri
       }).join("\n\n")
     : "";
 
+  // Build knowledge base context (references + manual entries)
+  const knowledgeContext = knowledgeBase.length > 0
+    ? `\n═══ BAZĂ DE CUNOȘTINȚE (${knowledgeBase.length} intrări) ═══
+Folosește aceste referințe pentru a cita obiective strategice, date statistice, cadru legal:
+${knowledgeBase.map(k => `[${k.category.toUpperCase()}] ${k.title}\n${k.content.slice(0, 500)}`).join("\n\n")}
+`
+    : "";
+
   // ── Template text context (structural awareness) ──
   const templateTextContext = context.templateText
     ? `\nSTRUCTURA DOCUMENTULUI TEMPLATE (text extras din DOCX):
@@ -729,7 +747,7 @@ Cunoști legislația fondurilor europene (GBER, de minimis, OUG 66/2011, HG 399/
 ${writingKitContext ? `
 ═══ WRITING KIT — Terminologie și keywords profesionale ═══
 ${writingKitContext}
-` : ""}${cabinetPreferences}${templateTextContext}
+` : ""}${knowledgeContext}${cabinetPreferences}${templateTextContext}
 ═══ CONTEXT PROIECT ═══
 - Nume proiect: ${context.projectName}
 - Firmă: ${context.companyName} (CUI: ${context.companyCui})

@@ -527,9 +527,14 @@ export default function DocumentsPage() {
   });
 
   // Build a lookup: documentId → { progress, message, status }
+  // SSE stores by jobId (e.g. "doc-abc123") or documentId (e.g. "abc123")
   const jobProgressMap = new Map<string, { progress: number; message: string; status: string }>();
-  for (const jp of sseJobProgress) {
-    jobProgressMap.set(jp.id, { progress: jp.progress, message: jp.message, status: jp.status });
+  for (const [id, jp] of sseJobProgress) {
+    jobProgressMap.set(id, { progress: jp.progress, message: jp.message, status: jp.status });
+    // Also index by documentId extracted from jobId format "doc-{uuid}"
+    if (id.startsWith("doc-")) {
+      jobProgressMap.set(id.slice(4), { progress: jp.progress, message: jp.message, status: jp.status });
+    }
   }
 
   // Keyboard shortcut: Ctrl+K to focus search

@@ -527,13 +527,14 @@ export default function DocumentsPage() {
   });
 
   // Build a lookup: documentId → { progress, message, status }
-  // SSE stores by jobId (e.g. "doc-abc123") or documentId (e.g. "abc123")
+  // SSE stores by jobId (e.g. "doc-abc123") — we also index by raw documentId
   const jobProgressMap = new Map<string, { progress: number; message: string; status: string }>();
-  for (const [id, jp] of sseJobProgress) {
-    jobProgressMap.set(id, { progress: jp.progress, message: jp.message, status: jp.status });
+  for (const jp of sseJobProgress) {
+    const entry = { progress: jp.progress, message: jp.message, status: jp.status };
+    jobProgressMap.set(jp.id, entry);
     // Also index by documentId extracted from jobId format "doc-{uuid}"
-    if (id.startsWith("doc-")) {
-      jobProgressMap.set(id.slice(4), { progress: jp.progress, message: jp.message, status: jp.status });
+    if (jp.id.startsWith("doc-")) {
+      jobProgressMap.set(jp.id.slice(4), entry);
     }
   }
 

@@ -723,6 +723,7 @@ export default function SettingsPage() {
                 >
                 + Adaug&#259; cuno&#537;tin&#539;&#259;
               </button>
+              </div>
 
               {/* Add/Edit form */}
               {showAddKnowledge && (

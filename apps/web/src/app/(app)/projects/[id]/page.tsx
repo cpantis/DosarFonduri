@@ -1394,6 +1394,54 @@ export default function ProjectViewPage() {
         continue;
       }
 
+      // Markdown table detection: line starts with |
+      if (trimmed.startsWith("|") && trimmed.endsWith("|")) {
+        flushList();
+        // Collect all table rows
+        const tableRows: string[] = [trimmed];
+        while (i + 1 < lines.length) {
+          const nextLine = lines[i + 1].trim();
+          if (nextLine.startsWith("|") && nextLine.endsWith("|")) {
+            tableRows.push(nextLine);
+            i++;
+          } else {
+            break;
+          }
+        }
+        // Parse: first row = header, second row = separator (skip), rest = data
+        const parseRow = (row: string) =>
+          row.split("|").slice(1, -1).map(cell => cell.trim());
+        const headers = parseRow(tableRows[0]);
+        const dataRows = tableRows
+          .slice(1)
+          .filter(r => !/^[\s|:-]+$/.test(r)) // skip separator rows like |---|---|
+          .map(parseRow);
+
+        blocks.push(
+          <div key={blockKey++} className="solomon-md-table-wrap">
+            <table className="solomon-md-table">
+              <thead>
+                <tr>
+                  {headers.map((h, hi) => (
+                    <th key={hi}>{renderInline(h)}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {dataRows.map((row, ri) => (
+                  <tr key={ri}>
+                    {row.map((cell, ci) => (
+                      <td key={ci}>{renderInline(cell)}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+        continue;
+      }
+
       // Regular paragraph
       flushList();
       blocks.push(<p key={blockKey++} className="solomon-md-p">{renderInline(trimmed)}</p>);
@@ -2749,6 +2797,12 @@ export default function ProjectViewPage() {
         .solomon-md-list li{position:relative;font-size:14.5px;line-height:1.7;color:#475569;padding-left:12px}
         .solomon-md-list li::before{content:'';position:absolute;left:0;top:9px;width:5px;height:5px;border-radius:50%;background:#94a3b8}
         .solomon-md-hr{border:none;height:1px;background:linear-gradient(90deg,transparent,#e2e8f0 20%,#e2e8f0 80%,transparent);margin:12px 0}
+        .solomon-md-table-wrap{overflow-x:auto;margin:8px 0;max-width:640px}
+        .solomon-md-table{width:100%;border-collapse:collapse;font-size:13px;line-height:1.5}
+        .solomon-md-table th{text-align:left;padding:8px 12px;background:#f1f5f9;border:1px solid #e2e8f0;font-weight:700;color:#0f172a;font-size:12px;text-transform:uppercase;letter-spacing:.3px;white-space:nowrap}
+        .solomon-md-table td{padding:6px 12px;border:1px solid #e2e8f0;color:#475569;font-variant-numeric:tabular-nums}
+        .solomon-md-table tbody tr:hover{background:#f8fafc}
+        .solomon-md-table tbody tr:nth-child(even){background:#fafbfc}
         .extraction-cards{margin-top:12px;display:flex;flex-direction:column;gap:8px}
         .extraction-card{background:#f0f7ff;border:1px solid #bfdbfe;border-radius:12px;padding:14px 20px;transition:all .2s}
         .extraction-card.confirmed{border-color:#a7f3d0;background:#ecfdf5}

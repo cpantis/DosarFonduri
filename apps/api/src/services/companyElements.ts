@@ -1,7 +1,7 @@
 import { db } from "../db";
 import {
   companies, companyElements, companyAssociates,
-  companyAdministrators, companyFinancials,
+  companyAdministrators, companyFinancials, projects,
 } from "../db/schema";
 import { eq, and } from "drizzle-orm";
 
@@ -249,9 +249,192 @@ export async function populateCompanyElements(
     } else {
       add("clasificare_imm", "mare", "calculated");
     }
+
+    // ─── G2: Întreprindere în dificultate (Reg. EU 651/2014, art. 2.18) ───
+    // O întreprindere e "în dificultate" dacă capitalurile proprii < 50% din capitalul social subscris
+    const capitalSocial = parseFloat(String(company.capitalSocial || 0));
+    if (capitalSocial > 0 && capitaluriProprii > 0) {
+      const ratioCapital = capitaluriProprii / capitalSocial;
+      add("ratio_capitaluri_proprii_capital_social", Math.round(ratioCapital * 100) / 100, "calculated");
+      // Verificare pentru SRL/SA (nu se aplică la micro < 3 ani)
+      const vechimeAni = company.anInfiintare ? new Date().getFullYear() - company.anInfiintare : 999;
+      const isMicro = emp < 10 && ca < 2000000;
+      if (isMicro && vechimeAni < 3) {
+        add("intreprindere_in_dificultate", "nu_se_aplica", "calculated");
+        add("intreprindere_in_dificultate_motiv", "Microîntreprindere sub 3 ani — excepție art. 2.18(d)", "calculated");
+      } else if (ratioCapital < 0.5) {
+        add("intreprindere_in_dificultate", "da", "calculated");
+        add("intreprindere_in_dificultate_motiv",
+          `Capitaluri proprii (${capitaluriProprii.toLocaleString("ro-RO")} RON) < 50% din capital social (${capitalSocial.toLocaleString("ro-RO")} RON). Raport: ${Math.round(ratioCapital * 100)}%`,
+          "calculated");
+      } else {
+        add("intreprindere_in_dificultate", "nu", "calculated");
+      }
+    }
+    // Verificare suplimentară: pierderi acumulate > 50% capital social
+    if (capitalSocial > 0 && profitNet < 0) {
+      const f10ProfitReportat = parseFloat(String(f10.profitReportat || f10.rezultatReportat || 0));
+      if (f10ProfitReportat < 0 && Math.abs(f10ProfitReportat) > capitalSocial * 0.5) {
+        add("pierderi_acumulate_peste_50pct", "da", "calculated");
+        add("pierderi_acumulate_valoare", f10ProfitReportat, "calculated");
+      } else {
+        add("pierderi_acumulate_peste_50pct", "nu", "calculated");
+      }
+    }
+
+    // ─── G8: Trend financiar 3 ani ───
+    if (financials.length >= 2) {
+      const sortedYears = financials.sort((a, b) => b.year - a.year);
+      const latestYear = sortedYears[0];
+      const prevYear = sortedYears[1];
+      const prev2Year = sortedYears.length >= 3 ? sortedYears[2] : null;
+
+      const getCA = (fin: any) => parseFloat(String((fin.f20 || {}).cifraAfaceriNeta || 0));
+      const getPN = (fin: any) => parseFloat(String((fin.f20 || {}).profitNet || 0));
+      const getEmp = (fin: any) => parseInt(String((fin.f30 || {}).numarMediuSalariati || 0));
+
+      const caLatest = getCA(latestYear);
+      const caPrev = getCA(prevYear);
+
+      // CA trend
+      if (caPrev > 0) {
+        const caTrend = Math.round(((caLatest - caPrev) / caPrev) * 100);
+        add("trend_cifra_afaceri_1an_pct", caTrend, "calculated");
+        add("trend_cifra_afaceri_1an", caTrend > 0 ? "crestere" : caTrend < 0 ? "scadere" : "stabil", "calculated");
+      }
+
+      // Profit trend
+      const pnLatest = getPN(latestYear);
+      const pnPrev = getPN(prevYear);
+      if (pnPrev !== 0) {
+        const pnTrend = Math.round(((pnLatest - pnPrev) / Math.abs(pnPrev)) * 100);
+        add("trend_profit_net_1an_pct", pnTrend, "calculated");
+      }
+
+      // Employees trend
+      const empLatest = getEmp(latestYear);
+      const empPrev = getEmp(prevYear);
+      if (empPrev > 0) {
+        const empTrend = Math.round(((empLatest - empPrev) / empPrev) * 100);
+        add("trend_angajati_1an_pct", empTrend, "calculated");
+      }
+
+      // 3-year trend (if available)
+      if (prev2Year) {
+        const caPrev2 = getCA(prev2Year);
+        if (caPrev2 > 0) {
+          const caTrend3 = Math.round(((caLatest - caPrev2) / caPrev2) * 100);
+          add("trend_cifra_afaceri_3ani_pct", caTrend3, "calculated");
+          add("trend_cifra_afaceri_3ani",
+            caTrend3 > 10 ? "crestere" : caTrend3 < -10 ? "scadere" : "stabil", "calculated");
+        }
+      }
+
+      // Consecutiv profit/pierdere
+      const yearsInProfit = sortedYears.filter(f => getPN(f) > 0).length;
+      const yearsInLoss = sortedYears.filter(f => getPN(f) < 0).length;
+      add("ani_consecutivi_profit", yearsInProfit, "calculated");
+      add("ani_consecutivi_pierdere", yearsInLoss, "calculated");
+      add("numar_ani_financiari", sortedYears.length, "calculated");
+    }
+
+    // ─── G7: Validare an bilanț (ultimul exercițiu fiscal încheiat) ───
+    const currentYear = new Date().getFullYear();
+    const expectedYear = new Date().getMonth() < 6 ? currentYear - 2 : currentYear - 1;
+    // Dacă suntem înainte de iunie, bilanțul așteptat e cel de acum 2 ani
+    add("an_bilant_asteptat", expectedYear, "calculated");
+    const latestFinYear = financials[0]?.year;
+    if (latestFinYear) {
+      add("bilant_actualizat", latestFinYear >= expectedYear ? "da" : "nu", "calculated");
+      if (latestFinYear < expectedYear) {
+        add("bilant_actualizat_motiv",
+          `Ultimul bilanț (${latestFinYear}) este mai vechi decât exercițiul fiscal așteptat (${expectedYear})`,
+          "calculated");
+      }
+    } else {
+      add("bilant_actualizat", "lipsa", "calculated");
+      add("bilant_actualizat_motiv", "Nu există niciun bilanț încărcat", "calculated");
+    }
   }
 
-  // === Upsert all elements ===
+  // ─── G6: Stare fiscală din date disponibile ───
+  // Consolidăm toate flag-urile de stare într-un singur element
+  const stareCompanie = (company.stare || "").toLowerCase();
+  const rawData = (company.onrcRawData || {}) as Record<string, any>;
+  const probleme: string[] = [];
+  if (rawData.insolventa) probleme.push("insolvență");
+  if (rawData.dizolvare) probleme.push("dizolvare");
+  if (rawData.lichidare) probleme.push("lichidare");
+  if (rawData.restrictii) probleme.push("restricții");
+  if (rawData.reorganizare) probleme.push("reorganizare");
+  if (stareCompanie.includes("radiat")) probleme.push("radiat");
+  if (stareCompanie.includes("inactiv")) probleme.push("inactiv fiscal");
+  if (stareCompanie.includes("suspendat")) probleme.push("suspendat");
+
+  add("stare_fiscala_ok", probleme.length === 0 ? "da" : "nu", "calculated");
+  if (probleme.length > 0) {
+    add("stare_fiscala_probleme", probleme.join(", "), "calculated");
+  }
+  add("numar_probleme_stare", probleme.length, "calculated");
+
+  // ─── G4: Cross-check asociați cu alte firme din platformă ───
+  if (associates.length > 0) {
+    const associateNames = associates.map(a => a.name.toLowerCase().trim());
+    // Find other companies in the same organization that share associates
+    const otherCompanies = await db.query.companies.findMany({
+      where: and(
+        eq(companies.organizationId, organizationId),
+      ),
+    });
+
+    const linkedCompanies: Array<{ cui: string; denumire: string; asociatComun: string }> = [];
+    for (const otherComp of otherCompanies) {
+      if (otherComp.id === companyId) continue;
+      const otherAssociates = await db.query.companyAssociates.findMany({
+        where: eq(companyAssociates.companyId, otherComp.id),
+      });
+      for (const oa of otherAssociates) {
+        if (associateNames.includes(oa.name.toLowerCase().trim())) {
+          linkedCompanies.push({
+            cui: otherComp.cui || "",
+            denumire: otherComp.denumire,
+            asociatComun: oa.name,
+          });
+          break; // one match per company is enough
+        }
+      }
+    }
+
+    add("firme_legate_numar", linkedCompanies.length, "calculated");
+    if (linkedCompanies.length > 0) {
+      add("firme_legate_detalii",
+        linkedCompanies.map(lc => `${lc.denumire} (CUI: ${lc.cui}) — asociat comun: ${lc.asociatComun}`).join("; "),
+        "calculated");
+      add("are_firme_legate", "da", "calculated");
+      // Important pentru IMM real — dacă firmele legate depășesc pragurile IMM
+      add("atentie_imm_legat",
+        "Verificați dacă firmele legate nu depășesc pragurile IMM consolidat (Reg. 651/2014 Anexa I art. 3)",
+        "calculated");
+    } else {
+      add("are_firme_legate", "nu", "calculated");
+    }
+  }
+
+  // ─── G5: Istoric proiecte pe platformă ───
+  const companyProjects = await db.query.projects.findMany({
+    where: eq(projects.companyId, companyId),
+  });
+  add("numar_proiecte_platforma", companyProjects.length, "calculated");
+  if (companyProjects.length > 0) {
+    const projectNames = companyProjects.map(p => p.name).join("; ");
+    add("proiecte_existente", projectNames, "calculated");
+  }
+
+  // ─── G3: Element de minimis (placeholder pentru declarație pe proprie răspundere) ───
+  // Nu putem verifica automat registrul de minimis, dar creăm elementul
+  // pe care consultantul îl poate completa manual sau din declarație
+  add("de_minimis_verificat", "nu", "calculated");
+  add("de_minimis_nota", "Completați valoarea ajutoarelor de minimis din ultimii 3 ani fiscali din declarația pe proprie răspundere", "calculated");
   if (elements.length === 0) return;
 
   // Delete existing and re-insert (atomic)

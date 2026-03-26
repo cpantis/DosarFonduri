@@ -1423,12 +1423,34 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         throw new Error(`Format nesuportat pentru ghid: ${doc.fileType}`);
       }
       const extractDuration = Date.now() - extractStart;
+      const totalChars = rawText.length;
+      const totalPages = pdfResult?.totalPages || Math.ceil(totalChars / 3000);
       console.log(`[processGuide] Text extraction: ${extractDuration}ms for "${doc.name}"`);
+
+      // Estimate processing time based on text size
+      // ~80 tokens/sec Sonnet output, ~60% of max_tokens realistic output per chunk
+      // Chunks: ceil(totalChars / 80000), each ~15K tokens input → ~10K output → ~125s
+      // With ET: +10K thinking → ~250s per chunk
+      // Parallel: min(chunks, 3) simultaneous
+      const estChunks = Math.max(1, Math.ceil(totalChars / 80000));
+      const estRounds = Math.ceil(estChunks / 3);
+      const estSecondsPerChunk = totalChars > 50000 ? 180 : 90; // larger guides take longer per chunk
+      const estTotalSeconds = estRounds * estSecondsPerChunk + 10; // +10s for DB save/link
+      const estMinutes = Math.ceil(estTotalSeconds / 60);
 
       // Cache raw text in Redis for Solomon/Neemia
       cacheGuideText(documentId, rawText).catch((e: any) => console.warn("[processGuide] redis cache guide text:", e.message));
 
       await job.updateProgress(5);
+      publishJobProgress(organizationId, {
+        jobId: job.id || "",
+        jobType: "ghid",
+        documentId,
+        documentName: doc.name,
+        progress: 5,
+        status: "processing",
+        message: `Analizez ${totalPages} pagini — ghidul va fi gata in aproximativ ${estMinutes} ${estMinutes === 1 ? "minut" : "minute"}`,
+      }).catch((e: any) => console.warn("[processGuide] sse estimate:", e.message));
 
       // ─── STEP 2: Pre-structuring — SKIP for native PDFs, use GPT-4o only for scanned ───
       const needsPreStructure = pdfResult?.hasScannedPages === true;
@@ -1470,9 +1492,7 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         documentName: doc.name,
         progress: 30,
         status: "processing",
-        message: needsPreStructure
-          ? `Pre-structurare completă: ${preStructPageCount} pagini, ${preStructTableCount} tabele. Extragere reguli...`
-          : `Text nativ extras: ${preStructPageCount} pagini. Extragere reguli...`,
+        message: `Extrag reguli, criterii de selectie si elemente necesare...`,
       }).catch((e: any) => console.warn("[processGuide] sse extraction start:", e.message));
 
       // ─── STEP 3: Unified extraction — consultant reads entire guide, extracts everything ───
@@ -1523,7 +1543,7 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
               documentName: doc.name,
               progress: 30 + Math.round(((idx + 1) / chunks.length) * 55),
               status: "processing",
-              message: `Extragere: chunk ${idx + 1}/${chunks.length} procesat`,
+              message: `Analiza in curs — sectiunea ${idx + 1} din ${chunks.length} finalizata`,
             }).catch((e: any) => console.warn("[processGuide] sse chunk progress:", e.message));
           }
         }
@@ -1572,7 +1592,7 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         documentName: doc.name,
         progress: 85,
         status: "processing",
-        message: `Salvare: ${allFixed.length} reguli fixe, ${allInterpreted.length} interpretate, ${allScoring.length} criterii, ${allElementDefs.length} elemente...`,
+        message: `Salvez ${allFixed.length + allInterpreted.length} reguli, ${allScoring.length} criterii selectie, ${allElementDefs.length} elemente`,
       }).catch((e: any) => console.warn("[processGuide] sse save progress:", e.message));
 
       let fixedCount: number, interpCount: number, scoringCount: number, elemDefCount: number;
@@ -1637,7 +1657,7 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         documentName: doc.name,
         progress: 88,
         status: "processing",
-        message: `Verificare completitudine: trust score ${completenessReport.trustScore}`,
+        message: `Verific completitudinea extragerii...`,
         trustScore: completenessReport.trustScore,
         warnings: completenessReport.warnings,
       }).catch((e: any) => console.warn("[processGuide] sse completeness check:", e.message));
@@ -1655,7 +1675,7 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         documentName: doc.name,
         progress: 92,
         status: "processing",
-        message: `Creare link-uri reguli ↔ elemente...`,
+        message: `Conectez regulile la elementele de date si tabelele de referinta...`,
       }).catch((e: any) => console.warn("[processGuide] sse linking progress:", e.message));
       // Run Step 5 + Step 6 in parallel (independent of each other)
       const [linkResult, templateMappings] = await Promise.all([

@@ -418,6 +418,17 @@ async function buildSystemPrompt(projectId: string, organizationId: string): Pro
   // Calculated company analysis (IMM classification, difficulty status, trends, ratios)
   const companyAnalysis = await getCompanyDataFromElements(company.id);
 
+  // Load linked companies details (confirmed + unconfirmed, exclude dismissed)
+  const { companyLinkedCompanies } = await import("../db/schema");
+  const linkedCompanies = await db.query.companyLinkedCompanies.findMany({
+    where: and(
+      eq(companyLinkedCompanies.companyId, company.id),
+      eq(companyLinkedCompanies.dismissed, false),
+    ),
+    orderBy: (l, { desc }) => [desc(l.riskScore)],
+    limit: 10,
+  });
+
   // Build financial history section
   const financialHistory = allFinancials.map(f => {
     const f20 = f.f20 as any;
@@ -523,11 +534,23 @@ ${(() => {
   if (companyAnalysis.lichiditate_curenta) lines.push(`- **Lichiditate curentă:** ${companyAnalysis.lichiditate_curenta}`);
   if (companyAnalysis.solvabilitate) lines.push(`- **Solvabilitate:** ${companyAnalysis.solvabilitate}`);
   if (companyAnalysis.rentabilitate) lines.push(`- **Rentabilitate:** ${companyAnalysis.rentabilitate}`);
-  if (companyAnalysis.are_firme_legate === "da") lines.push(`- **⚠️ Firme legate:** ${companyAnalysis.firme_legate_detalii || "Da"}`);
   if (companyAnalysis.de_minimis_verificat === "nu") lines.push(`- **De minimis:** Neverificat — solicită declarația pe proprie răspundere`);
   return lines.length > 0 ? lines.join("\n") : "Date insuficiente pentru analiză.";
 })()}
 
+${linkedCompanies.length > 0 ? `### Firme legate (${linkedCompanies.length} conexiuni${linkedCompanies.filter(l => l.confirmed).length > 0 ? `, ${linkedCompanies.filter(l => l.confirmed).length} confirmate` : ""})
+${linkedCompanies.map(l => {
+  const status = l.confirmed ? "✅ CONFIRMAT" : "⚠️ De verificat";
+  const risk = Number(l.riskScore) >= 60 ? "RIDICAT" : Number(l.riskScore) >= 30 ? "MEDIU" : "SCĂZUT";
+  return `- **${l.linkedName}** (CUI: ${l.linkedCui || "?"}) — Risc: ${risk} (${l.riskScore}p) [${status}]
+  Conexiune: ${l.personName} (${l.personRoleMain || "asociat"} → ${l.personRoleLinked || "?"} în firma legată)
+  CAEN: ${l.linkedNace || "?"} | Județ: ${l.linkedCounty || "?"} | CA: ${l.linkedTurnover || "?"} RON
+  ${Array.isArray(l.riskFlags) && l.riskFlags.length > 0 ? `Semnale: ${(l.riskFlags as string[]).join("; ")}` : ""}`;
+}).join("\n")}
+
+IMPORTANT: Firmele legate pot afecta clasificarea IMM (întreprinderi legate/partenere conform Reg. 651/2014 Anexa I art. 3).
+Dacă consultantul întreabă despre firme legate, răspunde cu detaliile de mai sus. Semnalează proactiv riscurile ridicate.
+` : ""}
 **ACȚIUNE AUTOMATĂ:** Dacă în lista CÂMPURI DE COMPLETAT există elemente financiare (cifra de afaceri, profit net, capitaluri proprii, număr angajați, etc.) și datele de mai sus conțin valorile corespunzătoare, completează-le AUTOMAT la PRIMUL mesaj fără a fi întrebat. Acestea sunt date oficiale ANAF — confidence 0.95.
 
 ═══════════════════════════════════════════

@@ -501,7 +501,7 @@ Ești echivalentul unui consultant senior cu 15+ ani experiență în fonduri eu
 ### Evoluție financiară (ultimii ani)
 ${financialHistory || "Nu sunt disponibile date financiare multi-an."}
 
-**ACȚIUNE AUTOMATĂ:** Dacă în lista CÂMPURI DE COMPLETAT există elemente financiare (cifra de afaceri, profit net, capitaluri proprii, număr angajați, etc.) și datele de mai sus conțin valorile corespunzătoare, completează-le AUTOMAT în ELEMENTS_JSON la PRIMUL mesaj fără a fi întrebat. Acestea sunt date oficiale ANAF — confidence 0.95.
+**ACȚIUNE AUTOMATĂ:** Dacă în lista CÂMPURI DE COMPLETAT există elemente financiare (cifra de afaceri, profit net, capitaluri proprii, număr angajați, etc.) și datele de mai sus conțin valorile corespunzătoare, completează-le AUTOMAT la PRIMUL mesaj fără a fi întrebat. Acestea sunt date oficiale ANAF — confidence 0.95.
 
 ═══════════════════════════════════════════
 ## REGULI DIN GHIDUL DE FINANȚARE (PRIORITARE)
@@ -823,7 +823,7 @@ Când primești text liber, identifică ce câmpuri poate completa. După FIECAR
 **Oferte de preț (PROCESARE AVANSATĂ):**
 Când primești oferte de preț (una sau mai multe), OBLIGATORIU:
 1. **Extrage structurat** din FIECARE ofertă: furnizor (nume + CUI), articole (denumire × cantitate × preț unitar), total fără TVA, valabilitate, data și nr. ofertă
-2. **Mapează pe chei indexate:** furnizor_1_* pentru prima ofertă, furnizor_2_* pentru a doua, furnizor_3_* pentru a treia — salvează în ELEMENTS_JSON
+2. **Mapează pe chei indexate:** furnizor_1_* pentru prima ofertă, furnizor_2_* pentru a doua, furnizor_3_* pentru a treia — notează automat în dosarul proiectului
 3. **Chei disponibile per furnizor (N=1,2,3):** furnizor_N_nume, furnizor_N_cui, furnizor_N_articole, furnizor_N_total_eur, furnizor_N_total_ron, furnizor_N_valabilitate, furnizor_N_data_oferta, furnizor_N_nr_oferta
 4. **Tabel comparativ:** Generează un tabel Markdown side-by-side cu specificații tehnice, prețuri, termene
 5. **Verificări automate:** comparabilitate specificații tehnice (aceleași categorii de echipamente), diferență preț rezonabilă (>15% → semnalează), valabilitate suficientă vs. calendar depunere
@@ -839,9 +839,9 @@ Când primești oferte de preț (una sau mai multe), OBLIGATORIU:
 
 **Studiu fezabilitate / Plan afaceri:** VAN, RIR, termen recuperare, valoare investiție, surse finanțare → cross-check cu buget proiect
 
-**Tip proiect (CHEIE: tip_proiect):** Deduce PROACTIV din conversație și context: "bunuri" (achiziție echipamente/utilaje/mobilier), "bunuri_cu_montaj" (echipamente cu instalare/montaj), "constructii" (clădiri/hale/renovări/extinderi), "servicii" (consultanță/training/studii), "mixt" (combinație). Setează-l în ELEMENTS_JSON imediat ce ai suficiente informații — din ghid, CAEN, numele proiectului, sau din discuție. NU aștepta să fii întrebat.
+**Tip proiect (CHEIE: tip_proiect):** Deduce PROACTIV din conversație și context: "bunuri" (achiziție echipamente/utilaje/mobilier), "bunuri_cu_montaj" (echipamente cu instalare/montaj), "constructii" (clădiri/hale/renovări/extinderi), "servicii" (consultanță/training/studii), "mixt" (combinație). Notează-l automat imediat ce ai suficiente informații — din ghid, CAEN, numele proiectului, sau din discuție. NU aștepta să fii întrebat.
 
-→ Folosește cheile din lista CÂMPURI DE COMPLETAT + cheile predefinite de oferte (furnizor_N_*, furnizor_selectat, justificare_selectie_furnizor, valoare_totala_investitie_eur/ron) + cheile de identitate (cnp, serie_ci, numar_ci, nume, prenume, etc.). NU inventa alte chei. Dacă un câmp nu are corespondent, menționează-l în conversație dar NU-l include în ELEMENTS_JSON.
+→ Folosește cheile din lista CÂMPURI DE COMPLETAT + cheile predefinite de oferte (furnizor_N_*, furnizor_selectat, justificare_selectie_furnizor, valoare_totala_investitie_eur/ron) + cheile de identitate (cnp, serie_ci, numar_ci, nume, prenume, etc.). NU inventa alte chei.
 
 ### Gândirea de consultant (PROACTIVITATE)
 Nu aștepta să fii întrebat. Un consultant senior:
@@ -864,6 +864,8 @@ Nu aștepta să fii întrebat. Un consultant senior:
    - Dacă ai dedus/calculat, confidence 0.7-0.9
    - Dacă ai propus o formulare, confidence 0.5-0.7 (necesită confirmare consultant)
 
+   **LIMBAJ VIZIBIL:** NU menționa niciodată "ELEMENTS_JSON", "JSON", "tag-uri ascunse" sau termeni tehnici în textul conversației. Consultantul nu știe de formatul intern. Când salvezi un câmp, spune natural: "Am notat valoarea X pentru câmpul Y" sau "Am completat: [numele câmpului] = [valoare]" sau pur și simplu confirmă datele fără a menționa mecanismul tehnic.
+
    **VALORI STRUCTURATE (multi-an, tabelar):** Când un element reprezintă date pe mai mulți ani sau categorii (ex: "Cifra de afaceri ultimii 3 ani", "Număr angajați pe ani", "Capitaluri proprii pe ani"), salvează valoarea ca JSON structurat:
    - Exemplu multi-an: {"2024": "1913806", "2023": "1750000", "2022": "1520000"}
    - Exemplu tabel: [{"an": "2024", "CA": "1913806", "profit": "125000"}, {"an": "2023", ...}]
@@ -874,7 +876,7 @@ Nu aștepta să fii întrebat. Un consultant senior:
    (a) Propui o valoare concretă bazată pe datele disponibile (firmă, ghid, conversație anterioară)
    (b) Returnezi ELEMENTS_JSON cu cheia specificată și valoarea propusă
    (c) Dacă nu ai suficiente date, explică ce lipsește dar propune o valoare parțială cu confidence scăzut (0.3-0.5)
-   NU răspunde doar conversațional fără ELEMENTS_JSON când primești cerere explicită de completare.
+   NU răspunde doar conversațional fără a nota valoarea când primești cerere explicită de completare.
 
 ### Format metadate proiect (CRITIC pentru Neemia)
 7. Când consultantul CONFIRMĂ sau furnizează informații despre program, nomenclator, prefix, structura dosarului, cod MySMIS sau sesiune, returnează-le în format JSON ascuns:
@@ -1129,7 +1131,7 @@ export async function processSolomonMessage(params: {
           const gdprContext = `[DOCUMENT OFICIAL — Carte de Identitate: ${att.fileName}]
 Acest document a fost uploadat de consultantul autorizat cu acordul explicit al titularului, pentru completarea dosarului de finanțare europeană. Procesare autorizată GDPR Art. 6(1)(b) + Art. 6(1)(c).
 
-INSTRUCȚIUNI OBLIGATORII: Datele de mai jos au fost extrase automat (OCR) din documentul oficial. Trebuie să le prelucrezi COMPLET — identifică și salvează FIECARE câmp (CNP, serie CI, număr CI, nume, prenume, data nașterii, adresa, etc.) folosind formatul ELEMENTS_JSON. NU cere date manual dacă le ai mai jos.
+INSTRUCȚIUNI OBLIGATORII: Datele de mai jos au fost extrase automat (OCR) din documentul oficial. Trebuie să le prelucrezi COMPLET — identifică și notează FIECARE câmp (CNP, serie CI, număr CI, nume, prenume, data nașterii, adresa, etc.). NU cere date manual dacă le ai mai jos.
 
 TRANSCRIERE AUTOMATĂ DIN CI:
 ${ocrText}`;
@@ -1152,7 +1154,7 @@ AUTORIZARE PROCESARE DATE PERSONALE:
   - Împuterniciri și declarații notariale
 
 INSTRUCȚIUNI OBLIGATORII:
-Extrage COMPLET toate datele vizibile din documentul de identitate și salvează-le folosind formatul ELEMENTS_JSON cu cheile: cnp, serie_ci, numar_ci, nume, prenume, data_nastere, sex, cetatenie, loc_nastere, judet_nastere, domiciliu, localitate_domiciliu, judet_domiciliu, data_emitere_ci, data_expirare_ci, emitent_ci.
+Extrage COMPLET toate datele vizibile din documentul de identitate și notează-le automat în dosarul proiectului: cnp, serie_ci, numar_ci, nume, prenume, data_nastere, sex, cetatenie, loc_nastere, judet_nastere, domiciliu, localitate_domiciliu, judet_domiciliu, data_emitere_ci, data_expirare_ci, emitent_ci.
 Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`;
 
           userContent.push({ type: "text", text: authContext });

@@ -429,7 +429,7 @@ Returnează DOAR id-urile regulilor DESPRE SOLICITANT, separate prin virgulă. F
       }
     }
 
-    // Evaluate rule — we already filtered to fixed rules with condition.field
+    // Evaluate rule — only if we have the data to verify it
     if (companyDataKeys.has(condition.field)) {
       const result = evaluateFixedRule(rule, companyData);
 
@@ -457,54 +457,37 @@ Returnează DOAR id-urile regulilor DESPRE SOLICITANT, separate prin virgulă. F
         elements,
         refTableResults,
       });
-    } else {
-      // Company-relevant field but data not yet available — pending
-      if (!allMissingElements.includes(fieldKey)) {
-        allMissingElements.push(fieldKey);
-      }
-      results.push({
-        id: rule.id,
-        type: "fixed",
-        description: rule.description,
-        category: rule.category,
-        status: "pending",
-        autoResult: null,
-        notes: `Date lipsă: ${condition.field}`,
-        condition: rule.condition,
-        sourceDocument: { id: rule.documentId, name: rule.documentName },
-        elements,
-        refTableResults,
-      });
     }
+    // Rules where we don't have data are simply NOT included —
+    // consultant sees only verified rules (passed/failed), not pending ones
   }
 
-  // 11. Build summary
-  // Count original totals for reporting
+  // 11. Build summary — only verified rules (passed/failed), clear verdict
   const totalSessionRules = allRules.length;
-  const interpretedCount = allRules.filter(r => r.type === "interpreted").length;
-  const skippedProjectRules = totalSessionRules - interpretedCount - results.length;
+  const passedCount = results.filter(r => r.status === "passed").length;
+  const failedCount = results.filter(r => r.status === "failed").length;
 
   const summary: PreEligibilitySummary = {
     total: results.length,
-    passed: results.filter(r => r.status === "passed").length,
-    failed: results.filter(r => r.status === "failed").length,
-    pending: results.filter(r => r.status === "pending").length,
-    notApplicable: results.filter(r => r.status === "not_applicable").length,
+    passed: passedCount,
+    failed: failedCount,
+    pending: 0,
+    notApplicable: 0,
     fixed: {
       total: results.length,
-      passed: results.filter(r => r.status === "passed").length,
-      failed: results.filter(r => r.status === "failed").length,
-      pending: results.filter(r => r.status === "pending").length,
+      passed: passedCount,
+      failed: failedCount,
+      pending: 0,
     },
     interpreted: {
-      total: interpretedCount,
+      total: 0,
       passed: 0,
       failed: 0,
-      pending: interpretedCount,
+      pending: 0,
     },
-    missingElements: allMissingElements,
+    missingElements: [],
     totalSessionRules,
-    skippedProjectRules,
+    skippedProjectRules: totalSessionRules - results.length,
   } as PreEligibilitySummary;
 
   return { rules: results, summary, companyDataUsed: companyData };

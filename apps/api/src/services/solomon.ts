@@ -1254,8 +1254,7 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
   };
 
   if (useET) {
-    requestParams.thinking = { type: "adaptive" };
-    requestParams.output_config = { effort: "high" };
+    requestParams.thinking = { type: "enabled", budget_tokens: 8000 };
   }
 
   // Acquire interactive AI slot (priority over batch processing)

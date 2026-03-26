@@ -795,8 +795,7 @@ Răspunde DOAR cu JSON-ul, fără markdown code blocks, fără text suplimentar.
 
   // Enable extended thinking for Opus models (deeper reasoning → better document quality)
   if (useExtendedThinking) {
-    apiParams.thinking = { type: "adaptive" };
-    apiParams.output_config = { effort: "high" };
+    apiParams.thinking = { type: "enabled", budget_tokens: 8000 };
   }
 
   const response: any = await withAILimit(() => (anthropic.messages.create as any)(apiParams));

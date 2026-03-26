@@ -1337,8 +1337,8 @@ export default function ProjectViewPage() {
     };
 
     const renderInline = (line: string): React.ReactNode => {
-      // Handle **bold**, *italic*, `code`, and plain text
-      const parts = line.split(/(\*\*.*?\*\*|\*[^*]+\*|`[^`]+`)/).filter(Boolean);
+      // Handle **bold**, *italic*, `code`, [links](url), and plain text
+      const parts = line.split(/(\*\*.*?\*\*|\*[^*]+\*|`[^`]+`|\[[^\]]+\]\([^)]+\))/).filter(Boolean);
       return parts.map((part, i) => {
         if (part.startsWith("**") && part.endsWith("**")) {
           return <strong key={i} className="solomon-md-bold">{part.slice(2, -2)}</strong>;
@@ -1348,6 +1348,11 @@ export default function ProjectViewPage() {
         }
         if (part.startsWith("`") && part.endsWith("`")) {
           return <code key={i} className="solomon-md-code">{part.slice(1, -1)}</code>;
+        }
+        // Markdown links: [text](url)
+        const linkMatch = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+        if (linkMatch) {
+          return <a key={i} href={linkMatch[2]} target="_blank" rel="noopener noreferrer" className="solomon-md-link">{linkMatch[1]}</a>;
         }
         return part;
       });
@@ -1380,8 +1385,47 @@ export default function ProjectViewPage() {
         continue;
       }
 
-      // Bullet points (-, •, *, numbered: 1. 2.)
-      const bulletMatch = trimmed.match(/^[-•*]\s+(.+)/) || trimmed.match(/^\d+[.)]\s+(.+)/);
+      // Blockquote (> text) — used for guide citations
+      if (trimmed.startsWith("> ")) {
+        flushList();
+        // Collect consecutive blockquote lines
+        const quoteLines: string[] = [trimmed.slice(2)];
+        while (i + 1 < lines.length && lines[i + 1].trim().startsWith("> ")) {
+          i++;
+          quoteLines.push(lines[i].trim().slice(2));
+        }
+        blocks.push(
+          <blockquote key={blockKey++} className="solomon-md-quote">
+            {quoteLines.map((ql, qi) => <p key={qi}>{renderInline(ql)}</p>)}
+          </blockquote>
+        );
+        continue;
+      }
+
+      // Code block (```)
+      if (trimmed.startsWith("```")) {
+        flushList();
+        const codeLines: string[] = [];
+        i++;
+        while (i < lines.length && !lines[i].trim().startsWith("```")) {
+          codeLines.push(lines[i]);
+          i++;
+        }
+        blocks.push(
+          <pre key={blockKey++} className="solomon-md-codeblock">{codeLines.join("\n")}</pre>
+        );
+        continue;
+      }
+
+      // Numbered list (1. 2. 3.) — keep numbers
+      const numberedMatch = trimmed.match(/^(\d+)[.)]\s+(.+)/);
+      if (numberedMatch) {
+        currentList.push(numberedMatch[1] + ". " + numberedMatch[2]);
+        continue;
+      }
+
+      // Bullet points (-, •, *)
+      const bulletMatch = trimmed.match(/^[-•*]\s+(.+)/);
       if (bulletMatch) {
         currentList.push(bulletMatch[1]);
         continue;
@@ -1391,6 +1435,54 @@ export default function ProjectViewPage() {
       if (/^[-=_]{3,}$/.test(trimmed) || /^═+$/.test(trimmed)) {
         flushList();
         blocks.push(<hr key={blockKey++} className="solomon-md-hr" />);
+        continue;
+      }
+
+      // Markdown table detection: line starts with |
+      if (trimmed.startsWith("|") && trimmed.endsWith("|")) {
+        flushList();
+        // Collect all table rows
+        const tableRows: string[] = [trimmed];
+        while (i + 1 < lines.length) {
+          const nextLine = lines[i + 1].trim();
+          if (nextLine.startsWith("|") && nextLine.endsWith("|")) {
+            tableRows.push(nextLine);
+            i++;
+          } else {
+            break;
+          }
+        }
+        // Parse: first row = header, second row = separator (skip), rest = data
+        const parseRow = (row: string) =>
+          row.split("|").slice(1, -1).map(cell => cell.trim());
+        const headers = parseRow(tableRows[0]);
+        const dataRows = tableRows
+          .slice(1)
+          .filter(r => !/^[\s|:-]+$/.test(r)) // skip separator rows like |---|---|
+          .map(parseRow);
+
+        blocks.push(
+          <div key={blockKey++} className="solomon-md-table-wrap">
+            <table className="solomon-md-table">
+              <thead>
+                <tr>
+                  {headers.map((h, hi) => (
+                    <th key={hi}>{renderInline(h)}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {dataRows.map((row, ri) => (
+                  <tr key={ri}>
+                    {row.map((cell, ci) => (
+                      <td key={ci}>{renderInline(cell)}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
         continue;
       }
 
@@ -2749,6 +2841,18 @@ export default function ProjectViewPage() {
         .solomon-md-list li{position:relative;font-size:14.5px;line-height:1.7;color:#475569;padding-left:12px}
         .solomon-md-list li::before{content:'';position:absolute;left:0;top:9px;width:5px;height:5px;border-radius:50%;background:#94a3b8}
         .solomon-md-hr{border:none;height:1px;background:linear-gradient(90deg,transparent,#e2e8f0 20%,#e2e8f0 80%,transparent);margin:12px 0}
+        .solomon-md-table-wrap{overflow-x:auto;margin:8px 0;max-width:640px}
+        .solomon-md-table{width:100%;border-collapse:collapse;font-size:13px;line-height:1.5}
+        .solomon-md-table th{text-align:left;padding:8px 12px;background:#f1f5f9;border:1px solid #e2e8f0;font-weight:700;color:#0f172a;font-size:12px;text-transform:uppercase;letter-spacing:.3px;white-space:nowrap}
+        .solomon-md-table td{padding:6px 12px;border:1px solid #e2e8f0;color:#475569;font-variant-numeric:tabular-nums}
+        .solomon-md-table tbody tr:hover{background:#f8fafc}
+        .solomon-md-table tbody tr:nth-child(even){background:#fafbfc}
+        .solomon-md-quote{margin:8px 0;padding:10px 16px;border-left:3px solid #4d8bff;background:#f0f7ff;border-radius:0 8px 8px 0;color:#334155;font-size:13.5px;line-height:1.6;font-style:italic}
+        .solomon-md-quote p{margin:0 0 4px}
+        .solomon-md-quote p:last-child{margin:0}
+        .solomon-md-codeblock{margin:8px 0;padding:12px 16px;background:#1e293b;color:#e2e8f0;border-radius:8px;font-size:12.5px;font-family:'JetBrains Mono','SF Mono',monospace;line-height:1.6;overflow-x:auto;white-space:pre;max-width:640px}
+        .solomon-md-link{color:#2563eb;text-decoration:none;font-weight:500;border-bottom:1px solid rgba(37,99,235,.2)}
+        .solomon-md-link:hover{border-bottom-color:#2563eb}
         .extraction-cards{margin-top:12px;display:flex;flex-direction:column;gap:8px}
         .extraction-card{background:#f0f7ff;border:1px solid #bfdbfe;border-radius:12px;padding:14px 20px;transition:all .2s}
         .extraction-card.confirmed{border-color:#a7f3d0;background:#ecfdf5}
@@ -3499,44 +3603,7 @@ export default function ProjectViewPage() {
                   </div>
                 )}
 
-                {/* Pre-eligibilitate firmă (from companyElements — instant, no AI) */}
-                {preEligRules.length > 0 && (
-                  <div style={{ marginBottom: 10, borderRadius: 10, border: "1px solid rgba(226,232,240,.6)", overflow: "hidden" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: "#f8fafc" }}>
-                      <span style={{ fontSize: 13 }}>{"\u{1F3E2}"}</span>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", textTransform: "uppercase", letterSpacing: ".5px" }}>Pre-eligibilitate firmă</span>
-                      <span style={{ fontSize: 10, color: "#64748b", fontWeight: 500 }}>— date ONRC & financiare</span>
-                      <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 700, color: "#059669" }}>
-                        {preEligRules.filter(r => r.status === "pass").length}/{preEligRules.length}
-                      </span>
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-                      {preEligRules.map(rule => {
-                        const ct = rule.condition?.field ? formatConditionText(rule.condition) : null;
-                        return (
-                        <div className={`elig-rule ${rule.status}-bg`} key={rule.id}>
-                          <div className={`elig-icon ${rule.status}`}>
-                            {eligStatusIcons[rule.status]}
-                          </div>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <span className={`elig-name ${rule.status}-text`}>
-                              {rule.name}
-                              {rule.detail && (
-                                <span style={{ fontWeight: 400, fontSize: 11, color: "#64748b" }}> — {rule.detail.replace("[Pre-elig] ", "")}</span>
-                              )}
-                            </span>
-                            {ct && (
-                              <div style={{ marginTop: 4, fontSize: 11, fontWeight: 600, color: "#2563eb", display: "flex", alignItems: "center", gap: 4 }}>
-                                <span>{"\u{1F9EA}"}</span> {ct}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
+                {/* Pre-eligibility rules are now shown inline with all rules below — no separate section */}
 
                 {guideTrustScore != null && guideTrustScore < 0.7 && (
                   <div style={{

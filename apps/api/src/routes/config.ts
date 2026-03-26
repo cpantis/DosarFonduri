@@ -7,6 +7,10 @@ import { DEFAULT_REFERENCE_VALUES } from "@dosarfonduri/shared";
 import { eq, and } from "drizzle-orm";
 import { encrypt, decrypt } from "../lib/crypto";
 import type { AuthContext } from "../middleware/auth";
+import { extractTextFromPDF, extractTextFromDOCX } from "../services/ocr";
+import { anthropic, withAILimit } from "../lib/anthropic";
+import { logAIUsage } from "../services/aiUsage";
+import { repairTruncatedJSON } from "../lib/safeExtract";
 
 export const configRoutes = new Hono<AppEnv>();
 
@@ -459,6 +463,221 @@ configRoutes.delete("/knowledge/:id", async (c) => {
 
   await db.delete(solomonKnowledge).where(eq(solomonKnowledge.id, id));
   return c.json({ ok: true });
+});
+
+// ─── POST /knowledge/upload — Upload document → extract → save as knowledge entries ───
+configRoutes.post("/knowledge/upload", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  if (!auth.organizationId) return c.json({ error: "No organization" }, 400);
+
+  const formData = await c.req.formData();
+  const file = formData.get("file") as File | null;
+  if (!file) return c.json({ error: "Lipsește fișierul" }, 400);
+
+  const fileName = file.name || "document";
+  const ext = fileName.split(".").pop()?.toLowerCase();
+  if (!["pdf", "docx", "doc"].includes(ext || "")) {
+    return c.json({ error: "Format nesuportat. Acceptăm: PDF, DOCX" }, 400);
+  }
+
+  // Size limit: 50MB
+  if (file.size > 50 * 1024 * 1024) {
+    return c.json({ error: "Fișierul depășește 50MB" }, 400);
+  }
+
+  const buffer = Buffer.from(await file.arrayBuffer());
+
+  // Step 1: Extract text
+  let rawText = "";
+  try {
+    if (ext === "pdf") {
+      const pdfResult = await extractTextFromPDF(buffer);
+      rawText = pdfResult.text;
+    } else {
+      rawText = await extractTextFromDOCX(buffer, fileName);
+    }
+  } catch (err: any) {
+    return c.json({ error: `Eroare la extragerea textului: ${err.message}` }, 500);
+  }
+
+  if (rawText.length < 100) {
+    return c.json({ error: "Documentul nu conține text suficient" }, 400);
+  }
+
+  const totalPages = (rawText.match(/--- Pagina \d+/g) || []).length || 1;
+  const totalChars = rawText.length;
+
+  // Step 2: Split into chunks
+  const CHUNK_LIMIT = 120000;
+  const chunks: string[] = [];
+  if (rawText.length <= CHUNK_LIMIT) {
+    chunks.push(rawText);
+  } else {
+    const pageDelimiter = /--- Pagina \d+/g;
+    const pageStarts: number[] = [];
+    let m: RegExpExecArray | null;
+    while ((m = pageDelimiter.exec(rawText)) !== null) pageStarts.push(m.index);
+    if (pageStarts.length <= 1) {
+      chunks.push(rawText.slice(0, CHUNK_LIMIT));
+    } else {
+      let chunkStart = 0;
+      while (chunkStart < pageStarts.length) {
+        let chunkEnd = chunkStart;
+        for (let i = chunkStart + 1; i < pageStarts.length; i++) {
+          if (pageStarts[i] - pageStarts[chunkStart] > CHUNK_LIMIT) break;
+          chunkEnd = i;
+        }
+        const startIdx = pageStarts[chunkStart];
+        const endIdx = chunkEnd + 1 < pageStarts.length ? pageStarts[chunkEnd + 1] : rawText.length;
+        chunks.push(rawText.slice(startIdx, endIdx));
+        chunkStart = chunkEnd + 1;
+        if (chunkEnd >= pageStarts.length - 1) break;
+      }
+    }
+  }
+
+  // Step 3: Extract sections with AI
+  const SYSTEM = `Ești Solomon — consultant senior cu 15+ ani experiență în fonduri europene.
+Citești un document strategic/legislativ și extragi informațiile pe care un consultant le folosește pentru:
+1. JUSTIFICAREA proiectelor — obiective naționale, target-uri, priorități
+2. ARGUMENTAREA punctajului — date statistice, cifre oficiale
+3. CONTEXT LEGISLATIV — definiții, cadru legal, termene
+4. REFERINȚE CITABILE — paragrafe exacte pentru cererea de finanțare
+Concentrează-te pe: cifre concrete, procente, target-uri cu an, măsuri specifice, definiții oficiale.
+Returnează DOAR JSON valid. Fără backticks, fără explicații.`;
+
+  const allSections: Array<{ title: string; category: string; content: string; source_page: number | null; relevance: string }> = [];
+
+  for (let i = 0; i < chunks.length; i++) {
+    try {
+      const response: any = await withAILimit(() => (anthropic.messages.create as any)({
+        model: "claude-sonnet-4-6",
+        max_tokens: 16000,
+        system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
+        messages: [{ role: "user", content: `Extrage secțiunile-cheie din acest document.
+
+Returnează: { "sections": [{ "title": "...", "category": "obiective|target_cifre|masuri_politici|cadru_legal|definitii|statistici|prioritati|calendar", "content": "textul COMPLET (consultantul citează exact)", "source_page": N, "relevance": "pentru ce programe e relevant" }] }
+
+TEXT DOCUMENT (chunk ${i + 1}/${chunks.length}):
+${chunks[i]}` }],
+      }));
+
+      const textBlock = response.content.find((b: any) => b.type === "text");
+      const content = textBlock ? textBlock.text : "";
+
+      await logAIUsage({
+        organizationId: auth.organizationId,
+        agent: "reference_extractor",
+        model: "claude-sonnet-4-6",
+        tokensInput: response.usage.input_tokens,
+        tokensOutput: response.usage.output_tokens,
+        action: `knowledge_upload_chunk_${i + 1}`,
+      });
+
+      const cleaned = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+      let parsed: any = null;
+      try { parsed = JSON.parse(cleaned); } catch { parsed = repairTruncatedJSON(content); }
+      if (parsed?.sections && Array.isArray(parsed.sections)) {
+        allSections.push(...parsed.sections);
+      }
+    } catch (err: any) {
+      console.warn(`[knowledge/upload] Chunk ${i + 1} extraction failed:`, err.message);
+    }
+  }
+
+  if (allSections.length === 0) {
+    return c.json({ error: "Nu s-au putut extrage secțiuni din document" }, 500);
+  }
+
+  // Step 4: Save to solomonKnowledge
+  const sourceTag = `upload:${fileName}`;
+
+  // Delete previous entries from same file name (for re-upload)
+  await db.delete(solomonKnowledge).where(
+    and(
+      eq(solomonKnowledge.organizationId, auth.organizationId),
+      eq(solomonKnowledge.sourceReference, sourceTag),
+    ),
+  );
+
+  let savedCount = 0;
+  for (const section of allSections) {
+    if (!section.title || !section.content) continue;
+    try {
+      await db.insert(solomonKnowledge).values({
+        organizationId: auth.organizationId,
+        category: `referinta_${section.category || "general"}`,
+        title: `${fileName.replace(/\.[^.]+$/, "")} — ${section.title}`.slice(0, 500),
+        content: section.content,
+        sourceReference: sourceTag,
+        sourceUrl: null,
+        validFrom: null,
+        validUntil: null,
+        priority: 5,
+        enabled: true,
+        createdBy: auth.userId,
+      });
+      savedCount++;
+    } catch {}
+  }
+
+  console.log(`[knowledge/upload] "${fileName}" → ${savedCount} secțiuni din ${totalPages} pagini (${totalChars} chars, ${chunks.length} chunks)`);
+
+  return c.json({
+    ok: true,
+    fileName,
+    totalPages,
+    totalChars,
+    chunksProcessed: chunks.length,
+    sectionsExtracted: savedCount,
+  });
+});
+
+// ─── DELETE /knowledge/upload/:fileName — Delete all entries from a specific upload ───
+configRoutes.delete("/knowledge/upload/:fileName", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  if (!auth.organizationId) return c.json({ error: "No organization" }, 400);
+
+  const fileName = decodeURIComponent(c.req.param("fileName"));
+  const sourceTag = `upload:${fileName}`;
+
+  await db.delete(solomonKnowledge).where(
+    and(
+      eq(solomonKnowledge.organizationId, auth.organizationId),
+      eq(solomonKnowledge.sourceReference, sourceTag),
+    ),
+  );
+
+  return c.json({ ok: true });
+});
+
+// ─── GET /knowledge/uploads — List uploaded documents (grouped by source) ───
+configRoutes.get("/knowledge/uploads", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  if (!auth.organizationId) return c.json({ error: "No organization" }, 400);
+
+  const entries = await db.query.solomonKnowledge.findMany({
+    where: and(
+      eq(solomonKnowledge.organizationId, auth.organizationId),
+    ),
+    orderBy: (k, { desc }) => [desc(k.createdAt)],
+  });
+
+  // Group by sourceReference that starts with "upload:"
+  const uploads = new Map<string, { fileName: string; sections: number; createdAt: Date }>();
+  for (const entry of entries) {
+    if (entry.sourceReference?.startsWith("upload:")) {
+      const fileName = entry.sourceReference.slice(7);
+      const existing = uploads.get(fileName);
+      if (!existing) {
+        uploads.set(fileName, { fileName, sections: 1, createdAt: entry.createdAt });
+      } else {
+        existing.sections++;
+      }
+    }
+  }
+
+  return c.json(Array.from(uploads.values()));
 });
 
 // ─── GET /branding (cabinet document style) ───

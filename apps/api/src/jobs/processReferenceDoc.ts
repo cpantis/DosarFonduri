@@ -11,7 +11,7 @@ import { Worker, Job } from "bullmq";
 import { db } from "../db";
 import { documents, solomonKnowledge } from "../db/schema";
 import { eq, and } from "drizzle-orm";
-import { getFileBuffer } from "../services/storage";
+import { getFileBuffer, deleteFile } from "../services/storage";
 import { extractTextFromPDF, extractTextFromDOCX, extractTextFromXLSX } from "../services/ocr";
 import { logAIUsage } from "../services/aiUsage";
 import { publishEvent, publishJobProgress } from "../lib/sse";
@@ -282,6 +282,14 @@ export const processReferenceDocWorker = new Worker<ProcessReferencePayload>(
         },
         processedAt: new Date(),
       }).where(eq(documents.id, documentId));
+
+      // Step 5: Delete original file from R2 (knowledge is in DB now)
+      try {
+        await deleteFile(doc.fileId, organizationId);
+        console.log(`[processReference] Deleted original file ${doc.fileId} from storage (knowledge saved in DB)`);
+      } catch (delErr: any) {
+        console.warn(`[processReference] Could not delete file from storage (non-critical):`, delErr.message);
+      }
 
       publishJobProgress(organizationId, {
         jobId: job.id || "",

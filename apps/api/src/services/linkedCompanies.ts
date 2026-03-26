@@ -131,17 +131,17 @@ export async function analyzeLinkedCompanies(
   });
 
   // Build unique persons list
-  const personsMap = new Map<string, { name: string; role: string; shares: string | null }>();
+  const personsMap = new Map<string, { name: string; role: string; shares: string | undefined }>();
   for (const a of associates) {
     const key = a.name.toLowerCase().trim();
     if (!personsMap.has(key)) {
-      personsMap.set(key, { name: a.name, role: a.role || "asociat", shares: a.pctBenefits ? String(a.pctBenefits) : null });
+      personsMap.set(key, { name: a.name, role: a.role || "asociat", shares: a.pctBenefits ? String(a.pctBenefits) : undefined });
     }
   }
   for (const a of admins) {
     const key = a.name.toLowerCase().trim();
     if (!personsMap.has(key)) {
-      personsMap.set(key, { name: a.name, role: a.role || "administrator", shares: null });
+      personsMap.set(key, { name: a.name, role: a.role || "administrator", shares: undefined });
     }
   }
 

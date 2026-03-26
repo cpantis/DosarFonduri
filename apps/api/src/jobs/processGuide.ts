@@ -162,13 +162,31 @@ async function classifyPages(
   structuredText: string,
   organizationId: string,
 ): Promise<PageClassification> {
+  // Send only first ~200 chars per page for classification (much smaller than full text)
+  const pageDelimiter = /--- Pagina (\d+) ---/g;
+  const summaryParts: string[] = [];
+  let m: RegExpExecArray | null;
+  const pageStarts: Array<{ page: number; start: number }> = [];
+  while ((m = pageDelimiter.exec(structuredText)) !== null) {
+    pageStarts.push({ page: parseInt(m[1], 10), start: m.index });
+  }
+  for (let i = 0; i < pageStarts.length; i++) {
+    const end = i + 1 < pageStarts.length ? pageStarts[i + 1].start : structuredText.length;
+    const pageText = structuredText.slice(pageStarts[i].start, end);
+    // Take first 200 chars of actual content (skip delimiter line)
+    const contentStart = pageText.indexOf("\n") + 1;
+    const preview = pageText.slice(contentStart, contentStart + 200).trim();
+    summaryParts.push(`Pagina ${pageStarts[i].page}: ${preview}`);
+  }
+  const classificationInput = summaryParts.join("\n");
+
   const callStart = Date.now();
   const response: any = await withAILimit(() => (anthropic.messages.create as any)({
     model: DEFAULT_EXTRACTION_MODEL,
     max_tokens: 2000,
     output_config: { effort: "low" },
     system: PAGE_CLASSIFY_SYSTEM,
-    messages: [{ role: "user", content: `${PAGE_CLASSIFY_USER}${structuredText}` }],
+    messages: [{ role: "user", content: `${PAGE_CLASSIFY_USER}${classificationInput}` }],
   }));
   const callDuration = Date.now() - callStart;
 
@@ -319,7 +337,7 @@ const UNIFIED_EXTRACTION_USER = `Analizează acest ghid de finanțare pre-struct
 CÂMPURI DISPONIBILE PENTRU condition.field — folosește EXACT aceste chei canonice:
 ${FIELD_LIST_FOR_PROMPT}
 
-Returnează un singur obiect JSON cu 4 chei:
+Returnează un singur obiect JSON cu 5 chei:
 
 {
   "fixed_rules": [
@@ -448,17 +466,16 @@ async function unifiedExtraction(
   let continuations = 0;
   let wasTruncated = false;
 
-  // System prompt with cache breakpoint on guide text
-  // The guide text is cached so subsequent calls (continuations, other chunks with same text) hit cache
+  // System prompt cached (common across all extraction calls)
+  // Guide text goes in user message (varies per category/chunk)
   const cachedSystem: any[] = [
-    { type: "text", text: UNIFIED_EXTRACTION_SYSTEM },
-    { type: "text", text: `<guide_text>\n${structuredText}\n</guide_text>`, cache_control: { type: "ephemeral" } },
+    { type: "text", text: UNIFIED_EXTRACTION_SYSTEM, cache_control: { type: "ephemeral" } },
   ];
 
-  // User message contains only extraction instructions (small, varies per call)
+  // User message: extraction instructions + guide text (varies per chunk)
   const messages: Array<{ role: string; content: string }> = [{
     role: "user",
-    content: UNIFIED_EXTRACTION_USER,
+    content: `${UNIFIED_EXTRACTION_USER}\n\n<guide_text>\n${structuredText}\n</guide_text>`,
   }];
 
   for (let attempt = 0; attempt <= MAX_CONTINUATION_ATTEMPTS; attempt++) {
@@ -1571,16 +1588,30 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         message: `Clasificare pagini...`,
       }).catch((e: any) => console.warn("[processGuide] sse classify:", e.message));
 
-      const classification = await classifyPages(structuredText, organizationId);
+      let classification: PageClassification;
+      try {
+        classification = await classifyPages(structuredText, organizationId);
+      } catch (classifyErr: any) {
+        console.warn(`[processGuide] Classification failed (${classifyErr.message}), falling back to all-pages-as-fixed`);
+        const pageCount = (structuredText.match(/--- Pagina \d+/g) || []).length;
+        classification = {
+          fixed: Array.from({ length: pageCount }, (_, i) => i + 1),
+          interpreted: [],
+          scoring: [],
+          documents: [],
+          info: [],
+        };
+      }
 
       // Build text slices per category
-      const fixedPages = [...classification.fixed, ...classification.documents];
+      // Include "documents" and "info" pages in fixed — they often contain implicit rules + document requirements
+      const fixedPages = [...classification.fixed, ...classification.documents, ...classification.info];
       const interpretedPages = classification.interpreted;
-      const scoringPages = classification.scoring;
+      let scoringPages = [...classification.scoring];
       // Merge scoring into fixed if too small to warrant separate call
       if (scoringPages.length > 0 && scoringPages.length <= 3) {
         fixedPages.push(...scoringPages);
-        scoringPages.length = 0;
+        scoringPages = [];
       }
 
       const fixedText = extractPagesByNumbers(structuredText, fixedPages);

@@ -109,6 +109,8 @@ export default function CompanyDetailPage() {
   const [showBilantUpload, setShowBilantUpload] = useState(false);
   const [bilantUploading, setBilantUploading] = useState(false);
   const bilantFileRef = useRef<HTMLInputElement>(null);
+  const [bilantFileName, setBilantFileName] = useState<string | null>(null);
+  const [onrcFileName, setOnrcFileName] = useState<string | null>(null);
   const [selectedBilantYear, setSelectedBilantYear] = useState<number | null>(null);
 
   // Biblioteca Elemente
@@ -1951,10 +1953,22 @@ export default function CompanyDetailPage() {
             <div
               className="cd-drop-zone"
               onClick={() => onrcFileRef.current?.click()}
+              onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.style.borderColor = "#2563eb"; e.currentTarget.style.background = "rgba(37,99,235,.05)"; }}
+              onDragLeave={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = ""; e.currentTarget.style.background = ""; }}
+              onDrop={(e) => {
+                e.preventDefault(); e.stopPropagation();
+                e.currentTarget.style.borderColor = ""; e.currentTarget.style.background = "";
+                const file = e.dataTransfer.files?.[0];
+                if (file && file.type === "application/pdf" && onrcFileRef.current) {
+                  const dt = new DataTransfer(); dt.items.add(file);
+                  onrcFileRef.current.files = dt.files;
+                  setOnrcFileName(file.name);
+                }
+              }}
             >
-              <div style={{ fontSize: 24, marginBottom: 6 }}>{onrcFileRef.current?.files?.[0] ? "\u2705" : "\ud83d\udcc4"}</div>
-              <div style={{ fontSize: 14, fontWeight: 600, color: "#0f172a" }}>{onrcFileRef.current?.files?.[0]?.name || "Certificat constatator (PDF)"}</div>
-              <div style={{ fontSize: 12, marginTop: 4, color: "#94a3b8" }}>Click pentru a selecta fisierul</div>
+              <div style={{ fontSize: 24, marginBottom: 6 }}>{onrcFileName ? "\u2705" : "\ud83d\udcc4"}</div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: "#0f172a" }}>{onrcFileName || "Certificat constatator (PDF)"}</div>
+              <div style={{ fontSize: 12, marginTop: 4, color: "#94a3b8" }}>Trage fisierul aici sau click pentru a selecta</div>
             </div>
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
               <BtnSecondary onClick={() => setShowOnrcUpload(false)}>Anuleaza</BtnSecondary>
@@ -1985,14 +1999,31 @@ export default function CompanyDetailPage() {
             <p style={{ fontSize: 13, marginBottom: 20, lineHeight: 1.6, color: "#64748b" }}>
               Incarca un bilant ANAF (PDF descarcat din SPV). Se accepta Formularul 10 (bilant), Formularul 20 (cont profit/pierderi), Formularul 30/40. Anul fiscal si datele financiare se detecteaza automat.
             </p>
-            <input type="file" ref={bilantFileRef} accept=".pdf" className="hidden" onChange={() => {}} />
+            <input type="file" ref={bilantFileRef} accept=".pdf" className="hidden" onChange={() => { setBilantFileName(bilantFileRef.current?.files?.[0]?.name || null); }} />
             <div
               className="cd-drop-zone"
               onClick={() => bilantFileRef.current?.click()}
+              onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.style.borderColor = "#2563eb"; e.currentTarget.style.background = "rgba(37,99,235,.05)"; }}
+              onDragLeave={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = ""; e.currentTarget.style.background = ""; }}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                e.currentTarget.style.borderColor = "";
+                e.currentTarget.style.background = "";
+                const file = e.dataTransfer.files?.[0];
+                if (file && file.type === "application/pdf") {
+                  const dt = new DataTransfer();
+                  dt.items.add(file);
+                  if (bilantFileRef.current) {
+                    bilantFileRef.current.files = dt.files;
+                    setBilantFileName(file.name);
+                  }
+                }
+              }}
             >
-              <div style={{ fontSize: 24, marginBottom: 6 }}>{bilantFileRef.current?.files?.[0] ? "\u2705" : "\ud83d\udcca"}</div>
-              <div style={{ fontSize: 14, fontWeight: 600, color: "#0f172a" }}>{bilantFileRef.current?.files?.[0]?.name || "Bilant ANAF (PDF)"}</div>
-              <div style={{ fontSize: 12, marginTop: 4, color: "#94a3b8" }}>Click pentru a selecta fisierul</div>
+              <div style={{ fontSize: 24, marginBottom: 6 }}>{bilantFileName ? "\u2705" : "\ud83d\udcca"}</div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: "#0f172a" }}>{bilantFileName || "Bilant ANAF (PDF)"}</div>
+              <div style={{ fontSize: 12, marginTop: 4, color: "#94a3b8" }}>Trage fisierul aici sau click pentru a selecta</div>
             </div>
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
               <BtnSecondary onClick={() => setShowBilantUpload(false)}>Anuleaza</BtnSecondary>

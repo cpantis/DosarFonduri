@@ -1248,3 +1248,88 @@ companyRoutes.get("/field-definitions", async (c) => {
     categories: FIELD_CATEGORIES,
   });
 });
+
+// ─── LINKED COMPANIES ───
+
+companyRoutes.post("/:id/linked-companies/analyze", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  if (!auth.organizationId) return c.json({ error: "No organization" }, 403);
+  const id = c.req.param("id");
+
+  const company = await db.query.companies.findFirst({
+    where: and(eq(companies.id, id), eq(companies.organizationId, auth.organizationId)),
+  });
+  if (!company) return c.json({ error: "Firma nu a fost găsită" }, 404);
+
+  try {
+    const { analyzeLinkedCompanies } = await import("../services/linkedCompanies");
+    const result = await analyzeLinkedCompanies(id, auth.organizationId);
+    return c.json(result);
+  } catch (err: any) {
+    console.error(`[linked-companies] Analysis failed for ${id}:`, err.message);
+    return c.json({ error: err.message || "Eroare la verificare firme legate" }, 500);
+  }
+});
+
+companyRoutes.get("/:id/linked-companies", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  if (!auth.organizationId) return c.json({ error: "No organization" }, 403);
+  const id = c.req.param("id");
+
+  const { companyLinkedCompanies } = await import("../db/schema");
+  const links = await db.query.companyLinkedCompanies.findMany({
+    where: and(
+      eq(companyLinkedCompanies.companyId, id),
+      eq(companyLinkedCompanies.organizationId, auth.organizationId),
+    ),
+    orderBy: (l, { desc }) => [desc(l.riskScore)],
+  });
+
+  return c.json(links);
+});
+
+companyRoutes.post("/:id/linked-companies/manual", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  if (!auth.organizationId) return c.json({ error: "No organization" }, 403);
+  const id = c.req.param("id");
+
+  const body = z.object({
+    linkedCui: z.string().optional().default(""),
+    linkedName: z.string().min(1),
+    personName: z.string().min(1),
+    personRoleMain: z.string().optional(),
+    notes: z.string().optional(),
+  }).parse(await c.req.json());
+
+  const { companyLinkedCompanies } = await import("../db/schema");
+  const [created] = await db.insert(companyLinkedCompanies).values({
+    companyId: id,
+    organizationId: auth.organizationId,
+    linkedCui: body.linkedCui,
+    linkedName: body.linkedName,
+    personName: body.personName,
+    personRoleMain: body.personRoleMain || null,
+    riskScore: 50, // manual entries default to medium risk
+    riskFlags: ["Adăugat manual de consultant"],
+    source: "manual",
+    notes: body.notes || null,
+  }).returning();
+
+  return c.json(created, 201);
+});
+
+companyRoutes.delete("/:id/linked-companies/:linkId", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  if (!auth.organizationId) return c.json({ error: "No organization" }, 403);
+
+  const linkId = c.req.param("linkId");
+  const { companyLinkedCompanies } = await import("../db/schema");
+  await db.delete(companyLinkedCompanies).where(
+    and(
+      eq(companyLinkedCompanies.id, linkId),
+      eq(companyLinkedCompanies.organizationId, auth.organizationId),
+    ),
+  );
+
+  return c.json({ ok: true });
+});

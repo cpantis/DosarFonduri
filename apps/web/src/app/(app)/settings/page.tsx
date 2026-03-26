@@ -674,7 +674,7 @@ export default function SettingsPage() {
                       toast("error", err.message || "Eroare la procesare document");
                     }
                     e.target.value = "";
-                  }}}
+                  }}
                 />
                 <label
                   htmlFor="knowledge-upload"

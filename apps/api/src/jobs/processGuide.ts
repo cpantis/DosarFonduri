@@ -257,94 +257,25 @@ function extractPagesByNumbers(structuredText: string, pageNumbers: number[]): s
   return parts.join("\n");
 }
 
-// ─── UNIFIED AI + ET EXTRACTION ───
-
-/**
- * Unified system prompt for AI + ET. Extracts ALL rule types + element definitions
- * in a single pass for maximum accuracy and cost efficiency.
- */
-const UNIFIED_EXTRACTION_SYSTEM = `Ești Solomon — consultant senior cu 15+ ani experiență în fonduri europene. Analizezi ghiduri de finanțare cu mintea unui expert care a văzut sute de dosare respinse și știe EXACT ce contează.
-
-MISIUNEA TA: Extrage din acest ghid TOTUL ce determină dacă un dosar e acceptat sau respins. O regulă omisă = un dosar respins. O ambiguitate nedetectată = o contestație pierdută.
-
-CUM GÂNDEȘTI:
-- Ca un evaluator: ce aș verifica PRIMUL când primesc acest dosar?
-- Ca un consultant: ce capcane ascunde acest ghid? ce reguli par simple dar au excepții?
-- Ca un auditor: unde sunt conflictele între secțiuni? unde sunt ambiguitățile?
-- Regulile ELIMINATORII (eligibilitate) au prioritate absolută peste reguli de punctaj
-- Dacă ghidul lasă loc de interpretare, marchează explicit (needs_review + review_reason)
-
-Extragi SIMULTAN 5 categorii:
-
-1. REGULI FIXE — condiții binare verificabile automat (DA/NU):
-   - Plafoane numerice, forme juridice, coduri CAEN, vechime, zone geografice
-   - Praguri achiziții, nr minim oferte, obligativitate SEAP
-   - Categorii cheltuieli eligibile/neeligibile, TVA, flat rate
-   ATENȚIE: Regulile de eligibilitate care pot ELIMINA dosarul instant trebuie marcate cu confidence ≥ 0.95.
-   Dacă o regulă se referă la un tabel/anexă pe care nu o vezi în text, menționează în source_text că depinde de anexa respectivă.
-
-2. REGULI INTERPRETATE — condiții complexe cu arbori decizionali:
-   - Intensitatea sprijinului bazată pe factori multipli (regiune, dimensiune, tip investiție)
-   - Excepții și cazuri speciale, definiții interpretabile
-   - Cerințe documentare condiționate (dacă X, atunci trebuie documentul Y)
-   - Ajutor de stat / de minimis — cumul, verificare, declarații
-   - Reguli achiziții cu praguri cascadate
-   ATENȚIE: Regulile interpretate cu MULTIPLE OUTCOMES (decision trees) trebuie să aibă TOATE ramurile documentate, nu doar cazul principal.
-
-CLASIFICARE SEMANTICĂ — pentru FIECARE regulă atribuie etichete din:
-   - THRESHOLD — prag numeric (minim, maxim, interval)
-   - SCORING — punctaj sau evaluare cu note
-   - TEMPORAL — condiție de timp, termene, perioade
-   - DOCUMENT_BASED — dependentă de existența/conținutul unui document
-   - DEPENDENCY — depinde de altă regulă sau condiție anterioară
-   - EXCLUSION — excludere/interdicție (critic — poate elimina dosarul)
-   - EXCEPTION — excepție de la o regulă generală
-   - PROPORTIONAL — relație procentuală, intensitate variabilă
-   - CLASSIFICATION — încadrare în categorie/tip
-   O regulă poate avea MULTIPLE etichete. Combinații frecvente: THRESHOLD + EXCLUSION, PROPORTIONAL + CLASSIFICATION, CONDITIONAL + DEPENDENCY, CUMULATIVE + SCORING.
-
-3. CRITERII DE SELECȚIE / GRILĂ DE PUNCTAJ:
-   - Cod criteriu, nume, punctaj maxim, categorie
-   - Tip evaluare: lookup (tabel), range (interval), boolean, formula
-   - Elementul cheie pe care se bazează evaluarea
-   ATENȚIE: Dacă un criteriu se referă la un tabel de punctaj din anexe, capturează structura COMPLETĂ (toate intervalele/pragurile), nu doar descrierea generală.
-
-4. DEFINIȚII ELEMENTE (câmpuri de date necesare consultantului):
-   - TOATE câmpurile care trebuie colectate — inclusiv cele IMPLICITE (ghidul nu le numește ca "câmp" dar sunt necesare pentru a îndeplini o regulă)
-   - Categorie, tip date, unitate, valori enum, formula derivare
-   - Prioritate sursă, obligatoriu da/nu
-   - CARDINALITATE: câte instanțe (ex: "3 oferte" → min_count=3)
-   ATENȚIE: Verifică fiecare regulă extrasă — dacă regula se referă la un câmp care nu e încă în lista de elemente, ADAUGĂ-L.
-
-5. LISTA DOCUMENTE NECESARE (checklist complet al dosarului):
-   Extrage COMPLET lista tuturor documentelor pe care solicitantul trebuie să le depună. Parcurge:
-   - Secțiunea "Documente necesare" / "Conținut dosar" / "Lista documentelor" / "Cerințe documentare"
-   - Tabelul/grila documentelor din ghid sau din anexe (dacă e menționat)
-   - Mențiuni dispersate în tot ghidul de genul "va prezenta...", "va anexa...", "se va depune..."
-   - Documente implicate de reguli (ex: dacă e necesar certificat fiscal → "Certificat fiscal ANAF/local")
-   FIECARE document trebuie extras separat (nu grupat). Ex: "Certificat fiscal ANAF" și "Certificat fiscal local" = 2 documente.
-   ATENȚIE: Aceasta este lista finală pe care consultantul o va vedea ca checklist. Trebuie să fie COMPLETĂ — un document lipsă = dosar respins administrativ.
-
-Fii EXHAUSTIV dar PRECIS — mai bine o regulă marcată cu needs_review decât o regulă omisă.
-Returnează DOAR JSON valid — un singur obiect cu 5 array-uri. Fără backticks, fără explicații.`;
+// ─── FOCUSED EXTRACTION PROMPTS ───
 
 // Generated at module load — contains the full field reference for the AI
 const FIELD_LIST_FOR_PROMPT = generateFieldListForPrompt();
 
-const UNIFIED_EXTRACTION_USER = `Analizează acest ghid de finanțare pre-structurat și extrage SIMULTAN toate regulile și elementele.
+/** Shared semantic tags reference for all prompts */
+const SEMANTIC_TAGS_REF = `CLASIFICARE SEMANTICĂ — pentru FIECARE regulă atribuie etichete din:
+  THRESHOLD (prag numeric), SCORING (punctaj), TEMPORAL (termene), DOCUMENT_BASED (dependentă de document),
+  DEPENDENCY (depinde de altă regulă), EXCLUSION (eliminare dosar), EXCEPTION (excepție),
+  PROPORTIONAL (procentual), CLASSIFICATION (încadrare categorie).
+  O regulă poate avea MULTIPLE etichete.`;
 
-CÂMPURI DISPONIBILE PENTRU condition.field — folosește EXACT aceste chei canonice:
-${FIELD_LIST_FOR_PROMPT}
-
-Returnează un singur obiect JSON cu 5 chei:
-
-{
-  "fixed_rules": [
+/** Shared JSON schema for fixed_rules */
+const FIXED_RULES_SCHEMA = `"fixed_rules": [
     {
       "category": "eligibilitate" | "financiar" | "tehnic" | "administrativ" | "achizitii" | "documente",
       "description": "Descriere clară a regulii",
       "condition": {
-        "field": "cheia canonică din lista de mai sus (ex: cifra_afaceri, forma_juridica, cod_caen, clasificare_imm)",
+        "field": "cheia canonică (ex: cifra_afaceri, forma_juridica, cod_caen, clasificare_imm)",
         "operator": "eq" | "neq" | "gt" | "gte" | "lt" | "lte" | "in" | "not_in" | "between",
         "value": "valoarea de comparare",
         "value2": "pentru between (opțional)"
@@ -354,9 +285,9 @@ Returnează un singur obiect JSON cu 5 chei:
       "source_text": "textul exact din ghid",
       "confidence": 0.0 - 1.0
     }
-  ],
+  ]`;
 
-  "interpreted_rules": [
+const INTERPRETED_RULES_SCHEMA = `"interpreted_rules": [
     {
       "category": "selectie" | "intensitate" | "eligibilitate_complexa" | "documentare" | "achizitii" | "ajutor_stat",
       "description": "Descriere detaliată",
@@ -373,27 +304,9 @@ Returnează un singur obiect JSON cu 5 chei:
       "needs_review": true/false,
       "review_reason": "de ce necesită verificare umană (opțional)"
     }
-  ],
+  ]`;
 
-  "scoring_criteria": [
-    {
-      "code": "codul criteriului (CS1, C1, 1.1)",
-      "name": "numele criteriului",
-      "description": "descriere detaliată",
-      "maxPoints": number,
-      "category": "tehnic | financiar | management | relevant | sustenabilitate",
-      "sourcePage": number | null,
-      "evaluationLogic": {
-        "type": "lookup" | "range" | "boolean" | "formula",
-        "elementKey": "cheia câmpului de evaluat",
-        "ranges": [{"min": number, "max": number, "points": number}],
-        "formula": "expresie matematică (opțional)",
-        "lookupColumn": "coloana punctaj din tabel (opțional)"
-      }
-    }
-  ],
-
-  "element_definitions": [
+const ELEMENT_DEFS_SCHEMA = `"element_definitions": [
     {
       "element_key": "snake_case_key",
       "display_name": "Numele vizibil",
@@ -410,9 +323,9 @@ Returnează un singur obiect JSON cu 5 chei:
       "min_count": 1,
       "max_count": null
     }
-  ],
+  ]`;
 
-  "document_requirements": [
+const DOC_REQUIREMENTS_SCHEMA = `"document_requirements": [
     {
       "name": "Numele documentului (ex: Certificat constatator ONRC)",
       "category": "juridice|financiare|tehnice|declaratii|oferte|anexe|altele",
@@ -420,19 +333,126 @@ Returnează un singur obiect JSON cu 5 chei:
       "description": "Detalii suplimentare: format cerut, termen valabilitate, cine emite",
       "format": "PDF|DOCX|XLSX|original|copie_conforma|orice",
       "source_page": null,
-      "conditions": "Condiții speciale (ex: doar pentru SRL, doar dacă valoare > 100.000 EUR) sau null"
+      "conditions": "Condiții speciale sau null"
     }
-  ]
-}
+  ]`;
 
-IMPORTANT CARDINALITATE ELEMENTE:
-- Dacă ghidul cere mai multe instanțe ale unui element, setează min_count > 1.
-  Exemple: "3 oferte de preț" → min_count=3, "minimum 2 surse independente" → min_count=2,
-  "cel puțin 1 certificat" → min_count=1 (default).
-- max_count = null înseamnă fără limită superioară. max_count = 3 înseamnă exact maxim 3.
-- Dacă nu e specificată o cantitate, lasă min_count=1, max_count=null.
+const SCORING_SCHEMA = `"scoring_criteria": [
+    {
+      "code": "codul criteriului (CS1, C1, 1.1)",
+      "name": "numele criteriului",
+      "description": "descriere detaliată",
+      "maxPoints": number,
+      "category": "tehnic | financiar | management | relevant | sustenabilitate",
+      "sourcePage": number | null,
+      "evaluationLogic": {
+        "type": "lookup" | "range" | "boolean" | "formula",
+        "elementKey": "cheia câmpului de evaluat",
+        "ranges": [{"min": number, "max": number, "points": number}],
+        "formula": "expresie matematică (opțional)",
+        "lookupColumn": "coloana punctaj din tabel (opțional)"
+      }
+    }
+  ]`;
 
-TEXT GHID PRE-STRUCTURAT:
+// ─── 3 FOCUSED SYSTEM PROMPTS ───
+
+const FIXED_SYSTEM = `Ești Solomon — evaluator administrativ cu 15+ ani experiență în fonduri europene. Ai verificat sute de dosare și știi EXACT ce respinge un dosar INSTANT.
+
+GÂNDEȘTI CA UN EVALUATOR ADMINISTRATIV:
+- Ce condiții trebuie îndeplinite OBLIGATORIU? (DA/NU, fără nuanțe)
+- Ce plafoane numerice sunt ELIMINATORII? (depășirea = respingere)
+- Ce forme juridice / coduri CAEN sunt acceptate?
+- Ce documente lipsă duc la respingere administrativă?
+
+EXTRAGI:
+1. REGULI FIXE — condiții binare verificabile automat (DA/NU):
+   Plafoane, forme juridice, CAEN-uri, vechime, zone, praguri achiziții, cheltuieli eligibile/neeligibile, TVA.
+   Regulile ELIMINATORII care pot respinge dosarul instant → confidence ≥ 0.95.
+   Dacă o regulă se referă la un tabel/anexă pe care nu o vezi, menționează în source_text.
+
+2. DEFINIȚII ELEMENTE — câmpuri de date necesare:
+   TOATE câmpurile de colectat, inclusiv cele IMPLICITE. Dacă o regulă se referă la un câmp nelistat, ADAUGĂ-L.
+
+3. DOCUMENTE NECESARE — checklist complet:
+   Toate documentele de depus. Parcurge "Documente necesare", "Conținut dosar", și mențiuni dispersate ("va prezenta", "va anexa").
+   FIECARE document separat. Un document lipsă = dosar respins administrativ.
+
+${SEMANTIC_TAGS_REF}
+
+Returnează DOAR JSON valid cu 3 array-uri. Fără backticks, fără explicații.`;
+
+const FIXED_USER = `Extrage regulile fixe, elementele și documentele din acest ghid.
+
+CÂMPURI DISPONIBILE PENTRU condition.field:
+${FIELD_LIST_FOR_PROMPT}
+
+Returnează: { ${FIXED_RULES_SCHEMA}, ${ELEMENT_DEFS_SCHEMA}, ${DOC_REQUIREMENTS_SCHEMA} }
+
+CARDINALITATE: "3 oferte" → min_count=3. Fără cantitate → min_count=1, max_count=null.
+
+TEXT GHID:
+`;
+
+const INTERPRETED_SYSTEM = `Ești Solomon — consultant senior fonduri europene care a pierdut dosare din cauza excepțiilor nedetectate. Acum analizezi FIECARE regulă complexă ca și cum cariera ta depinde de ea.
+
+GÂNDEȘTI CA UN CONSULTANT CARE A PIERDUT UN DOSAR:
+- Ce excepții ASCUNSE are această regulă? (cele pe care le ratezi la prima citire)
+- Ce ramuri ale arborelui decizional LIPSESC? (cazul principal e evident, dar ce cu celelalte?)
+- Unde sunt CONFLICTELE între secțiuni? (o secțiune zice X, alta zice Y)
+- Ce condiții CASCADATE pot schimba rezultatul? (dacă A, atunci B, dar dacă C...)
+- Unde este AMBIGUITATE DELIBERATĂ? (ghidul lasă loc de interpretare — marchează cu needs_review)
+
+EXTRAGI:
+1. REGULI INTERPRETATE — condiții complexe cu arbori decizionali:
+   Intensitate sprijin, excepții, cazuri speciale, ajutor de stat/de minimis, achiziții cu praguri cascadate.
+   TOATE ramurile decision tree documentate, nu doar cazul principal.
+   needs_review=true dacă regula e ambiguă sau incompletă + review_reason.
+
+2. DEFINIȚII ELEMENTE — câmpuri implicate de regulile interpretate:
+   Dacă o regulă necesită un câmp care nu e evident din text, ADAUGĂ-L.
+
+${SEMANTIC_TAGS_REF}
+
+Fii EXHAUSTIV — mai bine o regulă marcată cu needs_review decât o regulă omisă.
+Returnează DOAR JSON valid cu 2 array-uri. Fără backticks, fără explicații.`;
+
+const INTERPRETED_USER = `Extrage regulile interpretate și elementele implicate din acest ghid.
+
+CÂMPURI DISPONIBILE PENTRU condition.field:
+${FIELD_LIST_FOR_PROMPT}
+
+Returnează: { ${INTERPRETED_RULES_SCHEMA}, ${ELEMENT_DEFS_SCHEMA} }
+
+TEXT GHID:
+`;
+
+const SCORING_SYSTEM = `Ești Solomon — evaluator tehnic care completează grila de punctaj. Ai evaluat sute de proiecte și știi exact cum se calculează fiecare criteriu.
+
+GÂNDEȘTI CA UN EVALUATOR TEHNIC:
+- Care sunt TOATE criteriile din grila de selecție? (cod, nume, punctaj maxim)
+- Cum se CALCULEAZĂ fiecare criteriu? (lookup din tabel, interval, formulă, boolean)
+- Ce ELEMENTE DE DATE trebuie colectate pentru evaluare?
+- Care sunt PRAGURILE exacte pentru fiecare nivel de punctaj?
+
+EXTRAGI:
+1. CRITERII DE SELECȚIE / GRILĂ DE PUNCTAJ:
+   Cod, nume, punctaj maxim, categorie, logica de evaluare.
+   Dacă un criteriu se referă la un tabel din anexe, capturează structura COMPLETĂ (toate intervalele/pragurile).
+
+2. DEFINIȚII ELEMENTE — câmpuri necesare pentru evaluare:
+   Fiecare criteriu depinde de un element de date. Extrage-le.
+
+Returnează DOAR JSON valid cu 2 array-uri. Fără backticks, fără explicații.`;
+
+const SCORING_USER = `Extrage criteriile de selecție/punctaj și elementele asociate din acest ghid.
+
+CÂMPURI DISPONIBILE PENTRU condition.field:
+${FIELD_LIST_FOR_PROMPT}
+
+Returnează: { ${SCORING_SCHEMA}, ${ELEMENT_DEFS_SCHEMA} }
+
+TEXT GHID:
 `;
 
 /**
@@ -444,11 +464,14 @@ const MAX_CONTINUATION_ATTEMPTS = 2;
 
 // repairTruncatedJSON imported from ../lib/safeExtract
 
+type ExtractionMode = "fixed" | "interpreted" | "scoring" | "unified";
+
 async function unifiedExtraction(
   structuredText: string,
   organizationId: string,
   chunkLabel: string,
   useET: boolean,
+  mode: ExtractionMode = "unified",
 ): Promise<{
   fixedRules: any[];
   interpretedRules: any[];
@@ -465,16 +488,23 @@ async function unifiedExtraction(
   let continuations = 0;
   let wasTruncated = false;
 
-  // System prompt cached (common across all extraction calls)
-  // Guide text goes in user message (varies per category/chunk)
+  // Select focused prompt based on mode
+  const systemText = mode === "interpreted" ? INTERPRETED_SYSTEM
+    : mode === "scoring" ? SCORING_SYSTEM
+    : FIXED_SYSTEM; // "fixed" and "unified" both use FIXED (which includes docs + elements)
+
+  const userPrefix = mode === "interpreted" ? INTERPRETED_USER
+    : mode === "scoring" ? SCORING_USER
+    : FIXED_USER;
+
+  // System prompt cached (common structure across calls)
   const cachedSystem: any[] = [
-    { type: "text", text: UNIFIED_EXTRACTION_SYSTEM, cache_control: { type: "ephemeral" } },
+    { type: "text", text: systemText, cache_control: { type: "ephemeral" } },
   ];
 
-  // User message: extraction instructions + guide text (varies per chunk)
   const messages: Array<{ role: string; content: string }> = [{
     role: "user",
-    content: `${UNIFIED_EXTRACTION_USER}\n\n<guide_text>\n${structuredText}\n</guide_text>`,
+    content: `${userPrefix}\n\n<guide_text>\n${structuredText}\n</guide_text>`,
   }];
 
   for (let attempt = 0; attempt <= MAX_CONTINUATION_ATTEMPTS; attempt++) {
@@ -1633,7 +1663,7 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         const fixedChunks = splitStructuredText(fixedText);
         for (let i = 0; i < fixedChunks.length; i++) {
           extractionTasks.push(
-            unifiedExtraction(fixedChunks[i], organizationId, `fixed_${i + 1}`, false).then(result => {
+            unifiedExtraction(fixedChunks[i], organizationId, `fixed_${i + 1}`, false, "fixed").then(result => {
               allFixed.push(...result.fixedRules);
               allScoring.push(...result.scoringCriteria);
               allElementDefs.push(...result.elementDefinitions);
@@ -1654,7 +1684,7 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         const interpChunks = splitStructuredText(interpretedText);
         for (let i = 0; i < interpChunks.length; i++) {
           extractionTasks.push(
-            unifiedExtraction(interpChunks[i], organizationId, `interp_${i + 1}`, useET).then(result => {
+            unifiedExtraction(interpChunks[i], organizationId, `interp_${i + 1}`, useET, "interpreted").then(result => {
               allInterpreted.push(...result.interpretedRules);
               // Also collect any fixed rules found in "interpreted" pages
               allFixed.push(...result.fixedRules);
@@ -1672,7 +1702,7 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
 
       if (scoringText.length > 0) {
         extractionTasks.push(
-          unifiedExtraction(scoringText, organizationId, "scoring", false).then(result => {
+          unifiedExtraction(scoringText, organizationId, "scoring", false, "scoring").then(result => {
             allScoring.push(...result.scoringCriteria);
             allFixed.push(...result.fixedRules);
             allInterpreted.push(...result.interpretedRules);

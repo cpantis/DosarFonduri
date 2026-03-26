@@ -1724,7 +1724,10 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         status: "processed",
         pageCount,
         documentTypeClass: "guide" as any,
-        processingResult: qualityMetrics,
+        processingResult: {
+          ...qualityMetrics,
+          document_requirements: allDocRequirements,
+        },
         processedAt: new Date(),
       }).where(eq(documents.id, documentId));
 

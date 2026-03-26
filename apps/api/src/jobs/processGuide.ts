@@ -371,23 +371,27 @@ EXTRAGI:
    Regulile ELIMINATORII care pot respinge dosarul instant → confidence ≥ 0.95.
    Dacă o regulă se referă la un tabel/anexă pe care nu o vezi, menționează în source_text.
 
-2. DEFINIȚII ELEMENTE — câmpuri de date necesare:
+2. REGULI INTERPRETATE — condiții complexe care NU sunt pur binare:
+   Intensitate sprijin, excepții, cazuri speciale, ajutor de stat, condiții cascadate.
+   Dacă o regulă are MULTIPLE RAMURI sau depinde de context, e interpretată.
+
+3. DEFINIȚII ELEMENTE — câmpuri de date necesare:
    TOATE câmpurile de colectat, inclusiv cele IMPLICITE. Dacă o regulă se referă la un câmp nelistat, ADAUGĂ-L.
 
-3. DOCUMENTE NECESARE — checklist complet:
+4. DOCUMENTE NECESARE — checklist complet:
    Toate documentele de depus. Parcurge "Documente necesare", "Conținut dosar", și mențiuni dispersate ("va prezenta", "va anexa").
    FIECARE document separat. Un document lipsă = dosar respins administrativ.
 
 ${SEMANTIC_TAGS_REF}
 
-Returnează DOAR JSON valid cu 3 array-uri. Fără backticks, fără explicații.`;
+Returnează DOAR JSON valid. Fără backticks, fără explicații.`;
 
-const FIXED_USER = `Extrage regulile fixe, elementele și documentele din acest ghid.
+const FIXED_USER = `Extrage regulile fixe, regulile interpretate, elementele și documentele din acest ghid.
 
 CÂMPURI DISPONIBILE PENTRU condition.field:
 ${FIELD_LIST_FOR_PROMPT}
 
-Returnează: { ${FIXED_RULES_SCHEMA}, ${ELEMENT_DEFS_SCHEMA}, ${DOC_REQUIREMENTS_SCHEMA} }
+Returnează: { ${FIXED_RULES_SCHEMA}, ${INTERPRETED_RULES_SCHEMA}, ${ELEMENT_DEFS_SCHEMA}, ${DOC_REQUIREMENTS_SCHEMA} }
 
 CARDINALITATE: "3 oferte" → min_count=3. Fără cantitate → min_count=1, max_count=null.
 

@@ -64,6 +64,12 @@ const KNOWLEDGE_CATEGORIES = [
   { value: "praguri", label: "Praguri și plafoane" },
   { value: "proceduri", label: "Proceduri" },
   { value: "ghid_specific", label: "Ghid specific" },
+  { value: "referinta_obiective", label: "Referință — Obiective strategice" },
+  { value: "referinta_target_cifre", label: "Referință — Target-uri și cifre" },
+  { value: "referinta_masuri_politici", label: "Referință — Măsuri și politici" },
+  { value: "referinta_cadru_legal", label: "Referință — Cadru legal" },
+  { value: "referinta_definitii", label: "Referință — Definiții" },
+  { value: "referinta_statistici", label: "Referință — Statistici" },
 ];
 
 const TYPE_ICONS: Record<string, string> = { ListaFirme: "🔍", ONRC: "🏛", ANAF: "📊", Email: "📧", SMS: "📱", Storage: "☁️", Custom: "🔗" };

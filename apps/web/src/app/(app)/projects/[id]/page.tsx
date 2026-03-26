@@ -1337,8 +1337,8 @@ export default function ProjectViewPage() {
     };
 
     const renderInline = (line: string): React.ReactNode => {
-      // Handle **bold**, *italic*, `code`, and plain text
-      const parts = line.split(/(\*\*.*?\*\*|\*[^*]+\*|`[^`]+`)/).filter(Boolean);
+      // Handle **bold**, *italic*, `code`, [links](url), and plain text
+      const parts = line.split(/(\*\*.*?\*\*|\*[^*]+\*|`[^`]+`|\[[^\]]+\]\([^)]+\))/).filter(Boolean);
       return parts.map((part, i) => {
         if (part.startsWith("**") && part.endsWith("**")) {
           return <strong key={i} className="solomon-md-bold">{part.slice(2, -2)}</strong>;
@@ -1348,6 +1348,11 @@ export default function ProjectViewPage() {
         }
         if (part.startsWith("`") && part.endsWith("`")) {
           return <code key={i} className="solomon-md-code">{part.slice(1, -1)}</code>;
+        }
+        // Markdown links: [text](url)
+        const linkMatch = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+        if (linkMatch) {
+          return <a key={i} href={linkMatch[2]} target="_blank" rel="noopener noreferrer" className="solomon-md-link">{linkMatch[1]}</a>;
         }
         return part;
       });
@@ -1380,8 +1385,47 @@ export default function ProjectViewPage() {
         continue;
       }
 
-      // Bullet points (-, •, *, numbered: 1. 2.)
-      const bulletMatch = trimmed.match(/^[-•*]\s+(.+)/) || trimmed.match(/^\d+[.)]\s+(.+)/);
+      // Blockquote (> text) — used for guide citations
+      if (trimmed.startsWith("> ")) {
+        flushList();
+        // Collect consecutive blockquote lines
+        const quoteLines: string[] = [trimmed.slice(2)];
+        while (i + 1 < lines.length && lines[i + 1].trim().startsWith("> ")) {
+          i++;
+          quoteLines.push(lines[i].trim().slice(2));
+        }
+        blocks.push(
+          <blockquote key={blockKey++} className="solomon-md-quote">
+            {quoteLines.map((ql, qi) => <p key={qi}>{renderInline(ql)}</p>)}
+          </blockquote>
+        );
+        continue;
+      }
+
+      // Code block (```)
+      if (trimmed.startsWith("```")) {
+        flushList();
+        const codeLines: string[] = [];
+        i++;
+        while (i < lines.length && !lines[i].trim().startsWith("```")) {
+          codeLines.push(lines[i]);
+          i++;
+        }
+        blocks.push(
+          <pre key={blockKey++} className="solomon-md-codeblock">{codeLines.join("\n")}</pre>
+        );
+        continue;
+      }
+
+      // Numbered list (1. 2. 3.) — keep numbers
+      const numberedMatch = trimmed.match(/^(\d+)[.)]\s+(.+)/);
+      if (numberedMatch) {
+        currentList.push(numberedMatch[1] + ". " + numberedMatch[2]);
+        continue;
+      }
+
+      // Bullet points (-, •, *)
+      const bulletMatch = trimmed.match(/^[-•*]\s+(.+)/);
       if (bulletMatch) {
         currentList.push(bulletMatch[1]);
         continue;
@@ -2803,6 +2847,12 @@ export default function ProjectViewPage() {
         .solomon-md-table td{padding:6px 12px;border:1px solid #e2e8f0;color:#475569;font-variant-numeric:tabular-nums}
         .solomon-md-table tbody tr:hover{background:#f8fafc}
         .solomon-md-table tbody tr:nth-child(even){background:#fafbfc}
+        .solomon-md-quote{margin:8px 0;padding:10px 16px;border-left:3px solid #4d8bff;background:#f0f7ff;border-radius:0 8px 8px 0;color:#334155;font-size:13.5px;line-height:1.6;font-style:italic}
+        .solomon-md-quote p{margin:0 0 4px}
+        .solomon-md-quote p:last-child{margin:0}
+        .solomon-md-codeblock{margin:8px 0;padding:12px 16px;background:#1e293b;color:#e2e8f0;border-radius:8px;font-size:12.5px;font-family:'JetBrains Mono','SF Mono',monospace;line-height:1.6;overflow-x:auto;white-space:pre;max-width:640px}
+        .solomon-md-link{color:#2563eb;text-decoration:none;font-weight:500;border-bottom:1px solid rgba(37,99,235,.2)}
+        .solomon-md-link:hover{border-bottom-color:#2563eb}
         .extraction-cards{margin-top:12px;display:flex;flex-direction:column;gap:8px}
         .extraction-card{background:#f0f7ff;border:1px solid #bfdbfe;border-radius:12px;padding:14px 20px;transition:all .2s}
         .extraction-card.confirmed{border-color:#a7f3d0;background:#ecfdf5}

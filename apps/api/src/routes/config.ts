@@ -11,6 +11,7 @@ import { extractTextFromPDF, extractTextFromDOCX } from "../services/ocr";
 import { anthropic, withAILimit } from "../lib/anthropic";
 import { logAIUsage } from "../services/aiUsage";
 import { repairTruncatedJSON } from "../lib/safeExtract";
+import { publishJobProgress } from "../lib/sse";
 
 export const configRoutes = new Hono<AppEnv>();
 
@@ -536,8 +537,32 @@ configRoutes.post("/knowledge/upload", async (c) => {
     }
   }
 
-  // Step 3: Extract sections with AI
-  const SYSTEM = `Ești Solomon — consultant senior cu 15+ ani experiență în fonduri europene.
+  const sourceTag = `upload:${fileName}`;
+
+  // Delete previous entries (for re-upload)
+  await db.delete(solomonKnowledge).where(
+    and(
+      eq(solomonKnowledge.organizationId, auth.organizationId),
+      eq(solomonKnowledge.sourceReference, sourceTag),
+    ),
+  );
+
+  const estMinutes = Math.ceil((chunks.length * 30 + 10) / 60);
+  const orgId = auth.organizationId;
+  const userId = auth.userId;
+
+  // Publish initial SSE progress
+  publishJobProgress(orgId, {
+    jobId: `kb-upload-${fileName}`,
+    jobType: "knowledge_upload",
+    progress: 5,
+    status: "processing",
+    message: `Procesez "${fileName}" — ${totalPages} pagini, ${chunks.length} secțiuni. Estimare: ~${estMinutes} min`,
+  }).catch(() => {});
+
+  // Process async in background — return immediately
+  (async () => {
+    const SYSTEM = `Ești Solomon — consultant senior cu 15+ ani experiență în fonduri europene.
 Citești un document strategic/legislativ și extragi informațiile pe care un consultant le folosește pentru:
 1. JUSTIFICAREA proiectelor — obiective naționale, target-uri, priorități
 2. ARGUMENTAREA punctajului — date statistice, cifre oficiale
@@ -546,90 +571,94 @@ Citești un document strategic/legislativ și extragi informațiile pe care un c
 Concentrează-te pe: cifre concrete, procente, target-uri cu an, măsuri specifice, definiții oficiale.
 Returnează DOAR JSON valid. Fără backticks, fără explicații.`;
 
-  const allSections: Array<{ title: string; category: string; content: string; source_page: number | null; relevance: string }> = [];
-
-  for (let i = 0; i < chunks.length; i++) {
-    try {
-      const response: any = await withAILimit(() => (anthropic.messages.create as any)({
-        model: "claude-sonnet-4-6",
-        max_tokens: 16000,
-        system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
-        messages: [{ role: "user", content: `Extrage secțiunile-cheie din acest document.
+    let savedCount = 0;
+    for (let i = 0; i < chunks.length; i++) {
+      try {
+        const response: any = await withAILimit(() => (anthropic.messages.create as any)({
+          model: "claude-sonnet-4-6",
+          max_tokens: 16000,
+          system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
+          messages: [{ role: "user", content: `Extrage secțiunile-cheie din acest document.
 
 Returnează: { "sections": [{ "title": "...", "category": "obiective|target_cifre|masuri_politici|cadru_legal|definitii|statistici|prioritati|calendar", "content": "textul COMPLET (consultantul citează exact)", "source_page": N, "relevance": "pentru ce programe e relevant" }] }
 
 TEXT DOCUMENT (chunk ${i + 1}/${chunks.length}):
 ${chunks[i]}` }],
-      }));
+        }));
 
-      const textBlock = response.content.find((b: any) => b.type === "text");
-      const content = textBlock ? textBlock.text : "";
+        const textBlock = response.content.find((b: any) => b.type === "text");
+        const content = textBlock ? textBlock.text : "";
 
-      await logAIUsage({
-        organizationId: auth.organizationId,
-        agent: "reference_extractor",
-        model: "claude-sonnet-4-6",
-        tokensInput: response.usage.input_tokens,
-        tokensOutput: response.usage.output_tokens,
-        action: `knowledge_upload_chunk_${i + 1}`,
-      });
+        await logAIUsage({
+          organizationId: orgId,
+          agent: "reference_extractor",
+          model: "claude-sonnet-4-6",
+          tokensInput: response.usage.input_tokens,
+          tokensOutput: response.usage.output_tokens,
+          action: `knowledge_upload_chunk_${i + 1}`,
+        });
 
-      const cleaned = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-      let parsed: any = null;
-      try { parsed = JSON.parse(cleaned); } catch { parsed = repairTruncatedJSON(content); }
-      if (parsed?.sections && Array.isArray(parsed.sections)) {
-        allSections.push(...parsed.sections);
+        const cleaned = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+        let parsed: any = null;
+        try { parsed = JSON.parse(cleaned); } catch { parsed = repairTruncatedJSON(content); }
+        if (parsed?.sections && Array.isArray(parsed.sections)) {
+          for (const section of parsed.sections) {
+            if (!section.title || !section.content) continue;
+            try {
+              await db.insert(solomonKnowledge).values({
+                organizationId: orgId,
+                category: `referinta_${section.category || "general"}`,
+                title: `${fileName.replace(/\.[^.]+$/, "")} — ${section.title}`.slice(0, 500),
+                content: section.content,
+                sourceReference: sourceTag,
+                sourceUrl: null,
+                validFrom: null,
+                validUntil: null,
+                priority: 5,
+                enabled: true,
+                createdBy: userId,
+              });
+              savedCount++;
+            } catch {}
+          }
+        }
+
+        // SSE progress per chunk
+        publishJobProgress(orgId, {
+          jobId: `kb-upload-${fileName}`,
+          jobType: "knowledge_upload",
+          progress: 5 + Math.round(((i + 1) / chunks.length) * 90),
+          status: "processing",
+          message: `Secțiunea ${i + 1} din ${chunks.length} procesată — ${savedCount} intrări extrase`,
+        }).catch(() => {});
+
+      } catch (err: any) {
+        console.warn(`[knowledge/upload] Chunk ${i + 1} failed:`, err.message);
       }
-    } catch (err: any) {
-      console.warn(`[knowledge/upload] Chunk ${i + 1} extraction failed:`, err.message);
     }
-  }
 
-  if (allSections.length === 0) {
-    return c.json({ error: "Nu s-au putut extrage secțiuni din document" }, 500);
-  }
+    // SSE completion
+    publishJobProgress(orgId, {
+      jobId: `kb-upload-${fileName}`,
+      jobType: "knowledge_upload",
+      progress: 100,
+      status: "completed",
+      message: `${savedCount} secțiuni extrase din "${fileName}" — disponibile in Solomon și Neemia`,
+    }).catch(() => {});
 
-  // Step 4: Save to solomonKnowledge
-  const sourceTag = `upload:${fileName}`;
+    console.log(`[knowledge/upload] "${fileName}" complete: ${savedCount} secțiuni din ${totalPages} pagini (${chunks.length} chunks)`);
+  })().catch(err => console.error(`[knowledge/upload] Background processing failed:`, err));
 
-  // Delete previous entries from same file name (for re-upload)
-  await db.delete(solomonKnowledge).where(
-    and(
-      eq(solomonKnowledge.organizationId, auth.organizationId),
-      eq(solomonKnowledge.sourceReference, sourceTag),
-    ),
-  );
-
-  let savedCount = 0;
-  for (const section of allSections) {
-    if (!section.title || !section.content) continue;
-    try {
-      await db.insert(solomonKnowledge).values({
-        organizationId: auth.organizationId,
-        category: `referinta_${section.category || "general"}`,
-        title: `${fileName.replace(/\.[^.]+$/, "")} — ${section.title}`.slice(0, 500),
-        content: section.content,
-        sourceReference: sourceTag,
-        sourceUrl: null,
-        validFrom: null,
-        validUntil: null,
-        priority: 5,
-        enabled: true,
-        createdBy: auth.userId,
-      });
-      savedCount++;
-    } catch {}
-  }
-
-  console.log(`[knowledge/upload] "${fileName}" → ${savedCount} secțiuni din ${totalPages} pagini (${totalChars} chars, ${chunks.length} chunks)`);
-
+  // Return immediately
   return c.json({
     ok: true,
+    processing: true,
     fileName,
     totalPages,
     totalChars,
-    chunksProcessed: chunks.length,
-    sectionsExtracted: savedCount,
+    chunksToProcess: chunks.length,
+    estimatedMinutes: estMinutes,
+    message: `Procesare în curs — ${totalPages} pagini, ~${estMinutes} ${estMinutes === 1 ? "minut" : "minute"}. Secțiunile vor apărea automat.`,
   });
 });
 

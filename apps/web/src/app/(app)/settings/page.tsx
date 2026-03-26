@@ -639,8 +639,6 @@ export default function SettingsPage() {
                     const formData = new FormData();
                     formData.append("file", file);
 
-                    toast("info", `Procesez "${file.name}" — poate dura 1-3 minute pentru documente mari...`);
-
                     try {
                       const token = typeof window !== "undefined" ? localStorage.getItem("df-token") : null;
                       const res = await fetch("/api/config/knowledge/upload", {
@@ -653,15 +651,30 @@ export default function SettingsPage() {
                         throw new Error(err.error || `HTTP ${res.status}`);
                       }
                       const result = await res.json();
-                      toast("success", `${(result as any).sectionsExtracted} sectiuni extrase din "${file.name}"`);
-                      // Reload knowledge entries
-                      const data = await apiGet("/api/config/knowledge");
-                      setKnowledgeEntries(data);
+                      toast("info", (result as any).message || `Procesare in curs — ${file.name}`);
+
+                      // Poll for completion — reload knowledge entries every 10s until we see new entries
+                      const uploadName = file.name;
+                      let polls = 0;
+                      const pollInterval = setInterval(async () => {
+                        polls++;
+                        try {
+                          const data = await apiGet("/api/config/knowledge");
+                          const uploadEntries = data.filter((e: any) => e.sourceReference === `upload:${uploadName}`);
+                          if (uploadEntries.length > 0 || polls >= 30) {
+                            clearInterval(pollInterval);
+                            setKnowledgeEntries(data);
+                            if (uploadEntries.length > 0) {
+                              toast("success", `${uploadEntries.length} sectiuni extrase din "${uploadName}"`);
+                            }
+                          }
+                        } catch {}
+                      }, 10000);
                     } catch (err: any) {
                       toast("error", err.message || "Eroare la procesare document");
                     }
                     e.target.value = "";
-                  }}
+                  }}}
                 />
                 <label
                   htmlFor="knowledge-upload"

@@ -248,17 +248,6 @@ export default function CompanyDetailPage() {
     if (activeTab === "Elemente" && !elementsData) fetchElements();
   }, [activeTab, elementsData, fetchElements]);
 
-  // Fetch linked companies when tab activates
-  useEffect(() => {
-    if (activeTab === "Firme legate" && !linkedLoaded && sel) {
-      setLinkedLoading(true);
-      apiGet(`/api/companies/${sel.id}/linked-companies`)
-        .then((data: any[]) => { setLinkedCompanies(data); setLinkedLoaded(true); })
-        .catch(() => setLinkedLoaded(true))
-        .finally(() => setLinkedLoading(false));
-    }
-  }, [activeTab, linkedLoaded, sel]);
-
   // Fetch available sessions when tab activates
   useEffect(() => {
     if (activeTab === "Eligibilitate solicitant" && sessions.length === 0) {
@@ -496,6 +485,17 @@ export default function CompanyDetailPage() {
 
   const sel = detail;
   const tabs = sel ? getCompanyTabs(sel.forma) : [];
+
+  // Fetch linked companies when tab activates
+  useEffect(() => {
+    if (activeTab === "Firme legate" && !linkedLoaded && sel) {
+      setLinkedLoading(true);
+      apiGet(`/api/companies/${sel.id}/linked-companies`)
+        .then((data: any[]) => { setLinkedCompanies(data); setLinkedLoaded(true); })
+        .catch(() => setLinkedLoaded(true))
+        .finally(() => setLinkedLoading(false));
+    }
+  }, [activeTab, linkedLoaded, sel]);
 
   return (
     <div className="flex flex-col h-full overflow-hidden animate-[fadeIn_.2s_ease-out]">

@@ -14,7 +14,7 @@ import { preflightCached } from "../services/dbPreflight";
 import { z } from "zod";
 import { generateFieldListForPrompt, resolveFieldKey } from "@dosarfonduri/shared";
 import { extractTables } from "./processReferenceData";
-import { extractAllFromChunk, type FullExtractionResult } from "./guideExtractors";
+// guideExtractors.ts available for future etapizat pipeline — currently using unified extraction
 
 /** Generate a slugified rule_key from category + description */
 function generateRuleKey(category: string, description: string): string {
@@ -1497,10 +1497,15 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         message: `Extrag reguli, criterii de selectie si elemente necesare...`,
       }).catch((e: any) => console.warn("[processGuide] sse extraction start:", e.message));
 
-      // ─── STEP 3: Etapizat extraction — 6 focused calls per chunk with caching ───
+      // ─── STEP 3: Unified extraction — single consultant call per chunk ───
+      const config = await db.query.orgConfig.findFirst({
+        where: eq(orgConfig.organizationId, organizationId),
+      });
+      const useET = config?.reguliInterpET ?? true;
+
       const opusStart = Date.now();
       const chunks = splitStructuredText(structuredText);
-      console.log(`[processGuide] Extracting "${doc.name}" with ${chunks.length} chunk(s), etapizat pipeline v2`);
+      console.log(`[processGuide] Extracting "${doc.name}" with ${chunks.length} chunk(s), model=${DEFAULT_EXTRACTION_MODEL}, ET=${useET}`);
 
       let allFixed: any[] = [];
       let allInterpreted: any[] = [];
@@ -1511,45 +1516,52 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
       let totalAIInputTokens = 0;
       let totalAIOutputTokens = 0;
 
-      // Process chunks (parallel across chunks, etapizat within each chunk)
-      const chunkResults: FullExtractionResult[] = [];
-      const chunkQueue = chunks.map((_, i) => i);
+      if (chunks.length === 1) {
+        const result = await unifiedExtraction(chunks[0], organizationId, "full", useET);
+        allFixed = result.fixedRules;
+        allInterpreted = result.interpretedRules;
+        allScoring = result.scoringCriteria;
+        allElementDefs = result.elementDefinitions;
+        allDocRequirements = result.documentRequirements;
+        extractionTruncated = result._meta.truncated;
+        totalAIInputTokens = result._meta.totalInputTokens;
+        totalAIOutputTokens = result._meta.totalOutputTokens;
+      } else {
+        const chunkResults: Array<Awaited<ReturnType<typeof unifiedExtraction>>> = new Array(chunks.length);
+        const chunkQueue = chunks.map((_, i) => i);
 
-      async function chunkWorker() {
-        let idx: number | undefined;
-        while ((idx = chunkQueue.shift()) !== undefined) {
-          const result = await extractAllFromChunk(chunks[idx], organizationId, `chunk_${idx + 1}`);
-          chunkResults[idx] = result;
-          publishJobProgress(organizationId, {
-            jobId: job.id || "",
-            jobType: "ghid",
-            documentId,
-            documentName: doc.name,
-            progress: 30 + Math.round(((idx + 1) / chunks.length) * 55),
-            status: "processing",
-            message: `Analiza in curs — sectiunea ${idx + 1} din ${chunks.length} finalizata`,
-          }).catch((e: any) => console.warn("[processGuide] sse chunk progress:", e.message));
+        async function chunkWorker() {
+          let idx: number | undefined;
+          while ((idx = chunkQueue.shift()) !== undefined) {
+            chunkResults[idx] = await unifiedExtraction(chunks[idx], organizationId, `chunk_${idx + 1}`, useET);
+            publishJobProgress(organizationId, {
+              jobId: job.id || "",
+              jobType: "ghid",
+              documentId,
+              documentName: doc.name,
+              progress: 30 + Math.round(((idx + 1) / chunks.length) * 55),
+              status: "processing",
+              message: `Analiza in curs — sectiunea ${idx + 1} din ${chunks.length} finalizata`,
+            }).catch((e: any) => console.warn("[processGuide] sse chunk progress:", e.message));
+          }
         }
-      }
 
-      await Promise.all(
-        Array.from({ length: Math.min(MAX_PARALLEL_CHUNKS, chunks.length) }, () => chunkWorker()),
-      );
+        await Promise.all(
+          Array.from({ length: Math.min(MAX_PARALLEL_CHUNKS, chunks.length) }, () => chunkWorker()),
+        );
 
-      // Merge results from all chunks
-      for (const result of chunkResults) {
-        allFixed.push(...result.fixedRules);
-        allInterpreted.push(...result.interpretedRules);
-        allScoring.push(...result.scoringCriteria);
-        allElementDefs.push(...result.elementDefinitions);
-        allDocRequirements.push(...result.documentRequirements);
-        if (result.truncated) extractionTruncated = true;
-        totalAIInputTokens += result.totalInputTokens;
-        totalAIOutputTokens += result.totalOutputTokens;
-      }
+        for (const result of chunkResults) {
+          allFixed.push(...result.fixedRules);
+          allInterpreted.push(...result.interpretedRules);
+          allScoring.push(...result.scoringCriteria);
+          allElementDefs.push(...result.elementDefinitions);
+          allDocRequirements.push(...result.documentRequirements);
+          if (result._meta.truncated) extractionTruncated = true;
+          totalAIInputTokens += result._meta.totalInputTokens;
+          totalAIOutputTokens += result._meta.totalOutputTokens;
+        }
 
-      // Deduplicate across chunks
-      if (chunks.length > 1) {
+        // Deduplicate across chunks
         allFixed = deduplicateRules(allFixed);
         allInterpreted = deduplicateRules(allInterpreted);
         allScoring = deduplicateScoring(allScoring);

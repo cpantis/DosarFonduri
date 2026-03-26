@@ -101,6 +101,7 @@ app.use("/api/*", auditMiddleware);
 
 // Allow large file uploads (50 MB default, 100 MB for document routes)
 app.use("/api/documents/*", bodyLimit({ maxSize: 100 * 1024 * 1024 }));
+app.use("/api/config/knowledge/upload", bodyLimit({ maxSize: 50 * 1024 * 1024 }));
 
 app.route("/api/companies", companyRoutes);
 app.route("/api/documents", documentRoutes);

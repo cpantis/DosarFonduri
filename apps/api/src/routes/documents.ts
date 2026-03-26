@@ -8,7 +8,7 @@ import { documentFolders, documents, files, templateElements, rules, scoringCrit
 import { eq, and, isNull, sql, inArray, or, lt } from "drizzle-orm";
 import { uploadFile, getFileUrl, deleteFile, createPresignedUploadUrl, verifyFileUploaded, isLocalStorage } from "../services/storage";
 import { AuthContext } from "../middleware/auth";
-import { processGuideQueue, processTemplateQueue, processReferenceDataQueue, processClientDocQueue, JOB_PRIORITY } from "../lib/queue";
+import { processGuideQueue, processTemplateQueue, processReferenceDataQueue, processReferenceDocQueue, processClientDocQueue, JOB_PRIORITY } from "../lib/queue";
 import { publishUploadEvent, publishFolderStructureLock } from "../lib/sse";
 import { isRedisReady } from "../lib/redis";
 
@@ -521,6 +521,7 @@ function resolveProcessingType(folderType: string, explicitType: string | null):
   // (the distinction is stored in generationMode on the document record)
   if (explicitType === "template_fill" || explicitType === "template_compose") return "template";
   if (folderType === "templateuri") return "template";
+  if (folderType === "referinte") return "referinta_strategica";
   if (folderType === "clienti_prospecti" || folderType === "clienti_finali") return "client_doc";
   return "reference";
 }
@@ -703,6 +704,9 @@ documentRoutes.post("/documents/:id/confirm-upload", async (c) => {
         dispatched = true;
       } else if (doc.processingType === "reference_data") {
         await processReferenceDataQueue.add("process-reference-data", jobPayload, { priority: JOB_PRIORITY.REFERENCE_DATA, ...dedup });
+        dispatched = true;
+      } else if (doc.processingType === "referinta_strategica") {
+        await processReferenceDocQueue.add("process-reference-doc", jobPayload, { priority: JOB_PRIORITY.REFERENCE_DOC, ...dedup });
         dispatched = true;
       } else if (doc.processingType === "client_doc") {
         await processClientDocQueue.add("process-client-doc", jobPayload, { priority: JOB_PRIORITY.CLIENT_DOC, ...dedup });

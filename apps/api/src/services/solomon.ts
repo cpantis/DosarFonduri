@@ -521,21 +521,45 @@ ${passedRules.length > 0 ? `### ✅ REGULI ÎNDEPLINITE (${passedRules.length})
 ${passedRules.slice(0, 15).join("\n")}${passedRules.length > 15 ? `\n... și alte ${passedRules.length - 15} reguli îndeplinite` : ""}
 ` : ""}` : "Nu au fost extrase încă reguli din ghidul de finanțare. Întreabă consultantul dacă ghidul a fost încărcat."}
 
-${activeKnowledge.length > 0 ? `═══════════════════════════════════════════
-## ACTUALIZĂRI LEGISLATIVE ȘI CUNOȘTINȚE NOI (${activeKnowledge.length})
-═══════════════════════════════════════════
-Următoarele actualizări au fost adăugate de consultant/admin și AU PRIORITATE față de cunoștințele tale implicite:
+${(() => {
+  if (activeKnowledge.length === 0) return "";
+  const manualEntries = activeKnowledge.filter(k => !k.category.startsWith("referinta_"));
+  const refEntries = activeKnowledge.filter(k => k.category.startsWith("referinta_"));
 
-${activeKnowledge.map(k => {
-  let entry = `### [${k.category.toUpperCase()}] ${k.title}`;
-  if (k.sourceReference) entry += `\nSursă: ${k.sourceReference}`;
-  if (k.sourceUrl) entry += ` (${k.sourceUrl})`;
-  if (k.validFrom) entry += `\nÎn vigoare de la: ${k.validFrom.toISOString().split("T")[0]}`;
-  if (k.validUntil) entry += ` | Expiră: ${k.validUntil.toISOString().split("T")[0]}`;
-  entry += `\n${k.content}`;
-  return entry;
-}).join("\n\n")}
-` : ""}
+  const formatEntry = (k: any) => {
+    let entry = `### [${k.category.toUpperCase()}] ${k.title}`;
+    if (k.sourceReference && !k.sourceReference.startsWith("doc:") && !k.sourceReference.startsWith("upload:")) entry += `\nSursă: ${k.sourceReference}`;
+    if (k.sourceUrl) entry += ` (${k.sourceUrl})`;
+    if (k.validFrom) entry += `\nÎn vigoare de la: ${k.validFrom.toISOString().split("T")[0]}`;
+    if (k.validUntil) entry += ` | Expiră: ${k.validUntil.toISOString().split("T")[0]}`;
+    entry += `\n${k.content}`;
+    return entry;
+  };
+
+  let section = `═══════════════════════════════════════════
+## BAZĂ DE CUNOȘTINȚE (${activeKnowledge.length} intrări)
+═══════════════════════════════════════════
+`;
+
+  if (manualEntries.length > 0) {
+    section += `### CUNOȘTINȚE CABINET (${manualEntries.length}) — adăugate de consultant, AU PRIORITATE
+${manualEntries.map(formatEntry).join("\n\n")}
+
+`;
+  }
+
+  if (refEntries.length > 0) {
+    section += `### REFERINȚE STRATEGICE (${refEntries.length}) — extrase automat din documente de referință
+Folosește-le pentru: justificarea proiectelor, citare obiective, argumentare punctaj, context legislativ.
+Când consultantul întreabă despre obiective sau target-uri, caută aici PRIMUL.
+
+${refEntries.slice(0, 30).map(formatEntry).join("\n\n")}
+${refEntries.length > 30 ? `... și alte ${refEntries.length - 30} referințe disponibile` : ""}
+`;
+  }
+
+  return section;
+})()}
 ${checklistItems.length > 0 ? `═══════════════════════════════════════════
 ## CHECKLIST DOCUMENTE PROIECT
 ═══════════════════════════════════════════

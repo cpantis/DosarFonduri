@@ -64,6 +64,12 @@ const KNOWLEDGE_CATEGORIES = [
   { value: "praguri", label: "Praguri și plafoane" },
   { value: "proceduri", label: "Proceduri" },
   { value: "ghid_specific", label: "Ghid specific" },
+  { value: "referinta_obiective", label: "Referință — Obiective strategice" },
+  { value: "referinta_target_cifre", label: "Referință — Target-uri și cifre" },
+  { value: "referinta_masuri_politici", label: "Referință — Măsuri și politici" },
+  { value: "referinta_cadru_legal", label: "Referință — Cadru legal" },
+  { value: "referinta_definitii", label: "Referință — Definiții" },
+  { value: "referinta_statistici", label: "Referință — Statistici" },
 ];
 
 const TYPE_ICONS: Record<string, string> = { ListaFirme: "🔍", ONRC: "🏛", ANAF: "📊", Email: "📧", SMS: "📱", Storage: "☁️", Custom: "🔗" };
@@ -607,14 +613,114 @@ export default function SettingsPage() {
             <>
               <div className="text-lg font-semibold mb-1 text-slate-900">{"\u{1F4DA}"} Baz&#259; de cuno&#537;tin&#539;e</div>
               <div className="text-sm mb-5 leading-relaxed text-slate-500">
-                Legisla&#539;ie, bune practici, corec&#539;ii &#537;i praguri folosite de Solomon &#238;n r&#259;spunsuri.
+                Legisla&#539;ie, bune practici, corec&#539;ii, praguri &#537;i referin&#539;e strategice folosite de Solomon &#238;n r&#259;spunsuri.
+                Upload&#259; documente strategice (PNIESC, PNRR, regulamente) pentru a construi automat baza de cuno&#537;tin&#539;e.
               </div>
 
-              <button
-                className="mb-4 px-4 py-2 text-sm font-semibold rounded-lg text-white"
-                style={{ background: "#2563eb" }}
-                onClick={() => { setShowAddKnowledge(true); setEditingKnowledge(null); setNewKnowledge({ category: "legislatie", title: "", content: "", sourceReference: "", validFrom: "", validUntil: "" }); }}
-              >
+              {/* ─── Upload Document Zone ─── */}
+              <div style={{ marginBottom: 20, padding: 20, borderRadius: 12, border: "2px dashed #e2e8f0", background: "#fafbfc", position: "relative" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
+                  <div style={{ width: 40, height: 40, borderRadius: 10, background: "linear-gradient(135deg, #2563eb, #7c3aed)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>&#x1F4C4;</div>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a" }}>Upload document strategic</div>
+                    <div style={{ fontSize: 12, color: "#64748b" }}>PDF sau DOCX. Max 50MB. PNIESC, PNRR, regulamente UE, OUG-uri, strategii.</div>
+                  </div>
+                </div>
+                <input
+                  type="file"
+                  accept=".pdf,.docx,.doc"
+                  style={{ display: "none" }}
+                  id="knowledge-upload"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    if (file.size > 50 * 1024 * 1024) { toast("error", "Fisierul depaseste 50MB"); return; }
+
+                    const formData = new FormData();
+                    formData.append("file", file);
+
+                    toast("info", `Procesez "${file.name}" — poate dura 1-3 minute pentru documente mari...`);
+
+                    try {
+                      const token = typeof window !== "undefined" ? localStorage.getItem("df-token") : null;
+                      const res = await fetch("/api/config/knowledge/upload", {
+                        method: "POST",
+                        headers: token ? { "Authorization": `Bearer ${token}` } : {},
+                        body: formData,
+                      });
+                      if (!res.ok) {
+                        const err = await res.json().catch(() => ({ error: "Eroare la upload" }));
+                        throw new Error(err.error || `HTTP ${res.status}`);
+                      }
+                      const result = await res.json();
+                      toast("success", `${(result as any).sectionsExtracted} sectiuni extrase din "${file.name}"`);
+                      // Reload knowledge entries
+                      const data = await apiGet("/api/config/knowledge");
+                      setKnowledgeEntries(data);
+                    } catch (err: any) {
+                      toast("error", err.message || "Eroare la procesare document");
+                    }
+                    e.target.value = "";
+                  }}
+                />
+                <label
+                  htmlFor="knowledge-upload"
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 20px", borderRadius: 8, background: "#2563eb", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", transition: "all .15s" }}
+                >
+                  &#x1F4E4; Selecteaz&#259; document
+                </label>
+              </div>
+
+              {/* ─── Uploaded Documents List ─── */}
+              {knowledgeEntries.filter((e: any) => e.sourceReference?.startsWith("upload:")).length > 0 && (
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".5px", color: "#94a3b8", marginBottom: 8 }}>Documente procesate</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {(() => {
+                      const uploadGroups = new Map<string, { count: number; fileName: string }>();
+                      for (const e of knowledgeEntries) {
+                        const src = (e as any).sourceReference;
+                        if (src?.startsWith("upload:")) {
+                          const fn = src.slice(7);
+                          const g = uploadGroups.get(fn);
+                          if (g) g.count++; else uploadGroups.set(fn, { count: 1, fileName: fn });
+                        }
+                      }
+                      return Array.from(uploadGroups.values()).map(g => (
+                        <div key={g.fileName} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 10, border: "1px solid #e2e8f0", background: "#fff" }}>
+                          <span style={{ fontSize: 16 }}>&#x1F4D7;</span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.fileName}</div>
+                            <div style={{ fontSize: 11, color: "#64748b" }}>{g.count} sec&#539;iuni extrase</div>
+                          </div>
+                          <button
+                            style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid #fca5a5", background: "transparent", color: "#dc2626", fontSize: 11, fontWeight: 600, cursor: "pointer" }}
+                            onClick={async () => {
+                              if (!confirm(`Stergi toate sectiunile din "${g.fileName}"?`)) return;
+                              try {
+                                await apiDelete(`/api/config/knowledge/upload/${encodeURIComponent(g.fileName)}`);
+                                setKnowledgeEntries((prev: any[]) => prev.filter(e => (e as any).sourceReference !== `upload:${g.fileName}`));
+                                toast("success", `Sectiunile din "${g.fileName}" au fost sterse`);
+                              } catch (err: any) {
+                                toast("error", err.message);
+                              }
+                            }}
+                          >
+                            &#x1F5D1; Sterge
+                          </button>
+                        </div>
+                      ));
+                    })()}
+                  </div>
+                </div>
+              )}
+
+              <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
+                <button
+                  className="px-4 py-2 text-sm font-semibold rounded-lg text-white"
+                  style={{ background: "#2563eb" }}
+                  onClick={() => { setShowAddKnowledge(true); setEditingKnowledge(null); setNewKnowledge({ category: "legislatie", title: "", content: "", sourceReference: "", validFrom: "", validUntil: "" }); }}
+                >
                 + Adaug&#259; cuno&#537;tin&#539;&#259;
               </button>
 

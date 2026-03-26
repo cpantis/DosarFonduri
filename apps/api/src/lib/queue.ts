@@ -40,6 +40,10 @@ export const processCompanyQueue = new Queue("process-company", {
     backoff: { type: "exponential" as const, delay: 8000 }, // 8s, 16s, 32s, 64s — AI calls need more breathing room
   },
 });
+export const processReferenceDocQueue = new Queue("process-reference-doc", {
+  connection: conn as any,
+  defaultJobOptions: DEFAULT_JOB_OPTIONS,
+});
 export const syncOnrcQueue = new Queue("sync-onrc", {
   connection: conn as any,
   defaultJobOptions: {
@@ -55,14 +59,15 @@ export const JOB_PRIORITY = {
   GUIDE: 1,        // Ghidul deblochează restul fluxului
   TEMPLATE: 2,     // Template-urile sunt necesare pentru generare
   COMPANY: 3,      // ONRC/bilanț — deblochează eligibilitatea
-  REFERENCE_DATA: 4,
-  CLIENT_DOC: 5,   // Documente client — procesare normală
+  REFERENCE_DOC: 4, // Referințe strategice (PNIESC, PNRR)
+  REFERENCE_DATA: 5,
+  CLIENT_DOC: 6,   // Documente client — procesare normală
 } as const;
 
 // Attach error handlers to prevent unhandled rejections
 // Only log the first error per queue to avoid spam when Redis is down
 const queueErrorLogged = new Set<string>();
-for (const q of [processGuideQueue, processTemplateQueue, processReferenceDataQueue, processClientDocQueue, processCompanyQueue, syncOnrcQueue]) {
+for (const q of [processGuideQueue, processTemplateQueue, processReferenceDataQueue, processReferenceDocQueue, processClientDocQueue, processCompanyQueue, syncOnrcQueue]) {
   q.on("error", (err) => {
     if (!queueErrorLogged.has(q.name)) {
       queueErrorLogged.add(q.name);

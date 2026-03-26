@@ -528,7 +528,7 @@ ${(() => {
 
   const formatEntry = (k: any) => {
     let entry = `### [${k.category.toUpperCase()}] ${k.title}`;
-    if (k.sourceReference && !k.sourceReference.startsWith("doc:")) entry += `\nSursă: ${k.sourceReference}`;
+    if (k.sourceReference && !k.sourceReference.startsWith("doc:") && !k.sourceReference.startsWith("upload:")) entry += `\nSursă: ${k.sourceReference}`;
     if (k.sourceUrl) entry += ` (${k.sourceUrl})`;
     if (k.validFrom) entry += `\nÎn vigoare de la: ${k.validFrom.toISOString().split("T")[0]}`;
     if (k.validUntil) entry += ` | Expiră: ${k.validUntil.toISOString().split("T")[0]}`;

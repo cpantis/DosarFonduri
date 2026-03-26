@@ -521,6 +521,7 @@ function resolveProcessingType(folderType: string, explicitType: string | null):
   // (the distinction is stored in generationMode on the document record)
   if (explicitType === "template_fill" || explicitType === "template_compose") return "template";
   if (folderType === "templateuri") return "template";
+  if (folderType === "referinte") return "referinta_strategica";
   if (folderType === "clienti_prospecti" || folderType === "clienti_finali") return "client_doc";
   return "reference";
 }

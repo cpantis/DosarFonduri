@@ -260,15 +260,15 @@ export async function populateCompanyElements(
       const vechimeAni = company.anInfiintare ? new Date().getFullYear() - company.anInfiintare : 999;
       const isMicro = emp < 10 && ca < 2000000;
       if (isMicro && vechimeAni < 3) {
-        add("intreprindere_in_dificultate", "nu_se_aplica", "calculated");
+        add("este_intreprindere_in_dificultate", "nu_se_aplica", "calculated");
         add("intreprindere_in_dificultate_motiv", "Microîntreprindere sub 3 ani — excepție art. 2.18(d)", "calculated");
       } else if (ratioCapital < 0.5) {
-        add("intreprindere_in_dificultate", "da", "calculated");
+        add("este_intreprindere_in_dificultate", "da", "calculated");
         add("intreprindere_in_dificultate_motiv",
           `Capitaluri proprii (${capitaluriProprii.toLocaleString("ro-RO")} RON) < 50% din capital social (${capitalSocial.toLocaleString("ro-RO")} RON). Raport: ${Math.round(ratioCapital * 100)}%`,
           "calculated");
       } else {
-        add("intreprindere_in_dificultate", "nu", "calculated");
+        add("este_intreprindere_in_dificultate", "nu", "calculated");
       }
     }
     // Verificare suplimentară: pierderi acumulate > 50% capital social

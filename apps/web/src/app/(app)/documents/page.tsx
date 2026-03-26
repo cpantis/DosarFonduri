@@ -1001,6 +1001,37 @@ export default function DocumentsPage() {
                 onWarnings={(warnings) => warnings.forEach(w => toast("warning", w))}
               />
             )}
+            {selectedFolder && filteredDocs.some(d => d.status === "procesare") && (
+              <button
+                style={{ marginLeft: 8, padding: "6px 14px", borderRadius: 6, border: "1px solid #fca5a5", background: "transparent", color: "#dc2626", fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}
+                onClick={async () => {
+                  // Find session folder from tree (walk up)
+                  let sessionId = selectedFolder;
+                  const findSessionInTree = (nodes: TreeNode[], targetId: string, parentId?: string): string | null => {
+                    for (const n of nodes) {
+                      if (n.id === targetId) return n.type === "sesiune" ? n.id : parentId || n.id;
+                      if (n.children) {
+                        const found = findSessionInTree(n.children, targetId, n.type === "sesiune" ? n.id : parentId);
+                        if (found) return found;
+                      }
+                    }
+                    return null;
+                  };
+                  sessionId = findSessionInTree(tree, selectedFolder) || selectedFolder;
+
+                  if (!confirm("Anulezi procesarea tuturor documentelor din aceasta sesiune?")) return;
+                  try {
+                    const result = await apiPost(`/api/documents/cancel-processing/${sessionId}`, {});
+                    toast("success", `${(result as any).cancelledCount} documente anulate`);
+                    if (selectedFolder) fetchDocs(selectedFolder);
+                  } catch (err: any) {
+                    toast("error", err.message || "Eroare la anulare");
+                  }
+                }}
+              >
+                Anuleaza procesarea
+              </button>
+            )}
           </div>
         )}
       </div>

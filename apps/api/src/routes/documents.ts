@@ -1914,6 +1914,78 @@ documentRoutes.post("/documents/:docId/mappings", async (c) => {
   return c.json(created, 201);
 });
 
+// --- CANCEL ALL PROCESSING in a session folder ---
+documentRoutes.post("/cancel-processing/:folderId", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  if (!auth.organizationId) return c.json({ error: "No organization" }, 403);
+
+  const folderId = c.req.param("folderId");
+
+  // Find all documents in this folder tree that are processing
+  const allFolders = await db.query.documentFolders.findMany({
+    where: eq(documentFolders.organizationId, auth.organizationId),
+  });
+
+  // Collect folder IDs under this session (recursive)
+  const folderIds = new Set<string>();
+  function collectChildren(parentId: string) {
+    folderIds.add(parentId);
+    for (const f of allFolders) {
+      if (f.parentId === parentId && !folderIds.has(f.id)) {
+        collectChildren(f.id);
+      }
+    }
+  }
+  collectChildren(folderId);
+
+  // Find all processing documents in these folders
+  const processingDocs = await db.query.documents.findMany({
+    where: and(
+      eq(documents.organizationId, auth.organizationId),
+      eq(documents.status, "processing"),
+    ),
+  });
+
+  const docsInSession = processingDocs.filter(d => folderIds.has(d.folderId));
+
+  let cancelledCount = 0;
+  const queueMap: Record<string, typeof processGuideQueue> = {
+    ghid: processGuideQueue,
+    template: processTemplateQueue,
+    reference_data: processReferenceDataQueue,
+    referinta_strategica: processReferenceDocQueue,
+    client_doc: processClientDocQueue,
+  };
+
+  for (const doc of docsInSession) {
+    // Try to remove BullMQ job
+    try {
+      const q = queueMap[doc.processingType || ""];
+      if (q) {
+        const jobId = `doc-${doc.id}`;
+        const job = await q.getJob(jobId);
+        if (job) {
+          const state = await job.getState();
+          if (state === "waiting" || state === "delayed") {
+            await job.remove();
+          }
+        }
+      }
+    } catch {}
+
+    // Reset document status
+    await db.update(documents).set({
+      status: "uploaded",
+      processingError: null,
+    }).where(eq(documents.id, doc.id));
+
+    cancelledCount++;
+  }
+
+  console.log(`[cancel-processing] Session ${folderId}: cancelled ${cancelledCount} documents`);
+  return c.json({ ok: true, cancelledCount });
+});
+
 // --- SSE: subscribe to upload events for organization ---
 documentRoutes.get("/uploads/events", async (c) => {
   const auth = c.get("auth") as AuthContext;

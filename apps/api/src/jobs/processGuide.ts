@@ -13,6 +13,7 @@ import { repairTruncatedJSON } from "../lib/safeExtract";
 import { preflightCached } from "../services/dbPreflight";
 import { z } from "zod";
 import { generateFieldListForPrompt, resolveFieldKey } from "@dosarfonduri/shared";
+import { extractTables } from "./processReferenceData";
 
 /** Generate a slugified rule_key from category + description */
 function generateRuleKey(category: string, description: string): string {
@@ -1697,6 +1698,29 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         })(),
       ]);
 
+      // ─── STEP 7: Extract reference tables from guide text (if any) ───
+      // Many guides contain inline tables (CAEN lists, SO coefficients, zone ANC, scoring grids)
+      // These are extracted as guideReferenceTables and auto-linked to rules
+      const existingRefTables = await db.query.guideReferenceTables.findMany({
+        where: eq(guideReferenceTables.documentId, documentId),
+      });
+      if (existingRefTables.length === 0) {
+        // Only extract if no tables exist yet (avoid duplicates on reprocess)
+        try {
+          await extractTables(structuredText, DEFAULT_EXTRACTION_MODEL, documentId, organizationId);
+          const newRefTables = await db.query.guideReferenceTables.findMany({
+            where: eq(guideReferenceTables.documentId, documentId),
+          });
+          if (newRefTables.length > 0) {
+            console.log(`[processGuide] Extracted ${newRefTables.length} reference tables from guide text`);
+            // Re-run autoLink to connect rules with newly extracted tables
+            await autoLinkRulesAndReferences(documentId, organizationId);
+          }
+        } catch (tableErr: any) {
+          console.warn(`[processGuide] Table extraction from guide failed (non-critical):`, tableErr.message);
+        }
+      }
+
       // ─── FINALIZE ───
       const pageCount = preStructPageCount;
       const totalDuration = Date.now() - startTime;
@@ -1724,7 +1748,10 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         status: "processed",
         pageCount,
         documentTypeClass: "guide" as any,
-        processingResult: qualityMetrics,
+        processingResult: {
+          ...qualityMetrics,
+          document_requirements: allDocRequirements,
+        },
         processedAt: new Date(),
       }).where(eq(documents.id, documentId));
 

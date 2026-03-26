@@ -110,7 +110,7 @@ async function extractTablesFromChunk(
   return { tables, usage: response.usage, truncated: false };
 }
 
-async function extractTables(
+export async function extractTables(
   text: string,
   model: string,
   documentId: string,

@@ -211,44 +211,61 @@ export async function populateCompanyElements(
     }
 
     // Derived financial fields
-    const ca = parseFloat(String(f20.cifraAfaceriNeta || 0));
-    const emp = parseInt(String(f30.numarMediuSalariati || 0));
-    const profitNet = parseFloat(String(f20.profitNet || 0));
-    const capitaluriProprii = parseFloat(String(f10.capitaluriProprii || 0));
-    const activeImob = parseFloat(String(f10.activeImobilizate?.total || 0));
-    const activeCirc = parseFloat(String(f10.activeCirculante?.total || 0));
+    // Derived financial fields — ONLY calculate if we have actual data (not defaults)
+    const hasCa = f20.cifraAfaceriNeta != null && f20.cifraAfaceriNeta !== "";
+    const hasEmp = f30.numarMediuSalariati != null && f30.numarMediuSalariati !== "";
+    const hasProfitNet = f20.profitNet != null && f20.profitNet !== "";
+    const hasCapProprii = f10.capitaluriProprii != null && f10.capitaluriProprii !== "";
+    const hasActiveImob = f10.activeImobilizate?.total != null;
+    const hasActiveCirc = f10.activeCirculante?.total != null;
+
+    const ca = hasCa ? parseFloat(String(f20.cifraAfaceriNeta)) : 0;
+    const emp = hasEmp ? parseInt(String(f30.numarMediuSalariati)) : 0;
+    const profitNet = hasProfitNet ? parseFloat(String(f20.profitNet)) : 0;
+    const capitaluriProprii = hasCapProprii ? parseFloat(String(f10.capitaluriProprii)) : 0;
+    const activeImob = hasActiveImob ? parseFloat(String(f10.activeImobilizate.total)) : 0;
+    const activeCirc = hasActiveCirc ? parseFloat(String(f10.activeCirculante.total)) : 0;
     const activeTotale = activeImob + activeCirc;
     const datoriiTotale = parseFloat(String(f10.datoriiTotal || 0));
     const datoriiSub1An = parseFloat(String(f10.datoriiSub1An || f10.datoriiCurente || 0));
 
-    add("active_totale", activeTotale > 0 ? activeTotale : null, "calculated");
-    add("datorii_totale", datoriiTotale > 0 ? datoriiTotale : null, "calculated");
-    add("datorii_sub_1an", datoriiSub1An > 0 ? datoriiSub1An : null, "calculated");
+    if (activeTotale > 0) add("active_totale", activeTotale, "calculated");
+    if (datoriiTotale > 0) add("datorii_totale", datoriiTotale, "calculated");
+    if (datoriiSub1An > 0) add("datorii_sub_1an", datoriiSub1An, "calculated");
 
-    // Financial ratios
-    if (capitaluriProprii > 0 && datoriiTotale > 0) {
+    // Financial ratios — only if source data exists
+    if (hasCapProprii && capitaluriProprii > 0 && datoriiTotale > 0) {
       add("grad_indatorare", Math.round((datoriiTotale / capitaluriProprii) * 100) / 100, "calculated");
     }
-    if (datoriiSub1An > 0 && activeCirc > 0) {
+    if (datoriiSub1An > 0 && hasActiveCirc && activeCirc > 0) {
       add("lichiditate_curenta", Math.round((activeCirc / datoriiSub1An) * 100) / 100, "calculated");
     }
-    if (activeTotale > 0 && capitaluriProprii > 0) {
+    if (activeTotale > 0 && hasCapProprii && capitaluriProprii > 0) {
       add("solvabilitate", Math.round((capitaluriProprii / activeTotale) * 100) / 100, "calculated");
     }
-    if (ca > 0 && profitNet !== 0) {
+    if (hasCa && ca > 0 && hasProfitNet && profitNet !== 0) {
       add("rentabilitate", Math.round((profitNet / ca) * 100) / 100, "calculated");
     }
 
-    // IMM classification (EU definition)
-    if (emp < 10 && ca < 2000000) {
-      add("clasificare_imm", "micro", "calculated");
-    } else if (emp < 50 && ca < 10000000) {
-      add("clasificare_imm", "mica", "calculated");
-    } else if (emp < 250 && ca < 50000000) {
-      add("clasificare_imm", "mijlocie", "calculated");
+    // IMM classification — only if we have BOTH employees AND turnover data
+    if (hasCa && hasEmp) {
+      if (emp < 10 && ca < 2000000) {
+        add("clasificare_imm", "micro", "calculated");
+      } else if (emp < 50 && ca < 10000000) {
+        add("clasificare_imm", "mica", "calculated");
+      } else if (emp < 250 && ca < 50000000) {
+        add("clasificare_imm", "mijlocie", "calculated");
+      } else {
+        add("clasificare_imm", "mare", "calculated");
+      }
     } else {
-      add("clasificare_imm", "mare", "calculated");
+      add("clasificare_imm_avertisment", "Date insuficiente pentru clasificare IMM — lipsesc cifra de afaceri sau numarul de angajati", "calculated");
     }
+
+    // Warnings for missing critical financial data
+    if (!hasCa) add("avertisment_cifra_afaceri", "Cifra de afaceri nu a fost extrasa din bilant", "calculated");
+    if (!hasEmp) add("avertisment_angajati", "Numarul de angajati nu a fost extras din bilant", "calculated");
+    if (!hasCapProprii) add("avertisment_capitaluri_proprii", "Capitalurile proprii nu au fost extrase din bilant", "calculated");
 
     // ─── G2: Întreprindere în dificultate (Reg. EU 651/2014, art. 2.18) ───
     // O întreprindere e "în dificultate" dacă capitalurile proprii < 50% din capitalul social subscris

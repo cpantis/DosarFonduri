@@ -257,204 +257,62 @@ function extractPagesByNumbers(structuredText: string, pageNumbers: number[]): s
   return parts.join("\n");
 }
 
-// ─── FOCUSED EXTRACTION PROMPTS ───
+// ─── CONSULTANT EXTRACTION PROMPT ───
 
 // Generated at module load — contains the full field reference for the AI
 const FIELD_LIST_FOR_PROMPT = generateFieldListForPrompt();
 
-/** Shared semantic tags reference for all prompts */
-const SEMANTIC_TAGS_REF = `CLASIFICARE SEMANTICĂ — pentru FIECARE regulă atribuie etichete din:
-  THRESHOLD (prag numeric), SCORING (punctaj), TEMPORAL (termene), DOCUMENT_BASED (dependentă de document),
-  DEPENDENCY (depinde de altă regulă), EXCLUSION (eliminare dosar), EXCEPTION (excepție),
-  PROPORTIONAL (procentual), CLASSIFICATION (încadrare categorie).
-  O regulă poate avea MULTIPLE etichete.`;
+/** System prompt — consultant senior cu 15+ ani experiență, citește ghidul integral */
+const CONSULTANT_SYSTEM = `Ești Solomon — consultant senior cu 15+ ani experiență în fonduri europene. Ai văzut sute de dosare respinse și știi EXACT ce contează.
 
-/** Shared JSON schema for fixed_rules */
-const FIXED_RULES_SCHEMA = `"fixed_rules": [
-    {
-      "category": "eligibilitate" | "financiar" | "tehnic" | "administrativ" | "achizitii" | "documente",
-      "description": "Descriere clară a regulii",
-      "condition": {
-        "field": "cheia canonică (ex: cifra_afaceri, forma_juridica, cod_caen, clasificare_imm)",
-        "operator": "eq" | "neq" | "gt" | "gte" | "lt" | "lte" | "in" | "not_in" | "between",
-        "value": "valoarea de comparare",
-        "value2": "pentru between (opțional)"
-      },
-      "semantic_tags": ["THRESHOLD", "EXCLUSION", ...],
-      "source_page": number,
-      "source_text": "textul exact din ghid",
-      "confidence": 0.0 - 1.0
-    }
-  ]`;
+CITEȘTI GHIDUL CA UN CONSULTANT CARE ÎȘI RISCĂ REPUTAȚIA:
+- O regulă omisă = un dosar respins. O excepție nedetectată = o contestație pierdută.
+- Regulile ELIMINATORII (eligibilitate) au prioritate absolută peste punctaj.
+- Dacă ghidul lasă loc de interpretare, marchează explicit (needs_review + review_reason).
+- Caută CONFLICTE între secțiuni — o secțiune poate contrazice alta.
+- Excepțiile sunt adesea în ALT capitol decât regula de bază — citește TOTUL.
 
-const INTERPRETED_RULES_SCHEMA = `"interpreted_rules": [
-    {
-      "category": "selectie" | "intensitate" | "eligibilitate_complexa" | "documentare" | "achizitii" | "ajutor_stat",
-      "description": "Descriere detaliată",
-      "condition": {
-        "type": "decision_tree" | "scoring" | "cumulative" | "conditional",
-        "logic": "descriere structurată a logicii",
-        "factors": ["factor1", "factor2"],
-        "outcomes": [{"if": "condiție", "then": "rezultat"}]
-      },
-      "semantic_tags": ["PROPORTIONAL", "CLASSIFICATION", ...],
-      "source_page": number,
-      "source_text": "textul exact din ghid",
-      "confidence": 0.0 - 1.0,
-      "needs_review": true/false,
-      "review_reason": "de ce necesită verificare umană (opțional)"
-    }
-  ]`;
+EXTRAGI SIMULTAN 5 categorii:
 
-const ELEMENT_DEFS_SCHEMA = `"element_definitions": [
-    {
-      "element_key": "snake_case_key",
-      "display_name": "Numele vizibil",
-      "category": "beneficiary|farm|investment|location|financial|legal|technical|other",
-      "data_type": "number|text|enum|boolean|date|document_ref|list_items",
-      "unit": "unitate sau null",
-      "enum_values": ["val1", "val2"] sau null,
-      "required": true/false,
-      "help_text": "text ajutător scurt",
-      "is_derived": true/false,
-      "derivation_formula": "formula sau null",
-      "source_priority": ["document_extracted", "solomon_chat", "consultant_manual"],
-      "collection_order": number,
-      "min_count": 1,
-      "max_count": null
-    }
-  ]`;
-
-const DOC_REQUIREMENTS_SCHEMA = `"document_requirements": [
-    {
-      "name": "Numele documentului (ex: Certificat constatator ONRC)",
-      "category": "juridice|financiare|tehnice|declaratii|oferte|anexe|altele",
-      "required": true,
-      "description": "Detalii suplimentare: format cerut, termen valabilitate, cine emite",
-      "format": "PDF|DOCX|XLSX|original|copie_conforma|orice",
-      "source_page": null,
-      "conditions": "Condiții speciale sau null"
-    }
-  ]`;
-
-const SCORING_SCHEMA = `"scoring_criteria": [
-    {
-      "code": "codul criteriului (CS1, C1, 1.1)",
-      "name": "numele criteriului",
-      "description": "descriere detaliată",
-      "maxPoints": number,
-      "category": "tehnic | financiar | management | relevant | sustenabilitate",
-      "sourcePage": number | null,
-      "evaluationLogic": {
-        "type": "lookup" | "range" | "boolean" | "formula",
-        "elementKey": "cheia câmpului de evaluat",
-        "ranges": [{"min": number, "max": number, "points": number}],
-        "formula": "expresie matematică (opțional)",
-        "lookupColumn": "coloana punctaj din tabel (opțional)"
-      }
-    }
-  ]`;
-
-// ─── 3 FOCUSED SYSTEM PROMPTS ───
-
-const FIXED_SYSTEM = `Ești Solomon — evaluator administrativ cu 15+ ani experiență în fonduri europene. Ai verificat sute de dosare și știi EXACT ce respinge un dosar INSTANT.
-
-GÂNDEȘTI CA UN EVALUATOR ADMINISTRATIV:
-- Ce condiții trebuie îndeplinite OBLIGATORIU? (DA/NU, fără nuanțe)
-- Ce plafoane numerice sunt ELIMINATORII? (depășirea = respingere)
-- Ce forme juridice / coduri CAEN sunt acceptate?
-- Ce documente lipsă duc la respingere administrativă?
-
-EXTRAGI:
 1. REGULI FIXE — condiții binare verificabile automat (DA/NU):
-   Plafoane, forme juridice, CAEN-uri, vechime, zone, praguri achiziții, cheltuieli eligibile/neeligibile, TVA.
-   Regulile ELIMINATORII care pot respinge dosarul instant → confidence ≥ 0.95.
-   Dacă o regulă se referă la un tabel/anexă pe care nu o vezi, menționează în source_text.
+   Plafoane, forme juridice, CAEN-uri, vechime, zone, praguri achiziții, cheltuieli, TVA.
+   Regulile ELIMINATORII → confidence ≥ 0.95. Referințe la anexe → menționează în source_text.
 
-2. REGULI INTERPRETATE — condiții complexe care NU sunt pur binare:
-   Intensitate sprijin, excepții, cazuri speciale, ajutor de stat, condiții cascadate.
-   Dacă o regulă are MULTIPLE RAMURI sau depinde de context, e interpretată.
+2. REGULI INTERPRETATE — condiții complexe cu arbori decizionali:
+   Intensitate sprijin, excepții, cazuri speciale, ajutor de stat/de minimis, achiziții cascadate.
+   TOATE ramurile decision tree documentate (nu doar cazul principal).
+   needs_review=true dacă ambiguă + review_reason.
 
-3. DEFINIȚII ELEMENTE — câmpuri de date necesare:
-   TOATE câmpurile de colectat, inclusiv cele IMPLICITE. Dacă o regulă se referă la un câmp nelistat, ADAUGĂ-L.
+CLASIFICARE SEMANTICĂ per regulă: THRESHOLD, SCORING, TEMPORAL, DOCUMENT_BASED, DEPENDENCY, EXCLUSION, EXCEPTION, PROPORTIONAL, CLASSIFICATION. O regulă poate avea MULTIPLE etichete.
 
-4. DOCUMENTE NECESARE — checklist complet:
-   Toate documentele de depus. Parcurge "Documente necesare", "Conținut dosar", și mențiuni dispersate ("va prezenta", "va anexa").
-   FIECARE document separat. Un document lipsă = dosar respins administrativ.
+3. CRITERII DE SELECȚIE / GRILĂ DE PUNCTAJ:
+   Cod, nume, punctaj maxim, categorie, logica evaluare (lookup/range/boolean/formula).
+   Capturează structura COMPLETĂ a tabelelor de punctaj.
 
-${SEMANTIC_TAGS_REF}
+4. DEFINIȚII ELEMENTE (câmpuri de colectat):
+   TOATE câmpurile necesare, inclusiv IMPLICITE. Dacă o regulă se referă la un câmp nelistat, ADAUGĂ-L.
+   CARDINALITATE: "3 oferte" → min_count=3.
 
+5. DOCUMENTE NECESARE (checklist complet):
+   TOATE documentele de depus — din secțiunea dedicată + mențiuni dispersate ("va prezenta", "va anexa").
+   FIECARE document separat. Un document lipsă = dosar respins.
+
+Fii EXHAUSTIV dar PRECIS — mai bine o regulă cu needs_review decât una omisă.
 Returnează DOAR JSON valid. Fără backticks, fără explicații.`;
 
-const FIXED_USER = `Extrage regulile fixe, regulile interpretate, elementele și documentele din acest ghid.
+const CONSULTANT_USER = `Citește INTEGRAL acest ghid și extrage TOTUL — ca un consultant care nu își permite să rateze nimic.
 
 CÂMPURI DISPONIBILE PENTRU condition.field:
 ${FIELD_LIST_FOR_PROMPT}
 
-Returnează: { ${FIXED_RULES_SCHEMA}, ${INTERPRETED_RULES_SCHEMA}, ${ELEMENT_DEFS_SCHEMA}, ${DOC_REQUIREMENTS_SCHEMA} }
-
-CARDINALITATE: "3 oferte" → min_count=3. Fără cantitate → min_count=1, max_count=null.
-
-TEXT GHID:
-`;
-
-const INTERPRETED_SYSTEM = `Ești Solomon — consultant senior fonduri europene care a pierdut dosare din cauza excepțiilor nedetectate. Acum analizezi FIECARE regulă complexă ca și cum cariera ta depinde de ea.
-
-GÂNDEȘTI CA UN CONSULTANT CARE A PIERDUT UN DOSAR:
-- Ce excepții ASCUNSE are această regulă? (cele pe care le ratezi la prima citire)
-- Ce ramuri ale arborelui decizional LIPSESC? (cazul principal e evident, dar ce cu celelalte?)
-- Unde sunt CONFLICTELE între secțiuni? (o secțiune zice X, alta zice Y)
-- Ce condiții CASCADATE pot schimba rezultatul? (dacă A, atunci B, dar dacă C...)
-- Unde este AMBIGUITATE DELIBERATĂ? (ghidul lasă loc de interpretare — marchează cu needs_review)
-
-EXTRAGI:
-1. REGULI INTERPRETATE — condiții complexe cu arbori decizionali:
-   Intensitate sprijin, excepții, cazuri speciale, ajutor de stat/de minimis, achiziții cu praguri cascadate.
-   TOATE ramurile decision tree documentate, nu doar cazul principal.
-   needs_review=true dacă regula e ambiguă sau incompletă + review_reason.
-
-2. DEFINIȚII ELEMENTE — câmpuri implicate de regulile interpretate:
-   Dacă o regulă necesită un câmp care nu e evident din text, ADAUGĂ-L.
-
-${SEMANTIC_TAGS_REF}
-
-Fii EXHAUSTIV — mai bine o regulă marcată cu needs_review decât o regulă omisă.
-Returnează DOAR JSON valid cu 2 array-uri. Fără backticks, fără explicații.`;
-
-const INTERPRETED_USER = `Extrage regulile interpretate și elementele implicate din acest ghid.
-
-CÂMPURI DISPONIBILE PENTRU condition.field:
-${FIELD_LIST_FOR_PROMPT}
-
-Returnează: { ${INTERPRETED_RULES_SCHEMA}, ${ELEMENT_DEFS_SCHEMA} }
-
-TEXT GHID:
-`;
-
-const SCORING_SYSTEM = `Ești Solomon — evaluator tehnic care completează grila de punctaj. Ai evaluat sute de proiecte și știi exact cum se calculează fiecare criteriu.
-
-GÂNDEȘTI CA UN EVALUATOR TEHNIC:
-- Care sunt TOATE criteriile din grila de selecție? (cod, nume, punctaj maxim)
-- Cum se CALCULEAZĂ fiecare criteriu? (lookup din tabel, interval, formulă, boolean)
-- Ce ELEMENTE DE DATE trebuie colectate pentru evaluare?
-- Care sunt PRAGURILE exacte pentru fiecare nivel de punctaj?
-
-EXTRAGI:
-1. CRITERII DE SELECȚIE / GRILĂ DE PUNCTAJ:
-   Cod, nume, punctaj maxim, categorie, logica de evaluare.
-   Dacă un criteriu se referă la un tabel din anexe, capturează structura COMPLETĂ (toate intervalele/pragurile).
-
-2. DEFINIȚII ELEMENTE — câmpuri necesare pentru evaluare:
-   Fiecare criteriu depinde de un element de date. Extrage-le.
-
-Returnează DOAR JSON valid cu 2 array-uri. Fără backticks, fără explicații.`;
-
-const SCORING_USER = `Extrage criteriile de selecție/punctaj și elementele asociate din acest ghid.
-
-CÂMPURI DISPONIBILE PENTRU condition.field:
-${FIELD_LIST_FOR_PROMPT}
-
-Returnează: { ${SCORING_SCHEMA}, ${ELEMENT_DEFS_SCHEMA} }
+Returnează un singur obiect JSON cu 5 chei:
+{
+  "fixed_rules": [{ "category": "eligibilitate|financiar|tehnic|administrativ|achizitii|documente", "description": "...", "condition": { "field": "...", "operator": "eq|neq|gt|gte|lt|lte|in|not_in|between", "value": "...", "value2": "..." }, "semantic_tags": [...], "source_page": N, "source_text": "...", "confidence": 0.0-1.0 }],
+  "interpreted_rules": [{ "category": "selectie|intensitate|eligibilitate_complexa|documentare|achizitii|ajutor_stat", "description": "...", "condition": { "type": "decision_tree|scoring|cumulative|conditional", "logic": "...", "factors": [...], "outcomes": [{"if":"...","then":"..."}] }, "semantic_tags": [...], "source_page": N, "source_text": "...", "confidence": 0.0-1.0, "needs_review": true/false, "review_reason": "..." }],
+  "scoring_criteria": [{ "code": "...", "name": "...", "description": "...", "maxPoints": N, "category": "tehnic|financiar|management|relevant|sustenabilitate", "sourcePage": N, "evaluationLogic": { "type": "lookup|range|boolean|formula", "elementKey": "...", "ranges": [...], "formula": "..." } }],
+  "element_definitions": [{ "element_key": "snake_case", "display_name": "...", "category": "beneficiary|farm|investment|location|financial|legal|technical|other", "data_type": "number|text|enum|boolean|date|document_ref|list_items", "unit": null, "enum_values": null, "required": true/false, "help_text": "...", "is_derived": false, "derivation_formula": null, "source_priority": ["document_extracted","solomon_chat","consultant_manual"], "collection_order": N, "min_count": 1, "max_count": null }],
+  "document_requirements": [{ "name": "...", "category": "juridice|financiare|tehnice|declaratii|oferte|anexe|altele", "required": true, "description": "...", "format": "PDF|DOCX|XLSX|original|copie_conforma|orice", "source_page": null, "conditions": null }]
+}
 
 TEXT GHID:
 `;
@@ -468,14 +326,11 @@ const MAX_CONTINUATION_ATTEMPTS = 2;
 
 // repairTruncatedJSON imported from ../lib/safeExtract
 
-type ExtractionMode = "fixed" | "interpreted" | "scoring" | "unified";
-
 async function unifiedExtraction(
   structuredText: string,
   organizationId: string,
   chunkLabel: string,
   useET: boolean,
-  mode: ExtractionMode = "unified",
 ): Promise<{
   fixedRules: any[];
   interpretedRules: any[];
@@ -492,23 +347,14 @@ async function unifiedExtraction(
   let continuations = 0;
   let wasTruncated = false;
 
-  // Select focused prompt based on mode
-  const systemText = mode === "interpreted" ? INTERPRETED_SYSTEM
-    : mode === "scoring" ? SCORING_SYSTEM
-    : FIXED_SYSTEM; // "fixed" and "unified" both use FIXED (which includes docs + elements)
-
-  const userPrefix = mode === "interpreted" ? INTERPRETED_USER
-    : mode === "scoring" ? SCORING_USER
-    : FIXED_USER;
-
-  // System prompt cached (common structure across calls)
+  // Single consultant prompt — reads entire guide, extracts everything
   const cachedSystem: any[] = [
-    { type: "text", text: systemText, cache_control: { type: "ephemeral" } },
+    { type: "text", text: CONSULTANT_SYSTEM, cache_control: { type: "ephemeral" } },
   ];
 
   const messages: Array<{ role: string; content: string }> = [{
     role: "user",
-    content: `${userPrefix}\n\n<guide_text>\n${structuredText}\n</guide_text>`,
+    content: `${CONSULTANT_USER}\n\n<guide_text>\n${structuredText}\n</guide_text>`,
   }];
 
   for (let attempt = 0; attempt <= MAX_CONTINUATION_ATTEMPTS; attempt++) {
@@ -1598,56 +1444,15 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
           : `Text nativ extras: ${preStructPageCount} pagini. Extragere reguli...`,
       }).catch((e: any) => console.warn("[processGuide] sse extraction start:", e.message));
 
-      // ─── STEP 3: Classified extraction — classify pages, then extract in parallel ───
+      // ─── STEP 3: Unified extraction — consultant reads entire guide, extracts everything ───
       const config = await db.query.orgConfig.findFirst({
         where: eq(orgConfig.organizationId, organizationId),
       });
       const useET = config?.reguliInterpET ?? true;
 
       const opusStart = Date.now();
-
-      // Step 0: Classify pages (1 fast Sonnet call, ~5s)
-      publishJobProgress(organizationId, {
-        jobId: job.id || "",
-        jobType: "ghid",
-        documentId,
-        documentName: doc.name,
-        progress: 32,
-        status: "processing",
-        message: `Clasificare pagini...`,
-      }).catch((e: any) => console.warn("[processGuide] sse classify:", e.message));
-
-      let classification: PageClassification;
-      try {
-        classification = await classifyPages(structuredText, organizationId);
-      } catch (classifyErr: any) {
-        console.warn(`[processGuide] Classification failed (${classifyErr.message}), falling back to all-pages-as-fixed`);
-        const pageCount = (structuredText.match(/--- Pagina \d+/g) || []).length;
-        classification = {
-          fixed: Array.from({ length: pageCount }, (_, i) => i + 1),
-          interpreted: [],
-          scoring: [],
-          documents: [],
-          info: [],
-        };
-      }
-
-      // Build text slices per category
-      // Include "documents" and "info" pages in fixed — they often contain implicit rules + document requirements
-      const fixedPages = [...classification.fixed, ...classification.documents, ...classification.info];
-      const interpretedPages = classification.interpreted;
-      let scoringPages = [...classification.scoring];
-      // Merge scoring into fixed if too small to warrant separate call
-      if (scoringPages.length > 0 && scoringPages.length <= 3) {
-        fixedPages.push(...scoringPages);
-        scoringPages = [];
-      }
-
-      const fixedText = extractPagesByNumbers(structuredText, fixedPages);
-      const interpretedText = extractPagesByNumbers(structuredText, interpretedPages);
-      const scoringText = scoringPages.length > 0 ? extractPagesByNumbers(structuredText, scoringPages) : "";
-
-      console.log(`[processGuide] Classified extraction: fixed=${fixedPages.length}pag(${fixedText.length}ch) interp=${interpretedPages.length}pag(${interpretedText.length}ch) scoring=${scoringPages.length}pag(${scoringText.length}ch)`);
+      const chunks = splitStructuredText(structuredText);
+      console.log(`[processGuide] Extracting "${doc.name}" with ${chunks.length} chunk(s), model=${DEFAULT_EXTRACTION_MODEL}, ET=${useET}`);
 
       let allFixed: any[] = [];
       let allInterpreted: any[] = [];
@@ -1659,87 +1464,71 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
       let totalAIInputTokens = 0;
       let totalAIOutputTokens = 0;
 
-      // Run extractions in parallel — each focused on its category
-      const extractionTasks: Array<Promise<void>> = [];
+      if (chunks.length === 1) {
+        // Single chunk — most guides fit in one pass
+        const result = await unifiedExtraction(chunks[0], organizationId, "full", useET);
+        allFixed = result.fixedRules;
+        allInterpreted = result.interpretedRules;
+        allScoring = result.scoringCriteria;
+        allElementDefs = result.elementDefinitions;
+        allDocRequirements = result.documentRequirements;
+        extractionTruncated = result._meta.truncated;
+        totalContinuations = result._meta.continuations;
+        totalAIInputTokens = result._meta.totalInputTokens;
+        totalAIOutputTokens = result._meta.totalOutputTokens;
+      } else {
+        // Multiple chunks — parallel extraction, then merge + dedup
+        const chunkResults: Array<Awaited<ReturnType<typeof unifiedExtraction>>> = new Array(chunks.length);
+        const chunkQueue = chunks.map((_, i) => i);
 
-      if (fixedText.length > 0) {
-        // Fixed rules: may need chunking if text is large
-        const fixedChunks = splitStructuredText(fixedText);
-        for (let i = 0; i < fixedChunks.length; i++) {
-          extractionTasks.push(
-            unifiedExtraction(fixedChunks[i], organizationId, `fixed_${i + 1}`, false, "fixed").then(result => {
-              allFixed.push(...result.fixedRules);
-              allScoring.push(...result.scoringCriteria);
-              allElementDefs.push(...result.elementDefinitions);
-              allDocRequirements.push(...result.documentRequirements);
-              // Also collect any interpreted rules found in "fixed" pages
-              allInterpreted.push(...result.interpretedRules);
-              if (result._meta.truncated) extractionTruncated = true;
-              totalContinuations += result._meta.continuations;
-              totalAIInputTokens += result._meta.totalInputTokens;
-              totalAIOutputTokens += result._meta.totalOutputTokens;
-            }),
-          );
+        async function chunkWorker() {
+          let idx: number | undefined;
+          while ((idx = chunkQueue.shift()) !== undefined) {
+            chunkResults[idx] = await unifiedExtraction(chunks[idx], organizationId, `chunk_${idx + 1}`, useET);
+            publishJobProgress(organizationId, {
+              jobId: job.id || "",
+              jobType: "ghid",
+              documentId,
+              documentName: doc.name,
+              progress: 30 + Math.round(((idx + 1) / chunks.length) * 55),
+              status: "processing",
+              message: `Extragere: chunk ${idx + 1}/${chunks.length} procesat`,
+            }).catch((e: any) => console.warn("[processGuide] sse chunk progress:", e.message));
+          }
         }
-      }
 
-      if (interpretedText.length > 0) {
-        // Interpreted rules: use ET for deep reasoning
-        const interpChunks = splitStructuredText(interpretedText);
-        for (let i = 0; i < interpChunks.length; i++) {
-          extractionTasks.push(
-            unifiedExtraction(interpChunks[i], organizationId, `interp_${i + 1}`, useET, "interpreted").then(result => {
-              allInterpreted.push(...result.interpretedRules);
-              // Also collect any fixed rules found in "interpreted" pages
-              allFixed.push(...result.fixedRules);
-              allScoring.push(...result.scoringCriteria);
-              allElementDefs.push(...result.elementDefinitions);
-              allDocRequirements.push(...result.documentRequirements);
-              if (result._meta.truncated) extractionTruncated = true;
-              totalContinuations += result._meta.continuations;
-              totalAIInputTokens += result._meta.totalInputTokens;
-              totalAIOutputTokens += result._meta.totalOutputTokens;
-            }),
-          );
-        }
-      }
-
-      if (scoringText.length > 0) {
-        extractionTasks.push(
-          unifiedExtraction(scoringText, organizationId, "scoring", false, "scoring").then(result => {
-            allScoring.push(...result.scoringCriteria);
-            allFixed.push(...result.fixedRules);
-            allInterpreted.push(...result.interpretedRules);
-            allElementDefs.push(...result.elementDefinitions);
-            allDocRequirements.push(...result.documentRequirements);
-            if (result._meta.truncated) extractionTruncated = true;
-            totalContinuations += result._meta.continuations;
-            totalAIInputTokens += result._meta.totalInputTokens;
-            totalAIOutputTokens += result._meta.totalOutputTokens;
-          }),
+        await Promise.all(
+          Array.from({ length: Math.min(MAX_PARALLEL_CHUNKS, chunks.length) }, () => chunkWorker()),
         );
+
+        for (const result of chunkResults) {
+          allFixed.push(...result.fixedRules);
+          allInterpreted.push(...result.interpretedRules);
+          allScoring.push(...result.scoringCriteria);
+          allElementDefs.push(...result.elementDefinitions);
+          allDocRequirements.push(...result.documentRequirements);
+          if (result._meta.truncated) extractionTruncated = true;
+          totalContinuations += result._meta.continuations;
+          totalAIInputTokens += result._meta.totalInputTokens;
+          totalAIOutputTokens += result._meta.totalOutputTokens;
+        }
+
+        // Deduplicate across chunks (overlap pages produce duplicates)
+        allFixed = deduplicateRules(allFixed);
+        allInterpreted = deduplicateRules(allInterpreted);
+        allScoring = deduplicateScoring(allScoring);
+        allElementDefs = deduplicateElementDefs(allElementDefs);
+        const seenDocNames = new Set<string>();
+        allDocRequirements = allDocRequirements.filter(d => {
+          const key = (d.name || "").toLowerCase().trim();
+          if (seenDocNames.has(key)) return false;
+          seenDocNames.add(key);
+          return true;
+        });
       }
-
-      // Execute all tasks with concurrency limit (withAILimit handles this)
-      await Promise.all(extractionTasks);
-
-      // Deduplicate across tasks
-      allFixed = deduplicateRules(allFixed);
-      allInterpreted = deduplicateRules(allInterpreted);
-      allScoring = deduplicateScoring(allScoring);
-      allElementDefs = deduplicateElementDefs(allElementDefs);
-      const seenDocNames = new Set<string>();
-      allDocRequirements = allDocRequirements.filter(d => {
-        const key = (d.name || "").toLowerCase().trim();
-        if (seenDocNames.has(key)) return false;
-        seenDocNames.add(key);
-        return true;
-      });
 
       const pass1Duration = Date.now() - opusStart;
-      console.log(`[processGuide] Classified extraction complete: ${pass1Duration}ms — ${allFixed.length} fixed, ${allInterpreted.length} interpreted, ${allScoring.length} scoring, ${allElementDefs.length} element defs, ${allDocRequirements.length} doc requirements`);
-
-      // No separate Pass 2 needed — ET already ran on interpreted pages during extraction
+      console.log(`[processGuide] Extraction complete: ${pass1Duration}ms — ${allFixed.length} fixed, ${allInterpreted.length} interpreted, ${allScoring.length} scoring, ${allElementDefs.length} element defs, ${allDocRequirements.length} doc requirements`);
 
       const opusDuration = Date.now() - opusStart;
 
@@ -1869,8 +1658,8 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
 
       // Quality metrics stored on the document
       const qualityMetrics = {
-        pipeline: needsPreStructure ? `pymupdf+sonnet_prestruct+classified_${DEFAULT_EXTRACTION_MODEL}` : `pymupdf+classified_${DEFAULT_EXTRACTION_MODEL}`,
-        classification: { fixed: classification.fixed.length, interpreted: classification.interpreted.length, scoring: classification.scoring.length, documents: classification.documents.length, info: classification.info.length },
+        pipeline: needsPreStructure ? `pymupdf+sonnet_prestruct+${DEFAULT_EXTRACTION_MODEL}` : `pymupdf+${DEFAULT_EXTRACTION_MODEL}`,
+        chunks: chunks.length,
         truncated: extractionTruncated,
         continuations: totalContinuations,
         tokens: { input: totalAIInputTokens, output: totalAIOutputTokens },

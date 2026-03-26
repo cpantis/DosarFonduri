@@ -203,7 +203,9 @@ export const companyLinkedCompanies = pgTable("company_linked_companies", {
   riskFlags: jsonb("risk_flags").$type<string[]>().default([]),
   // Source
   source: varchar("source", { length: 50 }).notNull().default("listafirme"), // listafirme | manual
-  notes: text("notes"), // consultant notes (for manual entries)
+  confirmed: boolean("confirmed").default(false), // consultant confirmed same person
+  dismissed: boolean("dismissed").default(false), // consultant said NOT same person
+  notes: text("notes"), // consultant notes
   // Timestamps
   checkedAt: timestamp("checked_at").defaultNow().notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),

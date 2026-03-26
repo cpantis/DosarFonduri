@@ -22,6 +22,8 @@ CREATE TABLE IF NOT EXISTS "company_linked_companies" (
   "risk_score" integer NOT NULL DEFAULT 0,
   "risk_flags" jsonb DEFAULT '[]',
   "source" varchar(50) NOT NULL DEFAULT 'listafirme',
+  "confirmed" boolean DEFAULT false,
+  "dismissed" boolean DEFAULT false,
   "notes" text,
   "checked_at" timestamp DEFAULT now() NOT NULL,
   "created_at" timestamp DEFAULT now() NOT NULL

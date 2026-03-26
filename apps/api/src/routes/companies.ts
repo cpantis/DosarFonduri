@@ -1318,6 +1318,36 @@ companyRoutes.post("/:id/linked-companies/manual", async (c) => {
   return c.json(created, 201);
 });
 
+companyRoutes.patch("/:id/linked-companies/:linkId", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  if (!auth.organizationId) return c.json({ error: "No organization" }, 403);
+
+  const linkId = c.req.param("linkId");
+  const body = z.object({
+    confirmed: z.boolean().optional(),
+    dismissed: z.boolean().optional(),
+    notes: z.string().optional(),
+  }).parse(await c.req.json());
+
+  const { companyLinkedCompanies } = await import("../db/schema");
+  const updates: Record<string, any> = {};
+  if (body.confirmed !== undefined) {
+    updates.confirmed = body.confirmed;
+    if (body.confirmed) updates.dismissed = false;
+  }
+  if (body.dismissed !== undefined) {
+    updates.dismissed = body.dismissed;
+    if (body.dismissed) updates.confirmed = false;
+  }
+  if (body.notes !== undefined) updates.notes = body.notes;
+
+  await db.update(companyLinkedCompanies)
+    .set(updates)
+    .where(and(eq(companyLinkedCompanies.id, linkId), eq(companyLinkedCompanies.organizationId, auth.organizationId)));
+
+  return c.json({ ok: true });
+});
+
 companyRoutes.delete("/:id/linked-companies/:linkId", async (c) => {
   const auth = c.get("auth") as AuthContext;
   if (!auth.organizationId) return c.json({ error: "No organization" }, 403);

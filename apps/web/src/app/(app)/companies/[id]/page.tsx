@@ -1574,8 +1574,8 @@ export default function CompanyDetailPage() {
             )}
             {linkedCompanies.length > 0 && (
               <div style={{ borderRadius: 10, border: "1px solid #e2e8f0", overflow: "hidden" }}>
-                <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr 0.8fr 0.6fr 60px", background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
-                  {["Firma legata", "Persoana conexiune", "CAEN / Judet", "Risc", ""].map(h => (
+                <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr 0.8fr 0.6fr 80px", background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
+                  {["Firma legata", "Persoana conexiune", "CAEN / Judet", "Risc", "Status"].map(h => (
                     <div key={h} style={{ padding: "10px 14px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".5px", color: "#94a3b8" }}>{h}</div>
                   ))}
                 </div>
@@ -1583,7 +1583,7 @@ export default function CompanyDetailPage() {
                   const riskColor = lc.riskScore >= 60 ? "#dc2626" : lc.riskScore >= 30 ? "#d97706" : "#059669";
                   const riskBg = lc.riskScore >= 60 ? "rgba(220,38,38,.08)" : lc.riskScore >= 30 ? "rgba(217,119,6,.08)" : "rgba(5,150,105,.08)";
                   return (
-                    <div key={lc.id} style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr 0.8fr 0.6fr 60px", borderBottom: "1px solid #f1f5f9", alignItems: "center" }}>
+                    <div key={lc.id} style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr 0.8fr 0.6fr 80px", borderBottom: "1px solid #f1f5f9", alignItems: "center", opacity: lc.dismissed ? 0.4 : 1 }}>
                       <div style={{ padding: "12px 14px" }}>
                         <div style={{ fontSize: 13, fontWeight: 600, color: "#0f172a" }}>{lc.linkedName}</div>
                         <div style={{ fontSize: 11, color: "#64748b", fontFamily: "'JetBrains Mono', monospace" }}>{lc.linkedCui || "—"}</div>
@@ -1608,17 +1608,35 @@ export default function CompanyDetailPage() {
                           </div>
                         )}
                       </div>
-                      <div style={{ padding: "12px 14px" }}>
-                        <button
-                          style={{ padding: "4px 8px", borderRadius: 4, border: "1px solid #fca5a5", background: "transparent", color: "#dc2626", fontSize: 10, cursor: "pointer" }}
-                          onClick={async () => {
-                            if (!confirm("Stergi aceasta conexiune?")) return;
-                            await apiDelete(`/api/companies/${sel.id}/linked-companies/${lc.id}`).catch(() => {});
-                            setLinkedCompanies(prev => prev.filter(x => x.id !== lc.id));
-                          }}
-                        >
-                          &#x1F5D1;
-                        </button>
+                      <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 4 }}>
+                        {lc.dismissed ? (
+                          <span style={{ fontSize: 10, color: "#94a3b8", fontStyle: "italic" }}>Exclus</span>
+                        ) : lc.confirmed ? (
+                          <span style={{ fontSize: 10, color: "#059669", fontWeight: 700 }}>&#x2713; Confirmat</span>
+                        ) : (
+                          <>
+                            <button
+                              style={{ padding: "3px 8px", borderRadius: 4, border: "1px solid #059669", background: "transparent", color: "#059669", fontSize: 10, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}
+                              title="Confirmă — aceeași persoană"
+                              onClick={async () => {
+                                await (api as any)(`/api/companies/${sel.id}/linked-companies/${lc.id}`, { method: "PATCH", body: JSON.stringify({ confirmed: true }) }).catch(() => {});
+                                setLinkedCompanies(prev => prev.map(x => x.id === lc.id ? { ...x, confirmed: true, dismissed: false } : x));
+                              }}
+                            >
+                              &#x2713;
+                            </button>
+                            <button
+                              style={{ padding: "3px 8px", borderRadius: 4, border: "1px solid #94a3b8", background: "transparent", color: "#94a3b8", fontSize: 10, cursor: "pointer", whiteSpace: "nowrap" }}
+                              title="Nu e aceeași persoană"
+                              onClick={async () => {
+                                await (api as any)(`/api/companies/${sel.id}/linked-companies/${lc.id}`, { method: "PATCH", body: JSON.stringify({ dismissed: true }) }).catch(() => {});
+                                setLinkedCompanies(prev => prev.map(x => x.id === lc.id ? { ...x, dismissed: true, confirmed: false } : x));
+                              }}
+                            >
+                              &#x2715;
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
                   );

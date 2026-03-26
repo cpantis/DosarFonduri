@@ -3499,44 +3499,7 @@ export default function ProjectViewPage() {
                   </div>
                 )}
 
-                {/* Pre-eligibilitate firmă (from companyElements — instant, no AI) */}
-                {preEligRules.length > 0 && (
-                  <div style={{ marginBottom: 10, borderRadius: 10, border: "1px solid rgba(226,232,240,.6)", overflow: "hidden" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: "#f8fafc" }}>
-                      <span style={{ fontSize: 13 }}>{"\u{1F3E2}"}</span>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", textTransform: "uppercase", letterSpacing: ".5px" }}>Pre-eligibilitate firmă</span>
-                      <span style={{ fontSize: 10, color: "#64748b", fontWeight: 500 }}>— date ONRC & financiare</span>
-                      <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 700, color: "#059669" }}>
-                        {preEligRules.filter(r => r.status === "pass").length}/{preEligRules.length}
-                      </span>
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-                      {preEligRules.map(rule => {
-                        const ct = rule.condition?.field ? formatConditionText(rule.condition) : null;
-                        return (
-                        <div className={`elig-rule ${rule.status}-bg`} key={rule.id}>
-                          <div className={`elig-icon ${rule.status}`}>
-                            {eligStatusIcons[rule.status]}
-                          </div>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <span className={`elig-name ${rule.status}-text`}>
-                              {rule.name}
-                              {rule.detail && (
-                                <span style={{ fontWeight: 400, fontSize: 11, color: "#64748b" }}> — {rule.detail.replace("[Pre-elig] ", "")}</span>
-                              )}
-                            </span>
-                            {ct && (
-                              <div style={{ marginTop: 4, fontSize: 11, fontWeight: 600, color: "#2563eb", display: "flex", alignItems: "center", gap: 4 }}>
-                                <span>{"\u{1F9EA}"}</span> {ct}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
+                {/* Pre-eligibility rules are now shown inline with all rules below — no separate section */}
 
                 {guideTrustScore != null && guideTrustScore < 0.7 && (
                   <div style={{

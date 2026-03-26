@@ -124,6 +124,14 @@ export default function CompanyDetailPage() {
   const [editingElementId, setEditingElementId] = useState<string | null>(null);
   const [editingValue, setEditingValue] = useState("");
 
+  // Linked companies
+  const [linkedCompanies, setLinkedCompanies] = useState<any[]>([]);
+  const [linkedLoading, setLinkedLoading] = useState(false);
+  const [linkedLoaded, setLinkedLoaded] = useState(false);
+  const [linkedAnalyzing, setLinkedAnalyzing] = useState(false);
+  const [showAddManual, setShowAddManual] = useState(false);
+  const [manualForm, setManualForm] = useState({ linkedName: "", personName: "", personRoleMain: "", notes: "", linkedCui: "" });
+
   // Pre-eligibility
   const [sessions, setSessions] = useState<any[]>([]);
   const [selectedSession, setSelectedSession] = useState<string>("");
@@ -239,6 +247,17 @@ export default function CompanyDetailPage() {
   useEffect(() => {
     if (activeTab === "Elemente" && !elementsData) fetchElements();
   }, [activeTab, elementsData, fetchElements]);
+
+  // Fetch linked companies when tab activates
+  useEffect(() => {
+    if (activeTab === "Firme legate" && !linkedLoaded && sel) {
+      setLinkedLoading(true);
+      apiGet(`/api/companies/${sel.id}/linked-companies`)
+        .then((data: any[]) => { setLinkedCompanies(data); setLinkedLoaded(true); })
+        .catch(() => setLinkedLoaded(true))
+        .finally(() => setLinkedLoading(false));
+    }
+  }, [activeTab, linkedLoaded, sel]);
 
   // Fetch available sessions when tab activates
   useEffect(() => {
@@ -1449,6 +1468,186 @@ export default function CompanyDetailPage() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+          </>)}
+
+          {/* FIRME LEGATE */}
+          {activeTab === "Firme legate" && sel && (<>
+            <SectionTitle>Firme legate</SectionTitle>
+            <p style={{ fontSize: 13, color: "#64748b", marginBottom: 16, lineHeight: 1.6 }}>
+              Verificare automata a conexiunilor prin asociati si administratori comuni cu alte firme.
+              Rezultatele sunt folosite la evaluarea eligibilitatii (IMM consolidat, conditii artificiale).
+            </p>
+
+            <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
+              <button
+                style={{ padding: "10px 20px", borderRadius: 8, background: "#2563eb", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", border: "none", opacity: linkedAnalyzing ? 0.5 : 1 }}
+                disabled={linkedAnalyzing}
+                onClick={async () => {
+                  if (!confirm(`Verificarea va interoga ListaFirme.ro pentru fiecare asociat/administrator. Cost estimat: ~${(detail?.associates?.length || 3) + 1} credite API. Continuati?`)) return;
+                  setLinkedAnalyzing(true);
+                  try {
+                    const result = await apiPost(`/api/companies/${sel.id}/linked-companies/analyze`, {});
+                    setLinkedCompanies((result as any).links?.map((l: any, i: number) => ({ id: `temp-${i}`, ...l })) || []);
+                    setLinkedLoaded(true);
+                    alert(`Verificare completa: ${(result as any).companiesFound} firme legate gasite, ${(result as any).creditsUsed} credite folosite.`);
+                  } catch (err: any) {
+                    alert(err.message || "Eroare la verificare");
+                  } finally {
+                    setLinkedAnalyzing(false);
+                    // Reload from DB
+                    const data = await apiGet(`/api/companies/${sel.id}/linked-companies`).catch(() => []);
+                    setLinkedCompanies(data);
+                  }
+                }}
+              >
+                {linkedAnalyzing ? "Verificare in curs..." : "Verifica firme legate"}
+              </button>
+              <button
+                style={{ padding: "10px 20px", borderRadius: 8, border: "1px solid #e2e8f0", background: "#fff", color: "#0f172a", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+                onClick={() => setShowAddManual(true)}
+              >
+                + Adauga manual
+              </button>
+            </div>
+
+            {/* Manual add form */}
+            {showAddManual && (
+              <div style={{ marginBottom: 20, padding: 16, borderRadius: 10, border: "1px solid #e2e8f0", background: "#fff" }}>
+                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 12 }}>Adauga conexiune manuala</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 600, color: "#64748b", display: "block", marginBottom: 4 }}>Firma legata *</label>
+                    <input style={{ width: "100%", padding: "8px 12px", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: 13 }} placeholder="Denumire firma..." value={manualForm.linkedName} onChange={e => setManualForm(p => ({ ...p, linkedName: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 600, color: "#64748b", display: "block", marginBottom: 4 }}>CUI (optional)</label>
+                    <input style={{ width: "100%", padding: "8px 12px", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: 13 }} placeholder="CUI..." value={manualForm.linkedCui} onChange={e => setManualForm(p => ({ ...p, linkedCui: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 600, color: "#64748b", display: "block", marginBottom: 4 }}>Persoana legatura *</label>
+                    <input style={{ width: "100%", padding: "8px 12px", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: 13 }} placeholder="Nume persoana..." value={manualForm.personName} onChange={e => setManualForm(p => ({ ...p, personName: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 600, color: "#64748b", display: "block", marginBottom: 4 }}>Relatie</label>
+                    <input style={{ width: "100%", padding: "8px 12px", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: 13 }} placeholder="sot/sotie, frate, administrator..." value={manualForm.personRoleMain} onChange={e => setManualForm(p => ({ ...p, personRoleMain: e.target.value }))} />
+                  </div>
+                </div>
+                <div style={{ marginBottom: 10 }}>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: "#64748b", display: "block", marginBottom: 4 }}>Note</label>
+                  <textarea style={{ width: "100%", padding: "8px 12px", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: 13, minHeight: 60 }} placeholder="Detalii suplimentare..." value={manualForm.notes} onChange={e => setManualForm(p => ({ ...p, notes: e.target.value }))} />
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    style={{ padding: "8px 16px", borderRadius: 6, background: "#2563eb", color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer", border: "none" }}
+                    disabled={!manualForm.linkedName || !manualForm.personName}
+                    onClick={async () => {
+                      try {
+                        await apiPost(`/api/companies/${sel.id}/linked-companies/manual`, manualForm);
+                        setShowAddManual(false);
+                        setManualForm({ linkedName: "", personName: "", personRoleMain: "", notes: "", linkedCui: "" });
+                        const data = await apiGet(`/api/companies/${sel.id}/linked-companies`);
+                        setLinkedCompanies(data);
+                      } catch (err: any) {
+                        alert(err.message);
+                      }
+                    }}
+                  >
+                    Adauga
+                  </button>
+                  <button style={{ padding: "8px 16px", borderRadius: 6, border: "1px solid #e2e8f0", background: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer" }} onClick={() => setShowAddManual(false)}>
+                    Anuleaza
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Results table */}
+            {linkedLoading && <div style={{ padding: 40, textAlign: "center", color: "#64748b" }}>Se incarca...</div>}
+            {!linkedLoading && linkedCompanies.length === 0 && linkedLoaded && (
+              <div style={{ padding: 40, textAlign: "center", color: "#94a3b8" }}>
+                <div style={{ fontSize: 32, marginBottom: 8 }}>&#x1F517;</div>
+                <div style={{ fontSize: 14, fontWeight: 600 }}>Nicio firma legata detectata</div>
+                <div style={{ fontSize: 12, marginTop: 4 }}>Apasati "Verifica firme legate" pentru a scana conexiunile prin asociati si administratori.</div>
+              </div>
+            )}
+            {linkedCompanies.length > 0 && (
+              <div style={{ borderRadius: 10, border: "1px solid #e2e8f0", overflow: "hidden" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr 0.8fr 0.6fr 80px", background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
+                  {["Firma legata", "Persoana conexiune", "CAEN / Judet", "Risc", "Status"].map(h => (
+                    <div key={h} style={{ padding: "10px 14px", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".5px", color: "#94a3b8" }}>{h}</div>
+                  ))}
+                </div>
+                {linkedCompanies.map((lc: any) => {
+                  const riskColor = lc.riskScore >= 60 ? "#dc2626" : lc.riskScore >= 30 ? "#d97706" : "#059669";
+                  const riskBg = lc.riskScore >= 60 ? "rgba(220,38,38,.08)" : lc.riskScore >= 30 ? "rgba(217,119,6,.08)" : "rgba(5,150,105,.08)";
+                  return (
+                    <div key={lc.id} style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr 0.8fr 0.6fr 80px", borderBottom: "1px solid #f1f5f9", alignItems: "center", opacity: lc.dismissed ? 0.4 : 1 }}>
+                      <div style={{ padding: "12px 14px" }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: "#0f172a" }}>{lc.linkedName}</div>
+                        <div style={{ fontSize: 11, color: "#64748b", fontFamily: "'JetBrains Mono', monospace" }}>{lc.linkedCui || "—"}</div>
+                        {lc.linkedStatus && <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 2 }}>{lc.linkedStatus}</div>}
+                      </div>
+                      <div style={{ padding: "12px 14px" }}>
+                        <div style={{ fontSize: 13, fontWeight: 500 }}>{lc.personName}</div>
+                        <div style={{ fontSize: 11, color: "#64748b" }}>{lc.personRoleMain || ""}{lc.personSharesMain ? ` (${lc.personSharesMain}%)` : ""}</div>
+                        {lc.personRoleLinked && <div style={{ fontSize: 10, color: "#94a3b8" }}>In firma legata: {lc.personRoleLinked}{lc.personSharesLinked ? ` (${lc.personSharesLinked}%)` : ""}</div>}
+                      </div>
+                      <div style={{ padding: "12px 14px" }}>
+                        <div style={{ fontSize: 12, color: "#0f172a" }}>{lc.linkedNace || "—"}</div>
+                        <div style={{ fontSize: 11, color: "#64748b" }}>{lc.linkedCounty || "—"}</div>
+                      </div>
+                      <div style={{ padding: "12px 14px" }}>
+                        <div style={{ display: "inline-flex", padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700, color: riskColor, background: riskBg }}>
+                          {lc.riskScore}
+                        </div>
+                        {Array.isArray(lc.riskFlags) && lc.riskFlags.length > 0 && (
+                          <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 4, lineHeight: 1.4 }}>
+                            {lc.riskFlags.slice(0, 2).join("; ")}
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 4 }}>
+                        {lc.dismissed ? (
+                          <span style={{ fontSize: 10, color: "#94a3b8", fontStyle: "italic" }}>Exclus</span>
+                        ) : lc.confirmed ? (
+                          <span style={{ fontSize: 10, color: "#059669", fontWeight: 700 }}>&#x2713; Confirmat</span>
+                        ) : (
+                          <>
+                            <button
+                              style={{ padding: "3px 8px", borderRadius: 4, border: "1px solid #059669", background: "transparent", color: "#059669", fontSize: 10, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}
+                              title="Confirmă — aceeași persoană"
+                              onClick={async () => {
+                                await (api as any)(`/api/companies/${sel.id}/linked-companies/${lc.id}`, { method: "PATCH", body: JSON.stringify({ confirmed: true }) }).catch(() => {});
+                                setLinkedCompanies(prev => prev.map(x => x.id === lc.id ? { ...x, confirmed: true, dismissed: false } : x));
+                              }}
+                            >
+                              &#x2713;
+                            </button>
+                            <button
+                              style={{ padding: "3px 8px", borderRadius: 4, border: "1px solid #94a3b8", background: "transparent", color: "#94a3b8", fontSize: 10, cursor: "pointer", whiteSpace: "nowrap" }}
+                              title="Nu e aceeași persoană"
+                              onClick={async () => {
+                                await (api as any)(`/api/companies/${sel.id}/linked-companies/${lc.id}`, { method: "PATCH", body: JSON.stringify({ dismissed: true }) }).catch(() => {});
+                                setLinkedCompanies(prev => prev.map(x => x.id === lc.id ? { ...x, dismissed: true, confirmed: false } : x));
+                              }}
+                            >
+                              &#x2715;
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {linkedCompanies.length > 0 && (
+              <div style={{ marginTop: 12, padding: 12, borderRadius: 8, background: "#f0f7ff", border: "1px solid rgba(37,99,235,.15)", fontSize: 12, color: "#334155", lineHeight: 1.5 }}>
+                <strong>Nota:</strong> Verificarea automata detecteaza doar conexiuni prin nume identice.
+                Relatiile de rudenie (sot/sotie, frati), suprapunerea terenurilor APIA si proiectele AFIR existente
+                trebuie adaugate manual de consultant folosind butonul "Adauga manual".
               </div>
             )}
           </>)}

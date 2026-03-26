@@ -177,6 +177,44 @@ export const companyAdministrators = pgTable("company_administrators", {
   companyIdx: index("comp_admin_company_idx").on(table.companyId),
 }));
 
+// === COMPANY LINKED COMPANIES (firme legate) ===
+export const companyLinkedCompanies = pgTable("company_linked_companies", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  companyId: uuid("company_id").references(() => companies.id, { onDelete: "cascade" }).notNull(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  // Linked company data
+  linkedCui: varchar("linked_cui", { length: 20 }).notNull(),
+  linkedName: varchar("linked_name", { length: 500 }).notNull(),
+  linkedStatus: varchar("linked_status", { length: 100 }),
+  linkedNace: varchar("linked_nace", { length: 20 }),
+  linkedNaceDescription: varchar("linked_nace_description", { length: 500 }),
+  linkedCounty: varchar("linked_county", { length: 100 }),
+  linkedTurnover: decimal("linked_turnover", { precision: 15, scale: 2 }),
+  linkedProfit: decimal("linked_profit", { precision: 15, scale: 2 }),
+  linkedEmployees: integer("linked_employees"),
+  // Connection details
+  personName: varchar("person_name", { length: 255 }).notNull(),
+  personRoleMain: varchar("person_role_main", { length: 100 }), // role in main company
+  personSharesMain: decimal("person_shares_main", { precision: 5, scale: 2 }), // % in main company
+  personRoleLinked: varchar("person_role_linked", { length: 100 }), // role in linked company
+  personSharesLinked: decimal("person_shares_linked", { precision: 5, scale: 2 }), // % in linked company
+  // Risk assessment
+  riskScore: integer("risk_score").notNull().default(0),
+  riskFlags: jsonb("risk_flags").$type<string[]>().default([]),
+  // Source
+  source: varchar("source", { length: 50 }).notNull().default("listafirme"), // listafirme | manual
+  confirmed: boolean("confirmed").default(false), // consultant confirmed same person
+  dismissed: boolean("dismissed").default(false), // consultant said NOT same person
+  notes: text("notes"), // consultant notes
+  // Timestamps
+  checkedAt: timestamp("checked_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  companyIdx: index("linked_company_idx").on(table.companyId),
+  orgIdx: index("linked_org_idx").on(table.organizationId),
+  linkedCuiIdx: index("linked_cui_idx").on(table.linkedCui),
+}));
+
 // === COMPANY FINANCIALS ===
 export const companyFinancials = pgTable("company_financials", {
   id: uuid("id").defaultRandom().primaryKey(),

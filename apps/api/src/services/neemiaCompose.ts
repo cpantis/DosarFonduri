@@ -26,6 +26,7 @@ import { eq, and, inArray, isNull, or, like, not } from "drizzle-orm";
 import { getFileBuffer, uploadFile } from "./storage";
 import { extractTextFromDOCX } from "./ocr";
 import { logAIUsage } from "./aiUsage";
+import { getCompanyDataFromElements } from "./companyElements";
 import crypto from "crypto";
 
 
@@ -102,6 +103,7 @@ export interface ComposeContext {
   companyCui: string;
   programFinantare: string;
   codMasura: string;
+  companyAnalysis: Record<string, any>;
   numberFormat: "ro" | "en";
   templateText?: string;  // Extracted text from template DOCX for structural context
   elements: Record<string, { value: string; label: string; source: string }>;
@@ -147,6 +149,9 @@ export async function buildComposeContext(
   const company = await db.query.companies.findFirst({
     where: eq(companies.id, project.companyId),
   });
+
+  // Load calculated company analysis (IMM, difficulty, trends, ratios)
+  const companyAnalysis = company ? await getCompanyDataFromElements(company.id) : {};
 
   // Load all project elements with their template element metadata
   const projEls = await db.query.projectElements.findMany({
@@ -292,6 +297,7 @@ export async function buildComposeContext(
     companyCui: company?.cui || "N/A",
     programFinantare: project.programFinantare || "N/A",
     codMasura: project.codMasura || "N/A",
+    companyAnalysis,
     numberFormat: (cabinetStyle.numberFormat as "ro" | "en") || "ro",
     templateText,
     elements,
@@ -753,6 +759,19 @@ ${writingKitContext}
 - Firmă: ${context.companyName} (CUI: ${context.companyCui})
 - Program: ${context.programFinantare}
 - Măsură: ${context.codMasura}
+${context.companyAnalysis && Object.keys(context.companyAnalysis).length > 0 ? `
+ANALIZĂ FINANCIARĂ FIRMĂ:
+${context.companyAnalysis.clasificare_imm ? `- Clasificare IMM: ${context.companyAnalysis.clasificare_imm}` : ""}
+${context.companyAnalysis.este_intreprindere_in_dificultate ? `- Întreprindere în dificultate: ${context.companyAnalysis.este_intreprindere_in_dificultate}` : ""}
+${context.companyAnalysis.cifra_afaceri ? `- Cifra de afaceri: ${context.companyAnalysis.cifra_afaceri} RON` : ""}
+${context.companyAnalysis.profit_net ? `- Profit net: ${context.companyAnalysis.profit_net} RON` : ""}
+${context.companyAnalysis.angajati ? `- Angajați: ${context.companyAnalysis.angajati}` : ""}
+${context.companyAnalysis.trend_cifra_afaceri_1an ? `- Trend CA: ${context.companyAnalysis.trend_cifra_afaceri_1an} (${context.companyAnalysis.trend_cifra_afaceri_1an_pct || 0}%)` : ""}
+${context.companyAnalysis.grad_indatorare ? `- Grad îndatorare: ${context.companyAnalysis.grad_indatorare}` : ""}
+${context.companyAnalysis.lichiditate_curenta ? `- Lichiditate: ${context.companyAnalysis.lichiditate_curenta}` : ""}
+${context.companyAnalysis.solvabilitate ? `- Solvabilitate: ${context.companyAnalysis.solvabilitate}` : ""}
+${context.companyAnalysis.capitaluri_proprii ? `- Capitaluri proprii: ${context.companyAnalysis.capitaluri_proprii} RON` : ""}
+`.split("\n").filter((l: string) => l.trim()).join("\n") : ""}
 
 ELEMENTE PROIECT (valori completate):
 ${elementsList}

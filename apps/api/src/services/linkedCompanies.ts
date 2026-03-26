@@ -210,7 +210,7 @@ export async function analyzeLinkedCompanies(
           links.push({
             personName: person.name,
             personRoleMain: person.role,
-            personSharesMain: person.shares,
+            personSharesMain: person.shares || null,
             linkedCui: linkedInfo.taxCode,
             linkedName: linkedInfo.name,
             linkedStatus: linkedInfo.status,

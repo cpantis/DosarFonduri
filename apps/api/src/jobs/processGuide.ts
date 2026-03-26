@@ -184,7 +184,6 @@ async function classifyPages(
   const response: any = await withAILimit(() => (anthropic.messages.create as any)({
     model: DEFAULT_EXTRACTION_MODEL,
     max_tokens: 2000,
-    output_config: { effort: "low" },
     system: PAGE_CLASSIFY_SYSTEM,
     messages: [{ role: "user", content: `${PAGE_CLASSIFY_USER}${classificationInput}` }],
   }));
@@ -487,12 +486,8 @@ async function unifiedExtraction(
     };
 
     if (useET) {
-      // Adaptive thinking — model decides how much to think based on complexity
-      requestParams.thinking = { type: "adaptive" };
-      requestParams.output_config = { effort: "high" };
-    } else {
-      // Fast extraction — medium effort, no explicit thinking
-      requestParams.output_config = { effort: "medium" };
+      requestParams.temperature = 1;
+      requestParams.thinking = { type: "enabled", budget_tokens: 10000 };
     }
 
     const callStart = Date.now();
@@ -629,8 +624,8 @@ async function refineInterpretedRulesWithET(
     const response: any = await withAILimit(() => (anthropic.messages.create as any)({
       model,
       max_tokens: 12000,
-      thinking: { type: "adaptive" },
-      output_config: { effort: "high" },
+      temperature: 1,
+      thinking: { type: "enabled", budget_tokens: 8000 },
       system: REFINE_ET_SYSTEM,
       messages: [{
         role: "user",

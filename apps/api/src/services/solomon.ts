@@ -12,6 +12,7 @@ import {
 } from "../db/schema";
 import { eq, and, inArray } from "drizzle-orm";
 import { logAIUsage } from "./aiUsage";
+import { getCompanyDataFromElements } from "./companyElements";
 import { validateElement, logElementChange } from "./elementValidation";
 import { checkEligibility } from "./eligibility";
 import { computeProjectScores } from "./scoring";
@@ -414,6 +415,9 @@ async function buildSystemPrompt(projectId: string, organizationId: string): Pro
   });
   const latestFinancial = allFinancials[0] || null;
 
+  // Calculated company analysis (IMM classification, difficulty status, trends, ratios)
+  const companyAnalysis = await getCompanyDataFromElements(company.id);
+
   // Build financial history section
   const financialHistory = allFinancials.map(f => {
     const f20 = f.f20 as any;
@@ -500,6 +504,29 @@ Ești echivalentul unui consultant senior cu 15+ ani experiență în fonduri eu
 
 ### Evoluție financiară (ultimii ani)
 ${financialHistory || "Nu sunt disponibile date financiare multi-an."}
+
+### Analiză financiară calculată
+${(() => {
+  if (!companyAnalysis || Object.keys(companyAnalysis).length === 0) return "Nu sunt disponibile analize calculate.";
+  const lines: string[] = [];
+  if (companyAnalysis.clasificare_imm) lines.push(`- **Clasificare IMM:** ${companyAnalysis.clasificare_imm}`);
+  if (companyAnalysis.este_intreprindere_in_dificultate) {
+    const status = companyAnalysis.este_intreprindere_in_dificultate;
+    lines.push(`- **Întreprindere în dificultate (Reg. 651/2014):** ${status === "da" ? "⚠️ DA" : status === "nu_se_aplica" ? "Nu se aplică" : "Nu"}${companyAnalysis.intreprindere_in_dificultate_motiv ? ` — ${companyAnalysis.intreprindere_in_dificultate_motiv}` : ""}`);
+  }
+  if (companyAnalysis.stare_fiscala_ok) lines.push(`- **Stare fiscală:** ${companyAnalysis.stare_fiscala_ok === "da" ? "OK" : `⚠️ PROBLEME: ${companyAnalysis.stare_fiscala_probleme || "necunoscut"}`}`);
+  if (companyAnalysis.bilant_actualizat) lines.push(`- **Bilanț actualizat:** ${companyAnalysis.bilant_actualizat === "da" ? "Da" : `⚠️ ${companyAnalysis.bilant_actualizat_motiv || "Nu"}`}`);
+  if (companyAnalysis.trend_cifra_afaceri_1an) lines.push(`- **Trend CA 1 an:** ${companyAnalysis.trend_cifra_afaceri_1an} (${companyAnalysis.trend_cifra_afaceri_1an_pct || 0}%)`);
+  if (companyAnalysis.trend_cifra_afaceri_3ani) lines.push(`- **Trend CA 3 ani:** ${companyAnalysis.trend_cifra_afaceri_3ani} (${companyAnalysis.trend_cifra_afaceri_3ani_pct || 0}%)`);
+  if (companyAnalysis.ani_consecutivi_pierdere && Number(companyAnalysis.ani_consecutivi_pierdere) > 0) lines.push(`- **⚠️ Ani consecutivi pierdere:** ${companyAnalysis.ani_consecutivi_pierdere}`);
+  if (companyAnalysis.grad_indatorare) lines.push(`- **Grad îndatorare:** ${companyAnalysis.grad_indatorare}`);
+  if (companyAnalysis.lichiditate_curenta) lines.push(`- **Lichiditate curentă:** ${companyAnalysis.lichiditate_curenta}`);
+  if (companyAnalysis.solvabilitate) lines.push(`- **Solvabilitate:** ${companyAnalysis.solvabilitate}`);
+  if (companyAnalysis.rentabilitate) lines.push(`- **Rentabilitate:** ${companyAnalysis.rentabilitate}`);
+  if (companyAnalysis.are_firme_legate === "da") lines.push(`- **⚠️ Firme legate:** ${companyAnalysis.firme_legate_detalii || "Da"}`);
+  if (companyAnalysis.de_minimis_verificat === "nu") lines.push(`- **De minimis:** Neverificat — solicită declarația pe proprie răspundere`);
+  return lines.length > 0 ? lines.join("\n") : "Date insuficiente pentru analiză.";
+})()}
 
 **ACȚIUNE AUTOMATĂ:** Dacă în lista CÂMPURI DE COMPLETAT există elemente financiare (cifra de afaceri, profit net, capitaluri proprii, număr angajați, etc.) și datele de mai sus conțin valorile corespunzătoare, completează-le AUTOMAT la PRIMUL mesaj fără a fi întrebat. Acestea sunt date oficiale ANAF — confidence 0.95.
 

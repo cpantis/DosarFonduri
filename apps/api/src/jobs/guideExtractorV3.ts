@@ -163,10 +163,11 @@ function extractPageRange(fullText: string, startPage: number, endPage: number):
 /** Focused prompt per section type */
 const SECTION_PROMPTS: Record<string, { system: string; outputKeys: string[] }> = {
   eligibilitate: {
-    system: `Ești Solomon — evaluator administrativ. Extragi REGULI FIXE (DA/NU) și REGULI INTERPRETATE (arbori decizionali).
-Regulile ELIMINATORII → confidence ≥ 0.95. TOATE ramurile decision tree. needs_review dacă ambiguă.
+    system: `Ești Solomon — evaluator administrativ. Extragi REGULI FIXE (DA/NU) cu condiții verificabile programatic.
+Regulile ELIMINATORII → confidence ≥ 0.95. Focalizează pe condiții cuantificabile: praguri financiare, ani vechime, forme juridice acceptate, coduri CAEN.
+Regulile complexe (arbori decizionali, interpretare contextuală) NU le extrage — vor fi evaluate direct din textul ghidului.
 Returnează DOAR JSON valid.`,
-    outputKeys: ["fixed_rules", "interpreted_rules"],
+    outputKeys: ["fixed_rules"],
   },
   selectie_punctaj: {
     system: `Ești Solomon — evaluator tehnic care a evaluat sute de dosare cu grila de punctaj.
@@ -186,12 +187,6 @@ Returnează DOAR JSON valid.`,
 Fiecare cheltuială separată. Include condiții și excepții. Returnează DOAR JSON valid.`,
     outputKeys: ["fixed_rules"],
   },
-  intensitate: {
-    system: `Ești Solomon — consultant care a pierdut dosare din cauza intensității greșite.
-Extragi REGULI INTERPRETATE despre intensitatea sprijinului, majorări, combinări grant+credit, ESB.
-TOATE ramurile. Returnează DOAR JSON valid.`,
-    outputKeys: ["interpreted_rules"],
-  },
   documente: {
     system: `Ești Solomon — un document lipsă = dosar respins.
 Extragi TOATE documentele necesare — din secțiunea dedicată + mențiuni dispersate.
@@ -209,7 +204,6 @@ Returnează DOAR JSON valid.`,
 function buildSectionUserPrompt(sectionType: string, guideText: string): string {
   const outputSchemas: Record<string, string> = {
     fixed_rules: `"fixed_rules": [{ "category": "eligibilitate|financiar|tehnic|administrativ|achizitii|documente", "description": "...", "condition": { "field": "...", "operator": "eq|neq|gt|gte|lt|lte|in|not_in|between", "value": "...", "value2": "..." }, "semantic_tags": [...], "source_page": N, "source_text": "...", "confidence": 0.0-1.0 }]`,
-    interpreted_rules: `"interpreted_rules": [{ "category": "selectie|intensitate|eligibilitate_complexa|documentare|achizitii|ajutor_stat", "description": "...", "condition": { "type": "decision_tree|scoring|cumulative|conditional", "logic": "...", "factors": [...], "outcomes": [{"if":"...","then":"..."}] }, "semantic_tags": [...], "source_page": N, "source_text": "...", "confidence": 0.0-1.0, "needs_review": true/false, "review_reason": "..." }]`,
     scoring_criteria: `"scoring_criteria": [{ "code": "...", "name": "...", "description": "...", "maxPoints": N, "category": "tehnic|financiar|management|relevant|sustenabilitate", "sourcePage": N, "evaluationLogic": { "type": "lookup|range|boolean|formula", "elementKey": "...", "ranges": [...], "formula": "..." } }]`,
     document_requirements: `"document_requirements": [{ "name": "...", "category": "juridice|financiare|tehnice|declaratii|oferte|anexe|altele", "required": true, "description": "...", "format": "PDF|DOCX|XLSX|original|copie_conforma|orice", "source_page": null, "conditions": null }]`,
   };
@@ -230,7 +224,6 @@ ${guideText}`;
 
 interface SectionResult {
   fixedRules: any[];
-  interpretedRules: any[];
   scoringCriteria: any[];
   documentRequirements: any[];
   inputTokens: number;
@@ -292,7 +285,6 @@ async function extractSection(
 
   return {
     fixedRules: Array.isArray(parsed.fixed_rules) ? parsed.fixed_rules : [],
-    interpretedRules: Array.isArray(parsed.interpreted_rules) ? parsed.interpreted_rules : [],
     scoringCriteria: Array.isArray(parsed.scoring_criteria) ? parsed.scoring_criteria : [],
     documentRequirements: Array.isArray(parsed.document_requirements) ? parsed.document_requirements : [],
     inputTokens: response.usage.input_tokens,
@@ -372,7 +364,6 @@ export interface ProcessingLogEntry {
 export interface V3ExtractionResult {
   metadata: GuideMetadata;
   fixedRules: any[];
-  interpretedRules: any[];
   scoringCriteria: any[];
   elementDefinitions: any[];
   documentRequirements: any[];
@@ -408,8 +399,9 @@ export async function extractGuideV3(
   onProgress?.(15, `Structura detectata in ${(step0Ms/1000).toFixed(1)}s — ${metadata.sectiuni.length} sectiuni`);
 
   // Group sections by type for extraction
+  // Note: "intensitate" removed — complex intensity rules evaluated by Solomon via RAG
   const extractableSections = metadata.sectiuni.filter(s =>
-    ["eligibilitate", "selectie_punctaj", "cheltuieli", "intensitate", "documente", "contractare"].includes(s.tip)
+    ["eligibilitate", "selectie_punctaj", "cheltuieli", "documente", "contractare"].includes(s.tip)
   );
 
   // Merge adjacent sections of same type
@@ -468,14 +460,14 @@ export async function extractGuideV3(
         useET,
       );
       const sDur = Date.now() - sStart;
-      const rCount = result.fixedRules.length + result.interpretedRules.length + result.scoringCriteria.length + result.documentRequirements.length;
+      const rCount = result.fixedRules.length + result.scoringCriteria.length + result.documentRequirements.length;
       sectionTimings.push({ tip: section.tip, durationMs: sDur, results: `${rCount} items` });
       processingLog.push({
         step: "1",
         label: `${section.tip} (p${section.pagina_start}-${section.pagina_end})`,
         durationMs: sDur,
         tokens: { input: result.inputTokens, output: result.outputTokens },
-        details: `${result.fixedRules.length} fixe, ${result.interpretedRules.length} interp, ${result.scoringCriteria.length} scoring, ${result.documentRequirements.length} docs`,
+        details: `${result.fixedRules.length} fixe, ${result.scoringCriteria.length} scoring, ${result.documentRequirements.length} docs`,
       });
       onProgress?.(25 + Math.round(((i + 1) / mergedSections.length) * 50), `${section.titlu} — ${(sDur/1000).toFixed(0)}s, ${rCount} rezultate`);
       return result;
@@ -492,14 +484,12 @@ export async function extractGuideV3(
 
   // Merge results
   let allFixed: any[] = [];
-  let allInterpreted: any[] = [];
   let allScoring: any[] = [];
   let allDocs: any[] = [];
 
   for (const result of sectionResults) {
     if (!result) continue;
     allFixed.push(...result.fixedRules);
-    allInterpreted.push(...result.interpretedRules);
     allScoring.push(...result.scoringCriteria);
     allDocs.push(...result.documentRequirements);
     totalIn += result.inputTokens;
@@ -508,8 +498,8 @@ export async function extractGuideV3(
 
   // STEP 2: Derive elements from rules + scoring
   const step2Start = Date.now();
-  onProgress?.(80, `Derivez elementele din ${allFixed.length + allInterpreted.length} reguli...`);
-  const allRules = [...allFixed, ...allInterpreted];
+  onProgress?.(80, `Derivez elementele din ${allFixed.length} reguli...`);
+  const allRules = [...allFixed];
   const elemResult = await deriveElements(allRules, allScoring, fullText, organizationId);
   const step2Ms = Date.now() - step2Start;
   totalIn += elemResult.inputTokens;
@@ -529,16 +519,15 @@ export async function extractGuideV3(
     label: "Pipeline complete",
     durationMs,
     tokens: { input: totalIn, output: totalOut },
-    details: `${allFixed.length} fixed, ${allInterpreted.length} interp, ${allScoring.length} scoring, ${elemResult.elements.length} elements, ${allDocs.length} docs`,
+    details: `${allFixed.length} fixed, ${allScoring.length} scoring, ${elemResult.elements.length} elements, ${allDocs.length} docs`,
   });
-  console.log(`[guideV3] Complete: ${durationMs}ms — ${allFixed.length} fixed, ${allInterpreted.length} interp, ${allScoring.length} scoring, ${elemResult.elements.length} elements, ${allDocs.length} docs`);
+  console.log(`[guideV3] Complete: ${durationMs}ms — ${allFixed.length} fixed, ${allScoring.length} scoring, ${elemResult.elements.length} elements, ${allDocs.length} docs`);
 
-  onProgress?.(95, `${allFixed.length + allInterpreted.length} reguli, ${allScoring.length} criterii, ${elemResult.elements.length} elemente, ${allDocs.length} documente`);
+  onProgress?.(95, `${allFixed.length} reguli, ${allScoring.length} criterii, ${elemResult.elements.length} elemente, ${allDocs.length} documente`);
 
   return {
     metadata,
     fixedRules: allFixed,
-    interpretedRules: allInterpreted,
     scoringCriteria: allScoring,
     elementDefinitions: elemResult.elements,
     documentRequirements: allDocs,

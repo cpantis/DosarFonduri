@@ -1514,7 +1514,6 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
 
       const opusStart = Date.now();
       let allFixed: any[] = [];
-      let allInterpreted: any[] = [];
       let allScoring: any[] = [];
       let allElementDefs: any[] = [];
       let allDocRequirements: any[] = [];
@@ -1538,7 +1537,6 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
       });
 
       allFixed = v3Result.fixedRules;
-      allInterpreted = v3Result.interpretedRules;
       allScoring = v3Result.scoringCriteria;
       allElementDefs = v3Result.elementDefinitions;
       allDocRequirements = v3Result.documentRequirements;
@@ -1547,12 +1545,12 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
       guideMetadata = v3Result.metadata;
 
       // Update step details with final counts
-      setStep("rules", "done", `${allFixed.length} fixe + ${allInterpreted.length} interpretate`);
+      setStep("rules", "done", `${allFixed.length} reguli fixe`);
       setStep("scoring", allScoring.length > 0 ? "done" : "done", `${allScoring.length} criterii`);
       setStep("elements", "done", `${allElementDefs.length} elemente`);
 
       const v3ProcessingLog = v3Result.processingLog;
-      console.log(`[processGuide] v3 extraction: ${v3Result.durationMs}ms — ${allFixed.length} fixed, ${allInterpreted.length} interp, ${allScoring.length} scoring, ${allElementDefs.length} elements, ${allDocRequirements.length} docs`);
+      console.log(`[processGuide] v3 extraction: ${v3Result.durationMs}ms — ${allFixed.length} fixed, ${allScoring.length} scoring, ${allElementDefs.length} elements, ${allDocRequirements.length} docs`);
 
       /*
       // ─── FALLBACK: unified extraction (commented out — testing v3 directly) ───
@@ -1562,7 +1560,7 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         const chunks = splitStructuredText(structuredText);
         if (chunks.length === 1) {
           const result = await unifiedExtraction(chunks[0], organizationId, "full", useET);
-          allFixed = result.fixedRules; allInterpreted = result.interpretedRules;
+          allFixed = result.fixedRules;
           allScoring = result.scoringCriteria; allElementDefs = result.elementDefinitions;
           allDocRequirements = result.documentRequirements;
         } else {
@@ -1572,36 +1570,33 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
       */
 
       const opusDuration = Date.now() - opusStart;
-      console.log(`[processGuide] Extraction complete: ${opusDuration}ms — ${allFixed.length} fixed, ${allInterpreted.length} interpreted, ${allScoring.length} scoring, ${allElementDefs.length} element defs, ${allDocRequirements.length} doc requirements`);
+      console.log(`[processGuide] Extraction complete: ${opusDuration}ms — ${allFixed.length} fixed, ${allScoring.length} scoring, ${allElementDefs.length} element defs, ${allDocRequirements.length} doc requirements`);
 
       // ─── STEP 4: Save to DB ───
       await job.updateProgress(85);
-      setStep("save", "active", `${allFixed.length + allInterpreted.length} reguli, ${allScoring.length} criterii, ${allElementDefs.length} elemente`);
-      publishSteps(85, `Salvez ${allFixed.length + allInterpreted.length} reguli, ${allScoring.length} criterii selectie, ${allElementDefs.length} elemente`);
+      setStep("save", "active", `${allFixed.length} reguli, ${allScoring.length} criterii, ${allElementDefs.length} elemente`);
+      publishSteps(85, `Salvez ${allFixed.length} reguli, ${allScoring.length} criterii selectie, ${allElementDefs.length} elemente`);
 
-      let fixedCount: number, interpCount: number, scoringCount: number, elemDefCount: number;
+      let fixedCount: number, scoringCount: number, elemDefCount: number;
 
       if (isSmartMerge) {
         // ─── SMART MERGE: compare with existing, add/update only new or changed ───
         console.log(`[processGuide] SMART MERGE mode for "${doc.name}"`);
         const mergeResult = await smartMergeGuideData(
-          allFixed, allInterpreted, allScoring, allElementDefs,
+          allFixed, [], allScoring, allElementDefs,
           documentId, organizationId,
         );
         fixedCount = mergeResult.fixedCount;
-        interpCount = mergeResult.interpCount;
         scoringCount = mergeResult.scoringCount;
         elemDefCount = mergeResult.elemDefCount;
         console.log(`[processGuide] Smart merge result: +${mergeResult.added} added, ~${mergeResult.updated} updated, =${mergeResult.unchanged} unchanged`);
       } else {
         // ─── FULL REPLACE: delete old data, re-insert (original behavior) ───
-        // elementRuleLinks and ruleReferenceLinks cascade from rules, but clean elementDefinitions separately
         await db.delete(rules).where(and(eq(rules.documentId, documentId), eq(rules.organizationId, organizationId)));
         await db.delete(elementDefinitions).where(and(eq(elementDefinitions.guideDocumentId, documentId), eq(elementDefinitions.organizationId, organizationId)));
 
-        [fixedCount, interpCount, scoringCount, elemDefCount] = await Promise.all([
+        [fixedCount, scoringCount, elemDefCount] = await Promise.all([
           saveFixedRules(allFixed, documentId, organizationId),
-          saveInterpretedRules(allInterpreted, documentId, organizationId),
           saveScoringCriteria(allScoring, documentId, organizationId),
           saveElementDefinitions(allElementDefs, documentId, organizationId),
         ]);
@@ -1609,7 +1604,7 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
 
       // ─── STEP 4.5 (Faza 3.5): Verify extraction completeness ───
       const completenessReport = verifyExtractionCompleteness(
-        [...allFixed, ...allInterpreted],
+        allFixed,
         allScoring,
       );
 
@@ -1706,7 +1701,7 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         continuations: 0,
         tokens: { input: totalAIInputTokens, output: totalAIOutputTokens },
         cost: { extraction: +actualAICost.toFixed(4), total: +actualAICost.toFixed(4) },
-        counts: { fixedRules: fixedCount, interpretedRules: interpCount, scoringCriteria: scoringCount, elementDefinitions: elemDefCount },
+        counts: { fixedRules: fixedCount, interpretedRules: 0, scoringCriteria: scoringCount, elementDefinitions: elemDefCount },
         links: { elements: linkResult.elementLinks, references: linkResult.referenceLinks, templateMappings },
         duration: { total: totalDuration, extract: extractDuration, preStruct: preStructDuration, extraction: opusDuration },
         processingLog: v3ProcessingLog || [],
@@ -1797,20 +1792,20 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         processingType: "ghid",
         pageCount,
         fixedRules: fixedCount,
-        interpretedRules: interpCount,
+        interpretedRules: 0,
         scoringCriteria: scoringCount,
         elementDefinitions: elemDefCount,
         elementLinks: linkResult.elementLinks,
         referenceLinks: linkResult.referenceLinks,
         templateMappings,
         totalDurationMs: totalDuration,
-        pipeline: needsPreStructure ? `gpt4o_prestructure + ${DEFAULT_EXTRACTION_MODEL}_et` : `native_pymupdf + ${DEFAULT_EXTRACTION_MODEL}_et`,
+        pipeline: needsPreStructure ? `gpt4o_prestructure + ${DEFAULT_EXTRACTION_MODEL}` : `native_pymupdf + ${DEFAULT_EXTRACTION_MODEL}`,
         costs: {
           preStructure: needsPreStructure ? "~$0.15" : "$0",
           extraction: `~$${actualAICost.toFixed(2)}`,
           total: costDesc,
         },
-        message: `Ghid procesat "${doc.name}". ${pageCount} pagini. Pipeline: ${pipelineDesc}. ${fixedCount} reguli fixe, ${interpCount} interpretate, ${scoringCount} criterii selecție, ${elemDefCount} definiții elemente. ${linkResult.elementLinks + linkResult.referenceLinks} link-uri, ${templateMappings} mapări template. Total: ${(totalDuration / 1000).toFixed(1)}s, ${costDesc}.`,
+        message: `Ghid procesat "${doc.name}". ${pageCount} pagini. Pipeline: ${pipelineDesc}. ${fixedCount} reguli fixe, ${scoringCount} criterii selecție, ${elemDefCount} definiții elemente. ${linkResult.elementLinks + linkResult.referenceLinks} link-uri, ${templateMappings} mapări template. Total: ${(totalDuration / 1000).toFixed(1)}s, ${costDesc}.`,
       }).catch((e: any) => console.warn("[processGuide] sse guide processed:", e.message));
     } catch (error) {
       console.error(`Process guide error (attempt ${job.attemptsMade + 1}/${job.opts.attempts || 3}):`, error);

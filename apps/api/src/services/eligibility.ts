@@ -517,24 +517,14 @@ export async function checkEligibility(projectId: string, organizationId: string
   }> = [];
 
   const fixedRules = allRules.filter(r => r.type === "fixed");
-  const interpretedRules = allRules.filter(r => r.type === "interpreted");
 
   for (const rule of fixedRules) {
     const result = evaluateFixedRule(rule, companyData);
     results.push({ ruleId: rule.id, ...result });
   }
 
-  // === STEP 2: INTERPRETED RULES (Opus + ET) ===
-  if (interpretedRules.length > 0) {
-    const interpretedResults = await evaluateInterpretedRules(
-      interpretedRules,
-      company,
-      allFinancials,
-      companyData,
-      organizationId,
-    );
-    results.push(...interpretedResults);
-  }
+  // Interpreted rules are no longer batch-evaluated here.
+  // They are evaluated by Solomon via RAG when the consultant works on the project.
 
   // Atomic delete+insert inside a transaction to prevent race conditions
   if (results.length > 0) {

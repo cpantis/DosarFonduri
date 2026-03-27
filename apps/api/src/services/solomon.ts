@@ -576,6 +576,22 @@ ${passedRules.length > 0 ? `### ✅ REGULI ÎNDEPLINITE (${passedRules.length})
 ${passedRules.slice(0, 15).join("\n")}${passedRules.length > 15 ? `\n... și alte ${passedRules.length - 15} reguli îndeplinite` : ""}
 ` : ""}` : "Nu au fost extrase încă reguli din ghidul de finanțare. Întreabă consultantul dacă ghidul a fost încărcat."}
 
+═══════════════════════════════════════════
+## EVALUARE ELIGIBILITATE COMPLEXĂ (ROLUL TĂU)
+═══════════════════════════════════════════
+
+Regulile fixe (DA/NU) sunt verificate automat de sistem (vezi statusul mai sus).
+Regulile COMPLEXE (intensitatea sprijinului, arbori decizionali, criterii cumulative, interpretare IMM, ajutor de stat)
+sunt evaluate de TINE direct din textul ghidului livrat prin [CONTEXT RELEVANT].
+
+**Când consultantul deschide proiectul sau întreabă despre eligibilitate:**
+1. Analizează secțiunile de intensitate, eligibilitate complexă, și ajutor de stat din ghid (livrate prin RAG)
+2. Evaluează contra datelor firmei de mai sus
+3. Semnalează PROACTIV orice risc: "Atenție — conform ghidului pag. X, firma nu îndeplinește condiția Y"
+4. Pentru intensitatea sprijinului: calculează procentul corect bazat pe zona/tipul/mărimea beneficiarului
+
+**Nu aștepta să fii întrebat** — dacă vezi date de firmă care ridică semne de întrebare (capitaluri negative, IMM la limită, CAEN neeligibil), semnalează imediat.
+
 ${(() => {
   if (activeKnowledge.length === 0) return "";
   // Only manual/cabinet entries go in system prompt (few, high priority)

@@ -15,11 +15,11 @@ function buildClients(): Anthropic[] {
     const keys: string[] = multiKeys.split(",").map((k: string) => k.trim()).filter(Boolean);
     if (keys.length > 0) {
       console.log(`[anthropic] Initialized ${keys.length} API key(s) for round-robin rotation`);
-      return keys.map((apiKey: string) => new Anthropic({ apiKey, maxRetries: 4 }));
+      return keys.map((apiKey: string) => new Anthropic({ apiKey, maxRetries: 6 }));
     }
   }
   console.log("[anthropic] Using single ANTHROPIC_API_KEY");
-  return [new Anthropic({ maxRetries: 4 })];
+  return [new Anthropic({ maxRetries: 6 })];
 }
 
 const clients = buildClients();

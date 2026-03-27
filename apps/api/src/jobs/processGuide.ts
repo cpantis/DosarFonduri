@@ -1731,6 +1731,59 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         processedAt: new Date(),
       }).where(eq(documents.id, documentId));
 
+      // ─── STEP 8: RAG — Chunk + Embed for vector retrieval ───
+      try {
+        const { chunkGuideText } = await import("../services/guideChunker");
+        const { embedTexts } = await import("../services/embeddings");
+        const { guideChunks: guideChunksTable } = await import("../db/schema");
+
+        const ragStart = Date.now();
+
+        // Delete existing chunks for this document (on reprocess)
+        await db.delete(guideChunksTable).where(eq(guideChunksTable.documentId, documentId));
+
+        // Chunk the guide text
+        const chunks = chunkGuideText(structuredText, guideMetadata);
+        console.log(`[processGuide] RAG: ${chunks.length} chunks created`);
+
+        if (chunks.length > 0) {
+          // Generate embeddings in batch
+          const chunkTexts = chunks.map(c => c.content);
+          const embeddings = await embedTexts(chunkTexts);
+
+          // Insert chunks with embeddings
+          const chunkRows = chunks.map((chunk, i) => ({
+            documentId,
+            organizationId,
+            chunkIndex: chunk.chunkIndex,
+            content: chunk.content,
+            tokenCount: chunk.tokenCount,
+            pageStart: chunk.pageStart,
+            pageEnd: chunk.pageEnd,
+            sectionType: chunk.sectionType,
+            sectionTitle: chunk.sectionTitle,
+            embedding: embeddings[i],
+            metadata: {
+              totalChunks: chunks.length,
+              guideName: doc.name,
+              program: guideMetadata?.program || null,
+              masura: guideMetadata?.masura || null,
+            },
+          }));
+
+          // Batch insert (100 at a time to avoid param limits)
+          for (let i = 0; i < chunkRows.length; i += 100) {
+            await db.insert(guideChunksTable).values(chunkRows.slice(i, i + 100));
+          }
+
+          const ragDuration = Date.now() - ragStart;
+          console.log(`[processGuide] RAG complete: ${chunks.length} chunks embedded in ${ragDuration}ms`);
+        }
+      } catch (ragErr: any) {
+        // Non-critical: RAG embedding failure should not block guide processing
+        console.warn(`[processGuide] RAG embedding failed (non-critical): ${ragErr.message}`);
+      }
+
       await job.updateProgress(100);
 
       const pipelineDesc = needsPreStructure

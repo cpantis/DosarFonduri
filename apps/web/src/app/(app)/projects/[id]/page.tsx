@@ -761,12 +761,12 @@ export default function ProjectViewPage() {
         setSolomonMessages((msgs || []).map((m: any) => ({
           role: m.role as "user" | "assistant",
           text: m.content || "",
-          extractions: m.extractions ? (typeof m.extractions === "string" ? JSON.parse(m.extractions) : m.extractions) : null,
+          extractions: m.elementsExtracted ? (typeof m.elementsExtracted === "string" ? JSON.parse(m.elementsExtracted) : m.elementsExtracted) : null,
         })));
         const elems: SolomonElement[] = [];
         for (const m of (msgs || [])) {
-          if (m.extractions) {
-            const exts = typeof m.extractions === "string" ? JSON.parse(m.extractions) : m.extractions;
+          if (m.elementsExtracted) {
+            const exts = typeof m.elementsExtracted === "string" ? JSON.parse(m.elementsExtracted) : m.elementsExtracted;
             for (const ext of exts) {
               elems.push({ key: ext.key, label: ext.label, value: ext.value, source: "Solomon", status: "propus" });
             }
@@ -933,6 +933,15 @@ export default function ProjectViewPage() {
                   setElements(mapElements(proj.elements || []));
                 }).catch(() => {});
               }, 800);
+            } else if (evt.type === "error") {
+              // Backend sent an error event (preflight failure, AI timeout, etc.)
+              toast("error", evt.message || "Eroare Solomon.");
+              setSolomonMessages(prev => {
+                if (prev.length > 0 && prev[prev.length - 1].role === "assistant" && prev[prev.length - 1].text === "") {
+                  return prev.slice(0, -1);
+                }
+                return prev;
+              });
             } else if (evt.type === "metadata_updated" && evt.metadata) {
               // Solomon confirmed program metadata — update project state
               setProject(prev => prev ? {
@@ -982,7 +991,15 @@ export default function ProjectViewPage() {
   };
 
   const handleSolomonUpload = async (filesOrFile: File | File[]) => {
-    if (readOnly || !solomonConvId || solomonStreaming) return;
+    if (readOnly || solomonStreaming) return;
+    let convId = solomonConvId;
+    if (!convId) {
+      convId = await initSolomonConversation();
+      if (!convId) {
+        toast("error", "Conversația Solomon nu este pregătită. Reîncearcă.");
+        return;
+      }
+    }
     const files = Array.isArray(filesOrFile) ? filesOrFile : [filesOrFile];
     if (files.length === 0) return;
 
@@ -997,7 +1014,7 @@ export default function ProjectViewPage() {
         formData.append("files", f);
       }
 
-      const res = await fetch(`${API_URL}/api/solomon/conversations/${solomonConvId}/upload`, {
+      const res = await fetch(`${API_URL}/api/solomon/conversations/${convId}/upload`, {
         method: "POST",
         headers: {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -1058,6 +1075,14 @@ export default function ProjectViewPage() {
               apiGet<any>(`/api/projects/${projectId}`).then(proj => {
                 setElements(mapElements(proj.elements || []));
               }).catch(() => {});
+            } else if (evt.type === "error") {
+              toast("error", evt.message || "Eroare Solomon.");
+              setSolomonMessages(prev => {
+                if (prev.length > 0 && prev[prev.length - 1].role === "assistant" && prev[prev.length - 1].text === "") {
+                  return prev.slice(0, -1);
+                }
+                return prev;
+              });
             } else if (evt.type === "metadata_updated" && evt.metadata) {
               setProject(prev => prev ? {
                 ...prev,

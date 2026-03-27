@@ -14,7 +14,7 @@ import { preflightCached } from "../services/dbPreflight";
 import { z } from "zod";
 import { generateFieldListForPrompt, resolveFieldKey } from "@dosarfonduri/shared";
 import { extractTables } from "./processReferenceData";
-// guideExtractors.ts available for future etapizat pipeline — currently using unified extraction
+import { extractGuideV3 } from "./guideExtractorV3";
 
 /** Generate a slugified rule_key from category + description */
 function generateRuleKey(category: string, description: string): string {
@@ -1497,16 +1497,13 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         message: `Extrag reguli, criterii de selectie si elemente necesare...`,
       }).catch((e: any) => console.warn("[processGuide] sse extraction start:", e.message));
 
-      // ─── STEP 3: Unified extraction — single consultant call per chunk ───
+      // ─── STEP 3: v3 metadata-driven extraction with unified fallback ───
       const config = await db.query.orgConfig.findFirst({
         where: eq(orgConfig.organizationId, organizationId),
       });
       const useET = config?.reguliInterpET ?? true;
 
       const opusStart = Date.now();
-      const chunks = splitStructuredText(structuredText);
-      console.log(`[processGuide] Extracting "${doc.name}" with ${chunks.length} chunk(s), model=${DEFAULT_EXTRACTION_MODEL}, ET=${useET}`);
-
       let allFixed: any[] = [];
       let allInterpreted: any[] = [];
       let allScoring: any[] = [];
@@ -1515,64 +1512,86 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
       let extractionTruncated = false;
       let totalAIInputTokens = 0;
       let totalAIOutputTokens = 0;
+      let guideMetadata: any = null;
 
-      if (chunks.length === 1) {
-        const result = await unifiedExtraction(chunks[0], organizationId, "full", useET);
-        allFixed = result.fixedRules;
-        allInterpreted = result.interpretedRules;
-        allScoring = result.scoringCriteria;
-        allElementDefs = result.elementDefinitions;
-        allDocRequirements = result.documentRequirements;
-        extractionTruncated = result._meta.truncated;
-        totalAIInputTokens = result._meta.totalInputTokens;
-        totalAIOutputTokens = result._meta.totalOutputTokens;
-      } else {
-        const chunkResults: Array<Awaited<ReturnType<typeof unifiedExtraction>>> = new Array(chunks.length);
-        const chunkQueue = chunks.map((_, i) => i);
-
-        async function chunkWorker() {
-          let idx: number | undefined;
-          while ((idx = chunkQueue.shift()) !== undefined) {
-            chunkResults[idx] = await unifiedExtraction(chunks[idx], organizationId, `chunk_${idx + 1}`, useET);
-            publishJobProgress(organizationId, {
-              jobId: job.id || "",
-              jobType: "ghid",
-              documentId,
-              documentName: doc.name,
-              progress: 30 + Math.round(((idx + 1) / chunks.length) * 55),
-              status: "processing",
-              message: `Analiza in curs — sectiunea ${idx + 1} din ${chunks.length} finalizata`,
-            }).catch((e: any) => console.warn("[processGuide] sse chunk progress:", e.message));
-          }
-        }
-
-        await Promise.all(
-          Array.from({ length: Math.min(MAX_PARALLEL_CHUNKS, chunks.length) }, () => chunkWorker()),
-        );
-
-        for (const result of chunkResults) {
-          allFixed.push(...result.fixedRules);
-          allInterpreted.push(...result.interpretedRules);
-          allScoring.push(...result.scoringCriteria);
-          allElementDefs.push(...result.elementDefinitions);
-          allDocRequirements.push(...result.documentRequirements);
-          if (result._meta.truncated) extractionTruncated = true;
-          totalAIInputTokens += result._meta.totalInputTokens;
-          totalAIOutputTokens += result._meta.totalOutputTokens;
-        }
-
-        // Deduplicate across chunks
-        allFixed = deduplicateRules(allFixed);
-        allInterpreted = deduplicateRules(allInterpreted);
-        allScoring = deduplicateScoring(allScoring);
-        allElementDefs = deduplicateElementDefs(allElementDefs);
-        const seenDocNames = new Set<string>();
-        allDocRequirements = allDocRequirements.filter(d => {
-          const key = (d.name || "").toLowerCase().trim();
-          if (seenDocNames.has(key)) return false;
-          seenDocNames.add(key);
-          return true;
+      try {
+        // v3: metadata-driven themed chunking
+        const v3Result = await extractGuideV3(structuredText, organizationId, useET, (progress, message) => {
+          publishJobProgress(organizationId, {
+            jobId: job.id || "",
+            jobType: "ghid",
+            documentId,
+            documentName: doc.name,
+            progress: 30 + Math.round(progress * 0.55),
+            status: "processing",
+            message,
+          }).catch(() => {});
         });
+
+        allFixed = v3Result.fixedRules;
+        allInterpreted = v3Result.interpretedRules;
+        allScoring = v3Result.scoringCriteria;
+        allElementDefs = v3Result.elementDefinitions;
+        allDocRequirements = v3Result.documentRequirements;
+        totalAIInputTokens = v3Result.totalInputTokens;
+        totalAIOutputTokens = v3Result.totalOutputTokens;
+        guideMetadata = v3Result.metadata;
+
+        console.log(`[processGuide] v3 extraction: ${v3Result.durationMs}ms — ${allFixed.length} fixed, ${allInterpreted.length} interp, ${allScoring.length} scoring, ${allElementDefs.length} elements, ${allDocRequirements.length} docs`);
+      } catch (v3Error: any) {
+        // Fallback to unified extraction if v3 fails
+        console.warn(`[processGuide] v3 failed (${v3Error.message}), falling back to unified extraction`);
+
+        const chunks = splitStructuredText(structuredText);
+        console.log(`[processGuide] Fallback: ${chunks.length} chunk(s), unified extraction`);
+
+        if (chunks.length === 1) {
+          const result = await unifiedExtraction(chunks[0], organizationId, "full", useET);
+          allFixed = result.fixedRules;
+          allInterpreted = result.interpretedRules;
+          allScoring = result.scoringCriteria;
+          allElementDefs = result.elementDefinitions;
+          allDocRequirements = result.documentRequirements;
+          extractionTruncated = result._meta.truncated;
+          totalAIInputTokens = result._meta.totalInputTokens;
+          totalAIOutputTokens = result._meta.totalOutputTokens;
+        } else {
+          const chunkResults: Array<Awaited<ReturnType<typeof unifiedExtraction>>> = new Array(chunks.length);
+          const chunkQueue = chunks.map((_, i) => i);
+          async function chunkWorker() {
+            let idx: number | undefined;
+            while ((idx = chunkQueue.shift()) !== undefined) {
+              chunkResults[idx] = await unifiedExtraction(chunks[idx], organizationId, `chunk_${idx + 1}`, useET);
+              publishJobProgress(organizationId, {
+                jobId: job.id || "", jobType: "ghid", documentId, documentName: doc.name,
+                progress: 30 + Math.round(((idx + 1) / chunks.length) * 55), status: "processing",
+                message: `Analiza in curs — sectiunea ${idx + 1} din ${chunks.length} finalizata`,
+              }).catch(() => {});
+            }
+          }
+          await Promise.all(Array.from({ length: Math.min(MAX_PARALLEL_CHUNKS, chunks.length) }, () => chunkWorker()));
+          for (const result of chunkResults) {
+            allFixed.push(...result.fixedRules);
+            allInterpreted.push(...result.interpretedRules);
+            allScoring.push(...result.scoringCriteria);
+            allElementDefs.push(...result.elementDefinitions);
+            allDocRequirements.push(...result.documentRequirements);
+            if (result._meta.truncated) extractionTruncated = true;
+            totalAIInputTokens += result._meta.totalInputTokens;
+            totalAIOutputTokens += result._meta.totalOutputTokens;
+          }
+          allFixed = deduplicateRules(allFixed);
+          allInterpreted = deduplicateRules(allInterpreted);
+          allScoring = deduplicateScoring(allScoring);
+          allElementDefs = deduplicateElementDefs(allElementDefs);
+          const seenDocNames = new Set<string>();
+          allDocRequirements = allDocRequirements.filter(d => {
+            const key = (d.name || "").toLowerCase().trim();
+            if (seenDocNames.has(key)) return false;
+            seenDocNames.add(key);
+            return true;
+          });
+        }
       }
 
       const opusDuration = Date.now() - opusStart;
@@ -1727,8 +1746,8 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
 
       // Quality metrics stored on the document
       const qualityMetrics = {
-        pipeline: needsPreStructure ? `pymupdf+sonnet_prestruct+${DEFAULT_EXTRACTION_MODEL}` : `pymupdf+${DEFAULT_EXTRACTION_MODEL}`,
-        chunks: chunks.length,
+        pipeline: guideMetadata ? `v3_metadata_${DEFAULT_EXTRACTION_MODEL}` : `unified_${DEFAULT_EXTRACTION_MODEL}`,
+        metadata: guideMetadata || null,
         truncated: extractionTruncated,
         continuations: 0,
         tokens: { input: totalAIInputTokens, output: totalAIOutputTokens },

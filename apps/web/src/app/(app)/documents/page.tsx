@@ -1183,26 +1183,23 @@ export default function DocumentsPage() {
                     {d.uploadedBy && <span>de {d.uploadedBy}</span>}
                   </div>
                   {/* Real-time progress bar during processing */}
-                  {isProcessing && jp && (
+                  {isProcessing && (
                     <div style={{ marginTop: 6 }}>
                       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#fbbf24", marginBottom: 3 }}>
-                        <span style={{ maxWidth: "80%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{jp.message}</span>
-                        <span style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>{jp.progress}%</span>
+                        <span style={{ maxWidth: "80%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{jp?.message || "Procesare in curs..."}</span>
+                        {jp && <span style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>{jp.progress}%</span>}
                       </div>
                       <div style={{ height: 4, borderRadius: 2, background: "rgba(251,191,36,.15)", overflow: "hidden" }}>
                         <div style={{
                           height: "100%",
-                          width: `${jp.progress}%`,
+                          width: jp ? `${jp.progress}%` : "100%",
                           borderRadius: 2,
-                          background: "linear-gradient(90deg, #fbbf24, #f59e0b)",
+                          background: jp ? "linear-gradient(90deg, #fbbf24, #f59e0b)" : "linear-gradient(90deg, #fbbf24, #f59e0b)",
                           transition: "width 0.5s ease-out",
+                          animation: jp ? "none" : "pulse 1.5s ease-in-out infinite",
+                          opacity: jp ? 1 : 0.4,
                         }} />
                       </div>
-                    </div>
-                  )}
-                  {isProcessing && !jp && (
-                    <div style={{ marginTop: 6, fontSize: 11, color: "#fbbf24" }}>
-                      {"\u2699"} Procesare în curs...
                     </div>
                   )}
                   {d.tags.length > 0 && (

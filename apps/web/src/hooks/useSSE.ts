@@ -146,7 +146,7 @@ export function useSSE({ projectId, enabled = true, onEvent }: UseSSEOptions = {
             message: data.message,
             status: data.status,
           });
-          // Clean up completed/failed jobs after 5s — track timer
+          // Clean up completed/failed jobs after 30s — keep visible longer
           if (data.status === "completed" || data.status === "failed") {
             const timer = setTimeout(() => {
               setJobProgress(p => {
@@ -155,7 +155,7 @@ export function useSSE({ projectId, enabled = true, onEvent }: UseSSEOptions = {
                 return n;
               });
               cleanupTimersRef.current.delete(timer);
-            }, 5000);
+            }, 30000);
             cleanupTimersRef.current.add(timer);
           }
           return next;

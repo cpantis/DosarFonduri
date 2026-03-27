@@ -1497,7 +1497,7 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         message: `Extrag reguli, criterii de selectie si elemente necesare...`,
       }).catch((e: any) => console.warn("[processGuide] sse extraction start:", e.message));
 
-      // ─── STEP 3: v3 metadata-driven extraction with unified fallback ───
+      // ─── STEP 3: v3 metadata-driven extraction (no fallback — testing v3 directly) ───
       const config = await db.query.orgConfig.findFirst({
         where: eq(orgConfig.organizationId, organizationId),
       });
@@ -1514,85 +1514,46 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
       let totalAIOutputTokens = 0;
       let guideMetadata: any = null;
 
-      try {
-        // v3: metadata-driven themed chunking
-        const v3Result = await extractGuideV3(structuredText, organizationId, useET, (progress, message) => {
-          publishJobProgress(organizationId, {
-            jobId: job.id || "",
-            jobType: "ghid",
-            documentId,
-            documentName: doc.name,
-            progress: 30 + Math.round(progress * 0.55),
-            status: "processing",
-            message,
-          }).catch(() => {});
-        });
+      // v3: metadata-driven themed chunking
+      const v3Result = await extractGuideV3(structuredText, organizationId, useET, (progress, message) => {
+        publishJobProgress(organizationId, {
+          jobId: job.id || "",
+          jobType: "ghid",
+          documentId,
+          documentName: doc.name,
+          progress: 30 + Math.round(progress * 0.55),
+          status: "processing",
+          message,
+        }).catch(() => {});
+      });
 
-        allFixed = v3Result.fixedRules;
-        allInterpreted = v3Result.interpretedRules;
-        allScoring = v3Result.scoringCriteria;
-        allElementDefs = v3Result.elementDefinitions;
-        allDocRequirements = v3Result.documentRequirements;
-        totalAIInputTokens = v3Result.totalInputTokens;
-        totalAIOutputTokens = v3Result.totalOutputTokens;
-        guideMetadata = v3Result.metadata;
+      allFixed = v3Result.fixedRules;
+      allInterpreted = v3Result.interpretedRules;
+      allScoring = v3Result.scoringCriteria;
+      allElementDefs = v3Result.elementDefinitions;
+      allDocRequirements = v3Result.documentRequirements;
+      totalAIInputTokens = v3Result.totalInputTokens;
+      totalAIOutputTokens = v3Result.totalOutputTokens;
+      guideMetadata = v3Result.metadata;
 
-        console.log(`[processGuide] v3 extraction: ${v3Result.durationMs}ms — ${allFixed.length} fixed, ${allInterpreted.length} interp, ${allScoring.length} scoring, ${allElementDefs.length} elements, ${allDocRequirements.length} docs`);
+      console.log(`[processGuide] v3 extraction: ${v3Result.durationMs}ms — ${allFixed.length} fixed, ${allInterpreted.length} interp, ${allScoring.length} scoring, ${allElementDefs.length} elements, ${allDocRequirements.length} docs`);
+
+      /*
+      // ─── FALLBACK: unified extraction (commented out — testing v3 directly) ───
+      // Uncomment this block if v3 causes issues:
       } catch (v3Error: any) {
-        // Fallback to unified extraction if v3 fails
         console.warn(`[processGuide] v3 failed (${v3Error.message}), falling back to unified extraction`);
-
         const chunks = splitStructuredText(structuredText);
-        console.log(`[processGuide] Fallback: ${chunks.length} chunk(s), unified extraction`);
-
         if (chunks.length === 1) {
           const result = await unifiedExtraction(chunks[0], organizationId, "full", useET);
-          allFixed = result.fixedRules;
-          allInterpreted = result.interpretedRules;
-          allScoring = result.scoringCriteria;
-          allElementDefs = result.elementDefinitions;
+          allFixed = result.fixedRules; allInterpreted = result.interpretedRules;
+          allScoring = result.scoringCriteria; allElementDefs = result.elementDefinitions;
           allDocRequirements = result.documentRequirements;
-          extractionTruncated = result._meta.truncated;
-          totalAIInputTokens = result._meta.totalInputTokens;
-          totalAIOutputTokens = result._meta.totalOutputTokens;
         } else {
-          const chunkResults: Array<Awaited<ReturnType<typeof unifiedExtraction>>> = new Array(chunks.length);
-          const chunkQueue = chunks.map((_, i) => i);
-          async function chunkWorker() {
-            let idx: number | undefined;
-            while ((idx = chunkQueue.shift()) !== undefined) {
-              chunkResults[idx] = await unifiedExtraction(chunks[idx], organizationId, `chunk_${idx + 1}`, useET);
-              publishJobProgress(organizationId, {
-                jobId: job.id || "", jobType: "ghid", documentId, documentName: doc.name,
-                progress: 30 + Math.round(((idx + 1) / chunks.length) * 55), status: "processing",
-                message: `Analiza in curs — sectiunea ${idx + 1} din ${chunks.length} finalizata`,
-              }).catch(() => {});
-            }
-          }
-          await Promise.all(Array.from({ length: Math.min(MAX_PARALLEL_CHUNKS, chunks.length) }, () => chunkWorker()));
-          for (const result of chunkResults) {
-            allFixed.push(...result.fixedRules);
-            allInterpreted.push(...result.interpretedRules);
-            allScoring.push(...result.scoringCriteria);
-            allElementDefs.push(...result.elementDefinitions);
-            allDocRequirements.push(...result.documentRequirements);
-            if (result._meta.truncated) extractionTruncated = true;
-            totalAIInputTokens += result._meta.totalInputTokens;
-            totalAIOutputTokens += result._meta.totalOutputTokens;
-          }
-          allFixed = deduplicateRules(allFixed);
-          allInterpreted = deduplicateRules(allInterpreted);
-          allScoring = deduplicateScoring(allScoring);
-          allElementDefs = deduplicateElementDefs(allElementDefs);
-          const seenDocNames = new Set<string>();
-          allDocRequirements = allDocRequirements.filter(d => {
-            const key = (d.name || "").toLowerCase().trim();
-            if (seenDocNames.has(key)) return false;
-            seenDocNames.add(key);
-            return true;
-          });
+          // ... chunk worker logic ...
         }
       }
+      */
 
       const opusDuration = Date.now() - opusStart;
       console.log(`[processGuide] Extraction complete: ${opusDuration}ms — ${allFixed.length} fixed, ${allInterpreted.length} interpreted, ${allScoring.length} scoring, ${allElementDefs.length} element defs, ${allDocRequirements.length} doc requirements`);

@@ -195,11 +195,12 @@ export function publishFolderStructureLock(
 export function createSSEStream(channels: string[]): ReadableStream {
   let subscriber: ReturnType<typeof redis.duplicate> | null = null;
   let keepaliveTimer: ReturnType<typeof setInterval> | null = null;
+  const encoder = new TextEncoder();
 
   return new ReadableStream({
     start(controller) {
       if (!isRedisReady()) {
-        controller.enqueue(`: no redis connection\n\n`);
+        controller.enqueue(encoder.encode(`: no redis connection\n\n`));
         controller.close();
         return;
       }
@@ -210,26 +211,26 @@ export function createSSEStream(channels: string[]): ReadableStream {
         try {
           const parsed = JSON.parse(message);
           const sseData = `event: ${parsed.event}\ndata: ${JSON.stringify(parsed.data)}\n\n`;
-          controller.enqueue(sseData);
+          controller.enqueue(encoder.encode(sseData));
         } catch {
           // Skip malformed messages
         }
       });
 
       subscriber.subscribe(...channels).catch(() => {
-        controller.enqueue(`: subscribe failed\n\n`);
+        controller.enqueue(encoder.encode(`: subscribe failed\n\n`));
       });
 
       // Keepalive every 30s
       keepaliveTimer = setInterval(() => {
         try {
-          controller.enqueue(`: keepalive\n\n`);
+          controller.enqueue(encoder.encode(`: keepalive\n\n`));
         } catch {
           if (keepaliveTimer) clearInterval(keepaliveTimer);
         }
       }, 30000);
 
-      controller.enqueue(`event: connected\ndata: ${JSON.stringify({ channels })}\n\n`);
+      controller.enqueue(encoder.encode(`event: connected\ndata: ${JSON.stringify({ channels })}\n\n`));
     },
     cancel() {
       if (keepaliveTimer) clearInterval(keepaliveTimer);

@@ -160,42 +160,115 @@ function extractPageRange(fullText: string, startPage: number, endPage: number):
   return parts.join("\n");
 }
 
-/** Focused prompt per section type */
+/** Focused prompt per section type — written with consultant mindset */
 const SECTION_PROMPTS: Record<string, { system: string; outputKeys: string[] }> = {
   eligibilitate: {
-    system: `Ești Solomon — evaluator administrativ. Extragi REGULI FIXE (DA/NU) cu condiții verificabile programatic.
-Regulile ELIMINATORII → confidence ≥ 0.95. Focalizează pe condiții cuantificabile: praguri financiare, ani vechime, forme juridice acceptate, coduri CAEN.
-Regulile complexe (arbori decizionali, interpretare contextuală) NU le extrage — vor fi evaluate direct din textul ghidului.
-Returnează DOAR JSON valid.`,
+    system: `Ești consultant senior cu 15+ ani experiență în fonduri europene. Ai văzut sute de dosare respinse la evaluarea administrativă.
+
+EXTRAGI REGULI FIXE — condiții verificabile automat contra datelor unei firme:
+- Forme juridice acceptate/excluse (SRL, SA, PFA, II, IF...)
+- Praguri financiare exacte (capitaluri proprii > 0, CA minim, angajați minim/maxim)
+- Vechime minimă (ani de la înființare, ani de activitate în CAEN)
+- Coduri CAEN eligibile/excluse (liste, grupări, excepții)
+- Condiții de stare: nu în insolvență, nu în dificultate, nu radiat
+- Dimensiune IMM (micro/mică/mijlocie — praguri angajați + CA/active)
+- Condiții geografice cuantificabile (regiuni eligibile, urban/rural, zone defavorizate)
+- Condiții despre ajutoare anterioare (de minimis, dubla finanțare)
+- Obligații fiscale (certificat fiscal, datorii buget stat)
+
+ATENȚIE LA:
+- "Cel puțin" / "minimum" / "maximum" → operator gte/lte cu valoare exactă
+- "Cu excepția" / "Nu sunt eligibile" → regulă separată cu operator neq/not_in
+- Condiții cumulative (A ȘI B) → reguli separate, fiecare cu confidence proprie
+- Anexe referite (lista CAEN, zone eligibile) → menționează sursa
+
+NU extrage reguli care necesită interpretare subiectivă (ex: "proiect viabil", "experiență relevantă").
+Returnează DOAR JSON valid. Fără backticks, fără explicații.`,
     outputKeys: ["fixed_rules"],
   },
   selectie_punctaj: {
-    system: `Ești Solomon — evaluator tehnic care a evaluat sute de dosare cu grila de punctaj.
-Extragi FIECARE criteriu de selecție din grila de punctaj.
-IMPORTANT: Grila de punctaj conține criterii cu subpuncte. Extrage FIECARE criteriu SEPARAT cu:
-- cod (ex: CS1, CS2.1, P1, S1)
-- nume complet
-- punctaj maxim
-- descriere + condiții de acordare
-- logica de evaluare (cum se calculează punctajul: praguri, formule, DA/NU, tabel lookup)
-NU omite niciun criteriu. Dacă un criteriu are subcriterii, extrage FIECARE subcriteriu.
-Returnează DOAR JSON valid.`,
+    system: `Ești evaluator tehnic cu 15+ ani experiență. Ai evaluat sute de dosare cu grila de punctaj și știi că diferența între finanțat și respins e de 1-2 puncte.
+
+EXTRAGI FIECARE criteriu de selecție. Nu omite NICIUN subcriteriu.
+
+CUM ARATĂ O GRILĂ DE PUNCTAJ:
+- Criterii principale (CS1, P1, S1...) cu punctaj maxim
+- SUBcriterii (CS1.1, CS1.2...) — FIECARE e un criteriu separat
+- Logică de acordare: praguri (0-5 ani = 5p, 5-10 = 10p), DA/NU, formule, tabele lookup
+- Unele criterii au "tot sau nimic" (10p sau 0p), altele au gradare
+
+PENTRU FIECARE CRITERIU extrage:
+- cod: EXACT cum apare în ghid (CS1, CS1.1, P1, S1...)
+- name: titlul complet
+- maxPoints: punctajul MAXIM (nu total, ci per criteriu)
+- description: ce se evaluează + condiții exacte de acordare
+- evaluationLogic: CUM se calculează — praguri, formule, referințe la tabele din anexe
+  - type "range": pentru praguri (ex: 0-50ha=5p, 50-100ha=10p)
+  - type "boolean": DA/NU (ex: are certificare eco = 15p)
+  - type "lookup": verificare în tabele din anexe
+  - type "formula": calcul matematic
+
+ATENȚIE: Dacă ghidul menționează "conform anexei X" pentru un criteriu, include referința exactă.
+Returnează DOAR JSON valid. Fără backticks, fără explicații.`,
     outputKeys: ["scoring_criteria"],
   },
   cheltuieli: {
-    system: `Ești Solomon — expert bugetar. Extragi REGULI FIXE despre cheltuieli eligibile/neeligibile, plafoane, TVA, consultanță.
-Fiecare cheltuială separată. Include condiții și excepții. Returnează DOAR JSON valid.`,
+    system: `Ești consultant senior care a pierdut dosare din cauza cheltuielilor neeligibile declarate greșit.
+
+EXTRAGI REGULI FIXE despre cheltuieli:
+- Cheltuieli ELIGIBILE: fiecare categorie separată (construcții, echipamente, servicii, consultanță, proiectare...)
+- Cheltuieli NEELIGIBILE: fiecare tip separat (TVA recuperabil, terenuri, achiziții SH, leasing...)
+- PLAFOANE: procent maxim din total (consultanță ≤ 5%, proiectare ≤ 10%, general ≤ 15%...)
+- Condiții specifice: "doar dacă", "cu excepția", "maximum X% din valoarea totală"
+- TVA: eligibilă integral / parțial / neeligibilă + condiții
+- Contribuție proprie minimă (cofinanțare)
+- Avans maxim
+- Valoare minimă/maximă proiect (EUR sau RON)
+
+FIECARE regulă = o intrare separată. Nu combina mai multe condiții într-o singură regulă.
+Folosește field-uri cuantificabile: "valoare_investitie", "cofinantare_pct", "cheltuieli_consultanta_pct".
+Returnează DOAR JSON valid. Fără backticks, fără explicații.`,
     outputKeys: ["fixed_rules"],
   },
   documente: {
-    system: `Ești Solomon — un document lipsă = dosar respins.
-Extragi TOATE documentele necesare — din secțiunea dedicată + mențiuni dispersate.
-FIECARE document SEPARAT. Include condiții. Returnează DOAR JSON valid.`,
+    system: `Ești consultant senior — știi că un singur document lipsă sau în format greșit = dosar respins la verificarea administrativă.
+
+EXTRAGI ABSOLUT TOATE documentele necesare la depunere:
+- Din secțiunea dedicată "Documente necesare" / "Lista de verificare"
+- Din mențiuni dispersate în alte capitole ("se va atașa...", "se va prezenta...", "solicitantul va depune...")
+- Din cerințe de eligibilitate care presupun un document (ex: "să nu fie în insolvență" → certificat constatator)
+
+PENTRU FIECARE DOCUMENT:
+- name: denumirea EXACTĂ din ghid
+- category: juridice / financiare / tehnice / declaratii / oferte / anexe / altele
+- required: true dacă obligatoriu, false dacă "după caz" / "dacă este cazul"
+- description: CE trebuie să conțină, CINE îl emite, CE trebuie să ateste
+- format: original / copie_conformă / PDF / DOCX / orice
+- conditions: "doar pentru SRL", "doar dacă valoarea > 100.000 EUR", null dacă universal
+
+ATENȚIE:
+- Documente care par evidente dar nu sunt listate explicit → NU le adăuga
+- "Copie conformă cu originalul" ≠ "original"
+- Unele documente au termen de valabilitate (ex: certificat fiscal ≤ 30 zile)
+- Anexele specifice programului (Cererea de finanțare, Plan de afaceri, Studiu de fezabilitate) sunt documente separate
+Returnează DOAR JSON valid. Fără backticks, fără explicații.`,
     outputKeys: ["document_requirements"],
   },
   contractare: {
-    system: `Ești Solomon — expert contractare. Extragi REGULI FIXE despre termene, plăți, avans, modificări, sancțiuni.
-Returnează DOAR JSON valid.`,
+    system: `Ești consultant senior cu experiență în contractare și implementare proiecte europene.
+
+EXTRAGI REGULI FIXE despre:
+- Termene: de depunere, de evaluare, de contractare, de implementare
+- Plăți: avans (procent + condiții), tranșe, plată finală
+- Garanții: scrisoare bancară, garanție de bună execuție
+- Achiziții: praguri PRAG (licitație deschisă, cerere oferte, achiziție directă) + obligații
+- Modificări contract: ce se poate modifica, ce nu, cât % din valoare
+- Sancțiuni: corecții financiare, reziliere, rambursare
+- Monitorizare: perioade, indicatori obligatorii, raportări
+- Durabilitate: câți ani după finalizare, ce obligații (locuri de muncă, activitate, CAEN)
+
+Fiecare regulă separată cu field verificabil (ex: "durata_implementare_luni" lte 24).
+Returnează DOAR JSON valid. Fără backticks, fără explicații.`,
     outputKeys: ["fixed_rules"],
   },
 };
@@ -203,9 +276,9 @@ Returnează DOAR JSON valid.`,
 /** Build user prompt based on section type */
 function buildSectionUserPrompt(sectionType: string, guideText: string): string {
   const outputSchemas: Record<string, string> = {
-    fixed_rules: `"fixed_rules": [{ "category": "eligibilitate|financiar|tehnic|administrativ|achizitii|documente", "description": "...", "condition": { "field": "...", "operator": "eq|neq|gt|gte|lt|lte|in|not_in|between", "value": "...", "value2": "..." }, "semantic_tags": [...], "source_page": N, "source_text": "...", "confidence": 0.0-1.0 }]`,
-    scoring_criteria: `"scoring_criteria": [{ "code": "...", "name": "...", "description": "...", "maxPoints": N, "category": "tehnic|financiar|management|relevant|sustenabilitate", "sourcePage": N, "evaluationLogic": { "type": "lookup|range|boolean|formula", "elementKey": "...", "ranges": [...], "formula": "..." } }]`,
-    document_requirements: `"document_requirements": [{ "name": "...", "category": "juridice|financiare|tehnice|declaratii|oferte|anexe|altele", "required": true, "description": "...", "format": "PDF|DOCX|XLSX|original|copie_conforma|orice", "source_page": null, "conditions": null }]`,
+    fixed_rules: `"fixed_rules": [{ "category": "eligibilitate|financiar|tehnic|administrativ|achizitii|documente", "description": "Descriere clară și concisă a regulii — formulată ca condiție de verificat", "condition": { "field": "cheia_din_campuri_disponibile_sau_noua", "operator": "eq|neq|gt|gte|lt|lte|in|not_in|between", "value": "valoare_exacta", "value2": "pentru_between" }, "semantic_tags": ["eligibilitate_beneficiar", "prag_financiar"], "source_page": N, "source_text": "citatul EXACT din ghid (max 200 caractere)", "confidence": 0.0-1.0 }]`,
+    scoring_criteria: `"scoring_criteria": [{ "code": "codul_din_grila (CS1, P1, S1.2...)", "name": "titlul complet al criteriului", "description": "ce se evaluează + condiții de acordare + praguri", "maxPoints": N, "category": "tehnic|financiar|management|relevant|sustenabilitate", "sourcePage": N, "evaluationLogic": { "type": "lookup|range|boolean|formula", "elementKey": "cheia_elementului_care_se_verifica", "ranges": [{"min":0,"max":50,"points":5},{"min":50,"max":100,"points":10}], "formula": null } }]`,
+    document_requirements: `"document_requirements": [{ "name": "denumirea EXACTĂ din ghid", "category": "juridice|financiare|tehnice|declaratii|oferte|anexe|altele", "required": true, "description": "ce conține, cine îl emite, ce atestă, termen valabilitate", "format": "PDF|DOCX|XLSX|original|copie_conforma|orice", "source_page": N, "conditions": "doar dacă... / null dacă universal" }]`,
   };
 
   const prompt = SECTION_PROMPTS[sectionType];
@@ -213,9 +286,10 @@ function buildSectionUserPrompt(sectionType: string, guideText: string): string 
 
   const schemas = prompt.outputKeys.map(k => outputSchemas[k] || "").filter(Boolean).join(", ");
 
-  return `Extrage din aceasta sectiune a ghidului.
+  const needsFields = ["eligibilitate", "cheltuieli", "contractare"].includes(sectionType);
+  return `Extrage din această secțiune a ghidului de finanțare.
 
-${sectionType === "eligibilitate" ? `CAMPURI DISPONIBILE:\n${FIELD_LIST}\n` : ""}
+${needsFields ? `CÂMPURI DISPONIBILE (folosește field-urile din această listă în condition.field):\n${FIELD_LIST}\n\nDacă o regulă nu se mapează pe niciun câmp existent, creează un field nou descriptiv (snake_case).\n` : ""}
 Returnează: { ${schemas} }
 
 TEXT GHID:
@@ -311,19 +385,30 @@ async function deriveElements(
   const response: any = await withAILimit(() => (anthropic.messages.create as any)({
     model: MODEL,
     max_tokens: 12000,
-    system: `Ești Solomon — pregătești dosarul. Ce DATE trebuie colectate?
-Pentru FIECARE regulă și criteriu, creează elementul de date necesar.
-NU te limita la lista predefinită — creează chei noi specifice programului.
+    system: `Ești consultant senior care pregătește dosarul de finanțare. Gândești ca evaluatorul: ce DATE concrete trebuie colectate pentru a DEMONSTRA eligibilitatea și a MAXIMIZA punctajul?
+
+MINDSET:
+- Fiecare regulă de eligibilitate necesită un câmp de date verificabil
+- Fiecare criteriu de selecție necesită datele din care se calculează punctajul
+- Datele financiare se extrag automat din bilanț → marcate autoPopulated
+- Datele despre proiect se colectează de la consultant → source "solomon_chat" sau "consultant_manual"
+- Datele din documente se extrag automat → source "document_extracted"
+
+NU crea câmpuri generice ("observatii", "comentarii"). Fiecare element trebuie să aibă scop concret:
+- fie alimentează o regulă de eligibilitate (ex: "angajati" → regula "minim 1 angajat")
+- fie alimentează un criteriu de punctaj (ex: "suprafata_agricola_ha" → punctaj criteriu CS1)
+- fie e necesar pentru completarea unui document (ex: "reprezentant_legal" → Cerere de finanțare)
+
 Returnează DOAR JSON valid.`,
-    messages: [{ role: "user", content: `Derivă elementele din reguli și scoring.
+    messages: [{ role: "user", content: `Derivă elementele de date necesare din regulile și criteriile extrase.
 
 REGULI ȘI CRITERII EXTRASE:
 ${rulesContext}
 
-CÂMPURI PREDEFINITE (punct de plecare):
+CÂMPURI PREDEFINITE (punct de plecare — folosește-le ca bază, adaugă ce lipsește):
 ${FIELD_LIST}
 
-Returnează: { "element_definitions": [{ "element_key": "snake_case", "display_name": "...", "category": "beneficiary|farm|investment|location|financial|legal|technical|other", "data_type": "number|text|enum|boolean|date|document_ref|list_items", "unit": null, "enum_values": null, "required": true/false, "help_text": "...", "is_derived": false, "derivation_formula": null, "source_priority": ["document_extracted","solomon_chat","consultant_manual"], "collection_order": N, "min_count": 1, "max_count": null }] }
+Returnează: { "element_definitions": [{ "element_key": "snake_case", "display_name": "...", "category": "beneficiary|farm|investment|location|financial|legal|technical|other", "data_type": "number|text|enum|boolean|date|document_ref|list_items", "unit": null, "enum_values": null, "required": true/false, "help_text": "Ce valoare se așteaptă și de ce e importantă", "is_derived": false, "derivation_formula": null, "source_priority": ["document_extracted","solomon_chat","consultant_manual"], "collection_order": N, "min_count": 1, "max_count": null }] }
 
 TEXT GHID (primele pagini, pentru context):
 ${guideText.slice(0, 10000)}` }],

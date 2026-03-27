@@ -30,7 +30,7 @@ export function useSSE({ projectId, enabled = true, onEvent }: UseSSEOptions = {
   const { toast } = useToast();
   const eventSourceRef = useRef<EventSource | null>(null);
   const [connected, setConnected] = useState(false);
-  const [jobProgress, setJobProgress] = useState<Map<string, { progress: number; message: string; status: string }>>(new Map());
+  const [jobProgress, setJobProgress] = useState<Map<string, { progress: number; message: string; status: string; steps?: Array<{ id: string; label: string; status: string; detail?: string }> }>>(new Map());
   const [extractionProgress, setExtractionProgress] = useState<Map<string, ExtractionProgress>>(new Map());
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectAttemptsRef = useRef(0);
@@ -145,6 +145,7 @@ export function useSSE({ projectId, enabled = true, onEvent }: UseSSEOptions = {
             progress: data.progress,
             message: data.message,
             status: data.status,
+            steps: data.steps || undefined,
           });
           // Clean up completed/failed jobs after 30s — keep visible longer
           if (data.status === "completed" || data.status === "failed") {

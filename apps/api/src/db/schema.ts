@@ -838,6 +838,7 @@ export const solomonKnowledge = pgTable("solomon_knowledge", {
   validUntil: timestamp("valid_until"), // when it expires (null = still valid)
   priority: integer("priority").default(0), // higher = shown first
   enabled: boolean("enabled").default(true),
+  embedding: vector1536("embedding"),
   createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull().$onUpdate(() => new Date()),

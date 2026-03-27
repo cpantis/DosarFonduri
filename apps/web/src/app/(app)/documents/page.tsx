@@ -529,11 +529,11 @@ export default function DocumentsPage() {
     }, [fetchDocs, user?.id]),
   });
 
-  // Build a lookup: documentId → { progress, message, status }
+  // Build a lookup: documentId → { progress, message, status, steps }
   // SSE stores by jobId (e.g. "doc-abc123") — we also index by raw documentId
-  const jobProgressMap = new Map<string, { progress: number; message: string; status: string }>();
+  const jobProgressMap = new Map<string, { progress: number; message: string; status: string; steps?: Array<{ id: string; label: string; status: string; detail?: string }> }>();
   for (const jp of sseJobProgress) {
-    const entry = { progress: jp.progress, message: jp.message, status: jp.status };
+    const entry = { progress: jp.progress, message: jp.message, status: jp.status, steps: (jp as any).steps };
     jobProgressMap.set(jp.id, entry);
     // Also index by documentId extracted from jobId format "doc-{uuid}"
     if (jp.id.startsWith("doc-")) {
@@ -1185,24 +1185,87 @@ export default function DocumentsPage() {
                     {d.pageCount ? <span>{d.pageCount} pag.</span> : null}
                     {d.uploadedBy && <span>de {d.uploadedBy}</span>}
                   </div>
-                  {/* Real-time progress bar during processing */}
+                  {/* Real-time progress during processing */}
                   {isProcessing && (
                     <div style={{ marginTop: 6 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#fbbf24", marginBottom: 3 }}>
-                        <span style={{ maxWidth: "80%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{jp?.message || "Procesare in curs..."}</span>
-                        {jp && <span style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>{jp.progress}%</span>}
-                      </div>
-                      <div style={{ height: 4, borderRadius: 2, background: "rgba(251,191,36,.15)", overflow: "hidden" }}>
-                        <div style={{
-                          height: "100%",
-                          width: jp ? `${jp.progress}%` : "100%",
-                          borderRadius: 2,
-                          background: jp ? "linear-gradient(90deg, #fbbf24, #f59e0b)" : "linear-gradient(90deg, #fbbf24, #f59e0b)",
-                          transition: "width 0.5s ease-out",
-                          animation: jp ? "none" : "pulse 1.5s ease-in-out infinite",
-                          opacity: jp ? 1 : 0.4,
-                        }} />
-                      </div>
+                      {/* Pipeline steps (if available from SSE) */}
+                      {jp?.steps && jp.steps.length > 0 ? (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                          {/* Compact step indicators */}
+                          <div style={{ display: "flex", gap: 2, marginBottom: 4 }}>
+                            {jp.steps.map((step) => {
+                              const colors: Record<string, { bg: string; border: string }> = {
+                                done: { bg: "#059669", border: "#059669" },
+                                active: { bg: "#fbbf24", border: "#fbbf24" },
+                                error: { bg: "#ef4444", border: "#ef4444" },
+                                pending: { bg: "transparent", border: "#475569" },
+                              };
+                              const c = colors[step.status] || colors.pending;
+                              return (
+                                <div key={step.id} title={`${step.label}${step.detail ? `: ${step.detail}` : ""}`} style={{
+                                  flex: 1, height: 4, borderRadius: 2,
+                                  background: step.status === "active"
+                                    ? "linear-gradient(90deg, #fbbf24, #f59e0b)"
+                                    : c.bg,
+                                  border: step.status === "pending" ? `1px solid ${c.border}` : "none",
+                                  transition: "all 0.3s ease",
+                                  animation: step.status === "active" ? "pulse 1.5s ease-in-out infinite" : "none",
+                                  opacity: step.status === "pending" ? 0.3 : 1,
+                                }} />
+                              );
+                            })}
+                          </div>
+                          {/* Active step label + detail */}
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: "#94a3b8", maxWidth: "70%", overflow: "hidden" }}>
+                              {(() => {
+                                const activeStep = jp.steps.find(s => s.status === "active");
+                                const doneCount = jp.steps.filter(s => s.status === "done").length;
+                                if (activeStep) {
+                                  return (
+                                    <>
+                                      <span style={{ color: "#fbbf24", fontWeight: 600 }}>{activeStep.label}</span>
+                                      {activeStep.detail && <span style={{ color: "#64748b" }}>{activeStep.detail}</span>}
+                                    </>
+                                  );
+                                }
+                                return <span>{doneCount}/{jp.steps.length} pasi finalizati</span>;
+                              })()}
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10 }}>
+                              {/* Mini counts for done steps */}
+                              {jp.steps.filter(s => s.status === "done" && s.detail).slice(-2).map(s => (
+                                <span key={s.id} style={{
+                                  color: "#059669", fontFamily: "'JetBrains Mono', monospace", fontWeight: 600,
+                                  background: "rgba(5,150,105,.08)", padding: "1px 4px", borderRadius: 3,
+                                }}>
+                                  {s.detail}
+                                </span>
+                              ))}
+                              <span style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 600, color: "#fbbf24" }}>{jp.progress}%</span>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        /* Fallback: simple progress bar (no steps data yet) */
+                        <>
+                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#fbbf24", marginBottom: 3 }}>
+                            <span style={{ maxWidth: "80%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{jp?.message || "Procesare in curs..."}</span>
+                            {jp && <span style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>{jp.progress}%</span>}
+                          </div>
+                          <div style={{ height: 4, borderRadius: 2, background: "rgba(251,191,36,.15)", overflow: "hidden" }}>
+                            <div style={{
+                              height: "100%",
+                              width: jp ? `${jp.progress}%` : "100%",
+                              borderRadius: 2,
+                              background: "linear-gradient(90deg, #fbbf24, #f59e0b)",
+                              transition: "width 0.5s ease-out",
+                              animation: jp ? "none" : "pulse 1.5s ease-in-out infinite",
+                              opacity: jp ? 1 : 0.4,
+                            }} />
+                          </div>
+                        </>
+                      )}
                     </div>
                   )}
                   {d.tags.length > 0 && (

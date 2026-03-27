@@ -4,7 +4,7 @@ import { db } from "../db";
 import {
   projects, projectElements, templateElements,
   projectEligibility, rules, documents, documentFolders,
-  companies, companyFinancials,
+  companies, companyFinancials, companyLinkedCompanies,
   solomonConversations, solomonMessages,
   orgConfig, solomonKnowledge,
   elementRuleLinks, elementDefinitions, guideReferenceTables,
@@ -416,10 +416,14 @@ async function buildSystemPrompt(projectId: string, organizationId: string): Pro
   const latestFinancial = allFinancials[0] || null;
 
   // Calculated company analysis (IMM classification, difficulty status, trends, ratios)
-  const companyAnalysis = await getCompanyDataFromElements(company.id);
+  let companyAnalysis: any = {};
+  try {
+    companyAnalysis = await getCompanyDataFromElements(company.id);
+  } catch (err) {
+    console.warn("[solomon] getCompanyDataFromElements failed:", (err as Error).message);
+  }
 
   // Load linked companies details (confirmed + unconfirmed, exclude dismissed)
-  const { companyLinkedCompanies } = await import("../db/schema");
   const linkedCompanies = await db.query.companyLinkedCompanies.findMany({
     where: and(
       eq(companyLinkedCompanies.companyId, company.id),
@@ -1184,7 +1188,20 @@ export async function processSolomonMessage(params: {
   const useET = useETOverride !== undefined ? useETOverride : (config?.solomonET ?? true);
 
   // Build system prompt
-  const systemPrompt = await buildSystemPrompt(projectId, organizationId);
+  let systemPrompt: string | Anthropic.TextBlockParam[];
+  try {
+    systemPrompt = await buildSystemPrompt(projectId, organizationId);
+  } catch (err) {
+    console.error("[solomon] buildSystemPrompt failed:", err);
+    const encoder = new TextEncoder();
+    return new ReadableStream({
+      start(controller) {
+        const msg = err instanceof Error ? err.message : "Eroare la construirea contextului Solomon.";
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "error", message: `⚠️ ${msg}` })}\n\n`));
+        controller.close();
+      },
+    });
+  }
 
   // Get conversation history
   const history = await db.query.solomonMessages.findMany({

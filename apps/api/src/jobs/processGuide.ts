@@ -1410,6 +1410,35 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
 
       const { buffer, name: fileName } = await getFileBuffer(doc.fileId);
 
+      // ─── Pipeline steps tracker for real-time progress UI ───
+      type StepStatus = "pending" | "active" | "done" | "error";
+      const pipelineSteps: Array<{ id: string; label: string; status: StepStatus; detail?: string }> = [
+        { id: "extract", label: "Extragere text", status: "pending" },
+        { id: "metadata", label: "Analiza structurii", status: "pending" },
+        { id: "rules", label: "Reguli eligibilitate", status: "pending" },
+        { id: "scoring", label: "Criterii selectie", status: "pending" },
+        { id: "elements", label: "Derivare elemente", status: "pending" },
+        { id: "save", label: "Salvare in baza de date", status: "pending" },
+        { id: "link", label: "Conectare reguli-elemente", status: "pending" },
+        { id: "rag", label: "Indexare vectori (RAG)", status: "pending" },
+      ];
+      const setStep = (id: string, status: StepStatus, detail?: string) => {
+        const step = pipelineSteps.find(s => s.id === id);
+        if (step) { step.status = status; if (detail !== undefined) step.detail = detail; }
+      };
+      const publishSteps = (progress: number, message: string) => {
+        publishJobProgress(organizationId, {
+          jobId: job.id || "",
+          jobType: "ghid",
+          documentId,
+          documentName: doc.name,
+          progress,
+          status: "processing",
+          message,
+          steps: pipelineSteps,
+        } as any).catch(() => {});
+      };
+
       // ─── STEP 1: Text extraction (PyMuPDF, zero AI, < 1 second) ───
       const extractStart = Date.now();
       let rawText = "";
@@ -1444,15 +1473,9 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
       cacheGuideText(documentId, rawText).catch((e: any) => console.warn("[processGuide] redis cache guide text:", e.message));
 
       await job.updateProgress(5);
-      publishJobProgress(organizationId, {
-        jobId: job.id || "",
-        jobType: "ghid",
-        documentId,
-        documentName: doc.name,
-        progress: 5,
-        status: "processing",
-        message: `Analizez ${totalPages} pagini — ghidul va fi gata in aproximativ ${estMinutes} ${estMinutes === 1 ? "minut" : "minute"}`,
-      }).catch((e: any) => console.warn("[processGuide] sse estimate:", e.message));
+      setStep("extract", "done", `${totalPages} pagini, ${(extractDuration / 1000).toFixed(1)}s`);
+      setStep("metadata", "active");
+      publishSteps(5, `Text extras: ${totalPages} pagini — estimare: ~${estMinutes} min`);
 
       // ─── STEP 2: Pre-structuring — SKIP for native PDFs, use GPT-4o only for scanned ───
       const needsPreStructure = pdfResult?.hasScannedPages === true;
@@ -1462,15 +1485,7 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
       let preStructTableCount = 0;
 
       if (needsPreStructure) {
-        publishJobProgress(organizationId, {
-          jobId: job.id || "",
-          jobType: "ghid",
-          documentId,
-          documentName: doc.name,
-          progress: 5,
-          status: "processing",
-          message: `Text extras din "${doc.name}". Pre-structurare cu GPT-4o (${pdfResult!.scannedPageCount} pagini scanate)...`,
-        }).catch((e: any) => console.warn("[processGuide] sse pre-structure progress:", e.message));
+        publishSteps(8, `Pre-structurare cu GPT-4o (${pdfResult!.scannedPageCount} pagini scanate)...`);
 
         const preStructStart = Date.now();
         const preStructured = await preStructurePages(rawText, organizationId);
@@ -1487,15 +1502,9 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
       }
 
       await job.updateProgress(30);
-      publishJobProgress(organizationId, {
-        jobId: job.id || "",
-        jobType: "ghid",
-        documentId,
-        documentName: doc.name,
-        progress: 30,
-        status: "processing",
-        message: `Extrag reguli, criterii de selectie si elemente necesare...`,
-      }).catch((e: any) => console.warn("[processGuide] sse extraction start:", e.message));
+      setStep("metadata", "active");
+      setStep("rules", "active");
+      publishSteps(30, `Extrag reguli, criterii de selectie si elemente necesare...`);
 
       // ─── STEP 3: v3 metadata-driven extraction (no fallback — testing v3 directly) ───
       const config = await db.query.orgConfig.findFirst({
@@ -1516,15 +1525,16 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
 
       // v3: metadata-driven themed chunking
       const v3Result = await extractGuideV3(structuredText, organizationId, useET, (progress, message) => {
-        publishJobProgress(organizationId, {
-          jobId: job.id || "",
-          jobType: "ghid",
-          documentId,
-          documentName: doc.name,
-          progress: 30 + Math.round(progress * 0.55),
-          status: "processing",
-          message,
-        }).catch(() => {});
+        // Update step statuses based on v3 progress
+        if (progress >= 15) setStep("metadata", "done");
+        if (progress >= 25) { setStep("rules", "active"); setStep("scoring", "active"); }
+        if (progress >= 75) {
+          setStep("rules", "done");
+          setStep("scoring", "done");
+        }
+        if (progress >= 80) setStep("elements", "active");
+        if (progress >= 95) setStep("elements", "done");
+        publishSteps(30 + Math.round(progress * 0.55), message);
       });
 
       allFixed = v3Result.fixedRules;
@@ -1535,6 +1545,11 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
       totalAIInputTokens = v3Result.totalInputTokens;
       totalAIOutputTokens = v3Result.totalOutputTokens;
       guideMetadata = v3Result.metadata;
+
+      // Update step details with final counts
+      setStep("rules", "done", `${allFixed.length} fixe + ${allInterpreted.length} interpretate`);
+      setStep("scoring", allScoring.length > 0 ? "done" : "done", `${allScoring.length} criterii`);
+      setStep("elements", "done", `${allElementDefs.length} elemente`);
 
       const v3ProcessingLog = v3Result.processingLog;
       console.log(`[processGuide] v3 extraction: ${v3Result.durationMs}ms — ${allFixed.length} fixed, ${allInterpreted.length} interp, ${allScoring.length} scoring, ${allElementDefs.length} elements, ${allDocRequirements.length} docs`);
@@ -1561,15 +1576,8 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
 
       // ─── STEP 4: Save to DB ───
       await job.updateProgress(85);
-      publishJobProgress(organizationId, {
-        jobId: job.id || "",
-        jobType: "ghid",
-        documentId,
-        documentName: doc.name,
-        progress: 85,
-        status: "processing",
-        message: `Salvez ${allFixed.length + allInterpreted.length} reguli, ${allScoring.length} criterii selectie, ${allElementDefs.length} elemente`,
-      }).catch((e: any) => console.warn("[processGuide] sse save progress:", e.message));
+      setStep("save", "active", `${allFixed.length + allInterpreted.length} reguli, ${allScoring.length} criterii, ${allElementDefs.length} elemente`);
+      publishSteps(85, `Salvez ${allFixed.length + allInterpreted.length} reguli, ${allScoring.length} criterii selectie, ${allElementDefs.length} elemente`);
 
       let fixedCount: number, interpCount: number, scoringCount: number, elemDefCount: number;
 
@@ -1626,17 +1634,8 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
       }
 
       // SSE: broadcast trust score
-      publishJobProgress(organizationId, {
-        jobId: job.id || "",
-        jobType: "ghid",
-        documentId,
-        documentName: doc.name,
-        progress: 88,
-        status: "processing",
-        message: `Verific completitudinea extragerii...`,
-        trustScore: completenessReport.trustScore,
-        warnings: completenessReport.warnings,
-      }).catch((e: any) => console.warn("[processGuide] sse completeness check:", e.message));
+      setStep("save", "done");
+      publishSteps(88, `Verific completitudinea extragerii... Trust: ${Math.round(completenessReport.trustScore * 100)}%`);
 
       if (completenessReport.trustScore < 0.7) {
         console.log(`[processGuide] ⚠ Low trust score (${completenessReport.trustScore}): ${completenessReport.warnings.join("; ")}`);
@@ -1644,15 +1643,8 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
 
       // ─── STEP 5: Auto-link rules to template elements and reference tables ───
       await job.updateProgress(92);
-      publishJobProgress(organizationId, {
-        jobId: job.id || "",
-        jobType: "ghid",
-        documentId,
-        documentName: doc.name,
-        progress: 92,
-        status: "processing",
-        message: `Conectez regulile la elementele de date si tabelele de referinta...`,
-      }).catch((e: any) => console.warn("[processGuide] sse linking progress:", e.message));
+      setStep("link", "active");
+      publishSteps(92, `Conectez regulile la elementele de date si tabelele de referinta...`);
       // Run Step 5 + Step 6 in parallel (independent of each other)
       const [linkResult, templateMappings] = await Promise.all([
         autoLinkRulesAndReferences(documentId, organizationId),
@@ -1732,6 +1724,9 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
       }).where(eq(documents.id, documentId));
 
       // ─── STEP 8: RAG — Chunk + Embed for vector retrieval ───
+      setStep("link", "done");
+      setStep("rag", "active");
+      publishSteps(96, `Indexare vectori pentru cautare semantica...`);
       try {
         const { chunkGuideText } = await import("../services/guideChunker");
         const { embedTexts } = await import("../services/embeddings");
@@ -1779,9 +1774,11 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
           const ragDuration = Date.now() - ragStart;
           console.log(`[processGuide] RAG complete: ${chunks.length} chunks embedded in ${ragDuration}ms`);
         }
+        setStep("rag", "done", `${chunks.length} chunks`);
       } catch (ragErr: any) {
         // Non-critical: RAG embedding failure should not block guide processing
         console.warn(`[processGuide] RAG embedding failed (non-critical): ${ragErr.message}`);
+        setStep("rag", "error", (ragErr as Error).message?.slice(0, 50));
       }
 
       await job.updateProgress(100);

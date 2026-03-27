@@ -1536,6 +1536,7 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
       totalAIOutputTokens = v3Result.totalOutputTokens;
       guideMetadata = v3Result.metadata;
 
+      const v3ProcessingLog = v3Result.processingLog;
       console.log(`[processGuide] v3 extraction: ${v3Result.durationMs}ms — ${allFixed.length} fixed, ${allInterpreted.length} interp, ${allScoring.length} scoring, ${allElementDefs.length} elements, ${allDocRequirements.length} docs`);
 
       /*
@@ -1716,6 +1717,7 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         counts: { fixedRules: fixedCount, interpretedRules: interpCount, scoringCriteria: scoringCount, elementDefinitions: elemDefCount },
         links: { elements: linkResult.elementLinks, references: linkResult.referenceLinks, templateMappings },
         duration: { total: totalDuration, extract: extractDuration, preStruct: preStructDuration, extraction: opusDuration },
+        processingLog: v3ProcessingLog || [],
       };
 
       await db.update(documents).set({

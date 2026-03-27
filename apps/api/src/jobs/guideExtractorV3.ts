@@ -345,6 +345,14 @@ ${guideText.slice(0, 30000)}` }],
 
 // ─── ORCHESTRATOR ───
 
+export interface ProcessingLogEntry {
+  step: string;
+  label: string;
+  durationMs: number;
+  tokens?: { input: number; output: number };
+  details?: string;
+}
+
 export interface V3ExtractionResult {
   metadata: GuideMetadata;
   fixedRules: any[];
@@ -355,6 +363,7 @@ export interface V3ExtractionResult {
   totalInputTokens: number;
   totalOutputTokens: number;
   durationMs: number;
+  processingLog: ProcessingLogEntry[];
 }
 
 export async function extractGuideV3(
@@ -366,11 +375,21 @@ export async function extractGuideV3(
   const start = Date.now();
   let totalIn = 0;
   let totalOut = 0;
+  const processingLog: ProcessingLogEntry[] = [];
 
   // STEP 0: Metadata (~15s)
+  const step0Start = Date.now();
   onProgress?.(10, "Analizez structura ghidului...");
   const metadata = await extractGuideMetadata(fullText, organizationId);
-  console.log(`[guideV3] Metadata: ${metadata.program} ${metadata.masura}, ${metadata.sectiuni.length} secțiuni detectate`);
+  const step0Ms = Date.now() - step0Start;
+  console.log(`[guideV3] Step 0 (metadata): ${step0Ms}ms — ${metadata.program} ${metadata.masura}, ${metadata.sectiuni.length} secțiuni`);
+  processingLog.push({
+    step: "0",
+    label: "Metadata extraction",
+    durationMs: step0Ms,
+    details: `${metadata.program} ${metadata.masura}, ${metadata.sectiuni.length} secțiuni detectate`,
+  });
+  onProgress?.(15, `Structura detectata in ${(step0Ms/1000).toFixed(1)}s — ${metadata.sectiuni.length} sectiuni`);
 
   // Group sections by type for extraction
   const extractableSections = metadata.sectiuni.filter(s =>
@@ -397,12 +416,15 @@ export async function extractGuideV3(
   console.log(`[guideV3] ${mergedSections.length} secțiuni de extras: ${mergedSections.map(s => `${s.tip}(${s.pagina_start}-${s.pagina_end})`).join(", ")}`);
 
   // STEP 1: Parallel themed extraction
-  onProgress?.(25, `Extrag din ${mergedSections.length} secțiuni paralel...`);
+  const step1Start = Date.now();
+  onProgress?.(25, `Extrag din ${mergedSections.length} sectiuni paralel...`);
 
+  const sectionTimings: Array<{ tip: string; durationMs: number; results: string }> = [];
   const sectionResults = await Promise.all(
     mergedSections.map(async (section, i) => {
       const text = extractPageRange(fullText, section.pagina_start, section.pagina_end);
       if (text.length < 100) return null;
+      const sStart = Date.now();
       const result = await extractSection(
         section.tip,
         text,
@@ -410,10 +432,28 @@ export async function extractGuideV3(
         `${section.tip}_p${section.pagina_start}-${section.pagina_end}`,
         useET,
       );
-      onProgress?.(25 + Math.round(((i + 1) / mergedSections.length) * 50), `Secțiunea "${section.titlu}" procesată`);
+      const sDur = Date.now() - sStart;
+      const rCount = result.fixedRules.length + result.interpretedRules.length + result.scoringCriteria.length + result.documentRequirements.length;
+      sectionTimings.push({ tip: section.tip, durationMs: sDur, results: `${rCount} items` });
+      processingLog.push({
+        step: "1",
+        label: `${section.tip} (p${section.pagina_start}-${section.pagina_end})`,
+        durationMs: sDur,
+        tokens: { input: result.inputTokens, output: result.outputTokens },
+        details: `${result.fixedRules.length} fixe, ${result.interpretedRules.length} interp, ${result.scoringCriteria.length} scoring, ${result.documentRequirements.length} docs`,
+      });
+      onProgress?.(25 + Math.round(((i + 1) / mergedSections.length) * 50), `${section.titlu} — ${(sDur/1000).toFixed(0)}s, ${rCount} rezultate`);
       return result;
     }),
   );
+  const step1Ms = Date.now() - step1Start;
+  processingLog.push({
+    step: "1_total",
+    label: "All sections (parallel)",
+    durationMs: step1Ms,
+    details: `${mergedSections.length} secțiuni, wall time ${(step1Ms/1000).toFixed(1)}s`,
+  });
+  console.log(`[guideV3] Step 1 (sections): ${step1Ms}ms — ${sectionTimings.map(t => `${t.tip}:${t.durationMs}ms(${t.results})`).join(", ")}`);
 
   // Merge results
   let allFixed: any[] = [];
@@ -432,13 +472,30 @@ export async function extractGuideV3(
   }
 
   // STEP 2: Derive elements from rules + scoring
+  const step2Start = Date.now();
   onProgress?.(80, `Derivez elementele din ${allFixed.length + allInterpreted.length} reguli...`);
   const allRules = [...allFixed, ...allInterpreted];
   const elemResult = await deriveElements(allRules, allScoring, fullText, organizationId);
+  const step2Ms = Date.now() - step2Start;
   totalIn += elemResult.inputTokens;
   totalOut += elemResult.outputTokens;
+  processingLog.push({
+    step: "2",
+    label: "Derive elements",
+    durationMs: step2Ms,
+    tokens: { input: elemResult.inputTokens, output: elemResult.outputTokens },
+    details: `${elemResult.elements.length} elemente derivate din ${allRules.length} reguli + ${allScoring.length} criterii`,
+  });
+  console.log(`[guideV3] Step 2 (elements): ${step2Ms}ms — ${elemResult.elements.length} elements`);
 
   const durationMs = Date.now() - start;
+  processingLog.push({
+    step: "total",
+    label: "Pipeline complete",
+    durationMs,
+    tokens: { input: totalIn, output: totalOut },
+    details: `${allFixed.length} fixed, ${allInterpreted.length} interp, ${allScoring.length} scoring, ${elemResult.elements.length} elements, ${allDocs.length} docs`,
+  });
   console.log(`[guideV3] Complete: ${durationMs}ms — ${allFixed.length} fixed, ${allInterpreted.length} interp, ${allScoring.length} scoring, ${elemResult.elements.length} elements, ${allDocs.length} docs`);
 
   onProgress?.(95, `${allFixed.length + allInterpreted.length} reguli, ${allScoring.length} criterii, ${elemResult.elements.length} elemente, ${allDocs.length} documente`);
@@ -453,5 +510,6 @@ export async function extractGuideV3(
     totalInputTokens: totalIn,
     totalOutputTokens: totalOut,
     durationMs,
+    processingLog,
   };
 }

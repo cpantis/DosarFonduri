@@ -446,6 +446,9 @@ documentRoutes.get("/folders/:folderId/documents", async (c) => {
           elementsCount: elemDefCountMap.get(doc.id) || 0,
           trustScore: doc.trustScore ? Number(doc.trustScore) : null,
           completenessReport: doc.completenessReport || null,
+          fixedRules: (doc.processingResult as any)?.counts?.fixedRules || 0,
+          interpretedRules: (doc.processingResult as any)?.counts?.interpretedRules || 0,
+          hasProcessingLog: !!((doc.processingResult as any)?.processingLog?.length),
         },
       };
     }
@@ -1363,6 +1366,40 @@ documentRoutes.get("/documents/:docId/elements-summary", async (c) => {
     unit: el.unit,
     required: el.required,
   })));
+});
+
+// --- PROCESSING LOG (for guide documents) ---
+documentRoutes.get("/documents/:docId/processing-log", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const { docId } = c.req.param() as { docId: string };
+
+  const doc = await db.query.documents.findFirst({
+    where: and(eq(documents.id, docId), eq(documents.organizationId, auth.organizationId!)),
+    columns: { id: true, name: true, processingResult: true, processedAt: true },
+  });
+  if (!doc) return c.json({ error: "Not found" }, 404);
+
+  const result = doc.processingResult as any;
+  const log = result?.processingLog || [];
+  const metadata = result?.metadata || null;
+  const duration = result?.duration || {};
+  const tokens = result?.tokens || {};
+  const cost = result?.cost || {};
+  const counts = result?.counts || {};
+  const pipeline = result?.pipeline || "unknown";
+
+  return c.json({
+    documentId: doc.id,
+    documentName: doc.name,
+    processedAt: doc.processedAt,
+    pipeline,
+    duration,
+    tokens,
+    cost,
+    counts,
+    metadata,
+    log,
+  });
 });
 
 // --- TEMPLATE ELEMENTS with mapping/source info ---

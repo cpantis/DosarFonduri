@@ -94,6 +94,9 @@ interface DocItem {
     fieldsCount?: number;
     trustScore?: number | null;
     completenessReport?: any;
+    fixedRules?: number;
+    interpretedRules?: number;
+    hasProcessingLog?: boolean;
   };
 }
 
@@ -1183,26 +1186,23 @@ export default function DocumentsPage() {
                     {d.uploadedBy && <span>de {d.uploadedBy}</span>}
                   </div>
                   {/* Real-time progress bar during processing */}
-                  {isProcessing && jp && (
+                  {isProcessing && (
                     <div style={{ marginTop: 6 }}>
                       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#fbbf24", marginBottom: 3 }}>
-                        <span style={{ maxWidth: "80%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{jp.message}</span>
-                        <span style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>{jp.progress}%</span>
+                        <span style={{ maxWidth: "80%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{jp?.message || "Procesare in curs..."}</span>
+                        {jp && <span style={{ fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>{jp.progress}%</span>}
                       </div>
                       <div style={{ height: 4, borderRadius: 2, background: "rgba(251,191,36,.15)", overflow: "hidden" }}>
                         <div style={{
                           height: "100%",
-                          width: `${jp.progress}%`,
+                          width: jp ? `${jp.progress}%` : "100%",
                           borderRadius: 2,
-                          background: "linear-gradient(90deg, #fbbf24, #f59e0b)",
+                          background: jp ? "linear-gradient(90deg, #fbbf24, #f59e0b)" : "linear-gradient(90deg, #fbbf24, #f59e0b)",
                           transition: "width 0.5s ease-out",
+                          animation: jp ? "none" : "pulse 1.5s ease-in-out infinite",
+                          opacity: jp ? 1 : 0.4,
                         }} />
                       </div>
-                    </div>
-                  )}
-                  {isProcessing && !jp && (
-                    <div style={{ marginTop: 6, fontSize: 11, color: "#fbbf24" }}>
-                      {"\u2699"} Procesare în curs...
                     </div>
                   )}
                   {d.tags.length > 0 && (
@@ -1476,12 +1476,87 @@ export default function DocumentsPage() {
                             </div>
                           ))}
                         </div>
-                        {/* Processing time */}
-                        {d.processingTimeMs != null && d.processingTimeMs > 0 && (
-                          <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 8, display: "flex", alignItems: "center", gap: 4 }}>
-                            {"\u23F1"} Procesat în {d.processingTimeMs >= 1000 ? `${(d.processingTimeMs / 1000).toFixed(1)}s` : `${d.processingTimeMs}ms`}
-                          </div>
-                        )}
+                        {/* Processing time + download log */}
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8 }}>
+                          {d.processingTimeMs != null && d.processingTimeMs > 0 && (
+                            <div style={{ fontSize: 11, color: "#94a3b8", display: "flex", alignItems: "center", gap: 4 }}>
+                              {"\u23F1"} Procesat în {d.processingTimeMs >= 1000 ? `${(d.processingTimeMs / 1000).toFixed(1)}s` : `${d.processingTimeMs}ms`}
+                            </div>
+                          )}
+                          {d.summary?.hasProcessingLog && (
+                            <button
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                try {
+                                  const log = await apiGet<any>(`/api/documents/documents/${d.id}/processing-log`);
+                                  const lines: string[] = [
+                                    `=== Processing Log: ${log.documentName} ===`,
+                                    `Pipeline: ${log.pipeline}`,
+                                    `Processed: ${log.processedAt || "N/A"}`,
+                                    ``,
+                                    `--- Duration ---`,
+                                    `Total: ${log.duration?.total ? (log.duration.total / 1000).toFixed(1) + "s" : "N/A"}`,
+                                    `PDF extract: ${log.duration?.extract ? (log.duration.extract / 1000).toFixed(1) + "s" : "N/A"}`,
+                                    `Pre-structure: ${log.duration?.preStruct ? (log.duration.preStruct / 1000).toFixed(1) + "s" : "N/A"}`,
+                                    `AI extraction: ${log.duration?.extraction ? (log.duration.extraction / 1000).toFixed(1) + "s" : "N/A"}`,
+                                    ``,
+                                    `--- Tokens ---`,
+                                    `Input: ${log.tokens?.input?.toLocaleString() || "N/A"}`,
+                                    `Output: ${log.tokens?.output?.toLocaleString() || "N/A"}`,
+                                    ``,
+                                    `--- Cost ---`,
+                                    `Total: $${log.cost?.total || "N/A"}`,
+                                    ``,
+                                    `--- Counts ---`,
+                                    `Fixed rules: ${log.counts?.fixedRules || 0}`,
+                                    `Interpreted rules: ${log.counts?.interpretedRules || 0}`,
+                                    `Scoring criteria: ${log.counts?.scoringCriteria || 0}`,
+                                    `Element definitions: ${log.counts?.elementDefinitions || 0}`,
+                                    ``,
+                                  ];
+                                  if (log.metadata) {
+                                    lines.push(`--- Metadata ---`);
+                                    lines.push(`Program: ${log.metadata.program || "N/A"}`);
+                                    lines.push(`Masura: ${log.metadata.masura || "N/A"}`);
+                                    lines.push(`Sectiuni: ${log.metadata.sectiuni?.length || 0}`);
+                                    (log.metadata.sectiuni || []).forEach((s: any) => {
+                                      lines.push(`  ${s.tip}: "${s.titlu}" (p${s.pagina_start}-${s.pagina_end})`);
+                                    });
+                                    lines.push(``);
+                                  }
+                                  if (log.log?.length > 0) {
+                                    lines.push(`--- Step-by-step timing ---`);
+                                    lines.push(`${"Step".padEnd(8)} ${"Label".padEnd(40)} ${"Duration".padEnd(12)} ${"Tokens".padEnd(20)} Details`);
+                                    lines.push("-".repeat(120));
+                                    for (const entry of log.log) {
+                                      const dur = entry.durationMs >= 1000 ? `${(entry.durationMs / 1000).toFixed(1)}s` : `${entry.durationMs}ms`;
+                                      const tok = entry.tokens ? `in:${entry.tokens.input} out:${entry.tokens.output}` : "";
+                                      lines.push(`${(entry.step || "").padEnd(8)} ${(entry.label || "").padEnd(40)} ${dur.padEnd(12)} ${tok.padEnd(20)} ${entry.details || ""}`);
+                                    }
+                                  }
+                                  const blob = new Blob([lines.join("\n")], { type: "text/plain" });
+                                  const url = URL.createObjectURL(blob);
+                                  const a = document.createElement("a");
+                                  a.href = url;
+                                  a.download = `processing-log-${d.name.replace(/\.[^.]+$/, "")}.txt`;
+                                  a.click();
+                                  URL.revokeObjectURL(url);
+                                } catch (err) {
+                                  console.error("Failed to download log:", err);
+                                }
+                              }}
+                              style={{
+                                fontSize: 10, color: "#64748b", background: "rgba(100,116,139,.08)", border: "1px solid rgba(226,232,240,.8)",
+                                borderRadius: 5, padding: "3px 8px", cursor: "pointer", display: "flex", alignItems: "center", gap: 4,
+                                transition: "all .15s",
+                              }}
+                              onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(100,116,139,.15)"; e.currentTarget.style.color = "#334155"; }}
+                              onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(100,116,139,.08)"; e.currentTarget.style.color = "#64748b"; }}
+                            >
+                              {"\u{1F4CB}"} Log procesare
+                            </button>
+                          )}
+                        </div>
                       </div>
                       {/* Completeness report footer */}
                       {(found.length > 0 || missing.length > 0 || warnings.length > 0) && (

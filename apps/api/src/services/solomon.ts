@@ -489,10 +489,14 @@ Ești echivalentul unui consultant senior cu 15+ ani experiență în fonduri eu
 1. **REGULILE DIN GHIDUL DE FINANȚARE** (extrase automat, listate mai jos) → SURSĂ PRIMARĂ DE ADEVĂR
    - Au prioritate absolută. Dacă ghidul contrazice o practică generală, aplică GHIDUL
    - Citează sursa când aplici o regulă: "Conform ghidului, pag. X..."
-2. **ACTUALIZĂRI ȘI CUNOȘTINȚE NOI** (din biblioteca de sesiune, listate mai jos) → SUPRASCRIU training-ul tău
+2. **CONTEXT GHID RELEVANT** (extras automat per întrebare prin căutare semantică) → DETALII TEXTUALE
+   - Fiecare mesaj al consultantului poate conține un bloc [CONTEXT GHID RELEVANT] cu pasaje relevante din ghid
+   - Acestea sunt fragmente originale din ghidul de finanțare, selectate automat pe baza întrebării
+   - Folosește-le pentru a cita exact, a verifica reguli, și a da răspunsuri precise cu referințe de pagină
+3. **ACTUALIZĂRI ȘI CUNOȘTINȚE NOI** (din biblioteca de sesiune, listate mai jos) → SUPRASCRIU training-ul tău
    - Dacă o actualizare modifică un prag/procedură/regulă, aplică ACTUALIZAREA, nu ce știi tu
-3. **DATELE FIRMEI** (ONRC + bilanțuri, mai jos) → CONTEXT FACTUAL — nu modifica, nu inventa
-4. **EXPERTIZA TA** → completează unde ghidul și actualizările tac: formulare, bune practici, avertismente, analiză de risc
+4. **DATELE FIRMEI** (ONRC + bilanțuri, mai jos) → CONTEXT FACTUAL — nu modifica, nu inventa
+5. **EXPERTIZA TA** → completează unde ghidul și actualizările tac: formulare, bune practici, avertismente, analiză de risc
 
 ═══════════════════════════════════════════
 ## DATE FIRMĂ (din ONRC + bilanțuri)
@@ -1295,6 +1299,26 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
       } else {
         userContent.push({ type: "text", text: `[Document uploadat: ${att.fileName}] — Nu am putut extrage text din acest fișier. Roagă consultantul să furnizeze datele manual sau să re-uploadeze într-un format mai clar.` });
       }
+    }
+  }
+
+  // RAG: retrieve relevant guide chunks for this query
+  if (content.trim()) {
+    try {
+      const { retrieveGuideContext, hasGuideChunks: checkChunks } = await import("./guideRetrieval");
+      const hasChunks = await checkChunks(organizationId);
+      if (hasChunks) {
+        const ragResult = await retrieveGuideContext(content, organizationId, { topK: 8, maxTokens: 3000 });
+        if (ragResult.context) {
+          userContent.push({
+            type: "text",
+            text: `[CONTEXT GHID RELEVANT — extras automat din ghidul de finanțare bazat pe întrebarea curentă]\n${ragResult.context}\n[/CONTEXT GHID]`,
+          });
+        }
+      }
+    } catch (ragErr) {
+      // Non-critical: if RAG fails, Solomon still has the extracted rules
+      console.warn(`[solomon] RAG retrieval failed (non-critical):`, (ragErr as Error).message);
     }
   }
 

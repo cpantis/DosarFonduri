@@ -1,4 +1,16 @@
-import { pgTable, uuid, varchar, text, integer, bigint, decimal, boolean, timestamp, pgEnum, jsonb, uniqueIndex, index } from "drizzle-orm/pg-core";
+import { pgTable, uuid, varchar, text, integer, bigint, decimal, boolean, timestamp, pgEnum, jsonb, uniqueIndex, index, customType } from "drizzle-orm/pg-core";
+
+/** Custom type for pgvector vector(1536) columns */
+const vector1536 = customType<{ data: number[]; driverData: string }>({
+  dataType() { return "vector(1536)"; },
+  toDriver(value: number[]): string { return `[${value.join(",")}]`; },
+  fromDriver(value: string): number[] {
+    if (typeof value === "string") {
+      return value.replace(/[\[\]]/g, "").split(",").map(Number);
+    }
+    return value as any;
+  },
+});
 
 // === ENUMS ===
 export const planEnum = pgEnum("plan", ["starter", "professional", "enterprise"]);
@@ -914,4 +926,25 @@ export const passwordResetTokens = pgTable("password_reset_tokens", {
 }, (table) => ({
   tokenIdx: uniqueIndex("prt_token_hash_idx").on(table.tokenHash),
   userIdx: index("prt_user_idx").on(table.userId),
+}));
+
+// === GUIDE CHUNKS (RAG — vector embeddings for guide text retrieval) ===
+export const guideChunks = pgTable("guide_chunks", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  documentId: uuid("document_id").references(() => documents.id, { onDelete: "cascade" }).notNull(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  chunkIndex: integer("chunk_index").notNull(),
+  content: text("content").notNull(),
+  tokenCount: integer("token_count").notNull().default(0),
+  pageStart: integer("page_start"),
+  pageEnd: integer("page_end"),
+  sectionType: varchar("section_type", { length: 50 }),
+  sectionTitle: varchar("section_title", { length: 500 }),
+  embedding: vector1536("embedding"),
+  metadata: jsonb("metadata").default({}),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  docIdx: index("guide_chunks_doc_idx").on(table.documentId),
+  orgIdx: index("guide_chunks_org_idx").on(table.organizationId),
+  sectionIdx: index("guide_chunks_section_idx").on(table.sectionType),
 }));

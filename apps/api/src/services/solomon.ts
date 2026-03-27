@@ -489,11 +489,12 @@ Ești echivalentul unui consultant senior cu 15+ ani experiență în fonduri eu
 1. **REGULILE DIN GHIDUL DE FINANȚARE** (extrase automat, listate mai jos) → SURSĂ PRIMARĂ DE ADEVĂR
    - Au prioritate absolută. Dacă ghidul contrazice o practică generală, aplică GHIDUL
    - Citează sursa când aplici o regulă: "Conform ghidului, pag. X..."
-2. **CONTEXT GHID RELEVANT** (extras automat per întrebare prin căutare semantică) → DETALII TEXTUALE
-   - Fiecare mesaj al consultantului poate conține un bloc [CONTEXT GHID RELEVANT] cu pasaje relevante din ghid
-   - Acestea sunt fragmente originale din ghidul de finanțare, selectate automat pe baza întrebării
-   - Folosește-le pentru a cita exact, a verifica reguli, și a da răspunsuri precise cu referințe de pagină
-3. **ACTUALIZĂRI ȘI CUNOȘTINȚE NOI** (din biblioteca de sesiune, listate mai jos) → SUPRASCRIU training-ul tău
+2. **CONTEXT RELEVANT** (extras automat per întrebare prin căutare semantică) → DETALII TEXTUALE
+   - Fiecare mesaj al consultantului poate conține un bloc [CONTEXT RELEVANT] cu pasaje din ghid + baza de cunoștințe
+   - Ghidul: fragmente originale cu referințe de pagină — citează exact
+   - Baza de cunoștințe: referințe strategice (obiective, target-uri, legislație) — folosește pentru justificare
+   - Folosește-le pentru a cita exact, a verifica reguli, și a da răspunsuri precise
+3. **ACTUALIZĂRI CABINET** (din cunoștințe manuale, listate mai jos) → SUPRASCRIU training-ul tău
    - Dacă o actualizare modifică un prag/procedură/regulă, aplică ACTUALIZAREA, nu ce știi tu
 4. **DATELE FIRMEI** (ONRC + bilanțuri, mai jos) → CONTEXT FACTUAL — nu modifica, nu inventa
 5. **EXPERTIZA TA** → completează unde ghidul și actualizările tac: formulare, bune practici, avertismente, analiză de risc
@@ -577,8 +578,12 @@ ${passedRules.slice(0, 15).join("\n")}${passedRules.length > 15 ? `\n... și alt
 
 ${(() => {
   if (activeKnowledge.length === 0) return "";
+  // Only manual/cabinet entries go in system prompt (few, high priority)
+  // Reference entries (bulk uploads) are retrieved via RAG per-query
   const manualEntries = activeKnowledge.filter(k => !k.category.startsWith("referinta_"));
-  const refEntries = activeKnowledge.filter(k => k.category.startsWith("referinta_"));
+  const refCount = activeKnowledge.filter(k => k.category.startsWith("referinta_")).length;
+
+  if (manualEntries.length === 0 && refCount === 0) return "";
 
   const formatEntry = (k: any) => {
     let entry = `### [${k.category.toUpperCase()}] ${k.title}`;
@@ -591,7 +596,7 @@ ${(() => {
   };
 
   let section = `═══════════════════════════════════════════
-## BAZĂ DE CUNOȘTINȚE (${activeKnowledge.length} intrări)
+## BAZĂ DE CUNOȘTINȚE
 ═══════════════════════════════════════════
 `;
 
@@ -602,13 +607,10 @@ ${manualEntries.map(formatEntry).join("\n\n")}
 `;
   }
 
-  if (refEntries.length > 0) {
-    section += `### REFERINȚE STRATEGICE (${refEntries.length}) — extrase automat din documente de referință
-Folosește-le pentru: justificarea proiectelor, citare obiective, argumentare punctaj, context legislativ.
-Când consultantul întreabă despre obiective sau target-uri, caută aici PRIMUL.
-
-${refEntries.slice(0, 30).map(formatEntry).join("\n\n")}
-${refEntries.length > 30 ? `... și alte ${refEntries.length - 30} referințe disponibile` : ""}
+  if (refCount > 0) {
+    section += `### REFERINȚE STRATEGICE: ${refCount} documente indexate (accesibile prin căutare semantică)
+Referințele strategice sunt accesate automat per întrebare prin [CONTEXT RELEVANT].
+Nu le vezi aici în întregime — sunt livrate doar fragmentele relevante la fiecare mesaj.
 `;
   }
 
@@ -1302,17 +1304,21 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
     }
   }
 
-  // RAG: retrieve relevant guide chunks for this query
+  // RAG: retrieve relevant guide chunks + knowledge entries for this query
   if (content.trim()) {
     try {
-      const { retrieveGuideContext, hasGuideChunks: checkChunks } = await import("./guideRetrieval");
-      const hasChunks = await checkChunks(organizationId);
-      if (hasChunks) {
-        const ragResult = await retrieveGuideContext(content, organizationId, { topK: 8, maxTokens: 3000 });
+      const { retrieveContext, hasRAGContent } = await import("./guideRetrieval");
+      const hasContent = await hasRAGContent(organizationId);
+      if (hasContent) {
+        const ragResult = await retrieveContext(content, organizationId, {
+          guideTopK: 8,
+          knowledgeTopK: 5,
+          maxTokens: 4000,
+        });
         if (ragResult.context) {
           userContent.push({
             type: "text",
-            text: `[CONTEXT GHID RELEVANT — extras automat din ghidul de finanțare bazat pe întrebarea curentă]\n${ragResult.context}\n[/CONTEXT GHID]`,
+            text: `[CONTEXT RELEVANT — extras automat din ghid și baza de cunoștințe, bazat pe întrebarea curentă]\n${ragResult.context}\n[/CONTEXT RELEVANT]`,
           });
         }
       }

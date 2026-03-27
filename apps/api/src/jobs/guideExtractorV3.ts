@@ -169,8 +169,16 @@ Returnează DOAR JSON valid.`,
     outputKeys: ["fixed_rules", "interpreted_rules"],
   },
   selectie_punctaj: {
-    system: `Ești Solomon — evaluator tehnic cu grila de punctaj. Extragi CRITERII DE SELECȚIE — cod, nume, punctaj maxim, logica evaluare.
-Capturează TOATĂ structura tabelelor de punctaj. Returnează DOAR JSON valid.`,
+    system: `Ești Solomon — evaluator tehnic care a evaluat sute de dosare cu grila de punctaj.
+Extragi FIECARE criteriu de selecție din grila de punctaj.
+IMPORTANT: Grila de punctaj conține criterii cu subpuncte. Extrage FIECARE criteriu SEPARAT cu:
+- cod (ex: CS1, CS2.1, P1, S1)
+- nume complet
+- punctaj maxim
+- descriere + condiții de acordare
+- logica de evaluare (cum se calculează punctajul: praguri, formule, DA/NU, tabel lookup)
+NU omite niciun criteriu. Dacă un criteriu are subcriterii, extrage FIECARE subcriteriu.
+Returnează DOAR JSON valid.`,
     outputKeys: ["scoring_criteria"],
   },
   cheltuieli: {
@@ -260,6 +268,14 @@ async function extractSection(
 
   console.log(`[guideV3] ${label} ${durationMs}ms in=${response.usage.input_tokens} out=${response.usage.output_tokens}`);
 
+  // Debug: log raw response when output is suspiciously small or truncated
+  if (response.usage.output_tokens < 500) {
+    console.warn(`[guideV3] ⚠ LOW OUTPUT for ${label} (${response.usage.output_tokens} tokens, stop=${response.stop_reason}): "${content.slice(0, 500)}"`);
+  }
+  if (response.stop_reason === "max_tokens") {
+    console.warn(`[guideV3] ⚠ TRUNCATED for ${label} — hit max_tokens limit`);
+  }
+
   await logAIUsage({
     organizationId,
     agent: "ghid_rules",
@@ -317,8 +333,8 @@ ${FIELD_LIST}
 
 Returnează: { "element_definitions": [{ "element_key": "snake_case", "display_name": "...", "category": "beneficiary|farm|investment|location|financial|legal|technical|other", "data_type": "number|text|enum|boolean|date|document_ref|list_items", "unit": null, "enum_values": null, "required": true/false, "help_text": "...", "is_derived": false, "derivation_formula": null, "source_priority": ["document_extracted","solomon_chat","consultant_manual"], "collection_order": N, "min_count": 1, "max_count": null }] }
 
-TEXT GHID (pentru context):
-${guideText.slice(0, 30000)}` }],
+TEXT GHID (primele pagini, pentru context):
+${guideText.slice(0, 10000)}` }],
   }));
 
   await logAIUsage({
@@ -406,6 +422,25 @@ export async function extractGuideV3(
       mergedSections.push({ ...s });
     }
   }
+
+  // Split large sections (>10 pages) into sub-chunks to avoid bottleneck
+  const MAX_SECTION_PAGES = 10;
+  const finalSections: Array<{ tip: string; pagina_start: number; pagina_end: number; titlu: string }> = [];
+  for (const s of mergedSections) {
+    const pageSpan = s.pagina_end - s.pagina_start + 1;
+    if (pageSpan > MAX_SECTION_PAGES) {
+      // Split into sub-sections of MAX_SECTION_PAGES each
+      for (let start = s.pagina_start; start <= s.pagina_end; start += MAX_SECTION_PAGES) {
+        const end = Math.min(start + MAX_SECTION_PAGES - 1, s.pagina_end);
+        finalSections.push({ tip: s.tip, pagina_start: start, pagina_end: end, titlu: `${s.titlu} (p${start}-${end})` });
+      }
+    } else {
+      finalSections.push(s);
+    }
+  }
+  // Replace mergedSections with split version
+  mergedSections.length = 0;
+  mergedSections.push(...finalSections);
 
   if (mergedSections.length === 0) {
     // Fallback: treat entire guide as one eligibility section

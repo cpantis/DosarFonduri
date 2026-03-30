@@ -180,6 +180,7 @@ export async function populateCompanyElements(
     add("profit_net", f20.profitNet, finSource);
     add("profit_brut", f20.profitBrut, finSource);
     add("angajati", f30.numarMediuSalariati, finSource);
+    if (f30.numarEfectivSalariati) add("angajati_efectiv", f30.numarEfectivSalariati, finSource);
     add("capitaluri_proprii", f10.capitaluriProprii, finSource);
     add("active_imobilizate", f10.activeImobilizate?.total, finSource);
     add("active_circulante", f10.activeCirculante?.total, finSource);
@@ -193,8 +194,15 @@ export async function populateCompanyElements(
     // P&L extended fields
     if (f20.venituriExploatare) add("venituri_exploatare", f20.venituriExploatare, finSource);
     if (f20.cheltuieliExploatare) add("cheltuieli_exploatare", f20.cheltuieliExploatare, finSource);
-    if (f20.rezultatExploatare) add("rezultat_exploatare", f20.rezultatExploatare, finSource);
+    // Parser-ul returnează "profitExploatare" (= rezultat exploatare)
+    if (f20.rezultatExploatare || f20.profitExploatare) {
+      add("rezultat_exploatare", f20.rezultatExploatare || f20.profitExploatare, finSource);
+    }
     if (f20.cheltuieliPersonal) add("cheltuieli_personal", f20.cheltuieliPersonal, finSource);
+    if (f20.cheltuieliMatPrim) add("cheltuieli_materii_prime", f20.cheltuieliMatPrim, finSource);
+    if (f20.impozitProfit) add("impozit_profit", f20.impozitProfit, finSource);
+    if (f20.venituriTotale) add("venituri_totale", f20.venituriTotale, finSource);
+    if (f20.cheltuieliTotale) add("cheltuieli_totale", f20.cheltuieliTotale, finSource);
 
     // Per-year financials (for multi-year rules)
     for (const fin of financials) {
@@ -208,13 +216,21 @@ export async function populateCompanyElements(
       add(`profit_net_${yr}`, yf20.profitNet, ySrc);
       add(`angajati_${yr}`, yf30.numarMediuSalariati, ySrc);
       add(`capitaluri_proprii_${yr}`, yf10.capitaluriProprii, ySrc);
+      // Extended per-year fields for trend analysis
+      const yrActiveImob = parseFloat(String(yf10.activeImobilizate?.total || 0));
+      const yrActiveCirc = parseFloat(String(yf10.activeCirculante?.total || 0));
+      if (yrActiveImob + yrActiveCirc > 0) add(`active_totale_${yr}`, yrActiveImob + yrActiveCirc, "calculated");
+      if (yf20.profitBrut != null) add(`profit_brut_${yr}`, yf20.profitBrut, ySrc);
+      const yrRezExpl = yf20.rezultatExploatare ?? yf20.profitExploatare;
+      if (yrRezExpl != null) add(`rezultat_exploatare_${yr}`, yrRezExpl, ySrc);
     }
 
-    // Derived financial fields
-    // Derived financial fields — ONLY calculate if we have actual data (not defaults)
+    // ─── DERIVED FINANCIAL FIELDS (specialist financiar) ───
+    // ONLY calculate if we have actual data (not defaults)
     const hasCa = f20.cifraAfaceriNeta != null && f20.cifraAfaceriNeta !== "";
     const hasEmp = f30.numarMediuSalariati != null && f30.numarMediuSalariati !== "";
     const hasProfitNet = f20.profitNet != null && f20.profitNet !== "";
+    const hasProfitBrut = f20.profitBrut != null && f20.profitBrut !== "";
     const hasCapProprii = f10.capitaluriProprii != null && f10.capitaluriProprii !== "";
     const hasActiveImob = f10.activeImobilizate?.total != null;
     const hasActiveCirc = f10.activeCirculante?.total != null;
@@ -222,60 +238,132 @@ export async function populateCompanyElements(
     const ca = hasCa ? parseFloat(String(f20.cifraAfaceriNeta)) : 0;
     const emp = hasEmp ? parseInt(String(f30.numarMediuSalariati)) : 0;
     const profitNet = hasProfitNet ? parseFloat(String(f20.profitNet)) : 0;
+    const profitBrut = hasProfitBrut ? parseFloat(String(f20.profitBrut)) : 0;
     const capitaluriProprii = hasCapProprii ? parseFloat(String(f10.capitaluriProprii)) : 0;
     const activeImob = hasActiveImob ? parseFloat(String(f10.activeImobilizate.total)) : 0;
     const activeCirc = hasActiveCirc ? parseFloat(String(f10.activeCirculante.total)) : 0;
     const activeTotale = activeImob + activeCirc;
-    const datoriiTotale = parseFloat(String(f10.datoriiTotal || 0));
-    const datoriiSub1An = parseFloat(String(f10.datoriiSub1An || f10.datoriiCurente || 0));
+
+    // Datorii — calculăm corect din sub-componente dacă totalul lipsește
+    const datoriiSub1An = parseFloat(String(f10.datoriiSubAnul || f10.datoriiSub1An || f10.datoriiCurente || 0));
+    const datoriiPeste1An = parseFloat(String(f10.datoriiPesteAnul || 0));
+    const datoriiTotale = f10.datoriiTotal
+      ? parseFloat(String(f10.datoriiTotal))
+      : datoriiSub1An + datoriiPeste1An;
 
     if (activeTotale > 0) add("active_totale", activeTotale, "calculated");
     if (datoriiTotale > 0) add("datorii_totale", datoriiTotale, "calculated");
     if (datoriiSub1An > 0) add("datorii_sub_1an", datoriiSub1An, "calculated");
 
-    // Financial ratios — only if source data exists
-    if (hasCapProprii && capitaluriProprii > 0 && datoriiTotale > 0) {
+    // ─── Capital detaliat (din F10) ───
+    if (f10.capital?.subscrisVarsat != null) add("capital_subscris_varsat", f10.capital.subscrisVarsat, finSource);
+    if (f10.capital?.rezerve != null) add("rezerve", f10.capital.rezerve, finSource);
+    if (f10.capital?.profitReportat != null) add("profit_reportat", f10.capital.profitReportat, finSource);
+    if (f10.capital?.profitExercitiu != null) add("profit_exercitiu", f10.capital.profitExercitiu, finSource);
+    if (f10.cheltuieliAvans != null) add("cheltuieli_in_avans", f10.cheltuieliAvans, finSource);
+    if (f10.venituriAvans != null) add("venituri_in_avans", f10.venituriAvans, finSource);
+
+    // ─── Rezultat exploatare — calculat dacă lipsește ───
+    // Parser-ul returnează "profitExploatare" — same thing
+    const venituriExpl = parseFloat(String(f20.venituriExploatare || 0));
+    const cheltuieliExpl = parseFloat(String(f20.cheltuieliExploatare || 0));
+    const rawRezExpl = f20.rezultatExploatare ?? f20.profitExploatare;
+    const rezultatExploatare = rawRezExpl != null
+      ? parseFloat(String(rawRezExpl))
+      : (venituriExpl > 0 || cheltuieliExpl > 0 ? venituriExpl - cheltuieliExpl : 0);
+    if (rezultatExploatare !== 0 || rawRezExpl != null) {
+      add("rezultat_exploatare_calculat", rezultatExploatare, rawRezExpl != null ? finSource : "calculated");
+    }
+
+    // ─── EBITDA (Earnings Before Interest, Taxes, Depreciation, Amortization) ───
+    // EBITDA = Profit exploatare + Amortizare
+    const amortizare = f10.amortizare != null
+      ? parseFloat(String(f10.amortizare))
+      : (f20.cheltuieliAmortizare != null ? parseFloat(String(f20.cheltuieliAmortizare)) : 0);
+    if (amortizare > 0) add("amortizare", amortizare, finSource);
+    if (rezultatExploatare !== 0 || amortizare > 0) {
+      add("ebitda", rezultatExploatare + amortizare, "calculated");
+    }
+
+    // ─── Cheltuieli financiare (dobânzi) ───
+    if (f20.cheltuieliFinanciare != null) add("cheltuieli_financiare", f20.cheltuieliFinanciare, finSource);
+    if (f20.venituriFinanciare != null) add("venituri_financiare", f20.venituriFinanciare, finSource);
+
+    // ─── EUR conversion (pentru praguri IMM) ───
+    // Curs BNR implicit 4.97 — suprascris din referenceValues dacă există
+    const cursEur = 4.97; // default, poate fi suprascris la nivel de organizație
+    if (hasCa) add("cifra_afaceri_eur", Math.round(ca / cursEur), "calculated");
+    if (activeTotale > 0) add("active_totale_eur", Math.round(activeTotale / cursEur), "calculated");
+    const caEur = hasCa ? ca / cursEur : 0;
+    const activeTotaleEur = activeTotale / cursEur;
+
+    // ─── Financial ratios — only if source data exists ───
+    if (hasCapProprii && capitaluriProprii !== 0 && datoriiTotale > 0) {
       add("grad_indatorare", Math.round((datoriiTotale / capitaluriProprii) * 100) / 100, "calculated");
+    } else if (hasCapProprii && capitaluriProprii === 0 && datoriiTotale > 0) {
+      // Capital propriu zero cu datorii = grad îndatorare infinit (risc maxim)
+      add("grad_indatorare", 999, "calculated");
+      add("avertisment_grad_indatorare", "Capitaluri proprii zero cu datorii pozitive — risc maxim", "calculated");
     }
     if (datoriiSub1An > 0 && hasActiveCirc && activeCirc > 0) {
       add("lichiditate_curenta", Math.round((activeCirc / datoriiSub1An) * 100) / 100, "calculated");
     }
-    if (activeTotale > 0 && hasCapProprii && capitaluriProprii > 0) {
+    if (activeTotale > 0 && hasCapProprii) {
       add("solvabilitate", Math.round((capitaluriProprii / activeTotale) * 100) / 100, "calculated");
     }
-    if (hasCa && ca > 0 && hasProfitNet && profitNet !== 0) {
-      add("rentabilitate", Math.round((profitNet / ca) * 100) / 100, "calculated");
+    if (hasCa && ca > 0 && hasProfitNet) {
+      add("rentabilitate", Math.round((profitNet / ca) * 10000) / 10000, "calculated");
     }
 
-    // IMM classification — only if we have BOTH employees AND turnover data
-    if (hasCa && hasEmp) {
-      if (emp < 10 && ca < 2000000) {
-        add("clasificare_imm", "micro", "calculated");
-      } else if (emp < 50 && ca < 10000000) {
-        add("clasificare_imm", "mica", "calculated");
-      } else if (emp < 250 && ca < 50000000) {
-        add("clasificare_imm", "mijlocie", "calculated");
+    // ─── Productivitate muncii (element frecvent în grile de punctaj) ───
+    if (hasCa && hasEmp && emp > 0) {
+      add("productivitate_munca", Math.round(ca / emp), "calculated");
+      add("productivitate_munca_eur", Math.round(caEur / emp), "calculated");
+    }
+
+    // ─── Cheltuieli personal per angajat ───
+    const cheltuieliPersonal = parseFloat(String(f20.cheltuieliPersonal || 0));
+    if (cheltuieliPersonal > 0 && hasEmp && emp > 0) {
+      add("cost_mediu_salariat", Math.round(cheltuieliPersonal / emp), "calculated");
+    }
+
+    // ─── IMM classification (Reg. 651/2014 Anexa I) ───
+    // Praguri: angajați < prag ȘI (CA < prag SAU active < prag) — valori în EUR
+    if (hasEmp) {
+      const hasFinancialData = hasCa || activeTotale > 0;
+      if (hasFinancialData) {
+        if (emp < 10 && (caEur < 2_000_000 || activeTotaleEur < 2_000_000)) {
+          add("clasificare_imm", "micro", "calculated");
+        } else if (emp < 50 && (caEur < 10_000_000 || activeTotaleEur < 10_000_000)) {
+          add("clasificare_imm", "mica", "calculated");
+        } else if (emp < 250 && (caEur < 50_000_000 || activeTotaleEur < 43_000_000)) {
+          add("clasificare_imm", "mijlocie", "calculated");
+        } else {
+          add("clasificare_imm", "mare", "calculated");
+        }
       } else {
-        add("clasificare_imm", "mare", "calculated");
+        add("clasificare_imm_avertisment", "Date insuficiente — lipsesc cifra de afaceri și activele totale", "calculated");
       }
     } else {
-      add("clasificare_imm_avertisment", "Date insuficiente pentru clasificare IMM — lipsesc cifra de afaceri sau numarul de angajati", "calculated");
+      add("clasificare_imm_avertisment", "Date insuficiente pentru clasificare IMM — lipsește numărul de angajați", "calculated");
     }
 
     // Warnings for missing critical financial data
-    if (!hasCa) add("avertisment_cifra_afaceri", "Cifra de afaceri nu a fost extrasa din bilant", "calculated");
-    if (!hasEmp) add("avertisment_angajati", "Numarul de angajati nu a fost extras din bilant", "calculated");
-    if (!hasCapProprii) add("avertisment_capitaluri_proprii", "Capitalurile proprii nu au fost extrase din bilant", "calculated");
+    if (!hasCa) add("avertisment_cifra_afaceri", "Cifra de afaceri nu a fost extrasă din bilanț", "calculated");
+    if (!hasEmp) add("avertisment_angajati", "Numărul de angajați nu a fost extras din bilanț", "calculated");
+    if (!hasCapProprii) add("avertisment_capitaluri_proprii", "Capitalurile proprii nu au fost extrase din bilanț", "calculated");
 
     // ─── G2: Întreprindere în dificultate (Reg. EU 651/2014, art. 2.18) ───
-    // O întreprindere e "în dificultate" dacă capitalurile proprii < 50% din capitalul social subscris
     const capitalSocial = parseFloat(String(company.capitalSocial || 0));
-    if (capitalSocial > 0 && capitaluriProprii > 0) {
+
+    // Test 1: Capitaluri proprii < 50% din capital social subscris (art. 2.18a)
+    if (capitalSocial > 0 && hasCapProprii) {
       const ratioCapital = capitaluriProprii / capitalSocial;
       add("ratio_capitaluri_proprii_capital_social", Math.round(ratioCapital * 100) / 100, "calculated");
-      // Verificare pentru SRL/SA (nu se aplică la micro < 3 ani)
+
       const vechimeAni = company.anInfiintare ? new Date().getFullYear() - company.anInfiintare : 999;
-      const isMicro = emp < 10 && ca < 2000000;
+      // Excepție: microîntreprinderi sub 3 ani (art. 2.18d)
+      const isMicro = emp < 10 && (caEur < 2_000_000 || activeTotaleEur < 2_000_000);
       if (isMicro && vechimeAni < 3) {
         add("este_intreprindere_in_dificultate", "nu_se_aplica", "calculated");
         add("intreprindere_in_dificultate_motiv", "Microîntreprindere sub 3 ani — excepție art. 2.18(d)", "calculated");
@@ -288,14 +376,29 @@ export async function populateCompanyElements(
         add("este_intreprindere_in_dificultate", "nu", "calculated");
       }
     }
-    // Verificare suplimentară: pierderi acumulate > 50% capital social
-    if (capitalSocial > 0 && profitNet < 0) {
-      const f10ProfitReportat = parseFloat(String(f10.profitReportat || f10.rezultatReportat || 0));
-      if (f10ProfitReportat < 0 && Math.abs(f10ProfitReportat) > capitalSocial * 0.5) {
+
+    // Test 2: Pierderi acumulate > 50% capital social (indiferent de profitul curent)
+    if (capitalSocial > 0) {
+      const profitReportat = parseFloat(String(f10.capital?.profitReportat || f10.profitReportat || f10.rezultatReportat || 0));
+      if (profitReportat < 0 && Math.abs(profitReportat) > capitalSocial * 0.5) {
         add("pierderi_acumulate_peste_50pct", "da", "calculated");
-        add("pierderi_acumulate_valoare", f10ProfitReportat, "calculated");
+        add("pierderi_acumulate_valoare", profitReportat, "calculated");
+        // Suprascrie rezultatul testului 1 dacă e "nu"
+        if (capitaluriProprii >= capitalSocial * 0.5) {
+          add("atentie_pierderi_acumulate",
+            `Deși capitalurile proprii sunt > 50% din capital social, pierderile reportate acumulate (${Math.abs(profitReportat).toLocaleString("ro-RO")} RON) depășesc 50% din capitalul social`,
+            "calculated");
+        }
       } else {
         add("pierderi_acumulate_peste_50pct", "nu", "calculated");
+      }
+    }
+
+    // Test 3: Grad îndatorare excesiv (datorii/active > 7.5)
+    if (activeTotale > 0 && datoriiTotale > 0) {
+      const gradIndatorareActiv = datoriiTotale / activeTotale;
+      if (gradIndatorareActiv > 0.75) {
+        add("avertisment_indatorare_activ", `Datorii/Active = ${Math.round(gradIndatorareActiv * 100)}% — grad de îndatorare ridicat`, "calculated");
       }
     }
 

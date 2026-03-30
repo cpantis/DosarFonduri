@@ -424,11 +424,19 @@ export const elementDefinitions = pgTable("element_definitions", {
   helpText: text("help_text"),
   isDerived: boolean("is_derived").notNull().default(false),
   derivationFormula: text("derivation_formula"),
+  // Solomon Workflow v3 — element taxonomy
+  elementType: varchar("element_type", { length: 20 }).notNull().default("scalar"),
+  groupKey: varchar("group_key", { length: 100 }),
+  parentGroupKey: varchar("parent_group_key", { length: 100 }),
+  phase: integer("phase"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
   guideIdx: index("elem_def_guide_idx").on(table.guideDocumentId),
   orgIdx: index("elem_def_org_idx").on(table.organizationId),
   keyGuideIdx: uniqueIndex("elem_def_key_guide_idx").on(table.elementKey, table.guideDocumentId),
+  phaseIdx: index("elem_def_phase_idx").on(table.phase),
+  groupIdx: index("elem_def_group_idx").on(table.groupKey),
+  typeIdx: index("elem_def_type_idx").on(table.elementType),
 }));
 
 // === GUIDE REFERENCE TABLES (structured data from annexes) ===
@@ -541,6 +549,17 @@ export const projects = pgTable("projects", {
   codMysmis: varchar("cod_mysmis", { length: 100 }),
   structuraDosar: text("structura_dosar"),
   tipProiect: varchar("tip_proiect", { length: 50 }),
+  temaProiect: varchar("tema_proiect", { length: 255 }),
+  // Solomon Workflow v3 — phase tracking
+  narrativeThread: jsonb("narrative_thread").$type<{
+    problem?: string;
+    impact?: string;
+    solution?: string;
+    context?: string;
+    ambition?: string;
+  }>(),
+  currentPhase: integer("current_phase").default(1),
+  currentQuestion: integer("current_question").default(0),
   deadline: timestamp("deadline"),
   consultantId: uuid("consultant_id").references(() => users.id, { onDelete: "set null" }),
   lockedBy: uuid("locked_by").references(() => users.id, { onDelete: "set null" }),
@@ -559,6 +578,7 @@ export const projectElements = pgTable("project_elements", {
   templateElementId: uuid("template_element_id").references(() => templateElements.id, { onDelete: "set null" }),
   elementDefId: uuid("element_def_id").references(() => elementDefinitions.id, { onDelete: "set null" }),
   instanceIndex: integer("instance_index").notNull().default(0),  // For multi-instance elements (minCount>1): 0, 1, 2...
+  parentInstanceIndex: integer("parent_instance_index"),  // Links nested group instance to parent
   value: text("value"),
   source: elementSourceEnum("source").notNull().default("manual"),
   sourceDocumentId: uuid("source_document_id").references(() => documents.id, { onDelete: "set null" }),
@@ -664,6 +684,10 @@ export const projectChecklist = pgTable("project_checklist", {
   done: boolean("done").notNull().default(false),
   notes: text("notes"),
   sortOrder: integer("sort_order").default(0),
+  // Document validity tracking
+  issuedAt: timestamp("issued_at"),
+  validUntil: timestamp("valid_until"),
+  validityDays: integer("validity_days"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
   projectIdx: index("proj_check_project_idx").on(table.projectId),
@@ -948,4 +972,38 @@ export const guideChunks = pgTable("guide_chunks", {
   docIdx: index("guide_chunks_doc_idx").on(table.documentId),
   orgIdx: index("guide_chunks_org_idx").on(table.organizationId),
   sectionIdx: index("guide_chunks_section_idx").on(table.sectionType),
+}));
+
+// === BUDGET ITEMS (line-by-line project budget — Q4 Dimensionare) ===
+export const budgetItems = pgTable("budget_items", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  // Identification
+  category: varchar("category", { length: 100 }).notNull(),
+  subcategory: varchar("subcategory", { length: 255 }),
+  description: varchar("description", { length: 500 }).notNull(),
+  // Values
+  unitCost: decimal("unit_cost", { precision: 15, scale: 2 }).notNull(),
+  quantity: integer("quantity").notNull().default(1),
+  totalCost: decimal("total_cost", { precision: 15, scale: 2 }).notNull(),
+  currency: varchar("currency", { length: 3 }).notNull().default("EUR"),
+  // Eligibility
+  eligible: boolean("eligible").notNull().default(true),
+  eligibilityNotes: text("eligibility_notes"),
+  // Guide reference (price ceiling)
+  guideRefTableId: uuid("guide_ref_table_id").references(() => guideReferenceTables.id, { onDelete: "set null" }),
+  guideMaxPrice: decimal("guide_max_price", { precision: 15, scale: 2 }),
+  exceedsCeiling: boolean("exceeds_ceiling").default(false),
+  // Link to element group
+  elementGroupInstance: integer("element_group_instance"),
+  // Metadata
+  sortOrder: integer("sort_order").default(0),
+  notes: text("notes"),
+  createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull().$onUpdate(() => new Date()),
+}, (table) => ({
+  projectIdx: index("budget_project_idx").on(table.projectId),
+  orgIdx: index("budget_org_idx").on(table.organizationId),
 }));

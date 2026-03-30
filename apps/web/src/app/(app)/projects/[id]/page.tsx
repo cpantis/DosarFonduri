@@ -434,6 +434,17 @@ export default function ProjectViewPage() {
   const [editingExtractionValue, setEditingExtractionValue] = useState("");
   const [refinePopup, setRefinePopup] = useState<{ text: string; x: number; y: number } | null>(null);
   const [refineInput, setRefineInput] = useState("");
+  const [refineEnabled, setRefineEnabled] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return localStorage.getItem("df-refine-enabled") !== "false";
+  });
+
+  // Listen for toggle from Sidebar
+  useEffect(() => {
+    const handler = (e: Event) => setRefineEnabled((e as CustomEvent).detail);
+    window.addEventListener("df-refine-toggle", handler);
+    return () => window.removeEventListener("df-refine-toggle", handler);
+  }, []);
   const chatRef = useRef<HTMLDivElement>(null);
   const chatBottomRef = useRef<HTMLDivElement>(null);
   const [solomonAutoScroll, setSolomonAutoScroll] = useState(true);
@@ -1246,6 +1257,7 @@ export default function ProjectViewPage() {
   };
 
   const handleTextSelect = useCallback(() => {
+    if (!refineEnabled) return;
     const sel = window.getSelection();
     if (!sel || sel.isCollapsed) return;
     const text = sel.toString().trim();
@@ -1256,7 +1268,7 @@ export default function ProjectViewPage() {
     const rect = range.getBoundingClientRect();
     setRefinePopup({ text, x: rect.left, y: rect.bottom + 8 });
     setRefineInput("");
-  }, []);
+  }, [refineEnabled]);
 
   const handleRefineSubmit = async () => {
     if (readOnly || !refineInput.trim() || !refinePopup || !solomonConvId) return;

@@ -785,17 +785,22 @@ export default function ProjectViewPage() {
       }
     } catch (err) {
       console.error("Failed to init Solomon conversation:", err);
+      toast("error", "Conversația Solomon nu a putut fi inițializată. Reîncearcă.");
       return null;
     }
   }
 
   async function handleSolomonModelChange(model: "sonnet" | "opus") {
+    const prevModel = solomonModel;
     setSolomonModel(model);
     if (solomonConvId) {
       const modelId = model === "opus" ? "claude-opus-4-6" : "claude-sonnet-4-6";
       try {
         await apiPut(`/api/solomon/conversations/${solomonConvId}/model`, { model: modelId });
-      } catch {}
+      } catch {
+        setSolomonModel(prevModel);
+        toast("error", "Nu s-a putut schimba modelul. Încearcă din nou.");
+      }
     }
   }
 
@@ -4789,6 +4794,24 @@ export default function ProjectViewPage() {
                       <div className="solomon-drop-text">Eliberează pentru upload documente</div>
                     </div>
                   )}
+                  {/* Toolbar: avatar + model selector + ET toggle */}
+                  <div className="solomon-toolbar">
+                    <div className="solomon-toolbar-inner">
+                      <div className="solomon-avatar">S</div>
+                      <div className="solomon-name-block">
+                        <span className="sn-name">Solomon</span>
+                        <span className="sn-status"><span className="sn-status-dot" /> Online</span>
+                      </div>
+                      <div className="model-selector">
+                        <button className={`model-btn${solomonModel === "sonnet" ? " active" : ""}`} onClick={() => handleSolomonModelChange("sonnet")} disabled={solomonStreaming}>Sonnet</button>
+                        <button className={`model-btn${solomonModel === "opus" ? " active" : ""}`} onClick={() => handleSolomonModelChange("opus")} disabled={solomonStreaming}>Opus</button>
+                      </div>
+                      <button className={`et-toggle${solomonET ? " on" : ""}`} onClick={() => setSolomonET(prev => !prev)} disabled={solomonStreaming}>
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L9.19 8.63L2 9.24L7.46 13.97L5.82 21L12 17.27L18.18 21L16.54 13.97L22 9.24L14.81 8.63L12 2Z"/></svg>
+                        ET
+                      </button>
+                    </div>
+                  </div>
                   {/* Messages */}
                   <div className="chat-messages" ref={chatRef} onScroll={handleChatScroll} onMouseUp={handleTextSelect}>
                     <div className="chat-messages-inner">

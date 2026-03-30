@@ -36,6 +36,7 @@ async function verifyConversationOrg(convId: string, organizationId: string) {
 // Create conversation
 solomonRoutes.post("/projects/:projectId/conversations", async (c) => {
   const auth = c.get("auth") as AuthContext;
+  if (!auth.userId) return c.json({ error: "Unauthorized" }, 401);
   const projectId = c.req.param("projectId");
 
   const project = await verifyProjectOrg(projectId, auth.organizationId!);
@@ -85,6 +86,7 @@ solomonRoutes.get("/projects/:projectId/conversations", async (c) => {
 // Send message (SSE streaming)
 solomonRoutes.post("/conversations/:convId/messages", async (c) => {
   const auth = c.get("auth") as AuthContext;
+  if (!auth.userId) return c.json({ error: "Unauthorized" }, 401);
   const convId = c.req.param("convId");
 
   const conv = await verifyConversationOrg(convId, auth.organizationId!);
@@ -113,6 +115,7 @@ solomonRoutes.post("/conversations/:convId/messages", async (c) => {
 // Upload document in conversation
 solomonRoutes.post("/conversations/:convId/upload", async (c) => {
   const auth = c.get("auth") as AuthContext;
+  if (!auth.userId) return c.json({ error: "Unauthorized" }, 401);
   const convId = c.req.param("convId");
 
   const conv = await verifyConversationOrg(convId, auth.organizationId!);
@@ -281,6 +284,7 @@ solomonRoutes.post("/conversations/:convId/upload", async (c) => {
 // Inline refine (rewrite selected text)
 solomonRoutes.post("/conversations/:convId/refine", async (c) => {
   const auth = c.get("auth") as AuthContext;
+  if (!auth.userId) return c.json({ error: "Unauthorized" }, 401);
   const convId = c.req.param("convId");
 
   const conv = await verifyConversationOrg(convId, auth.organizationId!);

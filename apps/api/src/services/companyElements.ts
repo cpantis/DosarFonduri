@@ -1,7 +1,7 @@
 import { db } from "../db";
 import {
   companies, companyElements, companyAssociates,
-  companyAdministrators, companyFinancials, projects,
+  companyAdministrators, companyFinancials, companyIfMembers, projects,
 } from "../db/schema";
 import { eq, and } from "drizzle-orm";
 
@@ -25,6 +25,10 @@ export async function populateCompanyElements(
 
   const admins = await db.query.companyAdministrators.findMany({
     where: eq(companyAdministrators.companyId, companyId),
+  });
+
+  const ifMembers = await db.query.companyIfMembers.findMany({
+    where: eq(companyIfMembers.companyId, companyId),
   });
 
   const financials = await db.query.companyFinancials.findMany({
@@ -110,10 +114,54 @@ export async function populateCompanyElements(
     add("are_asociat_strain", hasStranger ? "da" : "nu", "calculated");
   }
 
-  // === Administrators detailed ===
+  // === Administrators detailed (ALL, not just first) ===
+  for (let i = 0; i < admins.length; i++) {
+    const admin = admins[i];
+    const prefix = admins.length === 1 ? "" : `_${i + 1}`;
+    add(`administrator${prefix}_nume`, admin.name, "onrc");
+    if (admin.role) add(`administrator${prefix}_functie`, admin.role, "onrc");
+    if (admin.powers) add(`administrator${prefix}_puteri`, admin.powers, "onrc");
+    if (admin.mandateDuration) add(`administrator${prefix}_mandat`, admin.mandateDuration, "onrc");
+    if (admin.appointmentDate) add(`administrator${prefix}_data_numire`, admin.appointmentDate, "onrc");
+  }
+  // Legacy field for backward compatibility
   if (admins.length > 0 && admins[0].appointmentDate) {
     add("data_numire_administrator", admins[0].appointmentDate, "onrc");
   }
+
+  // === Associates detailed per-person (for forms) ===
+  for (let i = 0; i < associates.length; i++) {
+    const a = associates[i];
+    const prefix = `asociat_${i + 1}`;
+    add(`${prefix}_nume`, a.name, "onrc");
+    add(`${prefix}_tip`, a.type, "onrc");
+    if (a.role) add(`${prefix}_calitate`, a.role, "onrc");
+    if (a.citizenshipOrCountry) add(`${prefix}_cetatenie`, a.citizenshipOrCountry, "onrc");
+    if (a.contribution) add(`${prefix}_aport`, a.contribution, "onrc");
+    if (a.shares) add(`${prefix}_parti_sociale`, a.shares, "onrc");
+    if (a.pctBenefits) add(`${prefix}_cota_beneficii`, a.pctBenefits, "onrc");
+    if (a.pctLosses) add(`${prefix}_cota_pierderi`, a.pctLosses, "onrc");
+    if (a.tipAsociat) add(`${prefix}_tip_asociat`, a.tipAsociat, "onrc");
+  }
+
+  // === IF Members (Întreprinderi Familiale) ===
+  if (ifMembers.length > 0) {
+    add("numar_membri_if", ifMembers.length, "calculated");
+    for (let i = 0; i < ifMembers.length; i++) {
+      const m = ifMembers[i];
+      const prefix = `membru_if_${i + 1}`;
+      add(`${prefix}_nume`, m.name, "onrc");
+      if (m.role) add(`${prefix}_calitate`, m.role, "onrc");
+      if (m.kinship) add(`${prefix}_grad_rudenie`, m.kinship, "onrc");
+      if (m.citizenship) add(`${prefix}_cetatenie`, m.citizenship, "onrc");
+      if (m.birthDate) add(`${prefix}_data_nasterii`, m.birthDate, "onrc");
+    }
+    // Reprezentant IF
+    if (company.reprezentantIF) add("reprezentant_if", company.reprezentantIF, "onrc");
+  }
+
+  // === Patrimoniu afectat (PFA/II/IF) ===
+  if (company.patrimoniu_afectat) add("patrimoniu_afectat", company.patrimoniu_afectat, "onrc");
 
   // === ONRC raw data extras ===
   const raw = (company.onrcRawData || {}) as Record<string, any>;
@@ -161,11 +209,72 @@ export async function populateCompanyElements(
     add("numar_sedii_secundare", 0, "calculated");
   }
 
+  // CAEN secundare cu descrieri (format: "cod1 - desc1; cod2 - desc2")
+  if (raw.activitatiSecundare?.length > 0) {
+    const caenDetails = raw.activitatiSecundare
+      .map((a: any) => {
+        if (typeof a === "string") return a;
+        const cod = a.cod || a.code || "";
+        const desc = a.descriere || a.den || a.description || "";
+        return desc ? `${cod} - ${desc}` : cod;
+      })
+      .filter(Boolean);
+    if (caenDetails.length > 0) {
+      add("cod_caen_secundare_detalii", caenDetails.join("; "), "onrc");
+    }
+  }
+
+  // Sedii secundare detaliat
+  if (raw.sediiSecundare?.length > 0) {
+    const sediiDetalii = raw.sediiSecundare
+      .map((s: any) => typeof s === "string" ? s : s.adresa || s.denumire || "")
+      .filter(Boolean);
+    if (sediiDetalii.length > 0) {
+      add("sedii_secundare_adrese", sediiDetalii.join("; "), "onrc");
+    }
+  }
+
+  // Asociați PJ — CUI și RegCom (crucial pentru firme legate)
+  if (raw.asociati?.length > 0) {
+    for (const a of raw.asociati) {
+      if (a.type === "pj" && (a.cuiPJ || a.regComPJ)) {
+        const pjName = a.name || a.denumire || "";
+        if (a.cuiPJ) add(`asociat_pj_${pjName.replace(/\s+/g, "_").substring(0, 30)}_cui`, a.cuiPJ, "onrc");
+        if (a.regComPJ) add(`asociat_pj_${pjName.replace(/\s+/g, "_").substring(0, 30)}_reg_com`, a.regComPJ, "onrc");
+      }
+    }
+  }
+
+  // Administratori — date extinse din onrcRawData (data nașterii, cetățenie, expirare mandat)
+  if (raw.administratori?.length > 0) {
+    for (let i = 0; i < raw.administratori.length; i++) {
+      const adm = raw.administratori[i];
+      const prefix = raw.administratori.length === 1 ? "administrator" : `administrator_${i + 1}`;
+      if (adm.dataNasterii) add(`${prefix}_data_nasterii`, adm.dataNasterii, "onrc");
+      if (adm.citizenship || adm.cetatenie) add(`${prefix}_cetatenie`, adm.citizenship || adm.cetatenie, "onrc");
+      if (adm.expiryDate || adm.dataExpirarii) add(`${prefix}_data_expirare_mandat`, adm.expiryDate || adm.dataExpirarii, "onrc");
+    }
+  }
+
+  // Asociați — date extinse din onrcRawData (data nașterii, loc naștere, stare civilă)
+  if (raw.asociati?.length > 0) {
+    for (let i = 0; i < raw.asociati.length; i++) {
+      const a = raw.asociati[i];
+      const prefix = `asociat_${i + 1}`;
+      if (a.dataNasterii) add(`${prefix}_data_nasterii`, a.dataNasterii, "onrc");
+      if (a.locNastere) add(`${prefix}_loc_nastere`, a.locNastere, "onrc");
+      if (a.sex) add(`${prefix}_sex`, a.sex, "onrc");
+      if (a.stareCivila) add(`${prefix}_stare_civila`, a.stareCivila, "onrc");
+      if (a.aportVarsatTotal) add(`${prefix}_aport_varsat`, a.aportVarsatTotal, "onrc");
+    }
+  }
+
   // Status flags
   add("insolventa", raw.insolventa ? "da" : "nu", "onrc");
   add("dizolvare", raw.dizolvare ? "da" : "nu", "onrc");
   add("lichidare", raw.lichidare ? "da" : "nu", "onrc");
   add("restrictii", raw.restrictii ? "da" : "nu", "onrc");
+  if (raw.reorganizare) add("reorganizare", "da", "onrc");
 
   // === Financial data (latest year + all years for trend) ===
   if (financials.length > 0) {

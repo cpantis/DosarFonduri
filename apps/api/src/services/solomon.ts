@@ -990,7 +990,14 @@ Nu aștepta să fii întrebat. Un consultant senior:
    - Includ DOAR câmpurile pe care le-ai obținut (confirmate de consultant sau deduse cu certitudine)
    - Nu inventa valori — include doar ce a confirmat/furnizat consultantul sau ce ai detectat automat și consultantul a confirmat
    - Actualizează câmpurile la fiecare confirmare/corecție din conversație
-   - Aceste metadate sunt ESENȚIALE — Neemia le folosește pentru denumirea și structurarea documentelor generate`;
+   - Aceste metadate sunt ESENȚIALE — Neemia le folosește pentru denumirea și structurarea documentelor generate
+
+### Verificare eligibilitate solicitant
+8. Când consultantul solicită verificarea eligibilității firmei (ex: "verifică eligibilitatea", "poate aplica firma?", "e eligibilă?"), sau când consideri oportun (la începutul proiectului, după completarea datelor firmei), poți declanșa verificarea automată cu:
+   <!--CHECK_ELIGIBILITY-->
+   Sistemul va rula automat verificarea contra tuturor regulilor din ghidul sesiunii și va returna rezultatul în mesajul următor.
+   Folosește rezultatul pentru a explica consultantului: ce reguli sunt îndeplinite, ce reguli au eșuat (cu soluții concrete), și ce date lipsesc.
+   NU adăuga acest tag de mai multe ori în același mesaj. Un singur tag per mesaj e suficient.`;
 }
 
 // ═══ INLINE REFINE ═══
@@ -1833,10 +1840,52 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
           } catch {}
         }
 
+        // Process CHECK_ELIGIBILITY tool — run pre-eligibility and send results as SSE event
+        if (fullResponse.includes("<!--CHECK_ELIGIBILITY-->")) {
+          try {
+            const { checkPreEligibility } = await import("./preEligibility");
+            const project = await db.query.projects.findFirst({
+              where: eq(projects.id, projectId),
+            });
+            if (project?.folderId) {
+              const eligResult = await checkPreEligibility(
+                project.companyId,
+                project.folderId,
+                organizationId,
+              );
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+                type: "eligibility_check_result",
+                result: {
+                  total: eligResult.summary.total,
+                  passed: eligResult.summary.passed,
+                  failed: eligResult.summary.failed,
+                  pending: eligResult.summary.pending,
+                  rules: eligResult.rules.map(r => ({
+                    description: r.description,
+                    category: r.category,
+                    status: r.status,
+                    notes: r.notes,
+                    elements: r.elements?.map(e => ({
+                      key: e.elementKey,
+                      name: e.displayName,
+                      value: e.value,
+                      missing: e.isMissing,
+                    })),
+                  })),
+                  missingElements: eligResult.summary.missingElements,
+                },
+              })}\n\n`));
+            }
+          } catch (eligErr) {
+            console.warn("[solomon] CHECK_ELIGIBILITY failed:", (eligErr as Error).message);
+          }
+        }
+
         // Save assistant message (clean hidden JSON tags)
         const cleanResponse = fullResponse
           .replace(/<!--ELEMENTS_JSON[\s\S]*?ELEMENTS_JSON-->/g, "")
           .replace(/<!--METADATA_JSON[\s\S]*?METADATA_JSON-->/g, "")
+          .replace(/<!--CHECK_ELIGIBILITY-->/g, "")
           .trim();
 
         await db.insert(solomonMessages).values({

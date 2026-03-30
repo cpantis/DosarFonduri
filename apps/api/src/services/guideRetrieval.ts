@@ -158,33 +158,40 @@ export async function retrieveContext(
   const queryEmbedding = await embedText(query);
   const embeddingStr = `[${queryEmbedding.join(",")}]`;
 
-  const [guideResults, knowledgeResults] = await Promise.all([
-    db.execute(sql`
-      SELECT
-        id, content, token_count, page_start, page_end,
-        section_type, section_title, document_id,
-        1 - (embedding <=> ${embeddingStr}::vector) as similarity
-      FROM guide_chunks
-      WHERE organization_id = ${organizationId}
-        ${options?.documentId ? sql`AND document_id = ${options.documentId}` : sql``}
-        AND embedding IS NOT NULL
-      ORDER BY embedding <=> ${embeddingStr}::vector
-      LIMIT ${options?.guideTopK || 8}
-    `),
-    db.execute(sql`
-      SELECT
-        id, title, content, category, source_reference,
-        1 - (embedding <=> ${embeddingStr}::vector) as similarity
-      FROM solomon_knowledge
-      WHERE organization_id = ${organizationId}
-        AND enabled = true
-        AND embedding IS NOT NULL
-        AND (valid_from IS NULL OR valid_from <= now())
-        AND (valid_until IS NULL OR valid_until >= now())
-      ORDER BY embedding <=> ${embeddingStr}::vector
-      LIMIT ${options?.knowledgeTopK || 5}
-    `),
-  ]);
+  let guideResults: any;
+  let knowledgeResults: any;
+  try {
+    [guideResults, knowledgeResults] = await Promise.all([
+      db.execute(sql`
+        SELECT
+          id, content, token_count, page_start, page_end,
+          section_type, section_title, document_id,
+          1 - (embedding <=> ${embeddingStr}::vector) as similarity
+        FROM guide_chunks
+        WHERE organization_id = ${organizationId}
+          ${options?.documentId ? sql`AND document_id = ${options.documentId}` : sql``}
+          AND embedding IS NOT NULL
+        ORDER BY embedding <=> ${embeddingStr}::vector
+        LIMIT ${options?.guideTopK || 8}
+      `),
+      db.execute(sql`
+        SELECT
+          id, title, content, category, source_reference,
+          1 - (embedding <=> ${embeddingStr}::vector) as similarity
+        FROM solomon_knowledge
+        WHERE organization_id = ${organizationId}
+          AND enabled = true
+          AND embedding IS NOT NULL
+          AND (valid_from IS NULL OR valid_from <= now())
+          AND (valid_until IS NULL OR valid_until >= now())
+        ORDER BY embedding <=> ${embeddingStr}::vector
+        LIMIT ${options?.knowledgeTopK || 5}
+      `),
+    ]);
+  } catch (err) {
+    console.warn("[guideRetrieval] Vector search failed (pgvector not installed or embedding column missing):", (err as Error).message);
+    return { context: "", guideContext: "", knowledgeContext: "", chunks: [], totalTokens: 0 };
+  }
 
   const guideRows = ((guideResults as any).rows || guideResults)
     .filter((r: any) => parseFloat(r.similarity) >= 0.3);
@@ -265,15 +272,21 @@ export async function retrieveContext(
  * Check if an organization has any RAG content indexed.
  */
 export async function hasRAGContent(organizationId: string): Promise<boolean> {
-  const result = await db.execute(sql`
-    SELECT EXISTS(
-      SELECT 1 FROM guide_chunks WHERE organization_id = ${organizationId} AND embedding IS NOT NULL
-      UNION ALL
-      SELECT 1 FROM solomon_knowledge WHERE organization_id = ${organizationId} AND enabled = true AND embedding IS NOT NULL
-    ) as has_content
-  `);
-  const rows = (result as any).rows || result;
-  return rows[0]?.has_content === true;
+  try {
+    const result = await db.execute(sql`
+      SELECT EXISTS(
+        SELECT 1 FROM guide_chunks WHERE organization_id = ${organizationId} AND embedding IS NOT NULL
+        UNION ALL
+        SELECT 1 FROM solomon_knowledge WHERE organization_id = ${organizationId} AND enabled = true AND embedding IS NOT NULL
+      ) as has_content
+    `);
+    const rows = (result as any).rows || result;
+    return rows[0]?.has_content === true;
+  } catch (err) {
+    // pgvector extension or embedding column may not exist yet
+    console.warn("[guideRetrieval] hasRAGContent check failed (pgvector not installed or embedding column missing):", (err as Error).message);
+    return false;
+  }
 }
 
 // Keep backward-compat exports

@@ -4,7 +4,7 @@ import { db } from "../db";
 import {
   projects, projectElements, templateElements,
   projectEligibility, rules, documents, documentFolders,
-  companies, companyFinancials, companyLinkedCompanies,
+  companies, companyLinkedCompanies,
   solomonConversations, solomonMessages,
   orgConfig, solomonKnowledge,
   elementRuleLinks, elementDefinitions, guideReferenceTables,
@@ -407,15 +407,7 @@ async function buildSystemPrompt(projectId: string, organizationId: string): Pro
   });
   const totalMaxPoints = allScoringCriteria.reduce((sum, c) => sum + Number(c.maxPoints), 0);
 
-  // Company financials (all years for trends)
-  const allFinancials = await db.query.companyFinancials.findMany({
-    where: eq(companyFinancials.companyId, company.id),
-    orderBy: (f, { desc }) => [desc(f.year)],
-    limit: 3,
-  });
-  const latestFinancial = allFinancials[0] || null;
-
-  // Calculated company analysis (IMM classification, difficulty status, trends, ratios)
+  // All company elements — dynamic library (includes ALL financial + juridical data)
   let companyAnalysis: any = {};
   try {
     companyAnalysis = await getCompanyDataFromElements(company.id);
@@ -433,14 +425,6 @@ async function buildSystemPrompt(projectId: string, organizationId: string): Pro
     limit: 10,
   });
 
-  // Build financial history section
-  const financialHistory = allFinancials.map(f => {
-    const f20 = f.f20 as any;
-    const f30 = f.f30 as any;
-    const f10 = f.f10 as any;
-    return `  ${f.year}: CA=${f20?.cifraAfaceriNeta || "?"} RON | Profit=${f20?.profitNet || "?"} RON | Angajați=${f30?.numarMediuSalariati || "?"} | Cap. proprii=${f10?.capitaluriProprii || "?"}`;
-  }).join("\n");
-
   // Load knowledge base updates (legislative changes, corrections, best practices)
   const now = new Date();
   const knowledgeEntries = await db.query.solomonKnowledge.findMany({
@@ -457,14 +441,6 @@ async function buildSystemPrompt(projectId: string, organizationId: string): Pro
     if (k.validUntil && k.validUntil < now) return false;
     return true;
   });
-
-  // Compute derived fields
-  const currentYear = new Date().getFullYear();
-  const vechimeAni = company.anInfiintare ? currentYear - Number(company.anInfiintare) : null;
-  const capitaluriProprii = (latestFinancial?.f10 as any)?.capitaluriProprii;
-  const cifraAfaceri = (latestFinancial?.f20 as any)?.cifraAfaceriNeta;
-  const profitNet = (latestFinancial?.f20 as any)?.profitNet;
-  const nrAngajati = (latestFinancial?.f30 as any)?.numarMediuSalariati;
 
   return `Ești Solomon — consultant senior cu experiență vastă în fonduri europene și nerambursabile, integrat în platforma DosarFonduri. Lucrezi pe dosarul "${project.name}" pentru "${company.denumire}" (CUI: ${company.cui}).
 
@@ -507,47 +483,77 @@ Ești echivalentul unui consultant senior cu 15+ ani experiență în fonduri eu
 ## DATE FIRMĂ (din ONRC + bilanțuri)
 ═══════════════════════════════════════════
 
-- Denumire: ${sanitizeForPrompt(company.denumire)}
+${(() => {
+  // Dynamic injection of ALL company elements — grouped by category
+  if (!companyAnalysis || Object.keys(companyAnalysis).length === 0) {
+    // Fallback to basic company fields if no elements materialized
+    return `- Denumire: ${sanitizeForPrompt(company.denumire)}
 - CUI: ${sanitizeForPrompt(company.cui)}
 - Forma juridică: ${sanitizeForPrompt(company.formaJuridica)}
 - CAEN principal: ${sanitizeForPrompt(company.caen)}
-- Nr. Reg. Com.: ${sanitizeForPrompt((company as any).registrationNumber)}
 - Adresă: ${sanitizeForPrompt(company.adresa)}, Județ: ${sanitizeForPrompt(company.judet)}
-- An înființare: ${company.anInfiintare || "necunoscut"}${vechimeAni !== null ? ` (vechime: ${vechimeAni} ani)` : ""}
+- An înființare: ${company.anInfiintare || "necunoscut"}
 - Status: ${sanitizeForPrompt(company.stare)}
-
-### Situație financiară
-- Angajați (ultimul an): ${nrAngajati || "necunoscut"}
-- Cifra de afaceri netă: ${cifraAfaceri || "necunoscut"} RON
-- Profit net: ${profitNet || "necunoscut"} RON
-- Capitaluri proprii: ${capitaluriProprii || "necunoscut"} RON${capitaluriProprii && Number(capitaluriProprii) < 0 ? " ⚠️ NEGATIVE — risc eligibilitate!" : ""}
-
-### Evoluție financiară (ultimii ani)
-${financialHistory || "Nu sunt disponibile date financiare multi-an."}
-
-### Analiză financiară calculată
-${(() => {
-  if (!companyAnalysis || Object.keys(companyAnalysis).length === 0) return "Nu sunt disponibile analize calculate.";
-  const lines: string[] = [];
-  if (companyAnalysis.clasificare_imm) lines.push(`- **Clasificare IMM:** ${companyAnalysis.clasificare_imm}`);
-  if (companyAnalysis.este_intreprindere_in_dificultate) {
-    const status = companyAnalysis.este_intreprindere_in_dificultate;
-    lines.push(`- **Întreprindere în dificultate (Reg. 651/2014):** ${status === "da" ? "⚠️ DA" : status === "nu_se_aplica" ? "Nu se aplică" : "Nu"}${companyAnalysis.intreprindere_in_dificultate_motiv ? ` — ${companyAnalysis.intreprindere_in_dificultate_motiv}` : ""}`);
+(Elementele firmei nu sunt încă disponibile — popularea nu a rulat.)`;
   }
-  if (companyAnalysis.stare_fiscala_ok) lines.push(`- **Stare fiscală:** ${companyAnalysis.stare_fiscala_ok === "da" ? "OK" : `⚠️ PROBLEME: ${companyAnalysis.stare_fiscala_probleme || "necunoscut"}`}`);
-  if (companyAnalysis.bilant_actualizat) lines.push(`- **Bilanț actualizat:** ${companyAnalysis.bilant_actualizat === "da" ? "Da" : `⚠️ ${companyAnalysis.bilant_actualizat_motiv || "Nu"}`}`);
-  if (companyAnalysis.trend_cifra_afaceri_1an) lines.push(`- **Trend CA 1 an:** ${companyAnalysis.trend_cifra_afaceri_1an} (${companyAnalysis.trend_cifra_afaceri_1an_pct || 0}%)`);
-  if (companyAnalysis.trend_cifra_afaceri_3ani) lines.push(`- **Trend CA 3 ani:** ${companyAnalysis.trend_cifra_afaceri_3ani} (${companyAnalysis.trend_cifra_afaceri_3ani_pct || 0}%)`);
-  if (companyAnalysis.ani_consecutivi_pierdere && Number(companyAnalysis.ani_consecutivi_pierdere) > 0) lines.push(`- **⚠️ Ani consecutivi pierdere:** ${companyAnalysis.ani_consecutivi_pierdere}`);
-  if (companyAnalysis.grad_indatorare) lines.push(`- **Grad îndatorare:** ${companyAnalysis.grad_indatorare}`);
-  if (companyAnalysis.lichiditate_curenta) lines.push(`- **Lichiditate curentă:** ${companyAnalysis.lichiditate_curenta}`);
-  if (companyAnalysis.solvabilitate) lines.push(`- **Solvabilitate:** ${companyAnalysis.solvabilitate}`);
-  if (companyAnalysis.rentabilitate) lines.push(`- **Rentabilitate:** ${companyAnalysis.rentabilitate}`);
-  if (companyAnalysis.de_minimis_verificat === "nu") lines.push(`- **De minimis:** Neverificat — solicită declarația pe proprie răspundere`);
-  return lines.length > 0 ? lines.join("\n") : "Date insuficiente pentru analiză.";
+
+  // Group elements by prefix/category for readable structure
+  const categorize = (key: string): string => {
+    if (/^(denumire|cui|reg_com|euid|forma_juridica|stare|adresa|localitate|judet|cod_postal|telefon|email|website|cod_caen|caen_descriere|durata|an_infiintare|vechime_ani|cod_tva|platitor_tva|moneda)$/.test(key)) return "IDENTIFICARE";
+    if (/^(capital_social|parti_sociale|actiuni|valoare_parte|valoare_actiune|capital_privat|capital_stat|natura_capital)/.test(key)) return "CAPITAL SOCIAL";
+    if (/^(administrator|reprezentant_legal|functie_administrator|numar_administratori|data_numire)/.test(key)) return "ADMINISTRATORI";
+    if (/^(asociat|numar_asociati|are_asociat_strain)/.test(key)) return "ASOCIAȚI";
+    if (/^(membru_if|numar_membri_if|reprezentant_if|patrimoniu_afectat)/.test(key)) return "MEMBRI IF";
+    if (/^(cod_caen_secundar|numar_activitati_secundare)/.test(key)) return "ACTIVITĂȚI SECUNDARE";
+    if (/^(numar_sedii|sedii_secundare|judete_sedii)/.test(key)) return "SEDII SECUNDARE";
+    if (/^(insolventa|dizolvare|lichidare|restrictii|reorganizare|stare_fiscala)/.test(key)) return "STARE FISCALĂ";
+    if (/^(cifra_afaceri|profit_net|profit_brut|angajati|capitaluri_proprii|active_|datorii_|stocuri|creante|casa_si_conturi|venituri_|cheltuieli_|rezultat_exploatare$|impozit_profit|ebitda|amortizare|cheltuieli_financiare|venituri_financiare)/.test(key)) return "DATE FINANCIARE (ultimul an)";
+    if (/^(capital_subscris_varsat|rezerve$|profit_reportat|profit_exercitiu|cheltuieli_in_avans|venituri_in_avans)/.test(key)) return "STRUCTURA CAPITAL (F10)";
+    if (/^(cifra_afaceri_\d|profit_net_\d|profit_brut_\d|angajati_\d|capitaluri_proprii_\d|active_totale_\d|rezultat_exploatare_\d)/.test(key)) return "EVOLUȚIE FINANCIARĂ (per an)";
+    if (/^(grad_indatorare|lichiditate|solvabilitate|rentabilitate|productivitate|cost_mediu)/.test(key)) return "INDICATORI FINANCIARI";
+    if (/^(clasificare_imm|este_intreprindere_in_dificultate|intreprindere_in_dificultate_motiv|ratio_capitaluri|pierderi_acumulate|atentie_pierderi)/.test(key)) return "CLASIFICARE IMM & DIFICULTATE";
+    if (/^(trend_|ani_consecutivi|numar_ani_financiari)/.test(key)) return "TREND FINANCIAR";
+    if (/^(bilant_actualizat|an_bilant|an_financiar)/.test(key)) return "VALIDITATE BILANȚ";
+    if (/^(firme_legate|are_firme_legate|atentie_imm_legat)/.test(key)) return "FIRME LEGATE";
+    if (/^(de_minimis)/.test(key)) return "AJUTOR DE MINIMIS";
+    if (/^(numar_proiecte|proiecte_existente)/.test(key)) return "ISTORIC PROIECTE";
+    if (/^(avertisment)/.test(key)) return "⚠️ AVERTISMENTE";
+    return "ALTE ELEMENTE";
+  };
+
+  // Build grouped map
+  const groups = new Map<string, Array<{ key: string; value: string }>>();
+  const keys = Object.keys(companyAnalysis).sort();
+  for (const key of keys) {
+    const value = companyAnalysis[key];
+    if (value === null || value === undefined || String(value).trim() === "") continue;
+    const cat = categorize(key);
+    if (!groups.has(cat)) groups.set(cat, []);
+    groups.get(cat)!.push({ key, value: String(value) });
+  }
+
+  // Render — priority order
+  const categoryOrder = [
+    "IDENTIFICARE", "CAPITAL SOCIAL", "ADMINISTRATORI", "ASOCIAȚI", "MEMBRI IF",
+    "ACTIVITĂȚI SECUNDARE", "SEDII SECUNDARE", "STARE FISCALĂ",
+    "DATE FINANCIARE (ultimul an)", "STRUCTURA CAPITAL (F10)",
+    "INDICATORI FINANCIARI", "CLASIFICARE IMM & DIFICULTATE",
+    "EVOLUȚIE FINANCIARĂ (per an)", "TREND FINANCIAR", "VALIDITATE BILANȚ",
+    "FIRME LEGATE", "AJUTOR DE MINIMIS", "ISTORIC PROIECTE",
+    "⚠️ AVERTISMENTE", "ALTE ELEMENTE",
+  ];
+
+  const sections: string[] = [];
+  for (const cat of categoryOrder) {
+    const items = groups.get(cat);
+    if (!items || items.length === 0) continue;
+    sections.push(`### ${cat}\n${items.map(i => `- **${i.key}:** ${sanitizeForPrompt(i.value)}`).join("\n")}`);
+  }
+
+  return sections.join("\n\n");
 })()}
 
-${linkedCompanies.length > 0 ? `### Firme legate (${linkedCompanies.length} conexiuni${linkedCompanies.filter(l => l.confirmed).length > 0 ? `, ${linkedCompanies.filter(l => l.confirmed).length} confirmate` : ""})
+${linkedCompanies.length > 0 ? `### Firme legate din ListaFirme (${linkedCompanies.length} conexiuni${linkedCompanies.filter(l => l.confirmed).length > 0 ? `, ${linkedCompanies.filter(l => l.confirmed).length} confirmate` : ""})
 ${linkedCompanies.map(l => {
   const status = l.confirmed ? "✅ CONFIRMAT" : "⚠️ De verificat";
   const risk = Number(l.riskScore) >= 60 ? "RIDICAT" : Number(l.riskScore) >= 30 ? "MEDIU" : "SCĂZUT";

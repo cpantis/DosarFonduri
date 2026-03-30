@@ -67,7 +67,8 @@ Structura cerută:
     "impozitProfit": number,
     "profitNet": number,
     "cheltuieliMatPrim": number,
-    "cheltuieliPersonal": number
+    "cheltuieliPersonal": number,
+    "cheltuieliAmortizare": number
   },
   "f30": {
     "numarMediuSalariati": number,

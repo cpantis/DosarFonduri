@@ -454,6 +454,9 @@ export default function ProjectViewPage() {
   const [solomonDragOver, setSolomonDragOver] = useState(false);
   const [solomonTimedOut, setSolomonTimedOut] = useState(false);
   const solomonTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // RAG v2: Tool use + phase tracking
+  const [solomonToolUse, setSolomonToolUse] = useState<{ toolName: string; query?: string } | null>(null);
+  const [solomonPhase, setSolomonPhase] = useState<{ phase: string; label: string; progress: number; nextAction: string } | null>(null);
 
   const [recheckLoading, setRecheckLoading] = useState(false);
 
@@ -662,6 +665,8 @@ export default function ProjectViewPage() {
         ]);
 
         setProject(proj);
+        // RAG v2: Load initial phase from project
+        if (proj.solomonPhase) setSolomonPhase(proj.solomonPhase);
         setEligibilityRules(mapEligibilityRules(eligData.flat || []));
         setGuideRules(mapGuideRules(eligData.grouped || []));
         setElements(mapElements(proj.elements || []));
@@ -958,6 +963,13 @@ export default function ProjectViewPage() {
                 }
                 return prev;
               });
+            } else if (evt.type === "tool_use") {
+              // RAG v2: Solomon is searching — show indicator
+              setSolomonToolUse({ toolName: evt.toolName, query: evt.query });
+              setTimeout(() => setSolomonToolUse(null), 3000);
+            } else if (evt.type === "phase_update" && evt.phase) {
+              // RAG v2: Solomon phase update
+              setSolomonPhase(evt.phase);
             } else if (evt.type === "metadata_updated" && evt.metadata) {
               // Solomon confirmed program metadata — update project state
               setProject(prev => prev ? {
@@ -4824,6 +4836,31 @@ export default function ProjectViewPage() {
                       </button>
                     </div>
                   </div>
+                  {/* RAG v2: Phase indicator */}
+                  {solomonPhase && (
+                    <div style={{ padding: "6px 20px", background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
+                      <div style={{ maxWidth: 720, margin: "0 auto", display: "flex", alignItems: "center", gap: 10 }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: "#2563eb", fontFamily: "'JetBrains Mono', monospace" }}>{solomonPhase.phase}</span>
+                        <span style={{ fontSize: 12, color: "#475569", flex: 1 }}>{solomonPhase.label}</span>
+                        <span style={{ fontSize: 11, color: "#94a3b8" }}>{solomonPhase.progress}%</span>
+                      </div>
+                      <div style={{ maxWidth: 720, margin: "3px auto 0", height: 3, background: "#e2e8f0", borderRadius: 2, overflow: "hidden" }}>
+                        <div style={{ height: "100%", width: `${solomonPhase.progress}%`, background: "#2563eb", borderRadius: 2, transition: "width 0.5s ease" }} />
+                      </div>
+                      {solomonPhase.nextAction && (
+                        <div style={{ maxWidth: 720, margin: "2px auto 0", fontSize: 11, color: "#94a3b8" }}>{solomonPhase.nextAction}</div>
+                      )}
+                    </div>
+                  )}
+                  {/* RAG v2: Tool use indicator */}
+                  {solomonToolUse && (
+                    <div style={{ padding: "4px 20px", background: "#eff6ff" }}>
+                      <div style={{ maxWidth: 720, margin: "0 auto", display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#2563eb" }}>
+                        <span style={{ animation: "statusPulse 1s ease infinite" }}>🔍</span>
+                        <span>Caut{solomonToolUse.toolName === "search_knowledge" ? " în ghid" : " documente"}: &quot;{solomonToolUse.query || "..."}&quot;</span>
+                      </div>
+                    </div>
+                  )}
                   {/* Messages */}
                   <div className="chat-messages" ref={chatRef} onScroll={handleChatScroll} onMouseUp={handleTextSelect}>
                     <div className="chat-messages-inner">

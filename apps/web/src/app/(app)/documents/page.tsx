@@ -340,6 +340,7 @@ export default function DocumentsPage() {
   const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({});
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   const [selectedDoc, setSelectedDoc] = useState<string | null>(null);
+  const [classifiedDocs, setClassifiedDocs] = useState<any[]>([]);
   const [search, setSearch] = useState("");
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; nodeId: string } | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
@@ -483,8 +484,15 @@ export default function DocumentsPage() {
       } else {
         setDocs([]);
       }
+      // RAG v2: Load classified docs for session folders
+      if (node?.type === "sesiune") {
+        apiGet<any[]>(`/api/folders/${selectedFolder}/classified-documents`).then(d => setClassifiedDocs(d || [])).catch(() => setClassifiedDocs([]));
+      } else {
+        setClassifiedDocs([]);
+      }
     } else {
       setDocs([]);
+      setClassifiedDocs([]);
     }
   }, [selectedFolder, fetchDocs, tree]);
 
@@ -1070,16 +1078,139 @@ export default function DocumentsPage() {
         ) : isBiblioteca ? (
           /* Biblioteca Sesiune — aggregated session data */
           <SessionLibrary folderId={selectedFolder!.replace("biblioteca_", "")} />
+        ) : !isLeafSelected && selectedNode?.type === "sesiune" ? (
+          /* Session folder — RAG v2: upload zone + classified documents */
+          <div style={{ padding: 20 }}>
+            {/* Upload zone */}
+            <div
+              style={{
+                border: "2px dashed #cbd5e1", borderRadius: 12, padding: "24px 20px",
+                textAlign: "center", marginBottom: 20, cursor: "pointer",
+                background: "#fafbfc", transition: "border-color 0.2s, background 0.2s",
+              }}
+              onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = "#2563eb"; e.currentTarget.style.background = "#eff6ff"; }}
+              onDragLeave={e => { e.currentTarget.style.borderColor = "#cbd5e1"; e.currentTarget.style.background = "#fafbfc"; }}
+              onDrop={async e => {
+                e.preventDefault();
+                e.currentTarget.style.borderColor = "#cbd5e1";
+                e.currentTarget.style.background = "#fafbfc";
+                const files = Array.from(e.dataTransfer.files);
+                for (const file of files) {
+                  try {
+                    // Find any leaf folder under this session for upload
+                    const children = selectedNode.children || [];
+                    const leafFolder = children.find((c: any) => LEAF_TYPES.has(c.type));
+                    const targetFolderId = leafFolder?.id || selectedFolder;
+                    const fd = new FormData();
+                    fd.append("file", file);
+                    await api(`/api/folders/${targetFolderId}/documents`, { method: "POST", body: fd, timeout: 120000 });
+                    toast("success", `Upload: ${file.name}`);
+                  } catch (err: any) { toast("error", `Eroare: ${file.name}`); }
+                }
+                // Refresh classified docs
+                if (selectedFolder) {
+                  apiGet<any[]>(`/api/folders/${selectedFolder}/classified-documents`).then(setClassifiedDocs).catch(() => {});
+                  fetchDocs(selectedFolder);
+                }
+              }}
+              onClick={() => {
+                const input = document.createElement("input");
+                input.type = "file"; input.multiple = true;
+                input.accept = ".pdf,.docx,.xlsx,.doc,.png,.jpg";
+                input.onchange = async () => {
+                  const files = Array.from(input.files || []);
+                  for (const file of files) {
+                    try {
+                      const children = selectedNode.children || [];
+                      const leafFolder = children.find((c: any) => LEAF_TYPES.has(c.type));
+                      const targetFolderId = leafFolder?.id || selectedFolder;
+                      const fd = new FormData();
+                      fd.append("file", file);
+                      await api(`/api/folders/${targetFolderId}/documents`, { method: "POST", body: fd, timeout: 120000 });
+                      toast("success", `Upload: ${file.name}`);
+                    } catch (err: any) { toast("error", `Eroare: ${file.name}`); }
+                  }
+                  if (selectedFolder) {
+                    apiGet<any[]>(`/api/folders/${selectedFolder}/classified-documents`).then(setClassifiedDocs).catch(() => {});
+                    fetchDocs(selectedFolder);
+                  }
+                };
+                input.click();
+              }}
+            >
+              <div style={{ fontSize: 28, marginBottom: 6 }}>📎</div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: "#1e293b" }}>Trage documentele aici sau click pentru a selecta</div>
+              <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 4 }}>Ghiduri, template-uri, anexe, CI-uri, bilanțuri, oferte — AI-ul clasifică automat.</div>
+            </div>
+
+            {/* Classified documents grouped by routing action */}
+            {(() => {
+              const groups = {
+                guide: classifiedDocs.filter((d: any) => d.classification?.routingAction === "vectorize" && d.status === "processed"),
+                templates: classifiedDocs.filter((d: any) => ["template_fill", "template_compose"].includes(d.classification?.routingAction) && d.status === "processed"),
+                client: classifiedDocs.filter((d: any) => ["extract_data", "vectorize_and_extract"].includes(d.classification?.routingAction) && d.status === "processed"),
+                processing: classifiedDocs.filter((d: any) => d.status === "processing" || d.status === "uploaded"),
+                errors: classifiedDocs.filter((d: any) => d.status === "error" || d.status === "failed"),
+              };
+
+              const renderCard = (doc: any) => {
+                const c = doc.classification;
+                const icon = c?.routingAction === "vectorize" ? "📗" : ["template_fill", "template_compose"].includes(c?.routingAction) ? "📝" : "📄";
+                const statusIcon = doc.status === "processed" ? "✅" : doc.status === "processing" ? "⏳" : "⚠️";
+                return (
+                  <div key={doc.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, marginBottom: 6 }}>
+                    <span style={{ fontSize: 18 }}>{icon}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: "#1e293b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {doc.fileName || doc.name} <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 400 }}>{statusIcon}</span>
+                      </div>
+                      <div style={{ fontSize: 11, color: "#64748b" }}>{c?.description || c?.docType || ""}</div>
+                    </div>
+                  </div>
+                );
+              };
+
+              const renderSection = (title: string, items: any[]) => {
+                if (items.length === 0) return null;
+                return (
+                  <div key={title} style={{ marginBottom: 16 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, display: "flex", justifyContent: "space-between" }}>
+                      <span>{title}</span>
+                      <span style={{ fontWeight: 400, color: "#94a3b8" }}>{items.length}</span>
+                    </div>
+                    {items.map(renderCard)}
+                  </div>
+                );
+              };
+
+              if (classifiedDocs.length === 0) {
+                return (
+                  <div style={{ textAlign: "center", padding: 32, color: "#94a3b8" }}>
+                    <div style={{ fontSize: 36, marginBottom: 8 }}>📂</div>
+                    <div style={{ fontSize: 14 }}>Niciun document încă. Începe prin a adăuga ghidul sesiunii.</div>
+                  </div>
+                );
+              }
+
+              return (
+                <>
+                  {renderSection("Ghid și referință", groups.guide)}
+                  {renderSection("Template-uri", groups.templates)}
+                  {renderSection("Documente client", groups.client)}
+                  {renderSection("În procesare", groups.processing)}
+                  {renderSection("Erori", groups.errors)}
+                </>
+              );
+            })()}
+          </div>
         ) : !isLeafSelected ? (
-          /* Non-leaf folder selected — show hierarchy info */
+          /* Non-leaf folder selected (program, masura) — show hierarchy info */
           <div className="doc-welcome">
             <div className="doc-welcome-icon">
               {selectedNode?.type === "program" ? (
                 <span style={{ fontSize: 44, opacity: 0.5 }}>{"🏢"}</span>
-              ) : selectedNode?.type === "masura" ? (
-                <span style={{ fontSize: 44, opacity: 0.5 }}>{"📊"}</span>
               ) : (
-                <span style={{ fontSize: 44, opacity: 0.5 }}>{"📅"}</span>
+                <span style={{ fontSize: 44, opacity: 0.5 }}>{"📊"}</span>
               )}
             </div>
             <div className="doc-welcome-title">{selectedNode?.label}</div>
@@ -1088,8 +1219,6 @@ export default function DocumentsPage() {
                 ? "Click dreapta pentru a adauga o masura in acest program."
                 : selectedNode?.type === "masura"
                 ? "Click dreapta pentru a adauga o sesiune in aceasta masura."
-                : selectedNode?.type === "sesiune"
-                ? "Selecteaza unul din folderele de mai jos pentru a vedea si adauga documente."
                 : "Expandeaza arborele si selecteaza un folder final."}
             </div>
             {CHILD_TYPE_MAP[selectedNode?.type || ""] && (

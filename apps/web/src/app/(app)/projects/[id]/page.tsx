@@ -172,7 +172,7 @@ const STATUS_MAP: Record<string, { label: string; color: string; bg: string }> =
 const pct = (a: number, b: number) => b > 0 ? Math.round((a / b) * 100) : 0;
 const formatRON = (v: number | null | undefined) => v != null ? `${Number(v).toLocaleString("ro-RO", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} RON` : "-";
 
-type LeafType = "sumar" | "solomon" | "elemente" | "reguli" | "scor" | "tabele" | "checklist" | "neemia" | "documente";
+type LeafType = "sumar" | "solomon" | "elemente" | "reguli" | "scor" | "tabele" | "checklist" | "neemia";
 
 function parseAdresa(adresa: string | undefined): { localitate: string; judet: string } {
   if (!adresa) return { localitate: "-", judet: "-" };
@@ -3392,7 +3392,6 @@ export default function ProjectViewPage() {
             { key: "scor" as LeafType, label: "Scor" },
             { key: "tabele" as LeafType, label: "Tabele" },
             { key: "checklist" as LeafType, label: "Checklist doc" },
-            { key: "documente" as LeafType, label: "Documente" },
             { key: "neemia" as LeafType, label: orgLabels.neemiaLabel },
           ]).map(tab => (
             <button
@@ -5555,8 +5554,8 @@ export default function ProjectViewPage() {
               </div>
             )}
 
-            {/* RAG v2 — DOCUMENTE CLASIFICATE */}
-            {activeLeaf === "documente" && (
+            {/* RAG v2: Documente tab removed — moved to Documents (session) page */}
+            {false && (
               <div style={{ flex: 1, overflow: "auto", padding: 24 }}>
                 <div style={{ maxWidth: 860, margin: "0 auto" }}>
                   {/* Upload zone */}

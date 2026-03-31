@@ -509,3 +509,15 @@ cd apps/web && npx next build
 - API routes: POST `/forms/extract`, GET `/forms/spec/:id`, GET `/forms/document/:id`, GET `/forms/spec/:id/reference-data`
 - Integrat cu pipeline clasificare: `template_fill` → auto-extract FormSpec la ingestie
 - Următorul sprint: HTML renderer universal + export multi-format (SPRINT_FORM-2)
+
+## Universal Forms — Sprint FORM-2 v2 COMPLET (2026-03-31)
+
+- Tabel `form_data` cu `field_values` JSONB + `page_approvals` JSONB + completion tracking (migration `0134_form_data.sql`)
+- API endpoints pentru form data CRUD:
+  - GET/PUT field values, POST approve/unapprove page, POST auto-populate, GET overview
+- Auto-populate: mapează project_elements → form fields via `mappedElementName`
+- Page approval workflow: per-page visual verification cu tracking per consultant
+- Export blocat până la `allPagesApproved === true`
+- Completion percent calculat automat la fiecare field edit
+- Unique constraint pe (project_id, form_spec_id) — un singur form_data per formular per proiect
+- Refolosește `documentRenderer.ts` existent pentru rendering pagini cu field positions

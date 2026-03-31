@@ -880,6 +880,26 @@ export const formSpecs = pgTable("form_specs", {
   orgIdx: index("formspec_org_idx").on(table.organizationId),
 }));
 
+// === FORM DATA (field values + page approvals per project per form) ===
+export const formData = pgTable("form_data", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  formSpecId: uuid("form_spec_id").references(() => formSpecs.id, { onDelete: "cascade" }).notNull(),
+  fieldValues: jsonb("field_values").notNull().default({}),
+  fieldSources: jsonb("field_sources").default({}),     // { "field_name": "onrc" | "solomon" | "calculated" | "manual" }
+  pageApprovals: jsonb("page_approvals").notNull().default({}),
+  completionPercent: integer("completion_percent").default(0),
+  approvedPagesCount: integer("approved_pages_count").default(0),
+  totalPages: integer("total_pages"),
+  allPagesApproved: boolean("all_pages_approved").default(false),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  projectIdx: index("formdata_project_idx").on(table.projectId),
+  formSpecIdx: index("formdata_formspec_idx").on(table.formSpecId),
+  projectFormUq: uniqueIndex("formdata_project_form_uq").on(table.projectId, table.formSpecId),
+}));
+
 // === SOLOMON CONVERSATIONS ===
 export const solomonConversations = pgTable("solomon_conversations", {
   id: uuid("id").defaultRandom().primaryKey(),

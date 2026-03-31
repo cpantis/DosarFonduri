@@ -361,6 +361,18 @@ export const documents = pgTable("documents", {
   uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
   processedAt: timestamp("processed_at"),
   processingError: text("processing_error"),
+  // RAG v2: AI classification result from document ingestion pipeline
+  classification: jsonb("classification").$type<{
+    docType: string;        // 'ghid' | 'cerere_finantare' | 'anexa' | 'fisa_evaluare' | 'template_fill' | 'template_compose' | 'document_client' | 'oferta' | 'certificat' | 'studiu_fezabilitate' | 'altul'
+    routingAction: string;  // 'vectorize' | 'template_fill' | 'template_compose' | 'extract_data' | 'vectorize_and_extract'
+    confidence: number;
+    description: string;
+    detectedProgram?: string;
+    isProcessed?: boolean;
+    processedAt?: string;
+    chunksCount?: number;
+    extractedFields?: number;
+  }>(),
   trustScore: decimal("trust_score", { precision: 3, scale: 2 }),
   completenessReport: jsonb("completeness_report").$type<{
     trustScore: number;

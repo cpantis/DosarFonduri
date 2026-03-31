@@ -7,6 +7,7 @@ import { processCompanyWorker } from "./processCompany";
 import { processReferenceDocWorker } from "./processReferenceDoc";
 import { syncOnrcJob } from "./syncOnrc";
 import { checkDeadlines } from "./checkDeadlines";
+import { ingestDocumentWorker } from "./ingestDocumentJob";
 
 console.log("Workers started:");
 console.log("  - process-guide");
@@ -15,6 +16,7 @@ console.log("  - process-reference-data");
 console.log("  - process-client-doc");
 console.log("  - process-company (concurrency: 2)");
 console.log("  - process-reference-doc");
+console.log("  - ingest-document (RAG v2, concurrency: 2)");
 console.log("  - sync-onrc (cron: daily 03:00)");
 console.log("  - check-deadlines (cron: daily 08:00)");
 
@@ -83,5 +85,6 @@ process.on("SIGTERM", async () => {
   await processClientDocWorker.close();
   await processCompanyWorker.close();
   await processReferenceDocWorker.close();
+  await ingestDocumentWorker.close();
   process.exit(0);
 });

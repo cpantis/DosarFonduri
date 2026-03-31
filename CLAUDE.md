@@ -430,3 +430,20 @@ cd apps/web && npx next build
 - `vectorType()` helper factorizat din `vector1536` — reutilizabil pentru orice dimensiune
 - Tabelele vechi (`guideChunks`, `solomonKnowledge`) și `embeddings.ts` (OpenAI) — INTACTE
 - Următorul sprint: SPRINT_2 — Single Entry Point (clasificare + routing pipeline)
+
+## RAG v2 Migration — Sprint 2 COMPLET (2026-03-31)
+
+- Single entry point: UN upload, AI clasifică și rutează automat
+- 5 rute: vectorize | template_fill | template_compose | extract_data | vectorize_and_extract
+- Clasificator Sonnet (`documentClassifier.ts`) cu confidence scoring
+- Pipeline (`ingestDocument.ts`): OCR → classify → route → (chunk+embed | extract | mark template)
+- Chunker RAG v2 (`ragChunker.ts`): 400 tok target, 10% overlap
+- Metadata enrichment (`metadataEnricher.ts`): Sonnet assigns layer/topic/importance per chunk
+- Data extractor (`dataExtractor.ts`): Sonnet extracts structured fields from client documents
+- BullMQ `ingest-document` job (`ingestDocumentJob.ts`) — concurrency 2, rate limited
+- Câmp `classification` JSONB pe tabelul `documents` (migration `0129_rag_v2_classification.sql`)
+- Endpoint `GET /folders/:id/classified-documents` — lista documente cu clasificare
+- Endpoint `PUT /documents/:id/reclassify` — reclasificare manuală + re-procesare
+- Upload flow: ingest job dispatched ALONGSIDE existing jobs (coexistență)
+- processGuide, processTemplate, processClientDoc — INTACTE
+- Următorul sprint: SPRINT_3 — Solomon tool use + faze Q0-Q11

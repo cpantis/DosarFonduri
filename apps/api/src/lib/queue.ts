@@ -54,6 +54,16 @@ export const syncOnrcQueue = new Queue("sync-onrc", {
   },
 });
 
+// RAG v2: Unified ingestion pipeline queue
+export const ingestDocumentQueue = new Queue("ingest-document", {
+  connection: conn as any,
+  defaultJobOptions: {
+    ...DEFAULT_JOB_OPTIONS,
+    attempts: 3,
+    backoff: { type: "exponential" as const, delay: 10000 }, // 10s, 20s, 40s — AI calls need room
+  },
+});
+
 // Job priority constants (lower number = higher priority)
 export const JOB_PRIORITY = {
   GUIDE: 1,        // Ghidul deblochează restul fluxului
@@ -62,12 +72,13 @@ export const JOB_PRIORITY = {
   REFERENCE_DOC: 4, // Referințe strategice (PNIESC, PNRR)
   REFERENCE_DATA: 5,
   CLIENT_DOC: 6,   // Documente client — procesare normală
+  INGEST: 3,       // RAG v2 — between template and reference
 } as const;
 
 // Attach error handlers to prevent unhandled rejections
 // Only log the first error per queue to avoid spam when Redis is down
 const queueErrorLogged = new Set<string>();
-for (const q of [processGuideQueue, processTemplateQueue, processReferenceDataQueue, processReferenceDocQueue, processClientDocQueue, processCompanyQueue, syncOnrcQueue]) {
+for (const q of [processGuideQueue, processTemplateQueue, processReferenceDataQueue, processReferenceDocQueue, processClientDocQueue, processCompanyQueue, syncOnrcQueue, ingestDocumentQueue]) {
   q.on("error", (err) => {
     if (!queueErrorLogged.has(q.name)) {
       queueErrorLogged.add(q.name);

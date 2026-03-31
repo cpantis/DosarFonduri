@@ -447,3 +447,20 @@ cd apps/web && npx next build
 - Upload flow: ingest job dispatched ALONGSIDE existing jobs (coexistență)
 - processGuide, processTemplate, processClientDoc — INTACTE
 - Următorul sprint: SPRINT_3 — Solomon tool use + faze Q0-Q11
+
+## RAG v2 Migration — Sprint 3 COMPLET (2026-03-31)
+
+- Solomon: tool use `search_knowledge` (hybrid search) + `get_session_documents` (inventar clasificat)
+- Solomon: emite faze Q0-Q11 prin `<!--PHASE_JSON{...}PHASE_JSON-->` metadata
+- System prompt: adăugat secțiuni TOOL USE + FAZE + COMPOSE BRIEF (instrucțiuni tool use, nu injecție de reguli)
+- Tool use loop: max 6 tool calls per turn, non-streaming pentru tool rounds, streaming pentru final
+- Phase indicator în UI: progress bar + label + next action (deasupra chat-ului)
+- Tool use indicator: "🔍 Caut în ghid: ..." animat (sub toolbar)
+- RAG injection automată DEZACTIVATĂ (comentată) — Solomon caută singur cu search_knowledge
+- Auto eligibility + auto scoring DEZACTIVATE (comentate) — Solomon raționează prin tool use
+- Endpoint `GET /solomon/projects/:id/phase` — faza curentă
+- Endpoint `POST /solomon/projects/:id/compose-brief` — brief structurat pentru Neemia compose
+- Câmpuri `solomon_phase` + `compose_brief` JSONB pe projects (migration `0130_rag_v2_solomon_phase.sql`)
+- `solomonTools.ts` — tool handlers + definitions
+- Rollback: decomentează RAG injection + auto eligibility/scoring + scoate tools din API call
+- Următorul sprint: SPRINT_4 — UI single entry point + knowledge base

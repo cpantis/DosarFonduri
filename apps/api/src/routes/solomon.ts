@@ -345,3 +345,107 @@ solomonRoutes.get("/conversations/:convId/messages", async (c) => {
 
   return c.json(messages);
 });
+
+// ═══════════════════════════════════════════
+// RAG v2 — Phase endpoint + Compose brief
+// ═══════════════════════════════════════════
+
+/**
+ * GET /api/solomon/projects/:projectId/phase
+ * Returns current Solomon phase for the project.
+ */
+solomonRoutes.get("/projects/:projectId/phase", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const projectId = c.req.param("projectId");
+
+  const project = await verifyProjectOrg(projectId, auth.organizationId!);
+  if (!project) return c.json({ error: "Project not found" }, 404);
+
+  return c.json({ phase: project.solomonPhase || null });
+});
+
+/**
+ * POST /api/solomon/projects/:projectId/compose-brief
+ * Generate a structured brief from Solomon conversation for Neemia compose.
+ */
+solomonRoutes.post("/projects/:projectId/compose-brief", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const projectId = c.req.param("projectId");
+
+  const project = await verifyProjectOrg(projectId, auth.organizationId!);
+  if (!project) return c.json({ error: "Project not found" }, 404);
+
+  // Load project elements
+  const { projectElements } = await import("../db/schema");
+  const elements = await db.query.projectElements.findMany({
+    where: eq(projectElements.projectId, projectId),
+  });
+
+  // Load recent Solomon messages
+  const conversations = await db.query.solomonConversations.findMany({
+    where: eq(solomonConversations.projectId, projectId),
+    orderBy: (c, { desc }) => [desc(c.createdAt)],
+    limit: 1,
+  });
+
+  let recentMessages: string[] = [];
+  if (conversations.length > 0) {
+    const msgs = await db.query.solomonMessages.findMany({
+      where: eq(solomonMessages.conversationId, conversations[0].id),
+      orderBy: (m, { desc }) => [desc(m.createdAt)],
+      limit: 20,
+    });
+    recentMessages = msgs.reverse().map(m => `${m.role}: ${m.content?.slice(0, 500)}`);
+  }
+
+  // Generate brief using Anthropic (Opus, short call)
+  const { anthropic, withAILimit } = await import("../lib/anthropic");
+  const phase = project.solomonPhase as any;
+
+  const briefResponse = await withAILimit(async () => {
+    return anthropic.messages.create({
+      model: "claude-opus-4-6",
+      max_tokens: 2000,
+      system: "Ești Solomon, consultant senior fonduri europene. Generează un brief structurat și concis pe baza datelor colectate. Răspunde DOAR cu JSON valid.",
+      messages: [{
+        role: "user",
+        content: `Proiect: ${project.name}
+Faza curentă: ${phase?.phase || "necunoscută"} (${phase?.label || ""})
+Progres: ${phase?.progress || 0}%
+
+Elemente colectate (${elements.length}):
+${elements.filter(e => e.value).slice(0, 50).map(e => `- ${e.value}`).join("\n")}
+
+Ultimele mesaje conversație:
+${recentMessages.slice(-10).join("\n")}
+
+Generează brief JSON:
+{
+  "narrativeThread": "motivația centrală a investiției (2-3 propoziții)",
+  "clientProfile": { "type": "...", "experience": "...", "currentAssets": "..." },
+  "investmentDescription": { "summary": "...", "objectives": ["..."], "justification": "..." },
+  "eligibilityConclusions": { "status": "eligibil/eligibil cu observații/neeligibil", "keyFindings": ["..."], "risks": ["..."] },
+  "scoringEstimate": { "totalPoints": 0, "keyFactors": ["..."], "threshold": "..." },
+  "strategicArguments": ["argument 1", "argument 2", "..."],
+  "generatedAt": "${new Date().toISOString()}"
+}`,
+      }],
+    });
+  }, "batch");
+
+  const text = briefResponse.content[0].type === "text" ? briefResponse.content[0].text : "{}";
+  const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+
+  try {
+    const brief = JSON.parse(cleaned);
+    brief.generatedAt = new Date().toISOString();
+
+    await db.update(projects)
+      .set({ composeBrief: brief })
+      .where(eq(projects.id, projectId));
+
+    return c.json({ brief });
+  } catch {
+    return c.json({ error: "Failed to generate compose brief" }, 500);
+  }
+});

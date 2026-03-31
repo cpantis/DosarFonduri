@@ -18,6 +18,7 @@ import { checkEligibility } from "./eligibility";
 import { computeProjectScores } from "./scoring";
 import { publishElementValidated, publishEligibilityUpdated, publishScoreUpdated } from "../lib/sse";
 import { preflightCached } from "./dbPreflight";
+import { SOLOMON_TOOLS, executeSolomonTool } from "./solomonTools";
 import { upsertElementDefinition } from "./elementDefinitionService";
 import { getFileBuffer } from "./storage";
 
@@ -485,18 +486,67 @@ Ești echivalentul unui consultant senior cu 15+ ani experiență în fonduri eu
 ## IERARHIA DE PRIORITATE (RESPECTĂ STRICT)
 ═══════════════════════════════════════════
 
-1. **REGULILE DIN GHIDUL DE FINANȚARE** (extrase automat, listate mai jos) → SURSĂ PRIMARĂ DE ADEVĂR
-   - Au prioritate absolută. Dacă ghidul contrazice o practică generală, aplică GHIDUL
-   - Citează sursa când aplici o regulă: "Conform ghidului, pag. X..."
-2. **CONTEXT RELEVANT** (extras automat per întrebare prin căutare semantică) → DETALII TEXTUALE
-   - Fiecare mesaj al consultantului poate conține un bloc [CONTEXT RELEVANT] cu pasaje din ghid + baza de cunoștințe
-   - Ghidul: fragmente originale cu referințe de pagină — citează exact
-   - Baza de cunoștințe: referințe strategice (obiective, target-uri, legislație) — folosește pentru justificare
-   - Folosește-le pentru a cita exact, a verifica reguli, și a da răspunsuri precise
-3. **ACTUALIZĂRI CABINET** (din cunoștințe manuale, listate mai jos) → SUPRASCRIU training-ul tău
+1. **GHIDUL DE FINANȚARE** (caută cu search_knowledge) → SURSĂ PRIMARĂ DE ADEVĂR
+   - Caută MEREU cu search_knowledge înainte să afirmi orice despre reguli, criterii, cheltuieli, intensitate
+   - Citează sursa: "Conform ghidului, pag. X..."
+   - NU presupune din memorie — CAUTĂ
+2. **ACTUALIZĂRI CABINET** (din cunoștințe manuale, listate mai jos) → SUPRASCRIU training-ul tău
    - Dacă o actualizare modifică un prag/procedură/regulă, aplică ACTUALIZAREA, nu ce știi tu
-4. **DATELE FIRMEI** (ONRC + bilanțuri, mai jos) → CONTEXT FACTUAL — nu modifica, nu inventa
-5. **EXPERTIZA TA** → completează unde ghidul și actualizările tac: formulare, bune practici, avertismente, analiză de risc
+3. **DATELE FIRMEI** (ONRC + bilanțuri, mai jos) → CONTEXT FACTUAL — nu modifica, nu inventa
+4. **EXPERTIZA TA** → completează unde ghidul și actualizările tac: formulare, bune practici, avertismente, analiză de risc
+
+═══════════════════════════════════════════
+## INSTRUCȚIUNI TOOL USE (CRITICE)
+═══════════════════════════════════════════
+
+Ai la dispoziție tools pentru a căuta informații. FOLOSEȘTE-LE:
+- **search_knowledge**: Caută în ghid, fișe evaluare, anexe, baza de cunoștințe
+  - Folosește layers=['regula'] pentru eligibilitate
+  - Folosește layers=['punctaj'] pentru criterii de selecție
+  - Folosește layers=['referinta'] pentru tabele de referință
+  - Caută MEREU înainte să afirmi ceva despre regulile ghidului
+- **get_session_documents**: Vezi ce documente sunt disponibile pe sesiune
+  - Folosește la începutul conversației
+  - Folosește când trebuie să știi ce documente are consultantul
+
+Dacă nu găsești informația, spune sincer și sugerează verificare manuală.
+
+═══════════════════════════════════════════
+## FAZE CONVERSAȚIE (emite la FIECARE răspuns)
+═══════════════════════════════════════════
+
+La FIECARE răspuns, include pe o linie separată:
+<!--PHASE_JSON{"phase":"Q4","label":"Verificare eligibilitate","progress":40,"nextAction":"Verific criteriile de eligibilitate din ghid"}PHASE_JSON-->
+
+Faze:
+Q0 — Ce problemă vrea clientul să rezolve? (firul narativ — CEL MAI IMPORTANT)
+Q1 — Cine e clientul? (tip, experiență, vârstă, studii)
+Q2 — Ce are acum? (suprafață, animale, utilaje, venituri)
+Q3 — Ce vrea să facă? (investiții concrete)
+Q4 — Eligibilitate de bază (caută cu search_knowledge layers=['regula'])
+Q5 — Eligibilitate specifică (dimensiune economică, restricții)
+Q6 — Verificări încrucișate (proiecte anterioare, ajutoare de stat)
+Q7 — Cofinanțare și capacitate financiară
+Q8 — Buget estimativ
+Q9 — Criterii selecție și punctaj estimat (caută cu layers=['punctaj'])
+Q10 — Documente necesare (caută cu layers=['structura'])
+Q11 — Sinteză și recomandări finale
+
+NU urmezi fazele mecanic. Sari dacă ai datele. Revino dacă apar informații noi.
+Progresul (0-100) reflectă cât de complet e dosarul, nu câte întrebări ai pus.
+
+═══════════════════════════════════════════
+## GENERARE BRIEF COMPOSE
+═══════════════════════════════════════════
+
+Când consultantul cere generarea documentelor ("pregătește memoriul", "generează documentele", "sunt gata de redactare"), generezi un brief structurat cu:
+- Firul narativ (Q0) — motivația centrală a investiției
+- Profilul clientului — cine e, ce are, ce vrea
+- Concluziile de eligibilitate — ce ai verificat, ce e OK, ce e risc
+- Punctajul estimat — câte puncte, din ce criterii
+- Argumente strategice — CE trebuie argumentat, nu CUM
+
+NU scrie tu documentul. Generezi brief-ul, Neemia scrie. Tu ești consultantul senior care dictează. Neemia e redactorul.
 
 ═══════════════════════════════════════════
 ## DATE FIRMĂ (din ONRC + bilanțuri)
@@ -1369,29 +1419,27 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
     }
   }
 
-  // RAG: retrieve relevant guide chunks + knowledge entries for this query
-  if (content.trim()) {
-    try {
-      const { retrieveContext, hasRAGContent } = await import("./guideRetrieval");
-      const hasContent = await hasRAGContent(organizationId);
-      if (hasContent) {
-        const ragResult = await retrieveContext(content, organizationId, {
-          guideTopK: 8,
-          knowledgeTopK: 5,
-          maxTokens: 4000,
-        });
-        if (ragResult.context) {
-          userContent.push({
-            type: "text",
-            text: `[CONTEXT RELEVANT — extras automat din ghid și baza de cunoștințe, bazat pe întrebarea curentă]\n${ragResult.context}\n[/CONTEXT RELEVANT]`,
-          });
-        }
-      }
-    } catch (ragErr) {
-      // Non-critical: if RAG fails, Solomon still has the extracted rules
-      console.warn(`[solomon] RAG retrieval failed (non-critical):`, (ragErr as Error).message);
-    }
-  }
+  // RAG v2: Solomon uses tool_use search_knowledge instead of auto-injection
+  // Previous auto-injection code commented out — rollback by uncommenting
+  // if (content.trim()) {
+  //   try {
+  //     const { retrieveContext, hasRAGContent } = await import("./guideRetrieval");
+  //     const hasContent = await hasRAGContent(organizationId);
+  //     if (hasContent) {
+  //       const ragResult = await retrieveContext(content, organizationId, {
+  //         guideTopK: 8, knowledgeTopK: 5, maxTokens: 4000,
+  //       });
+  //       if (ragResult.context) {
+  //         userContent.push({
+  //           type: "text",
+  //           text: `[CONTEXT RELEVANT]\n${ragResult.context}\n[/CONTEXT RELEVANT]`,
+  //         });
+  //       }
+  //     }
+  //   } catch (ragErr) {
+  //     console.warn(`[solomon] RAG retrieval failed (non-critical):`, (ragErr as Error).message);
+  //   }
+  // }
 
   // Text message
   if (content.trim()) {
@@ -1413,19 +1461,20 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
     attachments: attachments ? JSON.stringify(attachments) : null,
   });
 
-  // API call with streaming + prompt caching + adaptive thinking
-  const requestParams: any = {
+  // API call with streaming + prompt caching + adaptive thinking + tool use
+  const systemParam = typeof systemPrompt === "string"
+    ? [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }]
+    : systemPrompt;
+
+  const baseRequestParams: any = {
     model,
     max_tokens: useET ? 16000 : 4000,
-    system: typeof systemPrompt === "string"
-      ? [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }]
-      : systemPrompt,
-    messages,
-    stream: true,
+    system: systemParam,
+    tools: SOLOMON_TOOLS,
   };
 
   if (useET) {
-    requestParams.thinking = { type: "enabled", budget_tokens: 8000 };
+    baseRequestParams.thinking = { type: "enabled", budget_tokens: 8000 };
   }
 
   // Acquire interactive AI slot (priority over batch processing)
@@ -1435,9 +1484,63 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
   const controller_abort = new AbortController();
   const streamTimeout = setTimeout(() => controller_abort.abort(), 120_000);
 
+  // RAG v2: Tool use loop — Solomon can search multiple times before responding
+  // Non-streaming for tool rounds, streaming for final response
+  const MAX_TOOL_ROUNDS = 6;
+  const toolUseEvents: Array<{ toolName: string; query?: string }> = [];
+
+  // Resolve sessionId for tool context (folderId serves as session)
+  const projectForTools = await db.query.projects.findFirst({
+    where: eq(projects.id, projectId),
+    columns: { folderId: true },
+  });
+  const toolContext = {
+    cabinetId: organizationId,
+    sessionId: projectForTools?.folderId || "",
+  };
+
+  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+    const roundResponse = await anthropic.messages.create({
+      ...baseRequestParams,
+      messages,
+    });
+
+    // Check if response has tool_use blocks
+    const toolUseBlocks = roundResponse.content.filter((b: any) => b.type === "tool_use");
+
+    if (toolUseBlocks.length === 0 || roundResponse.stop_reason !== "tool_use") {
+      // No tool use — this is the final response
+      // Break out and stream the final response below
+      break;
+    }
+
+    // Execute tool calls and add results to conversation
+    messages.push({ role: "assistant", content: roundResponse.content as any });
+
+    const toolResults: any[] = [];
+    for (const toolBlock of toolUseBlocks) {
+      const tb = toolBlock as any;
+      toolUseEvents.push({ toolName: tb.name, query: tb.input?.query });
+
+      const result = await executeSolomonTool(tb.name, tb.input, toolContext);
+      toolResults.push({
+        type: "tool_result",
+        tool_use_id: tb.id,
+        content: result,
+      });
+    }
+
+    messages.push({ role: "user", content: toolResults });
+  }
+
+  // Final streaming response (after all tool rounds)
   let stream: any;
   try {
-    stream = (anthropic.messages.stream as any)(requestParams, { signal: controller_abort.signal });
+    stream = (anthropic.messages.stream as any)({
+      ...baseRequestParams,
+      messages,
+      stream: true,
+    }, { signal: controller_abort.signal });
   } catch (err) {
     clearTimeout(streamTimeout);
     releaseSlot();
@@ -1452,6 +1555,10 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
   return new ReadableStream({
     async start(controller) {
       try {
+        // RAG v2: Emit tool_use events so frontend shows search indicator
+        for (const tue of toolUseEvents) {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "tool_use", toolName: tue.toolName, query: tue.query })}\n\n`));
+        }
         for await (const event of stream) {
           if (event.type === "content_block_delta") {
             const delta = event.delta as any;
@@ -1772,39 +1879,41 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
             }
           }
 
+          // RAG v2: Auto eligibility/scoring disabled — Solomon reasons via tool use
+          // Rollback: uncomment the blocks below
           // 2. Re-check eligibility
-          if (modifiedElementIds.length > 0) {
-            try {
-              await checkEligibility(projectId, organizationId);
-              const eligibility = await db.query.projectEligibility.findMany({
-                where: eq(projectEligibility.projectId, projectId),
-              });
-              publishEligibilityUpdated(projectId, {
-                total: eligibility.length,
-                passed: eligibility.filter(e => e.status === "passed").length,
-                failed: eligibility.filter(e => e.status === "failed").length,
-                pending: eligibility.filter(e => e.status === "pending").length,
-                message: `Eligibilitate re-evaluată: ${eligibility.filter(e => e.status === "passed").length}/${eligibility.length} trecute`,
-              }).catch((e: any) => console.warn("[solomon] SSE eligibility_updated:", e.message));
-            } catch (err) {
-              console.error(`[solomon] Eligibility check failed for project ${projectId}:`, err);
-            }
-
-            // 3. Recompute scoring
-            try {
-              const scoreResult = await computeProjectScores(projectId);
-              if (scoreResult.scores.length > 0) {
-                publishScoreUpdated(projectId, {
-                  totalPoints: scoreResult.totalPoints,
-                  maxTotalPoints: scoreResult.maxTotalPoints,
-                  percentage: scoreResult.percentage,
-                  message: `Punctaj actualizat: ${scoreResult.totalPoints}/${scoreResult.maxTotalPoints} (${scoreResult.percentage}%)`,
-                }).catch((e: any) => console.warn("[solomon] SSE score_updated:", e.message));
-              }
-            } catch (err) {
-              console.error(`[solomon] Score computation failed for project ${projectId}:`, err);
-            }
-          }
+          // if (modifiedElementIds.length > 0) {
+          //   try {
+          //     await checkEligibility(projectId, organizationId);
+          //     const eligibility = await db.query.projectEligibility.findMany({
+          //       where: eq(projectEligibility.projectId, projectId),
+          //     });
+          //     publishEligibilityUpdated(projectId, {
+          //       total: eligibility.length,
+          //       passed: eligibility.filter(e => e.status === "passed").length,
+          //       failed: eligibility.filter(e => e.status === "failed").length,
+          //       pending: eligibility.filter(e => e.status === "pending").length,
+          //       message: `Eligibilitate re-evaluată`,
+          //     }).catch((e: any) => console.warn("[solomon] SSE eligibility_updated:", e.message));
+          //   } catch (err) {
+          //     console.error(`[solomon] Eligibility check failed for project ${projectId}:`, err);
+          //   }
+          //
+          //   // 3. Recompute scoring
+          //   try {
+          //     const scoreResult = await computeProjectScores(projectId);
+          //     if (scoreResult.scores.length > 0) {
+          //       publishScoreUpdated(projectId, {
+          //         totalPoints: scoreResult.totalPoints,
+          //         maxTotalPoints: scoreResult.maxTotalPoints,
+          //         percentage: scoreResult.percentage,
+          //         message: `Punctaj actualizat`,
+          //       }).catch((e: any) => console.warn("[solomon] SSE score_updated:", e.message));
+          //     }
+          //   } catch (err) {
+          //     console.error(`[solomon] Score computation failed for project ${projectId}:`, err);
+          //   }
+          // }
 
           // Sync tip_proiect element → projects.tipProiect column
           const tipProiectEl = extractedElements.find(el => el.key === "tip_proiect");
@@ -1900,11 +2009,39 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
           }
         }
 
+        // RAG v2: Extract PHASE_JSON and save to project
+        const phaseMatch = fullResponse.match(/<!--PHASE_JSON({.*?})PHASE_JSON-->/s);
+        if (phaseMatch) {
+          try {
+            const phaseData = JSON.parse(phaseMatch[1]);
+            if (phaseData.phase && phaseData.label) {
+              const phaseRecord = {
+                phase: phaseData.phase,
+                label: phaseData.label,
+                progress: Math.min(100, Math.max(0, phaseData.progress || 0)),
+                nextAction: phaseData.nextAction || "",
+                updatedAt: new Date().toISOString(),
+              };
+              await db.update(projects)
+                .set({ solomonPhase: phaseRecord })
+                .where(eq(projects.id, projectId));
+
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+                type: "phase_update",
+                phase: phaseRecord,
+              })}\n\n`));
+            }
+          } catch (phaseErr) {
+            console.warn("[solomon] PHASE_JSON parse failed:", (phaseErr as Error).message);
+          }
+        }
+
         // Save assistant message (clean hidden JSON tags)
         const cleanResponse = fullResponse
           .replace(/<!--ELEMENTS_JSON[\s\S]*?ELEMENTS_JSON-->/g, "")
           .replace(/<!--METADATA_JSON[\s\S]*?METADATA_JSON-->/g, "")
           .replace(/<!--CHECK_ELIGIBILITY-->/g, "")
+          .replace(/<!--PHASE_JSON[\s\S]*?PHASE_JSON-->/g, "")
           .trim();
 
         await db.insert(solomonMessages).values({

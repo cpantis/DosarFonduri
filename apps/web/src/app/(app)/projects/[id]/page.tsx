@@ -693,7 +693,7 @@ export default function ProjectViewPage() {
         // RAG v2: Load initial phase from project
         if (proj.solomonPhase) setSolomonPhase(proj.solomonPhase);
         // RAG v2: Load classified documents + FIX 7: check version impacts
-        apiGet<any[]>(`/api/folders/${proj.folderId}/classified-documents`).then(docs => {
+        apiGet<any[]>(`/api/documents/folders/${proj.folderId}/classified-documents`).then(docs => {
           setClassifiedDocs(docs || []);
           const upgraded = (docs || []).find((d: any) => d.versionDiff && d.documentVersion > 1);
           if (upgraded?.versionDiff) {
@@ -5748,11 +5748,11 @@ export default function ProjectViewPage() {
                         try {
                           const fd = new FormData();
                           fd.append("file", file);
-                          await api(`/api/folders/${project?.folderId}/documents`, { method: "POST", body: fd, timeout: 120000 });
+                          await api(`/api/documents/folders/${project?.folderId}/documents`, { method: "POST", body: fd, timeout: 120000 });
                         } catch (err: any) { toast("error", `Upload eșuat: ${file.name}`); }
                       }
                       setDocUploading(false);
-                      apiGet<any[]>(`/api/folders/${project?.folderId}/classified-documents`).then(docs => setClassifiedDocs(docs || [])).catch(() => {});
+                      apiGet<any[]>(`/api/documents/folders/${project?.folderId}/classified-documents`).then(docs => setClassifiedDocs(docs || [])).catch(() => {});
                     }}
                     onClick={() => {
                       const input = document.createElement("input");
@@ -5767,11 +5767,11 @@ export default function ProjectViewPage() {
                           try {
                             const fd = new FormData();
                             fd.append("file", file);
-                            await api(`/api/folders/${project?.folderId}/documents`, { method: "POST", body: fd, timeout: 120000 });
+                            await api(`/api/documents/folders/${project?.folderId}/documents`, { method: "POST", body: fd, timeout: 120000 });
                           } catch (err: any) { toast("error", `Upload eșuat: ${file.name}`); }
                         }
                         setDocUploading(false);
-                        apiGet<any[]>(`/api/folders/${project?.folderId}/classified-documents`).then(docs => setClassifiedDocs(docs || [])).catch(() => {});
+                        apiGet<any[]>(`/api/documents/folders/${project?.folderId}/classified-documents`).then(docs => setClassifiedDocs(docs || [])).catch(() => {});
                       };
                       input.click();
                     }}
@@ -5896,7 +5896,7 @@ export default function ProjectViewPage() {
                                 setReclassifyDoc(null);
                                 setReclassifyType("");
                                 setReclassifyRoute("");
-                                setTimeout(() => apiGet<any[]>(`/api/folders/${project?.folderId}/classified-documents`).then(docs => setClassifiedDocs(docs || [])).catch(() => {}), 2000);
+                                setTimeout(() => apiGet<any[]>(`/api/documents/folders/${project?.folderId}/classified-documents`).then(docs => setClassifiedDocs(docs || [])).catch(() => {}), 2000);
                               } catch { toast("error", "Eroare la reclasificare."); }
                             }}
                           >Reclasifică</button>

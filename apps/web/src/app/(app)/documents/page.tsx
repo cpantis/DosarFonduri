@@ -486,7 +486,7 @@ export default function DocumentsPage() {
       }
       // RAG v2: Load classified docs for session folders
       if (node?.type === "sesiune") {
-        apiGet<any[]>(`/api/folders/${selectedFolder}/classified-documents`).then(d => setClassifiedDocs(d || [])).catch(() => setClassifiedDocs([]));
+        apiGet<any[]>(`/api/documents/folders/${selectedFolder}/classified-documents`).then(d => setClassifiedDocs(d || [])).catch(() => setClassifiedDocs([]));
       } else {
         setClassifiedDocs([]);
       }
@@ -1097,7 +1097,7 @@ export default function DocumentsPage() {
                   files.map(async (file) => {
                     const fd = new FormData();
                     fd.append("file", file);
-                    await api(`/api/folders/${targetFolderId}/documents`, { method: "POST", body: fd, timeout: 120000 });
+                    await api(`/api/documents/folders/${targetFolderId}/documents`, { method: "POST", body: fd, timeout: 120000 });
                     return file.name;
                   })
                 );
@@ -1113,7 +1113,7 @@ export default function DocumentsPage() {
 
                 // Refresh
                 if (selectedFolder) {
-                  apiGet<any[]>(`/api/folders/${selectedFolder}/classified-documents`).then(setClassifiedDocs).catch(() => {});
+                  apiGet<any[]>(`/api/documents/folders/${selectedFolder}/classified-documents`).then(setClassifiedDocs).catch(() => {});
                   fetchDocs(selectedFolder);
                 }
               };

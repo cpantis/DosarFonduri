@@ -1103,10 +1103,13 @@ export default function DocumentsPage() {
                 );
 
                 const succeeded = results.filter(r => r.status === "fulfilled").length;
-                const failed = results.filter(r => r.status === "rejected").length;
+                const failedResults = results.filter(r => r.status === "rejected") as PromiseRejectedResult[];
 
                 if (succeeded > 0) toast("success", `${succeeded} document${succeeded > 1 ? "e" : ""} uploadat${succeeded > 1 ? "e" : ""}`);
-                if (failed > 0) toast("error", `${failed} document${failed > 1 ? "e" : ""} eșuat${failed > 1 ? "e" : ""}`);
+                if (failedResults.length > 0) {
+                  const firstError = failedResults[0]?.reason?.message || "Eroare necunoscută";
+                  toast("error", `${failedResults.length} document${failedResults.length > 1 ? "e" : ""} eșuat${failedResults.length > 1 ? "e" : ""}: ${firstError}`);
+                }
 
                 // Refresh
                 if (selectedFolder) {

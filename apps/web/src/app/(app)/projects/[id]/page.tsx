@@ -5874,6 +5874,36 @@ export default function ProjectViewPage() {
                     )}
                   </div>
 
+                  {/* FIX H: Compose Brief status + generate button */}
+                  <div style={{ margin: "8px 0", padding: "10px 12px", background: project?.composeBrief && !(project.composeBrief as any)?._outdated ? "#ecfdf5" : "#f8fafc", borderRadius: 8, border: `1px solid ${project?.composeBrief && !(project.composeBrief as any)?._outdated ? "#a7f3d0" : "#e2e8f0"}`, display: "flex", alignItems: "center", gap: 10 }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: "#1e293b" }}>
+                        {project?.composeBrief
+                          ? (project.composeBrief as any)?._outdated
+                            ? "Brief outdated — regenerează"
+                            : `Brief generat ${(project.composeBrief as any)?.generatedAt ? new Date((project.composeBrief as any).generatedAt).toLocaleDateString("ro-RO") : ""}`
+                          : "Brief negenereat"}
+                      </div>
+                      <div style={{ fontSize: 11, color: "#64748b" }}>
+                        {project?.composeBrief
+                          ? "Solomon a sintetizat contextul narativ pentru Neemia."
+                          : "Generează brief-ul ca Solomon să furnizeze context narativ pentru documente."}
+                      </div>
+                    </div>
+                    <button
+                      style={{ padding: "6px 14px", fontSize: 11, fontWeight: 700, borderRadius: 7, border: "none", background: project?.composeBrief && !(project.composeBrief as any)?._outdated ? "#e2e8f0" : "#2563eb", color: project?.composeBrief && !(project.composeBrief as any)?._outdated ? "#475569" : "#fff", cursor: "pointer", whiteSpace: "nowrap" }}
+                      disabled={readOnly}
+                      onClick={async () => {
+                        try {
+                          toast("info", "Se generează brief-ul...");
+                          const result = await apiPost<any>(`/api/solomon/projects/${projectId}/compose-brief`, {});
+                          setProject(prev => prev ? { ...prev, composeBrief: result.brief } : prev);
+                          toast("success", "Brief generat cu succes.");
+                        } catch (err: any) { toast("error", err.message || "Eroare la generare brief"); }
+                      }}
+                    >{project?.composeBrief && !(project.composeBrief as any)?._outdated ? "Regenerează brief" : "Generează brief"}</button>
+                  </div>
+
                   {neemiaGenStatus && (
                     <div className="neemia-gen-status">
                       {neemiaGenStatus}

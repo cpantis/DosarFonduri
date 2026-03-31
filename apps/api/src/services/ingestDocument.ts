@@ -26,7 +26,8 @@ import { classifyDocumentForIngestion, type ClassificationResult } from "./docum
 import { chunkDocument } from "./ragChunker";
 import { enrichChunksMetadata } from "./metadataEnricher";
 import { extractStructuredData, type ExtractedField } from "./dataExtractor";
-import { embedDocumentChunks } from "./voyageEmbeddings";
+// Voyage embeddings removed — BM25 text search is sufficient
+// import { embedDocumentChunks } from "./voyageEmbeddings";
 import { publishJobProgress } from "../lib/sse";
 
 export interface IngestOptions {
@@ -247,28 +248,32 @@ async function routeVectorize(
   }
 
   progress("Analiză conținut...", 40);
-  const metadata = await enrichChunksMetadata(docChunks, classification.docType, classification.description);
+  let metadata: any[] = [];
+  try {
+    metadata = await enrichChunksMetadata(docChunks, classification.docType, classification.description);
+  } catch (err) {
+    // Non-critical: metadata enrichment uses Sonnet — may fail on rate limits
+    console.warn(`[ingest] Metadata enrichment failed, using defaults:`, (err as Error).message);
+    metadata = docChunks.map(() => ({ layer: "narativ", topic: classification.description, doc_type: classification.docType, importance: "normal" }));
+  }
 
-  progress("Generare embeddings Voyage...", 60);
-  const embeddings = await embedDocumentChunks(docChunks.map(c => c.content));
-
-  progress("Salvare vectori...", 85);
+  progress("Salvare chunks...", 70);
 
   // Delete old chunks for this document (re-upload scenario)
   await db.delete(chunks).where(eq(chunks.documentId, documentId));
 
-  // Batch insert chunks
+  // Save chunks WITHOUT embeddings — BM25 text search works via tsvector GENERATED column
+  // Embeddings are optional (Voyage AI) — Solomon searches with keyword matching
   const records = docChunks.map((chunk, i) => ({
     cabinetId,
     sessionId,
     documentId,
     sourceType: "session" as const,
     content: chunk.content,
-    embedding: embeddings[i],
+    // embedding: null — saved without vector, BM25 search still works
     metadata: {
-      ...metadata[i],
+      ...(metadata[i] || {}),
       page: chunk.pageStart,
-      section: undefined, // section comes from metadata enrichment
     },
   }));
 

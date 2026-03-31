@@ -521,3 +521,13 @@ cd apps/web && npx next build
 - Completion percent calculat automat la fiecare field edit
 - Unique constraint pe (project_id, form_spec_id) — un singur form_data per formular per proiect
 - Refolosește `documentRenderer.ts` existent pentru rendering pagini cu field positions
+
+## Fix Sprint — FAZA 1+2 Backend COMPLET (2026-03-31)
+
+- [x] FIX 1.1: System prompt Solomon redus — scoase rules/tables/scoring/checklist injections, Solomon caută cu search_knowledge
+- [x] FIX 1.2: KB upload migreat la chunks (Voyage 1024) — Settings page folosește `/api/config/knowledge-base/upload`
+- [x] FIX 1.3: neemiaCompose integrează composeBrief + hybridSearch RAG context per secțiune
+- [x] FIX 1.4: processGuide dezactivat la upload ghid — toate 4 dispatch-uri comentate
+- [x] FIX 2.1: documentVersionUpgrade cascade + endpoints (confirm-upgrade, versions)
+- [x] FIX 2.2: Forms export endpoint (PDF/DOCX/XLSX fill from approved form data)
+- [x] FIX 2.3: GET eligibility/scoring/checklist endpoints verificate (există din Sprint 5)

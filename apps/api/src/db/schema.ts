@@ -1,16 +1,24 @@
 import { pgTable, uuid, varchar, text, integer, bigint, decimal, boolean, timestamp, pgEnum, jsonb, uniqueIndex, index, customType } from "drizzle-orm/pg-core";
 
-/** Custom type for pgvector vector(1536) columns */
-const vector1536 = customType<{ data: number[]; driverData: string }>({
-  dataType() { return "vector(1536)"; },
-  toDriver(value: number[]): string { return `[${value.join(",")}]`; },
-  fromDriver(value: string): number[] {
-    if (typeof value === "string") {
-      return value.replace(/[\[\]]/g, "").split(",").map(Number);
-    }
-    return value as any;
-  },
-});
+/** Custom type for pgvector vector columns — parameterized by dimension */
+function vectorType(dimensions: number) {
+  return customType<{ data: number[]; driverData: string }>({
+    dataType() { return `vector(${dimensions})`; },
+    toDriver(value: number[]): string { return `[${value.join(",")}]`; },
+    fromDriver(value: string): number[] {
+      if (typeof value === "string") {
+        return value.replace(/[\[\]]/g, "").split(",").map(Number);
+      }
+      return value as any;
+    },
+  });
+}
+
+/** OpenAI text-embedding-3-small (1536 dims) — used by guideChunks & solomonKnowledge */
+const vector1536 = vectorType(1536);
+
+/** Voyage voyage-context-3 (1024 dims) — used by RAG v2 chunks */
+const vector1024 = vectorType(1024);
 
 // === ENUMS ===
 export const planEnum = pgEnum("plan", ["starter", "professional", "enterprise"]);
@@ -1006,4 +1014,23 @@ export const budgetItems = pgTable("budget_items", {
 }, (table) => ({
   projectIdx: index("budget_project_idx").on(table.projectId),
   orgIdx: index("budget_org_idx").on(table.organizationId),
+}));
+
+// === RAG v2 — UNIFIED CHUNKS (Voyage embeddings, 1024 dims) ===
+export const chunks = pgTable("chunks", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  cabinetId: uuid("cabinet_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  sessionId: uuid("session_id"),  // NULL for knowledge_base entries
+  documentId: uuid("document_id").notNull().references(() => documents.id, { onDelete: "cascade" }),
+  sourceType: text("source_type").notNull(), // 'session' | 'knowledge_base'
+  content: text("content").notNull(),
+  embedding: vector1024("embedding"),
+  // content_tsv — added via raw SQL migration (GENERATED ALWAYS AS column)
+  metadata: jsonb("metadata").notNull().default({}),
+  // metadata shape: { layer, topic, doc_type, page, section, importance }
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  cabinetSourceIdx: index("chunks_cabinet_source_idx").on(table.cabinetId, table.sourceType),
+  sessionIdx: index("chunks_session_idx").on(table.sessionId),
+  documentIdx: index("chunks_document_idx").on(table.documentId),
 }));

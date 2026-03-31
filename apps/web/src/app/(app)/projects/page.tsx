@@ -105,40 +105,10 @@ export default function ProjectsPage() {
     if (!createData.folderId) { setGuideWarning(null); return; }
     setGuideWarning(null);
 
-    // Find the "ghiduri" subfolder of the selected session from the raw folder tree
-    const findGhiduriFolderId = (nodes: FolderNode[]): string | null => {
-      for (const node of nodes) {
-        if (node.id === createData.folderId) {
-          // Found session folder — look for "ghiduri" child
-          const ghiduri = node.children?.find((c: FolderNode) => c.type === "ghiduri");
-          return ghiduri?.id || null;
-        }
-        if (node.children) {
-          const found = findGhiduriFolderId(node.children);
-          if (found) return found;
-        }
-      }
-      return null;
-    };
-
-    const ghiduriFolderId = findGhiduriFolderId(rawFolders);
-    if (!ghiduriFolderId) {
-      setGuideWarning("Sesiunea selectată nu are folder de ghiduri. Proiectul nu va avea reguli de eligibilitate.");
-      return;
-    }
-
-    apiGet(`/api/documents/folders/${ghiduriFolderId}/documents`)
-      .then((data: any) => {
-        const docs = Array.isArray(data) ? data : data.documents || [];
-        const hasProcessedGuide = docs.some((d: any) =>
-          d.processingType === "ghid" && d.status === "processed"
-        );
-        if (!hasProcessedGuide) {
-          setGuideWarning("Sesiunea selectată nu are ghid procesat. Proiectul nu va avea reguli de eligibilitate.");
-        }
-      })
-      .catch(() => { /* ignore — non-critical check */ });
-  }, [createData.folderId, rawFolders]);
+    // RAG v2: Solomon uses search_knowledge to find guide data in chunks.
+    // No longer requires processGuide or a "ghiduri" subfolder.
+    // Old warning about "ghid procesat" removed — project creation always allowed.
+  }, [createData.folderId]);
 
   const [createError, setCreateError] = useState<string | null>(null);
 

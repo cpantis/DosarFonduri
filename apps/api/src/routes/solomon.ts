@@ -598,7 +598,18 @@ Scrie în română, concis, max 300 cuvinte. Structurează cu bullet points.`,
       return anthropic.messages.create({
         model: "claude-sonnet-4-6",
         max_tokens: 500,
-        system: "Extrage lecții cheie din conversație care ar fi utile pentru alte proiecte similare. Returnează JSON array: [{\"type\":\"lesson_learned|risk_identified|pattern|rule_interpretation\",\"content\":\"...\",\"confidence\":0.8}]. Max 3 lecții. DOAR JSON.",
+        system: `Extrage DOAR lecții GENERICE din conversație care ar fi utile pentru alte proiecte similare.
+
+IMPORTANT: NU include date specifice de client (nume, CNP, CUI, adrese, sume exacte, detalii personale).
+Include DOAR:
+- "pattern": tipare generale (ex: "La sM 4.1, zona ANC aduce +10% intensitate")
+- "rule_interpretation": interpretări de reguli (ex: "Pragul SO pentru fermă medie e 8.000-250.000")
+
+NU include:
+- "lesson_learned" sau "risk_identified" cu date specifice de client
+- Orice informație care identifică o persoană sau o firmă
+
+Returnează JSON array: [{"type":"pattern|rule_interpretation","content":"...","confidence":0.8}]. Max 3 lecții. DOAR JSON.`,
         messages: [{ role: "user", content: transcript.slice(0, 2000) }],
       });
     }, "batch");

@@ -295,26 +295,13 @@ async function buildSystemPrompt(projectId: string, organizationId: string): Pro
     });
     const summaries = prevConvs.filter(c => c.summary).map(c => c.summary);
 
-    // Case memories for this org (relevant learnings from other projects)
-    const caseMemories = await db.query.solomonCaseMemory.findMany({
-      where: eq(solomonCaseMemory.organizationId, organizationId),
-      orderBy: (m, { desc }) => [desc(m.createdAt)],
-      limit: 10,
-    });
+    // Cross-project case memories DISABLED — risk of mixing client data between projects
+    // Only conversation summaries from the SAME project are injected
+    // Case memory table kept for future use (audit trail, consultant review)
 
-    if (summaries.length > 0 || caseMemories.length > 0) {
+    if (summaries.length > 0) {
       const parts: string[] = [];
-      if (summaries.length > 0) {
-        parts.push(`### Ce am discutat anterior pe acest proiect:\n${summaries.slice(0, 3).join("\n\n---\n\n")}`);
-      }
-      if (caseMemories.length > 0) {
-        const relevant = caseMemories
-          .filter(m => m.content)
-          .slice(0, 5)
-          .map(m => `- [${m.memoType}] ${m.content}`)
-          .join("\n");
-        parts.push(`### Lecții din experiență (dosare anterioare):\n${relevant}`);
-      }
+      parts.push(`### Ce am discutat anterior pe acest proiect:\n${summaries.slice(0, 3).join("\n\n---\n\n")}`);
       memoryContext = `═══════════════════════════════════════════
 ## MEMORIE PERSISTENTĂ (din conversații anterioare)
 ═══════════════════════════════════════════

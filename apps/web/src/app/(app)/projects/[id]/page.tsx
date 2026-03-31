@@ -794,7 +794,9 @@ export default function ProjectViewPage() {
     try {
       const convs = await apiGet<any[]>(`/api/solomon/projects/${projectId}/conversations`);
       if (convs && convs.length > 0) {
-        const conv = convs[0];
+        // Pick the most recent conversation (API returns desc by createdAt, but sort client-side to be safe)
+        const sorted = [...convs].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        const conv = sorted[0];
         setSolomonConvId(conv.id);
         // Ensure conversation uses Sonnet by default
         apiPut(`/api/solomon/conversations/${conv.id}/model`, { model: "claude-sonnet-4-6" }).catch(() => {});

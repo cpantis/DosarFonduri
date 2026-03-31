@@ -531,3 +531,12 @@ cd apps/web && npx next build
 - [x] FIX 2.1: documentVersionUpgrade cascade + endpoints (confirm-upgrade, versions)
 - [x] FIX 2.2: Forms export endpoint (PDF/DOCX/XLSX fill from approved form data)
 - [x] FIX 2.3: GET eligibility/scoring/checklist endpoints verificate (există din Sprint 5)
+
+## RUNDA 0 — Template Pipeline Fix COMPLET (2026-03-31)
+
+- [x] routeTemplateCompose: dispatch processTemplate job + set generationMode=compose + processingType=template
+- [x] routeTemplateFill: dispatch processTemplate job + FormSpec extraction + set generationMode=fill + processingType=template
+- [x] getProjectTemplates: caută ATÂT în subfolder "templateuri" CÂT ȘI în folderul sesiune (classification.routingAction)
+- [x] Neemia documents endpoint: returnează și template-uri disponibile (status="available") pe lângă cele generate
+- [x] processingType setat pe document ("template") la routing — processTemplate recunoaște documentul
+- [x] Build check: tsc + next build PASS

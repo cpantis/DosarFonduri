@@ -295,8 +295,11 @@ async function routeTemplateFill(
 ): Promise<void> {
   progress("Pregătire template fill...", 30);
 
-  // Set generationMode on document
-  await db.update(documents).set({ generationMode: "fill" as any }).where(eq(documents.id, documentId));
+  // Set generationMode + processingType on document so processTemplate recognizes it
+  await db.update(documents).set({
+    generationMode: "fill" as any,
+    processingType: "template" as any,
+  }).where(eq(documents.id, documentId));
 
   // CRITICAL: Dispatch processTemplate job to create templateElements + composeConfig + placeholder_mapping
   // This is what Neemia needs to generate documents. Without it, templates are invisible.
@@ -344,7 +347,11 @@ async function routeTemplateCompose(
   progress("Analiză structură template compose...", 30);
 
   // Set generationMode on document
-  await db.update(documents).set({ generationMode: "compose" as any }).where(eq(documents.id, documentId));
+  // Set generationMode + processingType on document so processTemplate recognizes it
+  await db.update(documents).set({
+    generationMode: "compose" as any,
+    processingType: "template" as any,
+  }).where(eq(documents.id, documentId));
 
   // CRITICAL: Dispatch processTemplate job to extract COMPOSE: markers, create composeConfig + templateElements
   // Without this, Neemia compose has no sections to generate.

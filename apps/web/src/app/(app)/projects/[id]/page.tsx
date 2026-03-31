@@ -2910,6 +2910,31 @@ export default function ProjectViewPage() {
 
         /* Solomon Chat */
         .solomon-layout{display:flex;flex:1;overflow:hidden;background:#ffffff;min-height:0}
+        .solomon-flux-panel{width:240px;min-width:200px;border-right:1px solid rgba(226,232,240,.8);background:#f8fafc;display:flex;flex-direction:column;overflow:hidden}
+        .sfp-header{padding:12px 14px 10px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#94a3b8}
+        .sfp-scroll{flex:1;overflow-y:auto;padding:0 8px 12px}
+        .sfp-stage{margin-bottom:12px}
+        .sfp-stage-header{display:flex;align-items:center;gap:8px;padding:4px 8px;cursor:default}
+        .sfp-stage-num{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0}
+        .sfp-stage-num.done{background:#059669}
+        .sfp-stage-num.active{background:#2563eb}
+        .sfp-stage-num.pending{background:#cbd5e1}
+        .sfp-stage-info{flex:1;min-width:0}
+        .sfp-stage-name{font-size:13px;font-weight:600;color:#0f172a;line-height:1.3}
+        .sfp-stage-desc{font-size:11px;color:#94a3b8;line-height:1.3}
+        .sfp-stage-check{color:#059669;font-size:14px;flex-shrink:0}
+        .sfp-items{padding-left:18px;margin-top:2px}
+        .sfp-item{display:flex;align-items:center;gap:6px;padding:5px 8px;border-radius:6px;cursor:pointer;transition:background .1s;font-size:12px;color:#475569}
+        .sfp-item:hover{background:rgba(37,99,235,.05)}
+        .sfp-item.active{background:rgba(37,99,235,.08);color:#2563eb;font-weight:600}
+        .sfp-item-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+        .sfp-item-dot.done{background:#059669}
+        .sfp-item-dot.active{background:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.2)}
+        .sfp-item-dot.pending{background:#cbd5e1}
+        .sfp-item-badge{margin-left:auto;font-size:10px;font-weight:600;padding:1px 6px;border-radius:4px;font-family:'JetBrains Mono',monospace}
+        .sfp-item-badge.done{background:#ecfdf5;color:#059669}
+        .sfp-item-badge.active{background:#eff6ff;color:#2563eb}
+        .sfp-item-badge.pending{color:#94a3b8}
         .solomon-chat{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden;position:relative;background:#ffffff}
         .solomon-chat.drag-active{outline:2px dashed #4d8bff;outline-offset:-4px;border-radius:8px}
         .solomon-drop-overlay{position:absolute;inset:0;background:rgba(77,139,255,.08);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:20;pointer-events:none;border-radius:8px}
@@ -3264,6 +3289,7 @@ export default function ProjectViewPage() {
           .sg-stats{flex-direction:column;gap:8px}
           .neemia-templates{max-height:180px}
           .solomon-elements-panel{display:none}
+          .solomon-flux-panel{display:none}
           .sumar-panel{padding:20px 16px}
           .elig-panel{padding:16px}
         }
@@ -4927,6 +4953,126 @@ export default function ProjectViewPage() {
             {/* SOLOMON CHAT */}
             {activeLeaf === "solomon" && (
               <div className="solomon-layout">
+                {/* Left panel — Flux Dosar */}
+                {(() => {
+                  // Phase tree structure — derived from solomonPhase + eligibility + scoring data
+                  // Phase structure: stages group Q items. Status is derived from solomonPhase (from Solomon AI).
+                  // Solomon emits the current phase via PHASE_JSON at each response.
+                  // The structure below maps Q phases to UI stages and element categories.
+                  // It mirrors the Q0-Q11 phases defined in Solomon's system prompt.
+                  const PHASE_STAGES = [
+                    { num: 1, name: "Analiză", desc: "Despre ce e vorba?", phases: [
+                      { q: "Q0", defaultLabel: "De ce?", categories: ["beneficiary"] },
+                      { q: "Q1", defaultLabel: "Identificare", categories: ["beneficiary", "legal"] },
+                    ]},
+                    { num: 2, name: "Eligibilitate", desc: "Poate aplica?", phases: [
+                      { q: "Q2", defaultLabel: "Eligibilitate", categories: ["farm", "technical"] },
+                      { q: "Q3", defaultLabel: "Firme legate", categories: ["legal"] },
+                    ]},
+                    { num: 3, name: "Evaluare șanse", desc: "Merită să scriem?", phases: [
+                      { q: "Q4", defaultLabel: "Dimensionare", categories: ["investment", "financial"] },
+                      { q: "Q5", defaultLabel: "Punctaj", categories: ["farm", "investment", "location"] },
+                      { q: "Q6", defaultLabel: "Constrângeri", categories: ["legal", "technical"] },
+                    ]},
+                    { num: 4, name: "Scriere proiect", desc: "E gata dosarul?", phases: [
+                      { q: "Q7", defaultLabel: "Colectare date", categories: ["beneficiary", "financial", "farm", "investment"] },
+                      { q: "Q8", defaultLabel: "Documente", categories: ["legal"] },
+                      { q: "Q9", defaultLabel: "Generare", categories: ["other"] },
+                    ]},
+                  ];
+
+                  const currentQ = solomonPhase?.phase || "";
+                  const currentQNum = parseInt(currentQ.replace("Q", "")) || -1;
+
+                  // Use Solomon's label for the active phase, default labels for others
+                  const getPhaseLabel = (phase: { q: string; defaultLabel: string }) => {
+                    if (phase.q === currentQ && solomonPhase?.label) return solomonPhase.label;
+                    return phase.defaultLabel;
+                  };
+
+                  // Determine which Q is "active" for filtering elements
+                  const getQStatus = (q: string) => {
+                    const qNum = parseInt(q.replace("Q", ""));
+                    if (qNum < currentQNum) return "done";
+                    if (qNum === currentQNum) return "active";
+                    return "pending";
+                  };
+
+                  const getStageStatus = (stage: typeof PHASE_STAGES[0]) => {
+                    const statuses = stage.phases.map(p => getQStatus(p.q));
+                    if (statuses.every(s => s === "done")) return "done";
+                    if (statuses.some(s => s === "active")) return "active";
+                    return "pending";
+                  };
+
+                  // Badge for Q items — element counts, scoring, eligibility info
+                  const getQBadge = (q: string, categories: string[]) => {
+                    const catElements = elements.filter(e => categories.includes(e.category));
+                    const filled = catElements.filter(e => e.value).length;
+                    const total = catElements.length;
+                    if (total === 0) return null;
+                    return `${filled}/${total}`;
+                  };
+
+                  // Get Q-specific badges (eligibility count, scoring estimate)
+                  const getQSpecialBadge = (q: string) => {
+                    if (q === "Q2" || q === "Q3") {
+                      const passed = solEligibility.filter((e: any) => e.status === "pass").length;
+                      const total = solEligibility.length;
+                      if (total > 0) return `${passed}/${total}`;
+                    }
+                    if (q === "Q5") {
+                      const totalPts = solScoring.reduce((s: number, e: any) => s + (e.pointsEstimated || e.points || 0), 0);
+                      if (totalPts > 0) return `~${totalPts}p`;
+                    }
+                    return null;
+                  };
+
+                  return (
+                    <div className="solomon-flux-panel">
+                      <div className="sfp-header">Flux Dosar</div>
+                      <div className="sfp-scroll">
+                        {PHASE_STAGES.map(stage => {
+                          const stageStatus = getStageStatus(stage);
+                          return (
+                            <div key={stage.num} className="sfp-stage">
+                              <div className="sfp-stage-header">
+                                <div className={`sfp-stage-num ${stageStatus}`}>{stage.num}</div>
+                                <div className="sfp-stage-info">
+                                  <div className="sfp-stage-name">{stage.name}</div>
+                                  <div className="sfp-stage-desc">{stage.desc}</div>
+                                </div>
+                                {stageStatus === "done" && <span className="sfp-stage-check">✓</span>}
+                              </div>
+                              <div className="sfp-items">
+                                {stage.phases.map(phase => {
+                                  const status = getQStatus(phase.q);
+                                  const badge = getQSpecialBadge(phase.q) || getQBadge(phase.q, phase.categories);
+                                  return (
+                                    <div
+                                      key={phase.q}
+                                      className={`sfp-item ${status === "active" ? "active" : ""}`}
+                                      onClick={() => {
+                                        // Clicking a Q sends a prompt to Solomon to focus on that phase
+                                        if (status !== "pending") return;
+                                        const prompt = `Hai să trecem la ${phase.q} — ${getPhaseLabel(phase)}.`;
+                                        setSolomonInput(prompt);
+                                      }}
+                                    >
+                                      <span className={`sfp-item-dot ${status}`} />
+                                      <span>{phase.q} {getPhaseLabel(phase)}</span>
+                                      {badge && <span className={`sfp-item-badge ${status}`}>{badge}</span>}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
                 {/* Chat area */}
                 <div
                   className={`solomon-chat${solomonDragOver ? " drag-active" : ""}`}
@@ -4967,20 +5113,20 @@ export default function ProjectViewPage() {
                       </button>
                     </div>
                   </div>
-                  {/* RAG v2: Phase indicator */}
+                  {/* Phase badge (top-right of toolbar) */}
                   {solomonPhase && (
-                    <div style={{ padding: "6px 20px", background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
-                      <div style={{ maxWidth: 720, margin: "0 auto", display: "flex", alignItems: "center", gap: 10 }}>
-                        <span style={{ fontSize: 12, fontWeight: 700, color: "#2563eb", fontFamily: "'JetBrains Mono', monospace" }}>{solomonPhase.phase}</span>
-                        <span style={{ fontSize: 12, color: "#475569", flex: 1 }}>{solomonPhase.label}</span>
-                        <span style={{ fontSize: 11, color: "#94a3b8" }}>{solomonPhase.progress}%</span>
-                      </div>
-                      <div style={{ maxWidth: 720, margin: "3px auto 0", height: 3, background: "#e2e8f0", borderRadius: 2, overflow: "hidden" }}>
-                        <div style={{ height: "100%", width: `${solomonPhase.progress}%`, background: "#2563eb", borderRadius: 2, transition: "width 0.5s ease" }} />
-                      </div>
-                      {solomonPhase.nextAction && (
-                        <div style={{ maxWidth: 720, margin: "2px auto 0", fontSize: 11, color: "#94a3b8" }}>{solomonPhase.nextAction}</div>
-                      )}
+                    <div style={{ position: "absolute", top: 8, right: 16, display: "flex", alignItems: "center", gap: 6, padding: "5px 12px", background: "#eff6ff", borderRadius: 8, border: "1px solid #bfdbfe", zIndex: 5 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "#2563eb", fontFamily: "'JetBrains Mono', monospace" }}>
+                        Faza {(() => {
+                          const qNum = parseInt(solomonPhase.phase.replace("Q", "")) || 0;
+                          if (qNum <= 1) return "1";
+                          if (qNum <= 3) return "2";
+                          if (qNum <= 6) return "3";
+                          return "4";
+                        })()}
+                      </span>
+                      <span style={{ fontSize: 11, color: "#94a3b8" }}>·</span>
+                      <span style={{ fontSize: 12, color: "#1e40af" }}>{solomonPhase.phase} {solomonPhase.label}</span>
                     </div>
                   )}
                   {/* RAG v2: Tool use indicator */}
@@ -5264,7 +5410,7 @@ export default function ProjectViewPage() {
                   </div>
                 </div>
 
-                {/* Elements panel — grouped by category like prototype */}
+                {/* Elements panel — grouped by category, filtered by current phase */}
                 <div className="solomon-elements-panel">
                   <div className="sep-header">
                     <div className="sep-header-top">
@@ -5274,6 +5420,14 @@ export default function ProjectViewPage() {
                     <div className="sep-progress-bar">
                       <div className="sep-progress-fill" style={{ width: `${pct(elemFilled, elemTotal)}%` }} />
                     </div>
+                    {solomonPhase && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: "#2563eb", background: "#eff6ff", padding: "2px 8px", borderRadius: 4, fontFamily: "'JetBrains Mono', monospace" }}>
+                          {solomonPhase.phase}
+                        </span>
+                        <span style={{ fontSize: 11, color: "#64748b" }}>{solomonPhase.label}</span>
+                      </div>
+                    )}
                   </div>
                   <div className="sep-scroll">
                     {/* Solomon proposed elements not yet in DB — show first */}
@@ -5299,12 +5453,12 @@ export default function ProjectViewPage() {
                         ))}
                       </div>
                     )}
-                    {/* All project elements grouped by category */}
+                    {/* All project elements grouped by category — filtered by current phase */}
                     {(() => {
                       const CATEGORY_LABELS: Record<string, string> = {
-                        beneficiary: "DATE FIRMĂ",
+                        beneficiary: "REPREZENTANT",
                         financial: "DATE FINANCIARE",
-                        farm: "DATE EXPLOATAȚIE",
+                        farm: "EXPLOATAȚIE",
                         investment: "INVESTIȚIE",
                         location: "LOCAȚIE",
                         legal: "DATE JURIDICE",
@@ -5312,13 +5466,43 @@ export default function ProjectViewPage() {
                         other: "ALTE DATE",
                       };
                       const CATEGORY_ORDER = ["beneficiary", "financial", "farm", "investment", "location", "legal", "technical", "other"];
-                      const grouped = CATEGORY_ORDER
-                        .map(cat => ({ cat, label: CATEGORY_LABELS[cat], items: elements.filter(e => e.category === cat) }))
+
+                      // Phase → category mapping — derived from the same structure as Flux Dosar panel
+                      // These map Solomon's Q phases to element categories for filtering
+                      const PHASE_CATEGORIES: Record<string, string[]> = {};
+                      for (const stage of [
+                        { phases: [{ q: "Q0", cats: ["beneficiary"] }, { q: "Q1", cats: ["beneficiary", "legal"] }] },
+                        { phases: [{ q: "Q2", cats: ["farm", "technical"] }, { q: "Q3", cats: ["legal"] }] },
+                        { phases: [{ q: "Q4", cats: ["investment", "financial"] }, { q: "Q5", cats: ["farm", "investment", "location"] }, { q: "Q6", cats: ["legal", "technical"] }] },
+                        { phases: [{ q: "Q7", cats: ["beneficiary", "financial", "farm", "investment"] }, { q: "Q8", cats: ["legal"] }, { q: "Q9", cats: ["other"] }] },
+                      ]) { for (const p of stage.phases) PHASE_CATEGORIES[p.q] = p.cats; }
+
+                      const currentQ = solomonPhase?.phase || "";
+                      const activeCategories = PHASE_CATEGORIES[currentQ];
+
+                      // If we have an active phase with mapped categories, show those first
+                      // Then show remaining categories collapsed
+                      let filteredOrder: string[];
+                      if (activeCategories && activeCategories.length > 0) {
+                        // Active categories first, then the rest
+                        const remaining = CATEGORY_ORDER.filter(c => !activeCategories.includes(c));
+                        filteredOrder = [...activeCategories, ...remaining];
+                      } else {
+                        filteredOrder = CATEGORY_ORDER;
+                      }
+
+                      const grouped = filteredOrder
+                        .map(cat => ({
+                          cat,
+                          label: CATEGORY_LABELS[cat],
+                          items: elements.filter(e => e.category === cat),
+                          isPhaseRelevant: activeCategories ? activeCategories.includes(cat) : true,
+                        }))
                         .filter(g => g.items.length > 0);
 
                       return grouped.map(group => (
-                        <div key={group.cat} className="sep-category-group">
-                          <div className="sep-category-title">{group.label}</div>
+                        <div key={group.cat} className="sep-category-group" style={!group.isPhaseRelevant ? { opacity: 0.45 } : undefined}>
+                          <div className="sep-category-title" style={group.isPhaseRelevant && activeCategories?.length ? { color: "#2563eb" } : undefined}>{group.label}</div>
                           {group.items.map(el => (
                             <div key={el.id} className={`sep-row ${el.status} clickable`} onClick={() => {
                               if (el.value) {

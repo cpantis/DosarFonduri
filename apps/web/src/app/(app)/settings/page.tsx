@@ -641,7 +641,7 @@ export default function SettingsPage() {
 
                     try {
                       const token = typeof window !== "undefined" ? localStorage.getItem("df-token") : null;
-                      const res = await fetch("/api/config/knowledge/upload", {
+                      const res = await fetch("/api/config/knowledge-base/upload", {
                         method: "POST",
                         headers: token ? { "Authorization": `Bearer ${token}` } : {},
                         body: formData,

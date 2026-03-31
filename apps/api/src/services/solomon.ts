@@ -340,74 +340,13 @@ async function buildSystemPrompt(projectId: string, organizationId: string): Pro
     emptyElements.push(`- ${ed.displayName} (key: ${ed.elementKey}, tip: ${ed.dataType}, categorie: ${ed.category})${valHint}${helpHint}`);
   }
 
-  // Load guide reference tables for context
-  const refTables = await db.query.guideReferenceTables.findMany({
-    where: eq(guideReferenceTables.organizationId, organizationId),
-    orderBy: (rt, { asc }) => [asc(rt.name)],
-  });
-  const refTablesSummary = refTables.map(rt => {
-    const rowCount = Array.isArray(rt.data) ? rt.data.length : 0;
-    const schemaInfo = Array.isArray(rt.schema) ? rt.schema.map(s => s.label || s.key).join(", ") : "";
-    // Include data for lookup/classification tables (essential for Solomon to do lookups)
-    // For smaller tables (≤100 rows): include all data
-    // For larger tables: include first 50 rows + note about total
-    let sampleData = "";
-    if (rowCount > 0 && Array.isArray(rt.data)) {
-      const maxRows = rowCount <= 200 ? rowCount : 200;
-      sampleData = "\n    Date:\n" + rt.data.slice(0, maxRows).map(row =>
-        "    " + Object.entries(row).map(([k, v]) => `${k}: ${v}`).join(" | ")
-      ).join("\n");
-      if (rowCount > maxRows) sampleData += `\n    ... și alte ${rowCount - maxRows} rânduri (verifică în ghid)`;
-    }
-    return `- **${rt.name}** (${rt.tableType}, ${rowCount} rânduri${rt.lookupKey ? `, cheie: ${rt.lookupKey}` : ""})${schemaInfo ? `\n    Coloane: ${schemaInfo}` : ""}${sampleData}`;
-  });
-
-  // Get ALL eligibility rules with their status (not just failed)
-  const eligResults = await db.query.projectEligibility.findMany({
-    where: eq(projectEligibility.projectId, projectId),
-  });
-  const allRules = await db.query.rules.findMany({
-    where: eq(rules.organizationId, organizationId),
-  });
-  const rulesMap = new Map(allRules.map(r => [r.id, r]));
-  const eligMap = new Map(eligResults.map(e => [e.ruleId, e]));
-
-  // Categorize rules by status
-  const failedRules: string[] = [];
-  const pendingRules: string[] = [];
-  const passedRules: string[] = [];
-  const guideRulesAll: string[] = [];
-
-  for (const rule of allRules) {
-    const elig = eligMap.get(rule.id);
-    const status = elig?.status || "pending";
-    const ruleText = `- ${rule.description}${rule.sourceText ? ` [sursa ghid p.${rule.sourcePage}: "${rule.sourceText.slice(0, 120)}..."]` : ""}`;
-
-    guideRulesAll.push(`- [${rule.type}] ${rule.description}`);
-
-    if (status === "failed") {
-      failedRules.push(`- ⚠️ NEÎNDEPLINITĂ: ${rule.description}${elig?.notes ? ` — ${elig.notes}` : ""}`);
-    } else if (status === "pending") {
-      pendingRules.push(`- ⏳ DE VERIFICAT: ${rule.description}`);
-    } else if (status === "passed") {
-      passedRules.push(`- ✅ ${rule.description}`);
-    }
-  }
-
-  // Get project checklist items
-  const checklistItems = await db.query.projectChecklist.findMany({
-    where: eq(projectChecklist.projectId, projectId),
-    orderBy: (c, { asc }) => [asc(c.category), asc(c.sortOrder)],
-  });
-  const doneItems = checklistItems.filter(i => i.done);
-  const missingItems = checklistItems.filter(i => !i.done);
-
-  // Get scoring criteria for the guide document
-  const allScoringCriteria = await db.query.scoringCriteria.findMany({
-    where: eq(scoringCriteria.organizationId, organizationId),
-    orderBy: (c, { asc }) => [asc(c.category), asc(c.sortOrder)],
-  });
-  const totalMaxPoints = allScoringCriteria.reduce((sum, c) => sum + Number(c.maxPoints), 0);
+  // RAG v2 FIX 1.1: Old guide injections DISABLED — Solomon uses search_knowledge tool instead
+  // Rollback: uncomment the blocks below to restore old behavior
+  // const refTables = await db.query.guideReferenceTables.findMany({ where: eq(guideReferenceTables.organizationId, organizationId) });
+  // const eligResults = await db.query.projectEligibility.findMany({ where: eq(projectEligibility.projectId, projectId) });
+  // const allRules = await db.query.rules.findMany({ where: eq(rules.organizationId, organizationId) });
+  // const allScoringCriteria = await db.query.scoringCriteria.findMany({ where: eq(scoringCriteria.organizationId, organizationId) });
+  // const checklistItems = await db.query.projectChecklist.findMany({ where: eq(projectChecklist.projectId, projectId) });
 
   // All company elements — dynamic library (includes ALL financial + juridical data)
   let companyAnalysis: any = {};
@@ -659,101 +598,21 @@ Dacă consultantul întreabă despre firme legate, răspunde cu detaliile de mai
 **ACȚIUNE AUTOMATĂ:** Dacă în lista CÂMPURI DE COMPLETAT există elemente financiare (cifra de afaceri, profit net, capitaluri proprii, număr angajați, etc.) și datele de mai sus conțin valorile corespunzătoare, completează-le AUTOMAT la PRIMUL mesaj fără a fi întrebat. Acestea sunt date oficiale ANAF — confidence 0.95.
 
 ═══════════════════════════════════════════
-## REGULI DIN GHIDUL DE FINANȚARE (PRIORITARE)
-═══════════════════════════════════════════
-${guideRulesAll.length > 0 ? `Ghidul de finanțare conține ${guideRulesAll.length} reguli extrase automat.
-Aplică-le cu PRIORITATE MAXIMĂ în orice sfat dai consultantului.
-
-${failedRules.length > 0 ? `### ⚠️ REGULI NEÎNDEPLINITE (${failedRules.length}) — PRIORITATE CRITICĂ
-${failedRules.join("\n")}
-→ Semnalează IMEDIAT aceste probleme consultantului. Sugerează soluții concrete.
-` : ""}
-${pendingRules.length > 0 ? `### ⏳ REGULI ÎN AȘTEPTARE (${pendingRules.length}) — DE VERIFICAT
-${pendingRules.join("\n")}
-→ Cere consultantului informațiile necesare pentru a le verifica.
-` : ""}
-${passedRules.length > 0 ? `### ✅ REGULI ÎNDEPLINITE (${passedRules.length})
-${passedRules.slice(0, 15).join("\n")}${passedRules.length > 15 ? `\n... și alte ${passedRules.length - 15} reguli îndeplinite` : ""}
-` : ""}` : "Nu au fost extrase încă reguli din ghidul de finanțare. Întreabă consultantul dacă ghidul a fost încărcat."}
-
-═══════════════════════════════════════════
-## EVALUARE ELIGIBILITATE COMPLEXĂ (ROLUL TĂU)
+## REGULI, ELIGIBILITATE, PUNCTAJ — CAUTĂ CU SEARCH_KNOWLEDGE
 ═══════════════════════════════════════════
 
-Regulile fixe (DA/NU) sunt verificate automat de sistem (vezi statusul mai sus).
-Regulile COMPLEXE (intensitatea sprijinului, arbori decizionali, criterii cumulative, interpretare IMM, ajutor de stat)
-sunt evaluate de TINE direct din textul ghidului livrat prin [CONTEXT RELEVANT].
+CAUTĂ MEREU cu search_knowledge înainte de a face orice afirmație despre reguli, eligibilitate, punctaj, cheltuieli eligibile, sau intensitatea sprijinului. NU te baza pe cunoștințe generale — fiecare ghid are specificități.
 
-**Când consultantul deschide proiectul sau întreabă despre eligibilitate:**
-1. Analizează secțiunile de intensitate, eligibilitate complexă, și ajutor de stat din ghid (livrate prin RAG)
-2. Evaluează contra datelor firmei de mai sus
-3. Semnalează PROACTIV orice risc: "Atenție — conform ghidului pag. X, firma nu îndeplinește condiția Y"
-4. Pentru intensitatea sprijinului: calculează procentul corect bazat pe zona/tipul/mărimea beneficiarului
+Când consultantul întreabă despre eligibilitate sau punctaj:
+1. Caută cu search_knowledge layers=['regula'] pentru condiții de eligibilitate
+2. Caută cu search_knowledge layers=['punctaj'] pentru criterii de selecție
+3. Caută cu search_knowledge layers=['referinta'] pentru tabele (SO, plafoane)
+4. Evaluează contra datelor firmei de mai sus
+5. Semnalează PROACTIV orice risc
 
-**Nu aștepta să fii întrebat** — dacă vezi date de firmă care ridică semne de întrebare (capitaluri negative, IMM la limită, CAEN neeligibil), semnalează imediat.
+Baza de cunoștințe a cabinetului e accesibilă cu search_knowledge source_type='knowledge_base'.
 
-${(() => {
-  if (activeKnowledge.length === 0) return "";
-  // Only manual/cabinet entries go in system prompt (few, high priority)
-  // Reference entries (bulk uploads) are retrieved via RAG per-query
-  const manualEntries = activeKnowledge.filter(k => !k.category.startsWith("referinta_"));
-  const refCount = activeKnowledge.filter(k => k.category.startsWith("referinta_")).length;
 
-  if (manualEntries.length === 0 && refCount === 0) return "";
-
-  const formatEntry = (k: any) => {
-    let entry = `### [${k.category.toUpperCase()}] ${k.title}`;
-    if (k.sourceReference && !k.sourceReference.startsWith("doc:") && !k.sourceReference.startsWith("upload:")) entry += `\nSursă: ${k.sourceReference}`;
-    if (k.sourceUrl) entry += ` (${k.sourceUrl})`;
-    if (k.validFrom) entry += `\nÎn vigoare de la: ${k.validFrom.toISOString().split("T")[0]}`;
-    if (k.validUntil) entry += ` | Expiră: ${k.validUntil.toISOString().split("T")[0]}`;
-    entry += `\n${k.content}`;
-    return entry;
-  };
-
-  let section = `═══════════════════════════════════════════
-## BAZĂ DE CUNOȘTINȚE
-═══════════════════════════════════════════
-`;
-
-  if (manualEntries.length > 0) {
-    section += `### CUNOȘTINȚE CABINET (${manualEntries.length}) — adăugate de consultant, AU PRIORITATE
-${manualEntries.map(formatEntry).join("\n\n")}
-
-`;
-  }
-
-  if (refCount > 0) {
-    section += `### REFERINȚE STRATEGICE: ${refCount} documente indexate (accesibile prin căutare semantică)
-Referințele strategice sunt accesate automat per întrebare prin [CONTEXT RELEVANT].
-Nu le vezi aici în întregime — sunt livrate doar fragmentele relevante la fiecare mesaj.
-`;
-  }
-
-  return section;
-})()}
-${checklistItems.length > 0 ? `═══════════════════════════════════════════
-## CHECKLIST DOCUMENTE PROIECT
-═══════════════════════════════════════════
-Documente depuse (${doneItems.length}/${checklistItems.length}):
-${doneItems.map(i => `✅ ${i.name} (${i.category})`).join("\n")}
-
-Documente LIPSĂ:
-${missingItems.map(i => `❌ ${i.name} (${i.category})`).join("\n")}
-
-Dacă utilizatorul întreabă ce documente mai are nevoie, răspunde din această listă. Dacă un document lipsă e critic pentru completarea câmpurilor, menționează proactiv.
-` : ""}
-${allScoringCriteria.length > 0 ? `═══════════════════════════════════════════
-## CRITERII DE SELECȚIE (SCORING)
-═══════════════════════════════════════════
-Total punctaj maxim: ${totalMaxPoints} puncte
-Prag calitate estimat: 56 puncte
-
-Per criteriu:
-${allScoringCriteria.map(c => `- ${c.name} (max ${c.maxPoints}p): ${c.evaluationLogic ? JSON.stringify(c.evaluationLogic) : "fără logică definită"}`).join("\n")}
-
-Când completezi câmpuri, menționează impactul pe punctaj: "Dacă setezi X la valoarea Y, câștigi Z puncte la criteriul W."
-` : ""}
 ═══════════════════════════════════════════
 ## CÂMPURI DE COMPLETAT (${emptyElements.length} rămase)
 ═══════════════════════════════════════════
@@ -763,83 +622,8 @@ ${emptyElements.length > 0 ? emptyElements.join("\n") : "Toate câmpurile sunt c
 ${filledElements.length > 0 ? filledElements.slice(0, 30).join("\n") : "Niciun câmp completat încă."}
 ${filledElements.length > 30 ? `\n... și alte ${filledElements.length - 30} câmpuri` : ""}
 
-${refTablesSummary.length > 0 ? `═══════════════════════════════════════════
-## TABELE DE REFERINȚĂ DIN GHID (${refTablesSummary.length})
-═══════════════════════════════════════════
-Aceste tabele au fost extrase din anexele ghidului. Folosește-le pentru validare:
-- Când consultantul furnizează o valoare, verifică dacă se încadrează în tabelele relevante
-- Exemplu: dacă furnizează "suprafața = 270 ha" și "putere tractor = 150 CP", verifică corelare din tabelul corespunzător
-- Dacă o valoare NU se regăsește în tabele, avertizează: "Conform anexei X, valoarea [Y] nu se încadrează în [Z]"
 
-${refTablesSummary.join("\n\n")}
-` : ""}
-${await (async () => {
-  // Build element→rule mapping from elementRuleLinks
-  // Load ALL links for the org's elements (both templateElementId and elementDefId paths)
-  const tmplElIds = tmplElements.map(te => te.id);
-  const elemDefIds = elemDefs.map(ed => ed.id);
 
-  // Batch load links by templateElementId
-  const tmplLinks = tmplElIds.length > 0
-    ? await db.query.elementRuleLinks.findMany({
-        where: inArray(elementRuleLinks.templateElementId, tmplElIds),
-      })
-    : [];
-
-  // Batch load links by elementDefId
-  const edLinks = elemDefIds.length > 0
-    ? await db.query.elementRuleLinks.findMany({
-        where: inArray(elementRuleLinks.elementDefId, elemDefIds),
-      })
-    : [];
-
-  // Merge and deduplicate (prefer elementDefId links)
-  const seenPairs = new Set<string>();
-  const allLinks: Array<{ key: string; label: string; ruleDesc: string }> = [];
-
-  for (const link of edLinks) {
-    if (!link.elementDefId) continue;
-    const ed = elemDefMap.get(link.elementDefId);
-    const rule = rulesMap.get(link.ruleId);
-    if (!ed || !rule) continue;
-    const pairKey = `${ed.elementKey}:${rule.id}`;
-    if (seenPairs.has(pairKey)) continue;
-    seenPairs.add(pairKey);
-    allLinks.push({ key: ed.elementKey, label: ed.displayName, ruleDesc: rule.description });
-  }
-
-  for (const link of tmplLinks) {
-    if (!link.templateElementId) continue;
-    const te = tmplMap.get(link.templateElementId);
-    const rule = rulesMap.get(link.ruleId);
-    if (!te || !rule) continue;
-    const pairKey = `${te.key}:${rule.id}`;
-    if (seenPairs.has(pairKey)) continue;
-    seenPairs.add(pairKey);
-    allLinks.push({ key: te.key, label: te.label, ruleDesc: rule.description });
-  }
-
-  if (allLinks.length === 0) return "";
-
-  // Group by element key
-  const byKey = new Map<string, { label: string; rules: string[] }>();
-  for (const link of allLinks) {
-    const existing = byKey.get(link.key) || { label: link.label, rules: [] };
-    existing.rules.push(link.ruleDesc);
-    byKey.set(link.key, existing);
-  }
-
-  const mappingLines = [...byKey.entries()].map(([key, { label, rules }]) =>
-    `- **${label}** (${key}): ${rules.join("; ")}`
-  );
-
-  return `═══════════════════════════════════════════
-## MAPARE CÂMP → REGULĂ
-═══════════════════════════════════════════
-Următoarele câmpuri sunt direct legate de reguli din ghid. Când colectezi aceste date, verifică automat că valorile respectă regulile:
-${mappingLines.join("\n")}
-`;
-})()}
 ${await (async () => {
   const ctx = await detectProgramContext(projectId, organizationId, project, company);
   return `═══════════════════════════════════════════

@@ -700,7 +700,8 @@ documentRoutes.post("/documents/:id/confirm-upload", async (c) => {
       const dedup = { jobId: `doc-${doc.id}` };
       let dispatched = false;
       if (doc.processingType === "ghid") {
-        await processGuideQueue.add("process-guide", jobPayload, { priority: JOB_PRIORITY.GUIDE, ...dedup });
+        // FIX 1.4: processGuide DISABLED — RAG v2 ingest pipeline handles guide chunking
+        // await processGuideQueue.add("process-guide", jobPayload, { priority: JOB_PRIORITY.GUIDE, ...dedup });
         dispatched = true;
       } else if (doc.processingType === "template") {
         await processTemplateQueue.add("process-template", jobPayload, { priority: JOB_PRIORITY.TEMPLATE, ...dedup });
@@ -915,7 +916,8 @@ documentRoutes.post("/folders/:folderId/documents", async (c) => {
       const dedup = { jobId: `doc-${doc.id}` };
       let dispatched = false;
       if (processingType === "ghid") {
-        await processGuideQueue.add("process-guide", jobPayload, { priority: JOB_PRIORITY.GUIDE, ...dedup });
+        // FIX 1.4: processGuide DISABLED — RAG v2 ingest pipeline handles guide chunking
+        // await processGuideQueue.add("process-guide", jobPayload, { priority: JOB_PRIORITY.GUIDE, ...dedup });
         dispatched = true;
       } else if (processingType === "template") {
         await processTemplateQueue.add("process-template", jobPayload, { priority: JOB_PRIORITY.TEMPLATE, ...dedup });
@@ -2206,4 +2208,70 @@ documentRoutes.put("/documents/:id/reclassify", async (c) => {
   }
 
   return c.json({ ok: true, classification: newClassification });
+});
+
+// ═══════════════════════════════════════════
+// FIX 2.1 — Document version upgrade endpoints
+// ═══════════════════════════════════════════
+
+/**
+ * POST /api/documents/:newDocId/confirm-upgrade
+ * Confirm a version upgrade: archive old, promote new, cascade.
+ */
+documentRoutes.post("/documents/:newDocId/confirm-upgrade", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  if (!auth.organizationId) return c.json({ error: "No organization" }, 403);
+
+  const newDocId = c.req.param("newDocId");
+  const { previousDocId } = await c.req.json();
+  if (!previousDocId) return c.json({ error: "previousDocId is required" }, 400);
+
+  const newDoc = await db.query.documents.findFirst({
+    where: and(eq(documents.id, newDocId), eq(documents.organizationId, auth.organizationId)),
+  });
+  if (!newDoc) return c.json({ error: "New document not found" }, 404);
+
+  const oldDoc = await db.query.documents.findFirst({
+    where: and(eq(documents.id, previousDocId), eq(documents.organizationId, auth.organizationId)),
+  });
+  if (!oldDoc) return c.json({ error: "Previous document not found" }, 404);
+
+  const { executeVersionUpgrade } = await import("../services/documentVersionUpgrade");
+  const report = await executeVersionUpgrade(previousDocId, newDocId, auth.organizationId);
+
+  return c.json(report);
+});
+
+/**
+ * GET /api/documents/:documentId/versions
+ * Get version history for a document.
+ */
+documentRoutes.get("/documents/:documentId/versions", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  if (!auth.organizationId) return c.json({ error: "No organization" }, 403);
+
+  const documentId = c.req.param("documentId");
+
+  // Walk the version chain backwards
+  const versions: any[] = [];
+  let currentId: string | null = documentId;
+
+  while (currentId) {
+    const doc = await db.query.documents.findFirst({
+      where: and(eq(documents.id, currentId), eq(documents.organizationId, auth.organizationId)),
+    });
+    if (!doc) break;
+    versions.push({
+      id: doc.id,
+      version: doc.documentVersion || 1,
+      name: doc.name,
+      isCurrentVersion: doc.isCurrentVersion,
+      archivedAt: doc.archivedAt,
+      versionDiff: doc.versionDiff,
+      uploadedAt: doc.uploadedAt,
+    });
+    currentId = doc.supersedes as string | null;
+  }
+
+  return c.json(versions);
 });

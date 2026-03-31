@@ -22,7 +22,7 @@ import {
   organizations, solomonKnowledge, composeSectionVersions,
   projectChecklist, elementDefinitions,
 } from "../db/schema";
-import { eq, and, inArray, isNull, or, like, not } from "drizzle-orm";
+import { eq, and, inArray, isNull, or, like, not, sql } from "drizzle-orm";
 import { getFileBuffer, uploadFile } from "./storage";
 import { extractTextFromDOCX } from "./ocr";
 import { logAIUsage } from "./aiUsage";
@@ -495,6 +495,49 @@ async function generateComposeContent(
   previousSections?: ComposeSection[],
 ): Promise<{ sections: ComposeSection[]; tokensInput: number; tokensOutput: number; placeholders: Array<{ section: string; placeholder: string }> }> {
 
+  // FIX 1.3: Load compose brief from project (Solomon's strategic synthesis)
+  let composeBriefContext = "";
+  let ragContext = "";
+  try {
+    // Find project by matching elements to get projectId
+    const projElements = await db.query.projectElements.findMany({
+      where: eq(projectElements.projectId, projectElements.projectId),
+      limit: 1,
+    });
+    // Use a direct query to find project with composeBrief
+    const projs = await db.execute(sql`SELECT id, folder_id, compose_brief FROM projects WHERE organization_id = ${organizationId} AND compose_brief IS NOT NULL LIMIT 1`);
+    const projRow = (projs as any).rows?.[0] || (projs as any)[0];
+    if (projRow?.compose_brief) {
+      const brief = typeof projRow.compose_brief === "string" ? JSON.parse(projRow.compose_brief) : projRow.compose_brief;
+      composeBriefContext = `\n## BRIEF DE LA CONSULTANT SENIOR (Solomon)
+Firul narativ: ${brief.narrativeThread || ""}
+Profil client: ${JSON.stringify(brief.clientProfile || {})}
+Investiție: ${JSON.stringify(brief.investmentDescription || {})}
+Eligibilitate: ${JSON.stringify(brief.eligibilityConclusions || {})}
+Punctaj estimat: ${JSON.stringify(brief.scoringEstimate || {})}
+Argumente strategice: ${(brief.strategicArguments || []).join("; ")}
+`;
+
+      // RAG search for section-relevant context
+      const { hybridSearch } = await import("./hybridSearch");
+      const sectionLabels = sections.map(s => s.label).join(", ");
+      const results = await hybridSearch({
+        query: sectionLabels,
+        cabinetId: organizationId,
+        sessionId: projRow.folder_id || "",
+        layers: ["narativ", "regula", "punctaj"],
+        topK: 5,
+      });
+      if (results.length > 0) {
+        ragContext = `\n## CONTEXT DIN GHID (RAG)
+${results.map(r => r.content).join("\n---\n")}
+`;
+      }
+    }
+  } catch (err) {
+    console.warn("[neemiaCompose] FIX 1.3 brief/RAG loading failed (non-critical):", (err as Error).message);
+  }
+
   // Build element context string
   const elementsList = Object.entries(context.elements)
     .map(([key, { value, label }]) => `- ${label} (${key}): ${value}`)
@@ -788,7 +831,7 @@ ${rulesList}`;
     : "";
 
   const userPrompt = `Generează conținutul pentru următoarele secțiuni ale documentului.
-${coherenceContext}
+${composeBriefContext}${ragContext}${coherenceContext}
 IMPORTANT: Răspunde cu un JSON valid care conține un array "sections", unde fiecare secțiune are:
 - "marker": string (marker-ul secțiunii)
 - "type": "narrative" | "table" | "calculation"

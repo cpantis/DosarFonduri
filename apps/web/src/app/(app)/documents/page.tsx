@@ -1135,7 +1135,9 @@ export default function DocumentsPage() {
                     input.click();
                   }}
                 >
-                  <div style={{ fontSize: 28, marginBottom: 6 }}>📎</div>
+                  <div style={{ width: 40, height: 40, borderRadius: 10, background: "#eff6ff", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 8px" }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  </div>
                   <div style={{ fontSize: 14, fontWeight: 600, color: "#1e293b" }}>Trage documentele aici sau click pentru a selecta</div>
                   <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 4 }}>Ghiduri, template-uri, anexe, CI-uri, bilanțuri, oferte — AI-ul clasifică automat.</div>
                 </div>
@@ -1185,7 +1187,9 @@ export default function DocumentsPage() {
               if (classifiedDocs.length === 0) {
                 return (
                   <div style={{ textAlign: "center", padding: 32, color: "#94a3b8" }}>
-                    <div style={{ fontSize: 36, marginBottom: 8 }}>📂</div>
+                    <div style={{ width: 48, height: 48, borderRadius: 12, background: "#f1f5f9", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 8px" }}>
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+                    </div>
                     <div style={{ fontSize: 14 }}>Niciun document încă. Începe prin a adăuga ghidul sesiunii.</div>
                   </div>
                 );

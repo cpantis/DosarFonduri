@@ -812,8 +812,12 @@ export default function DocumentsPage() {
   const procesate = docs.filter(d => d.status === "procesat").length;
   const templates = docs.filter(d => d.status === "template").length;
 
+  const HIDDEN_LEAF_TYPES = new Set(["ghiduri", "templateuri", "clienti_prospecti", "clienti_finali"]);
+
   /* ─── Tree renderer ─── */
-  const renderTree = (nodes: TreeNode[], depth = 0) => nodes.map(node => {
+  const renderTree = (nodes: TreeNode[], depth = 0) => nodes
+    .filter(node => !HIDDEN_LEAF_TYPES.has(node.type)) // Hide leaf subfolders from tree
+    .map(node => {
     const hasKids = node.children && node.children.length > 0;
     const isExpanded = expandedNodes[node.id];
     const isSelected = node.id === selectedFolder;
@@ -1085,9 +1089,8 @@ export default function DocumentsPage() {
             {(() => {
               const uploadFilesToSession = async (files: File[]) => {
                 if (files.length === 0) return;
-                const children = selectedNode?.children || [];
-                const leafFolder = children.find((c: any) => LEAF_TYPES.has(c.type));
-                const targetFolderId = leafFolder?.id || selectedFolder;
+                // Upload directly to session folder (leaf subfolders hidden from UI)
+                const targetFolderId = selectedFolder;
 
                 // Parallel upload with Promise.allSettled
                 const results = await Promise.allSettled(

@@ -1171,15 +1171,21 @@ export default function DocumentsPage() {
               const renderCard = (doc: any) => {
                 const c = doc.classification;
                 const icon = c?.routingAction === "vectorize" ? "📗" : ["template_fill", "template_compose"].includes(c?.routingAction) ? "📝" : "📄";
-                const statusIcon = doc.status === "processed" ? "✅" : doc.status === "processing" ? "⏳" : "⚠️";
+                const isError = doc.status === "error" || doc.status === "failed";
+                const statusIcon = doc.status === "processed" ? "✅" : doc.status === "processing" ? "⏳" : isError ? "⚠️" : "📄";
                 return (
-                  <div key={doc.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, marginBottom: 6 }}>
-                    <span style={{ fontSize: 18 }}>{icon}</span>
+                  <div key={doc.id} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 14px", background: isError ? "#fef2f2" : "#fff", border: `1px solid ${isError ? "#fecaca" : "#e2e8f0"}`, borderRadius: 10, marginBottom: 6 }}>
+                    <span style={{ fontSize: 18, flexShrink: 0, marginTop: 2 }}>{icon}</span>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 13, fontWeight: 600, color: "#1e293b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {doc.fileName || doc.name} <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 400 }}>{statusIcon}</span>
                       </div>
                       <div style={{ fontSize: 11, color: "#64748b" }}>{c?.description || c?.docType || ""}</div>
+                      {isError && doc.processingError && (
+                        <div style={{ fontSize: 11, color: "#dc2626", marginTop: 4, lineHeight: 1.4 }}>
+                          {doc.processingError.slice(0, 200)}
+                        </div>
+                      )}
                     </div>
                   </div>
                 );

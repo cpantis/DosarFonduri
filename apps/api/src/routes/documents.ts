@@ -700,7 +700,8 @@ documentRoutes.post("/documents/:id/confirm-upload", async (c) => {
       const dedup = { jobId: `doc-${doc.id}` };
       let dispatched = false;
       if (doc.processingType === "ghid") {
-        await processGuideQueue.add("process-guide", jobPayload, { priority: JOB_PRIORITY.GUIDE, ...dedup });
+        // FIX 1.4: processGuide DISABLED — RAG v2 ingest pipeline handles guide chunking
+        // await processGuideQueue.add("process-guide", jobPayload, { priority: JOB_PRIORITY.GUIDE, ...dedup });
         dispatched = true;
       } else if (doc.processingType === "template") {
         await processTemplateQueue.add("process-template", jobPayload, { priority: JOB_PRIORITY.TEMPLATE, ...dedup });
@@ -915,7 +916,8 @@ documentRoutes.post("/folders/:folderId/documents", async (c) => {
       const dedup = { jobId: `doc-${doc.id}` };
       let dispatched = false;
       if (processingType === "ghid") {
-        await processGuideQueue.add("process-guide", jobPayload, { priority: JOB_PRIORITY.GUIDE, ...dedup });
+        // FIX 1.4: processGuide DISABLED — RAG v2 ingest pipeline handles guide chunking
+        // await processGuideQueue.add("process-guide", jobPayload, { priority: JOB_PRIORITY.GUIDE, ...dedup });
         dispatched = true;
       } else if (processingType === "template") {
         await processTemplateQueue.add("process-template", jobPayload, { priority: JOB_PRIORITY.TEMPLATE, ...dedup });

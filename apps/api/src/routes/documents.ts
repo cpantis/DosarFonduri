@@ -494,7 +494,7 @@ const MAX_SIZE: Record<string, number> = {
   ghid: 50 * 1024 * 1024,          // 50 MB — ghiduri are large PDFs
   reference_data: 30 * 1024 * 1024, // 30 MB
   template: 20 * 1024 * 1024,       // 20 MB
-  client_doc: 20 * 1024 * 1024,     // 20 MB
+  client_doc: 50 * 1024 * 1024,     // 50 MB — session upload accepts any type including ghid
   reference: 20 * 1024 * 1024,      // 20 MB
 };
 
@@ -701,10 +701,12 @@ documentRoutes.post("/documents/:id/confirm-upload", async (c) => {
       const jobPayload = { documentId: doc.id, organizationId: auth.organizationId };
       const dedup = { jobId: `doc-${doc.id}` };
       let dispatched = false;
-      if (doc.processingType === "ghid") {
-        // FIX 1.4: processGuide DISABLED — RAG v2 ingest pipeline handles guide chunking
-        // await processGuideQueue.add("process-guide", jobPayload, { priority: JOB_PRIORITY.GUIDE, ...dedup });
-        dispatched = true;
+      // Check if this is a session-level upload (folder type sesiune) — skip legacy jobs
+      const uploadFolder = await db.query.documentFolders.findFirst({ where: eq(documentFolders.id, doc.folderId), columns: { type: true } });
+      const isSessionUpload = uploadFolder?.type === "sesiune" || uploadFolder?.type === "program" || uploadFolder?.type === "masura";
+
+      if (doc.processingType === "ghid" || isSessionUpload) {
+        // RAG v2: ingestDocumentQueue handles classification + routing
       } else if (doc.processingType === "template") {
         await processTemplateQueue.add("process-template", jobPayload, { priority: JOB_PRIORITY.TEMPLATE, ...dedup });
         dispatched = true;
@@ -917,10 +919,10 @@ documentRoutes.post("/folders/:folderId/documents", async (c) => {
       const jobPayload = { documentId: doc.id, organizationId: auth.organizationId! };
       const dedup = { jobId: `doc-${doc.id}` };
       let dispatched = false;
-      if (processingType === "ghid") {
-        // FIX 1.4: processGuide DISABLED — RAG v2 ingest pipeline handles guide chunking
-        // await processGuideQueue.add("process-guide", jobPayload, { priority: JOB_PRIORITY.GUIDE, ...dedup });
-        dispatched = true;
+      // Check if session-level upload — skip legacy jobs, only ingestDocument handles
+      const isSessionFolderUpload = folder.type === "sesiune" || folder.type === "program" || folder.type === "masura";
+      if (processingType === "ghid" || isSessionFolderUpload) {
+        // RAG v2: ingestDocumentQueue handles classification + routing
       } else if (processingType === "template") {
         await processTemplateQueue.add("process-template", jobPayload, { priority: JOB_PRIORITY.TEMPLATE, ...dedup });
         dispatched = true;
@@ -937,20 +939,24 @@ documentRoutes.post("/folders/:folderId/documents", async (c) => {
         doc = { ...doc, status: "processing" };
       }
 
-      // RAG v2: Also dispatch ingest-document job for the new pipeline.
-      // Runs alongside existing jobs — coexistence until Sprint 3 migration.
+      // RAG v2: Dispatch ingest-document job for ALL document types.
+      // This is the primary pipeline — classifies + routes automatically.
       try {
         await ingestDocumentQueue.add("ingest-document", {
           documentId: doc.id,
           cabinetId: auth.organizationId!,
-          sessionId: folderId, // folder acts as session context
+          sessionId: folderId,
           organizationId: auth.organizationId!,
         }, {
           priority: JOB_PRIORITY.INGEST,
           jobId: `ingest-${doc.id}`,
         });
+        // Always mark as processing when ingest job dispatched
+        if (!dispatched) {
+          await db.update(documents).set({ status: "processing" }).where(eq(documents.id, doc.id));
+          doc = { ...doc, status: "processing" };
+        }
       } catch (ingestErr: any) {
-        // Non-critical — legacy pipeline still runs
         console.warn(`[documents] RAG v2 ingest dispatch failed for ${doc.id}:`, ingestErr.message);
       }
     } catch (queueErr: any) {
@@ -2120,8 +2126,18 @@ documentRoutes.get("/folders/:folderId/classified-documents", async (c) => {
   });
   if (!folder) return c.json({ error: "Folder not found" }, 404);
 
+  // Load docs from this folder AND all child folders (for session view with subfolders)
+  const childFolders = await db.query.documentFolders.findMany({
+    where: and(eq(documentFolders.parentId, folderId), eq(documentFolders.organizationId, auth.organizationId)),
+    columns: { id: true },
+  });
+  const folderIds = [folderId, ...childFolders.map(f => f.id)];
+
   const docs = await db.query.documents.findMany({
-    where: and(eq(documents.folderId, folderId), eq(documents.organizationId, auth.organizationId)),
+    where: and(
+      sql`${documents.folderId} = ANY(${folderIds}::uuid[])`,
+      eq(documents.organizationId, auth.organizationId),
+    ),
     orderBy: (d, { desc }) => [desc(d.uploadedAt)],
   });
 

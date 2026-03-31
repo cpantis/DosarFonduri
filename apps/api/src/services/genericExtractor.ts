@@ -97,7 +97,7 @@ ${text.slice(0, CHUNK_CHAR_LIMIT)}`,
       }],
     }));
 
-    const responseText = response.content[0].type === "text" ? response.content[0].text : "";
+    const responseText = response.content?.[0]?.type === "text" ? response.content[0].text : "";
     const wasTruncated = response.stop_reason === "max_tokens";
 
     let fullText = responseText;
@@ -129,7 +129,7 @@ ${text.slice(0, CHUNK_CHAR_LIMIT)}`,
         ],
       }));
 
-      const contText = contResponse.content[0].type === "text" ? contResponse.content[0].text : "";
+      const contText = contResponse.content?.[0]?.type === "text" ? contResponse.content[0].text : "";
       fullText = responseText + contText;
       console.log(`[genericExtractor] Continuation: +${contText.length} chars (total: ${fullText.length})`);
     }

@@ -420,7 +420,7 @@ Returnează DOAR un JSON array valid. Fără backticks, fără explicații.`,
       }],
     }));
 
-    const text = response.content[0].type === "text" ? response.content[0].text : "[]";
+    const text = response.content?.[0]?.type === "text" ? response.content[0].text : "[]";
     const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
 
     await logAIUsage({
@@ -561,7 +561,7 @@ export async function extractElementDefinitionsFromGuide(
     }],
   }));
 
-  const content = response.content[0].type === "text" ? response.content[0].text : "[]";
+  const content = response.content?.[0]?.type === "text" ? response.content[0].text : "[]";
   const cleaned = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
 
   await logAIUsage({

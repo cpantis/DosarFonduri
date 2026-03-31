@@ -111,7 +111,7 @@ Clasifică documentul. JSON:
 
   const elapsed = Date.now() - startTime;
   const text =
-    response.content[0].type === "text" ? response.content[0].text : "{}";
+    response.content?.[0]?.type === "text" ? response.content[0].text : "{}";
   const cleaned = text
     .replace(/```json\n?/g, "")
     .replace(/```\n?/g, "")

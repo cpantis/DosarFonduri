@@ -51,7 +51,7 @@ Returnează un singur obiect JSON:
         messages: [{ role: "user", content: userPrompt }],
       }));
 
-      const responseText = response.content[0].type === "text" ? response.content[0].text : "{}";
+      const responseText = response.content?.[0]?.type === "text" ? response.content[0].text : "{}";
       const parsed = safeJSONParse(responseText, "certificatFiscalExtractor");
 
       if (parsed) {

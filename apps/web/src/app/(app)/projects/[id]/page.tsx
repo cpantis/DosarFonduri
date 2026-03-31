@@ -4944,29 +4944,39 @@ export default function ProjectViewPage() {
                 {/* Left panel — Flux Dosar */}
                 {(() => {
                   // Phase tree structure — derived from solomonPhase + eligibility + scoring data
+                  // Phase structure: stages group Q items. Status is derived from solomonPhase (from Solomon AI).
+                  // Solomon emits the current phase via PHASE_JSON at each response.
+                  // The structure below maps Q phases to UI stages and element categories.
+                  // It mirrors the Q0-Q11 phases defined in Solomon's system prompt.
                   const PHASE_STAGES = [
                     { num: 1, name: "Analiză", desc: "Despre ce e vorba?", phases: [
-                      { q: "Q0", label: "De ce?", categories: ["beneficiary"] },
-                      { q: "Q1", label: "Identificare", categories: ["beneficiary", "legal"] },
+                      { q: "Q0", defaultLabel: "De ce?", categories: ["beneficiary"] },
+                      { q: "Q1", defaultLabel: "Identificare", categories: ["beneficiary", "legal"] },
                     ]},
                     { num: 2, name: "Eligibilitate", desc: "Poate aplica?", phases: [
-                      { q: "Q2", label: "Eligibilitate", categories: ["farm", "technical"] },
-                      { q: "Q3", label: "Firme legate", categories: ["legal"] },
+                      { q: "Q2", defaultLabel: "Eligibilitate", categories: ["farm", "technical"] },
+                      { q: "Q3", defaultLabel: "Firme legate", categories: ["legal"] },
                     ]},
                     { num: 3, name: "Evaluare șanse", desc: "Merită să scriem?", phases: [
-                      { q: "Q4", label: "Dimensionare", categories: ["investment", "financial"] },
-                      { q: "Q5", label: "Punctaj", categories: ["farm", "investment", "location"] },
-                      { q: "Q6", label: "Constrângeri", categories: ["legal", "technical"] },
+                      { q: "Q4", defaultLabel: "Dimensionare", categories: ["investment", "financial"] },
+                      { q: "Q5", defaultLabel: "Punctaj", categories: ["farm", "investment", "location"] },
+                      { q: "Q6", defaultLabel: "Constrângeri", categories: ["legal", "technical"] },
                     ]},
                     { num: 4, name: "Scriere proiect", desc: "E gata dosarul?", phases: [
-                      { q: "Q7", label: "Colectare date", categories: ["beneficiary", "financial", "farm", "investment"] },
-                      { q: "Q8", label: "Documente", categories: ["legal"] },
-                      { q: "Q9", label: "Generare", categories: ["other"] },
+                      { q: "Q7", defaultLabel: "Colectare date", categories: ["beneficiary", "financial", "farm", "investment"] },
+                      { q: "Q8", defaultLabel: "Documente", categories: ["legal"] },
+                      { q: "Q9", defaultLabel: "Generare", categories: ["other"] },
                     ]},
                   ];
 
                   const currentQ = solomonPhase?.phase || "";
                   const currentQNum = parseInt(currentQ.replace("Q", "")) || -1;
+
+                  // Use Solomon's label for the active phase, default labels for others
+                  const getPhaseLabel = (phase: { q: string; defaultLabel: string }) => {
+                    if (phase.q === currentQ && solomonPhase?.label) return solomonPhase.label;
+                    return phase.defaultLabel;
+                  };
 
                   // Determine which Q is "active" for filtering elements
                   const getQStatus = (q: string) => {
@@ -5033,12 +5043,12 @@ export default function ProjectViewPage() {
                                       onClick={() => {
                                         // Clicking a Q sends a prompt to Solomon to focus on that phase
                                         if (status !== "pending") return;
-                                        const prompt = `Hai să trecem la ${phase.q} — ${phase.label}.`;
+                                        const prompt = `Hai să trecem la ${phase.q} — ${getPhaseLabel(phase)}.`;
                                         setSolomonInput(prompt);
                                       }}
                                     >
                                       <span className={`sfp-item-dot ${status}`} />
-                                      <span>{phase.q} {phase.label}</span>
+                                      <span>{phase.q} {getPhaseLabel(phase)}</span>
                                       {badge && <span className={`sfp-item-badge ${status}`}>{badge}</span>}
                                     </div>
                                   );
@@ -5445,21 +5455,15 @@ export default function ProjectViewPage() {
                       };
                       const CATEGORY_ORDER = ["beneficiary", "financial", "farm", "investment", "location", "legal", "technical", "other"];
 
-                      // Phase → category mapping for filtering
-                      const PHASE_CATEGORIES: Record<string, string[]> = {
-                        Q0: ["beneficiary"],
-                        Q1: ["beneficiary", "legal"],
-                        Q2: ["farm", "technical"],
-                        Q3: ["legal"],
-                        Q4: ["investment", "financial"],
-                        Q5: ["farm", "investment", "location"],
-                        Q6: ["legal", "technical"],
-                        Q7: ["beneficiary", "financial", "farm", "investment"],
-                        Q8: ["legal"],
-                        Q9: ["other"],
-                        Q10: ["legal"],
-                        Q11: [],
-                      };
+                      // Phase → category mapping — derived from the same structure as Flux Dosar panel
+                      // These map Solomon's Q phases to element categories for filtering
+                      const PHASE_CATEGORIES: Record<string, string[]> = {};
+                      for (const stage of [
+                        { phases: [{ q: "Q0", cats: ["beneficiary"] }, { q: "Q1", cats: ["beneficiary", "legal"] }] },
+                        { phases: [{ q: "Q2", cats: ["farm", "technical"] }, { q: "Q3", cats: ["legal"] }] },
+                        { phases: [{ q: "Q4", cats: ["investment", "financial"] }, { q: "Q5", cats: ["farm", "investment", "location"] }, { q: "Q6", cats: ["legal", "technical"] }] },
+                        { phases: [{ q: "Q7", cats: ["beneficiary", "financial", "farm", "investment"] }, { q: "Q8", cats: ["legal"] }, { q: "Q9", cats: ["other"] }] },
+                      ]) { for (const p of stage.phases) PHASE_CATEGORIES[p.q] = p.cats; }
 
                       const currentQ = solomonPhase?.phase || "";
                       const activeCategories = PHASE_CATEGORIES[currentQ];

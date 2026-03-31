@@ -133,7 +133,7 @@ export async function ingestDocument(options: IngestOptions): Promise<IngestResu
       }
 
       case "template_compose": {
-        await routeTemplateCompose(documentId, classification, progress);
+        await routeTemplateCompose(documentId, organizationId, classification, progress);
         break;
       }
 
@@ -295,19 +295,38 @@ async function routeTemplateFill(
 ): Promise<void> {
   progress("Pregătire template fill...", 30);
 
-  // FORM-1: Extract FormSpec from the template
+  // Set generationMode on document
+  await db.update(documents).set({ generationMode: "fill" as any }).where(eq(documents.id, documentId));
+
+  // CRITICAL: Dispatch processTemplate job to create templateElements + composeConfig + placeholder_mapping
+  // This is what Neemia needs to generate documents. Without it, templates are invisible.
   try {
-    progress("Extragere structură formular...", 50);
+    const { processTemplateQueue, JOB_PRIORITY } = await import("../lib/queue");
+    const { isRedisReady } = await import("../lib/redis");
+    if (isRedisReady()) {
+      await processTemplateQueue.add("process-template", {
+        documentId,
+        organizationId,
+      }, {
+        priority: JOB_PRIORITY.TEMPLATE,
+        jobId: `tpl-ingest-${documentId}`,
+      });
+      progress("Template trimis la procesare (extragere câmpuri + mapare)...", 60);
+    }
+  } catch (err) {
+    console.warn(`[ingest] processTemplate dispatch failed for ${documentId}:`, (err as Error).message);
+  }
+
+  // FORM-1: Also extract FormSpec (parallel, non-blocking)
+  try {
+    progress("Extragere structură formular...", 70);
     const { extractAndSaveFormSpec } = await import("./formSpecExtractor");
     const { formSpecId, spec } = await extractAndSaveFormSpec(
       buffer, fileName, documentId, organizationId,
     );
     progress(`FormSpec extras: ${spec.sourceFormat}, ${spec.totalFields} câmpuri`, 85);
-    console.log(`[ingest] FormSpec extracted for ${documentId}: ${spec.sourceFormat}, ${spec.totalFields} fields`);
   } catch (err) {
-    // Non-critical — template can still be used without FormSpec
     console.warn(`[ingest] FormSpec extraction failed for ${documentId}:`, (err as Error).message);
-    progress("Template marcat pentru completare (FormSpec indisponibil).", 90);
   }
 
   progress("Template pregătit pentru completare.", 90);
@@ -318,15 +337,35 @@ async function routeTemplateFill(
  */
 async function routeTemplateCompose(
   documentId: string,
+  organizationId: string,
   classification: ClassificationResult,
   progress: ProgressFn,
 ): Promise<void> {
-  progress("Analiză structură template...", 50);
+  progress("Analiză structură template compose...", 30);
 
-  // The document structure (sections) will be analyzed when Neemia compose
-  // is actually triggered. The blueprint/composeConfig fields on documents
-  // already handle this. We just mark the classification.
-  progress("Template marcat pentru generare.", 90);
+  // Set generationMode on document
+  await db.update(documents).set({ generationMode: "compose" as any }).where(eq(documents.id, documentId));
+
+  // CRITICAL: Dispatch processTemplate job to extract COMPOSE: markers, create composeConfig + templateElements
+  // Without this, Neemia compose has no sections to generate.
+  try {
+    const { processTemplateQueue, JOB_PRIORITY } = await import("../lib/queue");
+    const { isRedisReady } = await import("../lib/redis");
+    if (isRedisReady()) {
+      await processTemplateQueue.add("process-template", {
+        documentId,
+        organizationId,
+      }, {
+        priority: JOB_PRIORITY.TEMPLATE,
+        jobId: `tpl-compose-${documentId}`,
+      });
+      progress("Template compose trimis la procesare (detectare secțiuni + mapare)...", 70);
+    }
+  } catch (err) {
+    console.warn(`[ingest] processTemplate dispatch failed for compose ${documentId}:`, (err as Error).message);
+  }
+
+  progress("Template compose pregătit.", 90);
 }
 
 /**

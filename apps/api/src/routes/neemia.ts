@@ -2,7 +2,7 @@ import type { AppEnv } from "../types/hono";
 import { Hono } from "hono";
 import { db } from "../db";
 import { projectDocuments, documents, templateElements, projectElements, guideReferenceTables, projects, composeSectionVersions, templatePlaceholderMapping, companies, companyFinancials, organizations } from "../db/schema";
-import { eq, and, desc, inArray } from "drizzle-orm";
+import { eq, and, desc, inArray, sql } from "drizzle-orm";
 import { AuthContext } from "../middleware/auth";
 import {
   generateDocument, validateBeforeGenerate,
@@ -171,6 +171,41 @@ neemiaRoutes.get("/projects/:projectId/documents", async (c) => {
       downloadUrl,
     };
   }));
+
+  // RAG v2: Also include AVAILABLE templates (not yet generated) from session folder
+  // These are documents classified as template_fill/template_compose that have templateElements
+  if (project.folderId) {
+    const sessionTemplates = await db.query.documents.findMany({
+      where: and(
+        eq(documents.organizationId, auth.organizationId!),
+        sql`(${documents.folderId} = ${project.folderId} OR ${documents.folderId} IN (
+          SELECT id FROM document_folders WHERE parent_id = ${project.folderId} AND type = 'templateuri'
+        ))`,
+      ),
+    });
+
+    const templateDocs2 = sessionTemplates.filter(d => {
+      const cls = d.classification as any;
+      return d.processingType === "template" || cls?.routingAction === "template_fill" || cls?.routingAction === "template_compose";
+    });
+
+    // Add templates not already in projectDocuments as "available" entries
+    const existingTemplateIds = new Set(docs.map(d => d.templateDocumentId).filter(Boolean));
+    for (const tpl of templateDocs2) {
+      if (existingTemplateIds.has(tpl.id)) continue;
+      enriched.push({
+        id: `available-${tpl.id}`,
+        projectId,
+        templateDocumentId: tpl.id,
+        templateName: tpl.name,
+        templateFileType: tpl.fileType || "docx",
+        generationMode: tpl.generationMode || (tpl.classification as any)?.routingAction === "template_compose" ? "compose" : "fill",
+        status: "available",
+        downloadUrl: null,
+        createdAt: tpl.uploadedAt,
+      } as any);
+    }
+  }
 
   return c.json(enriched);
 });

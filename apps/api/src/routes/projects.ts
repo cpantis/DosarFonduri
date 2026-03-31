@@ -88,6 +88,7 @@ async function buildProgramPath(folderId: string): Promise<{ program: string; ma
 
 // Helper: get templates from session
 async function getProjectTemplates(folderId: string, orgId: string) {
+  // Path 1: Look in "templateuri" subfolder (old flow)
   const templateFolder = await db.query.documentFolders.findFirst({
     where: and(
       eq(documentFolders.parentId, folderId),
@@ -95,10 +96,32 @@ async function getProjectTemplates(folderId: string, orgId: string) {
       eq(documentFolders.organizationId, orgId),
     ),
   });
-  if (!templateFolder) return [];
 
-  return db.query.documents.findMany({
-    where: eq(documents.folderId, templateFolder.id),
+  const subfolderDocs = templateFolder
+    ? await db.query.documents.findMany({ where: eq(documents.folderId, templateFolder.id) })
+    : [];
+
+  // Path 2: Look for template documents directly in session folder (new RAG v2 single entry point)
+  // These are classified as template_fill or template_compose by the AI classifier
+  const sessionDocs = await db.query.documents.findMany({
+    where: and(
+      eq(documents.folderId, folderId),
+      eq(documents.organizationId, orgId),
+    ),
+  });
+  const sessionTemplates = sessionDocs.filter(d => {
+    const cls = d.classification as any;
+    return cls?.routingAction === "template_fill" || cls?.routingAction === "template_compose"
+      || d.processingType === "template";
+  });
+
+  // Merge and deduplicate by id
+  const allDocs = [...subfolderDocs, ...sessionTemplates];
+  const seen = new Set<string>();
+  return allDocs.filter(d => {
+    if (seen.has(d.id)) return false;
+    seen.add(d.id);
+    return true;
   });
 }
 

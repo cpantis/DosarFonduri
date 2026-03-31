@@ -4,11 +4,11 @@ import { z } from "zod";
 import { createHash } from "crypto";
 import { updateDocElementSchema, validatePageSchema, createDocElementSchema } from "@dosarfonduri/shared";
 import { db } from "../db";
-import { documentFolders, documents, files, templateElements, rules, scoringCriteria, elementDefinitions, templatePlaceholderMapping, users, guideReferenceTables, elementRuleLinks, ruleReferenceLinks, sessionChecklist, projects, projectDocuments, projectElements, projectEligibility, organizations } from "../db/schema";
+import { documentFolders, documents, files, templateElements, rules, scoringCriteria, elementDefinitions, templatePlaceholderMapping, users, guideReferenceTables, elementRuleLinks, ruleReferenceLinks, sessionChecklist, projects, projectDocuments, projectElements, projectEligibility, organizations, chunks } from "../db/schema";
 import { eq, and, isNull, sql, inArray, or, lt } from "drizzle-orm";
 import { uploadFile, getFileUrl, deleteFile, createPresignedUploadUrl, verifyFileUploaded, isLocalStorage } from "../services/storage";
 import { AuthContext } from "../middleware/auth";
-import { processGuideQueue, processTemplateQueue, processReferenceDataQueue, processReferenceDocQueue, processClientDocQueue, JOB_PRIORITY } from "../lib/queue";
+import { processGuideQueue, processTemplateQueue, processReferenceDataQueue, processReferenceDocQueue, processClientDocQueue, ingestDocumentQueue, JOB_PRIORITY } from "../lib/queue";
 import { publishUploadEvent, publishFolderStructureLock } from "../lib/sse";
 import { isRedisReady } from "../lib/redis";
 
@@ -719,6 +719,21 @@ documentRoutes.post("/documents/:id/confirm-upload", async (c) => {
       if (dispatched) {
         await db.update(documents).set({ status: "processing" }).where(eq(documents.id, id));
       }
+
+      // RAG v2: Also dispatch ingest-document job
+      try {
+        await ingestDocumentQueue.add("ingest-document", {
+          documentId: doc.id,
+          cabinetId: auth.organizationId,
+          sessionId: doc.folderId,
+          organizationId: auth.organizationId,
+        }, {
+          priority: JOB_PRIORITY.INGEST,
+          jobId: `ingest-${doc.id}`,
+        });
+      } catch (ingestErr: any) {
+        console.warn(`[documents] RAG v2 ingest dispatch failed for ${doc.id}:`, ingestErr.message);
+      }
     } catch (queueErr: any) {
       console.error(`Queue dispatch failed for document ${doc.id}:`, queueErr.message);
       warnings.push("Procesarea automată nu a pornit (Redis indisponibil). Poți reporni manual din meniul documentului.");
@@ -916,6 +931,23 @@ documentRoutes.post("/folders/:folderId/documents", async (c) => {
       if (dispatched) {
         await db.update(documents).set({ status: "processing" }).where(eq(documents.id, doc.id));
         doc = { ...doc, status: "processing" };
+      }
+
+      // RAG v2: Also dispatch ingest-document job for the new pipeline.
+      // Runs alongside existing jobs — coexistence until Sprint 3 migration.
+      try {
+        await ingestDocumentQueue.add("ingest-document", {
+          documentId: doc.id,
+          cabinetId: auth.organizationId!,
+          sessionId: folderId, // folder acts as session context
+          organizationId: auth.organizationId!,
+        }, {
+          priority: JOB_PRIORITY.INGEST,
+          jobId: `ingest-${doc.id}`,
+        });
+      } catch (ingestErr: any) {
+        // Non-critical — legacy pipeline still runs
+        console.warn(`[documents] RAG v2 ingest dispatch failed for ${doc.id}:`, ingestErr.message);
       }
     } catch (queueErr: any) {
       console.error(`Queue dispatch failed for document ${doc.id}:`, queueErr.message);
@@ -2061,4 +2093,117 @@ documentRoutes.get("/uploads/events", async (c) => {
       "Connection": "keep-alive",
     },
   });
+});
+
+// ═══════════════════════════════════════════════════════════
+// RAG v2 — Classified documents list + reclassification
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * GET /api/folders/:folderId/classified-documents
+ * Returns documents with their RAG v2 classification metadata.
+ */
+documentRoutes.get("/folders/:folderId/classified-documents", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  if (!auth.organizationId) return c.json({ error: "No organization" }, 403);
+
+  const folderId = c.req.param("folderId");
+
+  const folder = await db.query.documentFolders.findFirst({
+    where: and(eq(documentFolders.id, folderId), eq(documentFolders.organizationId, auth.organizationId)),
+  });
+  if (!folder) return c.json({ error: "Folder not found" }, 404);
+
+  const docs = await db.query.documents.findMany({
+    where: and(eq(documents.folderId, folderId), eq(documents.organizationId, auth.organizationId)),
+    orderBy: (d, { desc }) => [desc(d.uploadedAt)],
+  });
+
+  // Enrich with chunk counts for vectorized documents
+  const result = docs.map(doc => ({
+    id: doc.id,
+    fileName: doc.name,
+    fileType: doc.fileType,
+    fileSize: doc.fileSize,
+    classification: doc.classification,
+    status: doc.status,
+    processingError: doc.processingError,
+    uploadedAt: doc.uploadedAt,
+    processedAt: doc.processedAt,
+    uploadedBy: doc.uploadedBy,
+  }));
+
+  return c.json(result);
+});
+
+/**
+ * PUT /api/documents/:id/reclassify
+ * Manually correct the AI classification and re-trigger the ingestion pipeline.
+ */
+documentRoutes.put("/documents/:id/reclassify", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  if (!auth.organizationId) return c.json({ error: "No organization" }, 403);
+
+  const id = c.req.param("id");
+
+  const doc = await db.query.documents.findFirst({
+    where: and(eq(documents.id, id), eq(documents.organizationId, auth.organizationId)),
+  });
+  if (!doc) return c.json({ error: "Document not found" }, 404);
+
+  const body = await c.req.json();
+  const { docType, routingAction } = body;
+
+  if (!docType || !routingAction) {
+    return c.json({ error: "docType and routingAction are required" }, 400);
+  }
+
+  const validRoutes = ["vectorize", "template_fill", "template_compose", "extract_data", "vectorize_and_extract"];
+  if (!validRoutes.includes(routingAction)) {
+    return c.json({ error: `Invalid routingAction. Must be one of: ${validRoutes.join(", ")}` }, 400);
+  }
+
+  // Delete old chunks if any exist
+  await db.delete(chunks).where(eq(chunks.documentId, id));
+
+  // Update classification with manual override
+  const newClassification = {
+    ...(doc.classification as any || {}),
+    docType,
+    routingAction,
+    confidence: 1.0, // manual = 100% confidence
+    isProcessed: false,
+    processedAt: undefined,
+    chunksCount: undefined,
+    extractedFields: undefined,
+  };
+
+  await db
+    .update(documents)
+    .set({
+      status: "processing",
+      classification: newClassification,
+      processingError: null,
+    })
+    .where(eq(documents.id, id));
+
+  // Re-trigger ingestion pipeline
+  if (isRedisReady()) {
+    try {
+      await ingestDocumentQueue.add("ingest-document", {
+        documentId: id,
+        cabinetId: auth.organizationId,
+        sessionId: doc.folderId,
+        organizationId: auth.organizationId,
+      }, {
+        priority: JOB_PRIORITY.INGEST,
+        jobId: `reclassify-${id}-${Date.now()}`,
+      });
+    } catch (err: any) {
+      console.warn(`[documents] Reclassify dispatch failed for ${id}:`, err.message);
+      return c.json({ error: "Reclasificarea a fost salvată dar procesarea nu a pornit (Redis indisponibil)" }, 500);
+    }
+  }
+
+  return c.json({ ok: true, classification: newClassification });
 });

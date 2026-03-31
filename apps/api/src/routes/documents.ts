@@ -920,7 +920,7 @@ documentRoutes.post("/folders/:folderId/documents", async (c) => {
       if (processingType === "ghid") {
         // FIX 1.4: processGuide DISABLED — RAG v2 ingest pipeline handles guide chunking
         // await processGuideQueue.add("process-guide", jobPayload, { priority: JOB_PRIORITY.GUIDE, ...dedup });
-        dispatched = true;
+        // dispatched will be set by ingestDocumentQueue below
       } else if (processingType === "template") {
         await processTemplateQueue.add("process-template", jobPayload, { priority: JOB_PRIORITY.TEMPLATE, ...dedup });
         dispatched = true;
@@ -937,20 +937,24 @@ documentRoutes.post("/folders/:folderId/documents", async (c) => {
         doc = { ...doc, status: "processing" };
       }
 
-      // RAG v2: Also dispatch ingest-document job for the new pipeline.
-      // Runs alongside existing jobs — coexistence until Sprint 3 migration.
+      // RAG v2: Dispatch ingest-document job for ALL document types.
+      // This is the primary pipeline — classifies + routes automatically.
       try {
         await ingestDocumentQueue.add("ingest-document", {
           documentId: doc.id,
           cabinetId: auth.organizationId!,
-          sessionId: folderId, // folder acts as session context
+          sessionId: folderId,
           organizationId: auth.organizationId!,
         }, {
           priority: JOB_PRIORITY.INGEST,
           jobId: `ingest-${doc.id}`,
         });
+        // Always mark as processing when ingest job dispatched
+        if (!dispatched) {
+          await db.update(documents).set({ status: "processing" }).where(eq(documents.id, doc.id));
+          doc = { ...doc, status: "processing" };
+        }
       } catch (ingestErr: any) {
-        // Non-critical — legacy pipeline still runs
         console.warn(`[documents] RAG v2 ingest dispatch failed for ${doc.id}:`, ingestErr.message);
       }
     } catch (queueErr: any) {

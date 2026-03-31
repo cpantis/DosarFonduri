@@ -449,6 +449,10 @@ export default function ProjectViewPage() {
   // RAG v2: Tool use + phase tracking
   const [solomonToolUse, setSolomonToolUse] = useState<{ toolName: string; query?: string } | null>(null);
   const [solomonPhase, setSolomonPhase] = useState<{ phase: string; label: string; progress: number; nextAction: string } | null>(null);
+  // Sprint 5: Solomon structured output
+  const [solEligibility, setSolEligibility] = useState<any[]>([]);
+  const [solScoring, setSolScoring] = useState<any[]>([]);
+  const [solChecklist, setSolChecklist] = useState<any[]>([]);
   // RAG v2: Classified documents for the session
   const [classifiedDocs, setClassifiedDocs] = useState<any[]>([]);
   const [classifiedDocsLoading, setClassifiedDocsLoading] = useState(false);
@@ -673,6 +677,10 @@ export default function ProjectViewPage() {
         if (proj.solomonPhase) setSolomonPhase(proj.solomonPhase);
         // RAG v2: Load classified documents
         apiGet<any[]>(`/api/folders/${proj.folderId}/classified-documents`).then(docs => setClassifiedDocs(docs || [])).catch(() => {});
+        // Sprint 5: Load Solomon structured output
+        apiGet<any>(`/api/solomon/projects/${projectId}/eligibility`).then(r => setSolEligibility(r?.entries || [])).catch(() => {});
+        apiGet<any>(`/api/solomon/projects/${projectId}/scoring`).then(r => setSolScoring(r?.criteria || [])).catch(() => {});
+        apiGet<any>(`/api/solomon/projects/${projectId}/document-checklist`).then(r => setSolChecklist(r?.items || [])).catch(() => {});
         setEligibilityRules(mapEligibilityRules(eligData.flat || []));
         setGuideRules(mapGuideRules(eligData.grouped || []));
         setElements(mapElements(proj.elements || []));
@@ -976,6 +984,39 @@ export default function ProjectViewPage() {
             } else if (evt.type === "phase_update" && evt.phase) {
               // RAG v2: Solomon phase update
               setSolomonPhase(evt.phase);
+            } else if (evt.type === "eligibility_update" && evt.entries) {
+              // Sprint 5: Eligibility update
+              setSolEligibility(prev => {
+                const updated = [...prev];
+                for (const entry of evt.entries) {
+                  const idx = updated.findIndex(e => e.rule === entry.rule);
+                  if (idx >= 0) updated[idx] = entry;
+                  else updated.push(entry);
+                }
+                return updated;
+              });
+            } else if (evt.type === "scoring_update" && evt.entries) {
+              // Sprint 5: Scoring update
+              setSolScoring(prev => {
+                const updated = [...prev];
+                for (const entry of evt.entries) {
+                  const idx = updated.findIndex(e => e.criterion === entry.criterion);
+                  if (idx >= 0) updated[idx] = entry;
+                  else updated.push(entry);
+                }
+                return updated;
+              });
+            } else if (evt.type === "checklist_update" && evt.entries) {
+              // Sprint 5: Checklist update
+              setSolChecklist(prev => {
+                const updated = [...prev];
+                for (const entry of evt.entries) {
+                  const idx = updated.findIndex(e => e.document === entry.document);
+                  if (idx >= 0) updated[idx] = entry;
+                  else updated.push(entry);
+                }
+                return updated;
+              });
             } else if (evt.type === "metadata_updated" && evt.metadata) {
               // Solomon confirmed program metadata — update project state
               setProject(prev => prev ? {
@@ -3568,6 +3609,34 @@ export default function ProjectViewPage() {
 
             {/* REGULI (combined ghid rules + eligibility status) */}
             {activeLeaf === "reguli" && (() => {
+              // Sprint 5: Solomon Eligibility Panel
+              const solEligSection = solEligibility.length > 0 ? (
+                <div style={{ marginBottom: 24, padding: 16, background: "#f8fafc", borderRadius: 12, border: "1px solid #e2e8f0" }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: "#1e293b", marginBottom: 12, display: "flex", justifyContent: "space-between" }}>
+                    <span>Eligibilitate (Solomon)</span>
+                    <span style={{ fontSize: 12, fontWeight: 400, color: "#64748b" }}>
+                      {solEligibility.filter(e => e.status === "pass").length}/{solEligibility.length} ✅
+                    </span>
+                  </div>
+                  {solEligibility.map((entry: any, i: number) => {
+                    const icon = entry.status === "pass" ? "✅" : entry.status === "fail" ? "❌" : entry.status === "pending" ? "⏳" : "░░";
+                    const color = entry.status === "pass" ? "#059669" : entry.status === "fail" ? "#dc2626" : "#d97706";
+                    return (
+                      <div key={i} style={{ padding: "6px 0", borderBottom: i < solEligibility.length - 1 ? "1px solid #f0f2f5" : "none" }}>
+                        <div style={{ fontSize: 13, display: "flex", gap: 6, alignItems: "flex-start" }}>
+                          <span>{icon}</span>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontWeight: 500, color }}>{entry.ruleName || entry.rule}</div>
+                            {entry.evidence && <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>{entry.evidence}</div>}
+                          </div>
+                          {entry.sourcePhase && <span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'JetBrains Mono', monospace" }}>{entry.sourcePhase}</span>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : null;
+
               const categoryLabels: Record<string, string> = {
                 eligibilitate: "Eligibilitate", financiar: "Financiar", tehnic: "Tehnic", administrativ: "Administrativ",
                 achizitii: "Achiziții", documente: "Documente", selectie: "Selecție", intensitate: "Intensitate",
@@ -3624,18 +3693,20 @@ export default function ProjectViewPage() {
               const eligPendingCount = eligibilityRules.filter(r => r.status === "pending").length;
               const eligStatusIcons: Record<string, string> = { pass: "\u2713", fail: "\u2715", pending: "?" };
 
-              if (guideRules.length === 0 && eligibilityRules.length === 0) {
+              if (guideRules.length === 0 && eligibilityRules.length === 0 && solEligibility.length === 0) {
                 return (
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 200, color: "#8892a8", padding: 24 }}>
                     <div style={{ fontSize: 32, marginBottom: 8 }}>&#128214;</div>
                     <div style={{ fontSize: 14, fontWeight: 600 }}>Nicio regulă extrasă încă</div>
-                    <div style={{ fontSize: 12, marginTop: 4 }}>Uploadează un ghid de finanțare pentru a extrage regulile automat</div>
+                    <div style={{ fontSize: 12, marginTop: 4 }}>Discutați eligibilitatea cu Solomon pentru a genera checklist-ul automat</div>
                   </div>
                 );
               }
 
               return (
               <div className="ghid-layout">
+                {/* Sprint 5: Solomon Eligibility Panel */}
+                {solEligSection}
                 {/* Eligibility summary stats */}
                 {eligibilityRules.length > 0 && (
                   <div className="elig-summary" style={{ marginBottom: 10 }}>
@@ -4597,12 +4668,47 @@ export default function ProjectViewPage() {
 
             {/* SCOR (scoring criteria + points) */}
             {activeLeaf === "scor" && (() => {
-              if (!projectScores || projectScores.scores.length === 0) {
+              // Sprint 5: Solomon scoring panel
+              const solScoringSection = solScoring.length > 0 ? (
+                <div style={{ marginBottom: 24, padding: 16, background: "#f8fafc", borderRadius: 12, border: "1px solid #e2e8f0" }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: "#1e293b", marginBottom: 12, display: "flex", justifyContent: "space-between" }}>
+                    <span>Punctaj estimat (Solomon)</span>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: "#2563eb" }}>
+                      {solScoring.reduce((s: number, e: any) => s + (e.pointsEstimated || e.points || 0), 0)} / {solScoring.reduce((s: number, e: any) => s + (e.maxPoints || 0), 0)}
+                    </span>
+                  </div>
+                  <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
+                    <thead>
+                      <tr style={{ borderBottom: "1px solid #e2e8f0" }}>
+                        <th style={{ textAlign: "left", padding: "4px 0", color: "#64748b", fontWeight: 600 }}>Criteriu</th>
+                        <th style={{ textAlign: "right", padding: "4px 8px", color: "#64748b", fontWeight: 600 }}>Est.</th>
+                        <th style={{ textAlign: "right", padding: "4px 8px", color: "#64748b", fontWeight: 600 }}>Max</th>
+                        <th style={{ textAlign: "right", padding: "4px 0", color: "#64748b", fontWeight: 600 }}>Conf.</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {solScoring.map((entry: any, i: number) => (
+                        <tr key={i} style={{ borderBottom: "1px solid #f0f2f5" }}>
+                          <td style={{ padding: "6px 0", color: "#1e293b" }}>
+                            {entry.criterionName || entry.criterion}
+                            {entry.evidence && <div style={{ fontSize: 10, color: "#94a3b8" }}>{entry.evidence}</div>}
+                          </td>
+                          <td style={{ textAlign: "right", padding: "6px 8px", fontWeight: 600, color: "#2563eb" }}>{entry.pointsEstimated ?? entry.points ?? "—"}</td>
+                          <td style={{ textAlign: "right", padding: "6px 8px", color: "#64748b" }}>{entry.maxPoints ?? "—"}</td>
+                          <td style={{ textAlign: "right", padding: "6px 0", color: "#94a3b8" }}>{entry.confidence ? `${Math.round(entry.confidence * 100)}%` : "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : null;
+
+              if ((!projectScores || projectScores.scores.length === 0) && solScoring.length === 0) {
                 return (
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 200, color: "#8892a8", padding: 24 }}>
                     <div style={{ fontSize: 32, marginBottom: 8 }}>📊</div>
                     <div style={{ fontSize: 14, fontWeight: 600 }}>Niciun criteriu de scor disponibil</div>
-                    <div style={{ fontSize: 12, marginTop: 4 }}>Uploadează un ghid cu grilă de evaluare pentru a genera criteriile automat</div>
+                    <div style={{ fontSize: 12, marginTop: 4 }}>Discutați punctajul cu Solomon pentru estimări automate</div>
                     <button
                       onClick={async () => {
                         try {
@@ -4618,9 +4724,14 @@ export default function ProjectViewPage() {
                   </div>
                 );
               }
+              if (!projectScores || projectScores.scores.length === 0) {
+                return (<div style={{ padding: 24 }}>{solScoringSection}</div>);
+              }
               const { scores, totalPoints, maxTotalPoints, percentage } = projectScores;
               return (
                 <div style={{ padding: 24 }}>
+                  {/* Sprint 5: Solomon Scoring Panel */}
+                  {solScoringSection}
                   {/* Summary header */}
                   <div style={{ display: "flex", gap: 16, marginBottom: 24, flexWrap: "wrap" }}>
                     <div style={{ flex: 1, minWidth: 160, padding: "16px 20px", background: "#fff", border: "1px solid rgba(226,232,240,.8)", borderRadius: 12 }}>

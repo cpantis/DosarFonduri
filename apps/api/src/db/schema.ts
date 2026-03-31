@@ -823,6 +823,43 @@ export const projectScores = pgTable("project_scores", {
   projectIdx: index("score_project_idx").on(table.projectId),
 }));
 
+// === SOLOMON STRUCTURED OUTPUT (RAG v2 Sprint 5) ===
+
+// Solomon eligibility conclusions — one row per verified condition
+export const solomonEligibility = pgTable("solomon_eligibility", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  ruleName: text("rule_name").notNull(),
+  ruleCategory: text("rule_category"),   // 'eligibilitate' | 'conformitate' | 'administrativ'
+  status: text("status").notNull(),       // 'pass' | 'fail' | 'pending' | 'not_applicable'
+  evidence: text("evidence"),
+  confidence: decimal("confidence", { precision: 3, scale: 2 }),
+  sourcePhase: text("source_phase"),      // 'Q4', 'Q5', etc.
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  projectIdx: index("sol_elig_project_idx").on(table.projectId),
+  ruleUq: uniqueIndex("sol_elig_rule_uq").on(table.projectId, table.ruleName),
+}));
+
+// Solomon scoring estimates — one row per evaluated criterion
+export const solomonScoring = pgTable("solomon_scoring", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  criterionName: text("criterion_name").notNull(),
+  criterionCategory: text("criterion_category"),
+  pointsEstimated: integer("points_estimated"),
+  maxPoints: integer("max_points"),
+  evidence: text("evidence"),
+  confidence: decimal("confidence", { precision: 3, scale: 2 }),
+  sourcePhase: text("source_phase"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  projectIdx: index("sol_score_project_idx").on(table.projectId),
+  criterionUq: uniqueIndex("sol_score_criterion_uq").on(table.projectId, table.criterionName),
+}));
+
 // === SOLOMON CONVERSATIONS ===
 export const solomonConversations = pgTable("solomon_conversations", {
   id: uuid("id").defaultRandom().primaryKey(),

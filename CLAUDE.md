@@ -486,3 +486,15 @@ cd apps/web && npx next build
 ### DEZACTIVAT (nu șters):
 - processGuide, guideRetrieval, auto-eligibility, auto-scoring (comentate, rollback ușor)
 - Arbore foldere documente (pagina veche funcționează în paralel)
+
+## Sprint 5 — Eligibilitate, Scoring, Checklist Structurat COMPLET (2026-03-31)
+
+- Solomon emite `ELIGIBILITY_JSON`, `SCORING_JSON`, `CHECKLIST_JSON` (lângă ELEMENTS_JSON și PHASE_JSON)
+- Backend parsează și persistă în `solomonEligibility`, `solomonScoring`, `projectChecklist` (source=solomon)
+- Upsert per regulă/criteriu — se acumulează și actualizează pe parcursul conversației
+- Tabele noi: `solomon_eligibility` (unique on project+rule), `solomon_scoring` (unique on project+criterion)
+- Migration `0132_solomon_structured_output.sql` + `source_reference` pe projectChecklist
+- Endpoints: GET `/solomon/projects/:id/eligibility`, `/scoring`, `/document-checklist`
+- UI: Solomon Eligibility Panel în tab-ul Reguli, Solomon Scoring Table în tab-ul Scor
+- SSE events: `eligibility_update`, `scoring_update`, `checklist_update` — frontend se actualizează live
+- Solomon raționează din RAG, persistă concluziile structurat — best of both worlds

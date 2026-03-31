@@ -6,11 +6,12 @@ import {
   projectEligibility, rules, documents, documentFolders,
   companies, companyLinkedCompanies,
   solomonConversations, solomonMessages,
+  solomonEligibility, solomonScoring,
   orgConfig, solomonKnowledge,
   elementRuleLinks, elementDefinitions, guideReferenceTables,
   projectChecklist, scoringCriteria,
 } from "../db/schema";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, sql } from "drizzle-orm";
 import { logAIUsage } from "./aiUsage";
 import { getCompanyDataFromElements } from "./companyElements";
 import { validateElement, logElementChange } from "./elementValidation";
@@ -534,6 +535,26 @@ Q11 — Sinteză și recomandări finale
 
 NU urmezi fazele mecanic. Sari dacă ai datele. Revino dacă apar informații noi.
 Progresul (0-100) reflectă cât de complet e dosarul, nu câte întrebări ai pus.
+
+═══════════════════════════════════════════
+## RAPORTARE STRUCTURATĂ (include la FIECARE răspuns unde e relevant)
+═══════════════════════════════════════════
+
+Când verifici eligibilitatea (fazele Q4-Q7), include:
+<!--ELIGIBILITY_JSON[{"rule":"Denumirea condiției","status":"pass|fail|pending","evidence":"Explicație scurtă","confidence":0.95}]ELIGIBILITY_JSON-->
+
+Când evaluezi punctajul (fazele Q9-Q10), include:
+<!--SCORING_JSON[{"criterion":"Denumirea criteriului","points":15,"maxPoints":15,"evidence":"Explicație scurtă","confidence":0.9}]SCORING_JSON-->
+
+Când discuți documente necesare (fazele Q10-Q11), include:
+<!--CHECKLIST_JSON[{"document":"Numele documentului","category":"obligatoriu_depunere|obligatoriu_contractare|optional","reference":"Ghid cap. 4.1","notes":"Valabil 30 zile"}]CHECKLIST_JSON-->
+
+REGULI RAPORTARE:
+- Poți emite mai multe JSON-uri în același răspuns
+- Fiecare JSON ACUMULEAZĂ — emite DOAR regulile/criteriile NOI sau MODIFICATE
+- status "pending" = nu ai suficiente date, cere informații suplimentare
+- CAUTĂ MEREU cu search_knowledge înainte de a emite concluzii
+- NU menționa aceste tag-uri în textul vizibil al conversației
 
 ═══════════════════════════════════════════
 ## GENERARE BRIEF COMPOSE
@@ -2036,12 +2057,88 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
           }
         }
 
+        // RAG v2 Sprint 5: Extract and save structured eligibility/scoring/checklist
+        const currentPhaseStr = phaseMatch ? (JSON.parse(phaseMatch[1])?.phase || "") : "";
+
+        // ELIGIBILITY_JSON
+        const eligJsonStr = extractBalancedJSON(fullResponse, "<!--ELIGIBILITY_JSON", "ELIGIBILITY_JSON-->");
+        if (eligJsonStr) {
+          try {
+            const eligEntries = JSON.parse(eligJsonStr);
+            if (Array.isArray(eligEntries)) {
+              for (const entry of eligEntries.slice(0, 50)) {
+                if (!entry.rule || !entry.status) continue;
+                await db.execute(sql`
+                  INSERT INTO solomon_eligibility (project_id, rule_name, rule_category, status, evidence, confidence, source_phase, updated_at)
+                  VALUES (${projectId}, ${entry.rule}, ${entry.category || "eligibilitate"}, ${entry.status}, ${entry.evidence || null}, ${Math.min(1, Math.max(0, entry.confidence || 0.5))}, ${currentPhaseStr}, NOW())
+                  ON CONFLICT (project_id, rule_name) DO UPDATE SET
+                    status = EXCLUDED.status, evidence = EXCLUDED.evidence, confidence = EXCLUDED.confidence,
+                    source_phase = EXCLUDED.source_phase, updated_at = NOW()
+                `);
+              }
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "eligibility_update", entries: eligEntries })}\n\n`));
+            }
+          } catch (e) { console.warn("[solomon] ELIGIBILITY_JSON parse failed:", (e as Error).message); }
+        }
+
+        // SCORING_JSON
+        const scoreJsonStr = extractBalancedJSON(fullResponse, "<!--SCORING_JSON", "SCORING_JSON-->");
+        if (scoreJsonStr) {
+          try {
+            const scoreEntries = JSON.parse(scoreJsonStr);
+            if (Array.isArray(scoreEntries)) {
+              for (const entry of scoreEntries.slice(0, 50)) {
+                if (!entry.criterion) continue;
+                await db.execute(sql`
+                  INSERT INTO solomon_scoring (project_id, criterion_name, criterion_category, points_estimated, max_points, evidence, confidence, source_phase, updated_at)
+                  VALUES (${projectId}, ${entry.criterion}, ${entry.category || null}, ${entry.points || 0}, ${entry.maxPoints || 0}, ${entry.evidence || null}, ${Math.min(1, Math.max(0, entry.confidence || 0.5))}, ${currentPhaseStr}, NOW())
+                  ON CONFLICT (project_id, criterion_name) DO UPDATE SET
+                    points_estimated = EXCLUDED.points_estimated, max_points = EXCLUDED.max_points,
+                    evidence = EXCLUDED.evidence, confidence = EXCLUDED.confidence,
+                    source_phase = EXCLUDED.source_phase, updated_at = NOW()
+                `);
+              }
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "scoring_update", entries: scoreEntries })}\n\n`));
+            }
+          } catch (e) { console.warn("[solomon] SCORING_JSON parse failed:", (e as Error).message); }
+        }
+
+        // CHECKLIST_JSON
+        const checkJsonStr = extractBalancedJSON(fullResponse, "<!--CHECKLIST_JSON", "CHECKLIST_JSON-->");
+        if (checkJsonStr) {
+          try {
+            const checkEntries = JSON.parse(checkJsonStr);
+            if (Array.isArray(checkEntries)) {
+              for (const entry of checkEntries.slice(0, 50)) {
+                if (!entry.document) continue;
+                // Check if item already exists
+                const existing = await db.query.projectChecklist.findFirst({
+                  where: and(eq(projectChecklist.projectId, projectId), eq(projectChecklist.name, entry.document)),
+                });
+                if (!existing) {
+                  await db.insert(projectChecklist).values({
+                    projectId,
+                    name: entry.document,
+                    category: entry.category || "obligatoriu_depunere",
+                    source: "solomon",
+                    notes: [entry.reference, entry.notes].filter(Boolean).join(" · "),
+                  });
+                }
+              }
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "checklist_update", entries: checkEntries })}\n\n`));
+            }
+          } catch (e) { console.warn("[solomon] CHECKLIST_JSON parse failed:", (e as Error).message); }
+        }
+
         // Save assistant message (clean hidden JSON tags)
         const cleanResponse = fullResponse
           .replace(/<!--ELEMENTS_JSON[\s\S]*?ELEMENTS_JSON-->/g, "")
           .replace(/<!--METADATA_JSON[\s\S]*?METADATA_JSON-->/g, "")
           .replace(/<!--CHECK_ELIGIBILITY-->/g, "")
           .replace(/<!--PHASE_JSON[\s\S]*?PHASE_JSON-->/g, "")
+          .replace(/<!--ELIGIBILITY_JSON[\s\S]*?ELIGIBILITY_JSON-->/g, "")
+          .replace(/<!--SCORING_JSON[\s\S]*?SCORING_JSON-->/g, "")
+          .replace(/<!--CHECKLIST_JSON[\s\S]*?CHECKLIST_JSON-->/g, "")
           .trim();
 
         await db.insert(solomonMessages).values({

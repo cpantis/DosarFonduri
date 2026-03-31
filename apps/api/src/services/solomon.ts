@@ -5,7 +5,7 @@ import {
   projects, projectElements, templateElements,
   projectEligibility, rules, documents, documentFolders,
   companies, companyLinkedCompanies,
-  solomonConversations, solomonMessages,
+  solomonConversations, solomonMessages, solomonCaseMemory,
   solomonEligibility, solomonScoring,
   orgConfig, solomonKnowledge,
   elementRuleLinks, elementDefinitions, guideReferenceTables,
@@ -283,6 +283,50 @@ async function buildSystemPrompt(projectId: string, organizationId: string): Pro
   });
   if (!company) throw new Error("Company not found");
 
+  // Load persistent memory: previous conversation summaries + case memories
+  let memoryContext = "";
+  try {
+    // Previous conversation summaries on this project
+    const prevConvs = await db.query.solomonConversations.findMany({
+      where: and(eq(solomonConversations.projectId, projectId)),
+      orderBy: (c, { desc }) => [desc(c.createdAt)],
+      columns: { summary: true, summaryGeneratedAt: true, createdAt: true },
+      limit: 5,
+    });
+    const summaries = prevConvs.filter(c => c.summary).map(c => c.summary);
+
+    // Case memories for this org (relevant learnings from other projects)
+    const caseMemories = await db.query.solomonCaseMemory.findMany({
+      where: eq(solomonCaseMemory.organizationId, organizationId),
+      orderBy: (m, { desc }) => [desc(m.createdAt)],
+      limit: 10,
+    });
+
+    if (summaries.length > 0 || caseMemories.length > 0) {
+      const parts: string[] = [];
+      if (summaries.length > 0) {
+        parts.push(`### Ce am discutat anterior pe acest proiect:\n${summaries.slice(0, 3).join("\n\n---\n\n")}`);
+      }
+      if (caseMemories.length > 0) {
+        const relevant = caseMemories
+          .filter(m => m.content)
+          .slice(0, 5)
+          .map(m => `- [${m.memoType}] ${m.content}`)
+          .join("\n");
+        parts.push(`### Lecții din experiență (dosare anterioare):\n${relevant}`);
+      }
+      memoryContext = `═══════════════════════════════════════════
+## MEMORIE PERSISTENTĂ (din conversații anterioare)
+═══════════════════════════════════════════
+${parts.join("\n\n")}
+
+Folosește aceste informații ca context. NU repeta ce s-a discutat — continuă de unde ai rămas.
+`;
+    }
+  } catch (err) {
+    console.warn("[solomon] Memory loading failed:", (err as Error).message);
+  }
+
   // Get project elements
   const elements = await db.query.projectElements.findMany({
     where: eq(projectElements.projectId, projectId),
@@ -376,7 +420,7 @@ async function buildSystemPrompt(projectId: string, organizationId: string): Pro
 
   return `Ești Solomon — consultant senior cu experiență vastă în fonduri europene și nerambursabile, integrat în platforma DosarFonduri. Lucrezi pe dosarul "${project.name}" pentru "${company.denumire}" (CUI: ${company.cui}).
 
-═══════════════════════════════════════════
+${memoryContext}═══════════════════════════════════════════
 ## CINE EȘTI
 ═══════════════════════════════════════════
 
@@ -1062,11 +1106,11 @@ export async function processSolomonMessage(params: {
     });
   }
 
-  // Get conversation history
+  // Get conversation history — 100 messages for full context on deep projects
   const history = await db.query.solomonMessages.findMany({
     where: eq(solomonMessages.conversationId, conversationId),
     orderBy: (m, { asc }) => [asc(m.createdAt)],
-    limit: 50,
+    limit: 100,
   });
 
   // Build messages array — only allow valid roles (user/assistant), skip system messages
@@ -1308,6 +1352,18 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
     }
 
     messages.push({ role: "user", content: toolResults });
+  }
+
+  // Persist tool call summary to DB so next turn remembers what was searched
+  if (toolUseEvents.length > 0) {
+    const toolSummary = toolUseEvents
+      .map(t => `[${t.toolName}] ${t.query || ""}`)
+      .join("; ");
+    await db.insert(solomonMessages).values({
+      conversationId,
+      role: "assistant" as any,
+      content: `[Căutare automată: ${toolSummary}]`,
+    });
   }
 
   // Final streaming response (after all tool rounds)

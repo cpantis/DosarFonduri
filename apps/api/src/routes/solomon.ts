@@ -2,7 +2,7 @@ import type { AppEnv } from "../types/hono";
 import { Hono } from "hono";
 import { createHash } from "crypto";
 import { db } from "../db";
-import { solomonConversations, solomonMessages, projects, documents, documentFolders, solomonEligibility, solomonScoring, projectChecklist } from "../db/schema";
+import { solomonConversations, solomonMessages, projects, documents, documentFolders, solomonEligibility, solomonScoring, projectChecklist, solomonCaseMemory } from "../db/schema";
 import { eq, and, sql, desc } from "drizzle-orm";
 import { AuthContext } from "../middleware/auth";
 import { processSolomonMessage, processInlineRefine, generateSolomonGreeting } from "../services/solomon";
@@ -528,4 +528,134 @@ solomonRoutes.get("/projects/:projectId/document-checklist", async (c) => {
     items,
     summary: { total: items.length, uploaded, missing: items.length - uploaded },
   });
+});
+
+// ═══════════════════════════════════════════
+// Persistent Memory — Conversation Summary + Case Memory
+// ═══════════════════════════════════════════
+
+/**
+ * POST /api/solomon/conversations/:convId/generate-summary
+ * Generate an AI summary of a conversation for persistent memory.
+ * Injected at the start of the next conversation on the same project.
+ */
+solomonRoutes.post("/conversations/:convId/generate-summary", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const convId = c.req.param("convId");
+
+  const conv = await verifyConversationOrg(convId, auth.organizationId!);
+  if (!conv) return c.json({ error: "Conversation not found" }, 404);
+
+  // Load all messages from this conversation
+  const msgs = await db.query.solomonMessages.findMany({
+    where: eq(solomonMessages.conversationId, convId),
+    orderBy: (m, { asc }) => [asc(m.createdAt)],
+  });
+
+  if (msgs.length < 3) {
+    return c.json({ error: "Conversația e prea scurtă pentru sumar" }, 400);
+  }
+
+  // Build condensed transcript (max ~4000 chars)
+  const transcript = msgs
+    .filter(m => m.role === "user" || m.role === "assistant")
+    .map(m => `${m.role === "user" ? "Consultant" : "Solomon"}: ${m.content?.slice(0, 300)}`)
+    .join("\n")
+    .slice(0, 4000);
+
+  const { anthropic, withAILimit } = await import("../lib/anthropic");
+
+  const response = await withAILimit(async () => {
+    return anthropic.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 800,
+      system: `Ești un sistem de sumarizare. Generezi un sumar concis al unei conversații între un consultant și Solomon (expert fonduri europene). Sumarul trebuie să captureze:
+1. CE s-a discutat (subiecte principale)
+2. CE s-a decis (concluzii, direcții stabilite)
+3. CE riscuri s-au identificat
+4. CE lipsește (ce mai trebuie făcut)
+5. LECȚII ÎNVĂȚATE (ce am aflat despre acest dosar/client)
+
+Scrie în română, concis, max 300 cuvinte. Structurează cu bullet points.`,
+      messages: [{
+        role: "user",
+        content: `Sumarizează această conversație:\n\n${transcript}`,
+      }],
+    });
+  }, "batch");
+
+  const summaryText = response.content[0].type === "text" ? response.content[0].text : "";
+
+  // Save summary on conversation
+  await db.update(solomonConversations).set({
+    summary: summaryText,
+    summaryGeneratedAt: new Date(),
+  }).where(eq(solomonConversations.id, convId));
+
+  // Extract and save case memories (key insights for cross-project use)
+  try {
+    const memResponse = await withAILimit(async () => {
+      return anthropic.messages.create({
+        model: "claude-sonnet-4-6",
+        max_tokens: 500,
+        system: "Extrage lecții cheie din conversație care ar fi utile pentru alte proiecte similare. Returnează JSON array: [{\"type\":\"lesson_learned|risk_identified|pattern|rule_interpretation\",\"content\":\"...\",\"confidence\":0.8}]. Max 3 lecții. DOAR JSON.",
+        messages: [{ role: "user", content: transcript.slice(0, 2000) }],
+      });
+    }, "batch");
+
+    const memText = memResponse.content[0].type === "text" ? memResponse.content[0].text : "[]";
+    const cleaned = memText.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+    const memories = JSON.parse(cleaned);
+
+    if (Array.isArray(memories)) {
+      for (const mem of memories.slice(0, 5)) {
+        if (!mem.content) continue;
+        await db.insert(solomonCaseMemory).values({
+          organizationId: auth.organizationId!,
+          projectId: conv.projectId,
+          conversationId: convId,
+          memoType: mem.type || "lesson_learned",
+          content: mem.content,
+          confidence: String(Math.min(1, Math.max(0, mem.confidence || 0.8))),
+        });
+      }
+    }
+  } catch (err) {
+    console.warn("[solomon] Case memory extraction failed:", (err as Error).message);
+  }
+
+  return c.json({ summary: summaryText });
+});
+
+/**
+ * GET /api/solomon/projects/:projectId/memory
+ * Get persistent memory for a project (conversation summaries + case memories).
+ */
+solomonRoutes.get("/projects/:projectId/memory", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const projectId = c.req.param("projectId");
+
+  const project = await verifyProjectOrg(projectId, auth.organizationId!);
+  if (!project) return c.json({ error: "Project not found" }, 404);
+
+  // Previous conversation summaries on this project
+  const prevConvs = await db.query.solomonConversations.findMany({
+    where: and(eq(solomonConversations.projectId, projectId)),
+    orderBy: (c, { desc: d }) => [d(c.createdAt)],
+    columns: { id: true, summary: true, summaryGeneratedAt: true, createdAt: true },
+  });
+  const summaries = prevConvs.filter(c => c.summary).map(c => ({
+    conversationId: c.id,
+    summary: c.summary,
+    date: c.summaryGeneratedAt || c.createdAt,
+  }));
+
+  // Case memories for this project + same program
+  const caseMemories = await db.query.solomonCaseMemory.findMany({
+    where: eq(solomonCaseMemory.organizationId, auth.organizationId!),
+    orderBy: (m, { desc: d }) => [d(m.createdAt)],
+    limit: 20,
+  });
+
+  return c.json({ summaries, caseMemories });
 });

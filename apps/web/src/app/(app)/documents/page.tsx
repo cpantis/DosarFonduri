@@ -1187,6 +1187,21 @@ export default function DocumentsPage() {
                         </div>
                       )}
                     </div>
+                    <button
+                      style={{ flexShrink: 0, padding: "4px 8px", fontSize: 11, color: "#94a3b8", background: "none", border: "1px solid #e2e8f0", borderRadius: 6, cursor: "pointer", marginTop: 2 }}
+                      title="Șterge document"
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        if (!confirm(`Ștergi "${doc.fileName || doc.name}"?`)) return;
+                        try {
+                          await apiDelete(`/api/documents/documents/${doc.id}`);
+                          setClassifiedDocs(prev => prev.filter((d: any) => d.id !== doc.id));
+                          toast("success", "Document șters");
+                        } catch (err: any) {
+                          toast("error", err.message || "Eroare la ștergere");
+                        }
+                      }}
+                    >✕</button>
                   </div>
                 );
               };

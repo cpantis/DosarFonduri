@@ -367,40 +367,12 @@ async function buildSystemPrompt(projectId: string, organizationId: string): Pro
   });
 
   // Load knowledge base updates (legislative changes, corrections, best practices)
-  // NOTE: Explicitly select columns WITHOUT embedding (vector type requires pgvector extension)
-  const now = new Date();
-  let knowledgeEntries: any[] = [];
-  try {
-    knowledgeEntries = await db.query.solomonKnowledge.findMany({
-      where: and(
-        eq(solomonKnowledge.organizationId, organizationId),
-        eq(solomonKnowledge.enabled, true),
-      ),
-      columns: {
-        id: true,
-        category: true,
-        title: true,
-        content: true,
-        sourceUrl: true,
-        sourceReference: true,
-        validFrom: true,
-        validUntil: true,
-        priority: true,
-        enabled: true,
-        createdAt: true,
-      },
-      orderBy: (k, { desc }) => [desc(k.priority), desc(k.createdAt)],
-      limit: 100,
-    });
-  } catch (err) {
-    console.warn("[solomon] Failed to load knowledge entries:", (err as Error).message);
-  }
-  // Filter valid entries (validFrom <= now && (validUntil is null or >= now))
-  const activeKnowledge = knowledgeEntries.filter(k => {
-    if (k.validFrom && k.validFrom > now) return false;
-    if (k.validUntil && k.validUntil < now) return false;
-    return true;
-  });
+  // FIX 1: solomonKnowledge query DISABLED — KB is now accessed via search_knowledge tool (chunks table)
+  // Rollback: uncomment to restore old knowledge injection in system prompt
+  // const now = new Date();
+  // let knowledgeEntries: any[] = [];
+  // try { knowledgeEntries = await db.query.solomonKnowledge.findMany({ ... }); } catch {}
+  // const activeKnowledge = knowledgeEntries.filter(k => { ... });
 
   return `Ești Solomon — consultant senior cu experiență vastă în fonduri europene și nerambursabile, integrat în platforma DosarFonduri. Lucrezi pe dosarul "${project.name}" pentru "${company.denumire}" (CUI: ${company.cui}).
 

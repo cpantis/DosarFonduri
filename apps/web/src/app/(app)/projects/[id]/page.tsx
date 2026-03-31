@@ -172,7 +172,7 @@ const STATUS_MAP: Record<string, { label: string; color: string; bg: string }> =
 const pct = (a: number, b: number) => b > 0 ? Math.round((a / b) * 100) : 0;
 const formatRON = (v: number | null | undefined) => v != null ? `${Number(v).toLocaleString("ro-RO", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} RON` : "-";
 
-type LeafType = "sumar" | "solomon" | "elemente" | "reguli" | "scor" | "tabele" | "checklist" | "neemia" | "documente";
+type LeafType = "sumar" | "solomon" | "elemente" | "reguli" | "scor" | "tabele" | "checklist" | "neemia";
 
 function parseAdresa(adresa: string | undefined): { localitate: string; judet: string } {
   if (!adresa) return { localitate: "-", judet: "-" };
@@ -472,6 +472,8 @@ export default function ProjectViewPage() {
   // RAG v2: Compose editor
   const [composeSections, setComposeSections] = useState<Array<{ id: string; title: string; content: string; status: "pending" | "generating" | "generated" | "approved"; wordCount: number }>>([]);
   const [composeGenerating, setComposeGenerating] = useState<string | null>(null);
+  // FIX 7: Version upgrade impact banner
+  const [versionImpact, setVersionImpact] = useState<{ docName: string; oldVersion: number; newVersion: number; summary: string; changes: any[]; dismissedAt?: string } | null>(null);
   // RAG v2: Reclassify dialog
   const [reclassifyDoc, setReclassifyDoc] = useState<any | null>(null);
   const [reclassifyType, setReclassifyType] = useState("");
@@ -686,8 +688,20 @@ export default function ProjectViewPage() {
         setProject(proj);
         // RAG v2: Load initial phase from project
         if (proj.solomonPhase) setSolomonPhase(proj.solomonPhase);
-        // RAG v2: Load classified documents
-        apiGet<any[]>(`/api/folders/${proj.folderId}/classified-documents`).then(docs => setClassifiedDocs(docs || [])).catch(() => {});
+        // RAG v2: Load classified documents + FIX 7: check version impacts
+        apiGet<any[]>(`/api/folders/${proj.folderId}/classified-documents`).then(docs => {
+          setClassifiedDocs(docs || []);
+          const upgraded = (docs || []).find((d: any) => d.versionDiff && d.documentVersion > 1);
+          if (upgraded?.versionDiff) {
+            setVersionImpact({
+              docName: upgraded.fileName || upgraded.name,
+              oldVersion: (upgraded.documentVersion || 2) - 1,
+              newVersion: upgraded.documentVersion || 2,
+              summary: upgraded.versionDiff.summary || "Modificări detectate",
+              changes: upgraded.versionDiff.changes || [],
+            });
+          }
+        }).catch(() => {});
         // Sprint 5: Load Solomon structured output
         apiGet<any>(`/api/solomon/projects/${projectId}/eligibility`).then(r => setSolEligibility(r?.entries || [])).catch(() => {});
         apiGet<any>(`/api/solomon/projects/${projectId}/scoring`).then(r => setSolScoring(r?.criteria || [])).catch(() => {});
@@ -3395,6 +3409,30 @@ export default function ProjectViewPage() {
             {(STATUS_MAP[projectStatus] || STATUS_MAP.draft).label}
           </span>
         </div>
+        {/* FIX 7: Version Impact Banner */}
+        {versionImpact && !versionImpact.dismissedAt && (
+          <div style={{ padding: "10px 24px", background: "#fffbeb", borderBottom: "1px solid #fde68a", display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: 16 }}>⚠️</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "#92400e" }}>
+                {versionImpact.docName} actualizat: v{versionImpact.oldVersion} → v{versionImpact.newVersion}
+              </div>
+              <div style={{ fontSize: 12, color: "#a16207" }}>
+                {versionImpact.summary}
+                {versionImpact.changes.length > 0 && ` · ${versionImpact.changes.filter((c: any) => c.severity === "critical").length} critice, ${versionImpact.changes.filter((c: any) => c.severity === "important").length} importante`}
+              </div>
+            </div>
+            <button
+              style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid #fde68a", background: "#fef3c7", color: "#92400e", fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}
+              onClick={() => { setActiveLeaf("solomon"); setSolomonInput("Ghidul a fost actualizat. Reverificați eligibilitatea și punctajul."); }}
+            >Reverificați cu Solomon</button>
+            <button
+              style={{ padding: "5px 8px", borderRadius: 6, border: "none", background: "transparent", color: "#a16207", fontSize: 14, cursor: "pointer" }}
+              onClick={() => setVersionImpact(prev => prev ? { ...prev, dismissedAt: new Date().toISOString() } : null)}
+              title="Ascunde"
+            >✕</button>
+          </div>
+        )}
         <div className="pv-tabs">
           {([
             { key: "sumar" as LeafType, label: "Sumar" },
@@ -3404,7 +3442,6 @@ export default function ProjectViewPage() {
             { key: "scor" as LeafType, label: "Scor" },
             { key: "tabele" as LeafType, label: "Tabele" },
             { key: "checklist" as LeafType, label: "Checklist doc" },
-            { key: "documente" as LeafType, label: "Documente" },
             { key: "neemia" as LeafType, label: orgLabels.neemiaLabel },
           ]).map(tab => (
             <button
@@ -5567,8 +5604,8 @@ export default function ProjectViewPage() {
               </div>
             )}
 
-            {/* RAG v2 — DOCUMENTE CLASIFICATE */}
-            {activeLeaf === "documente" && (
+            {/* RAG v2: Documente tab removed — moved to Documents (session) page */}
+            {false && (
               <div style={{ flex: 1, overflow: "auto", padding: 24 }}>
                 <div style={{ maxWidth: 860, margin: "0 auto" }}>
                   {/* Upload zone */}

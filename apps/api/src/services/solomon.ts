@@ -1357,13 +1357,20 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
   };
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-    const roundResponse = await anthropic.messages.create({
-      ...baseRequestParams,
-      messages,
-    });
+    let roundResponse: any;
+    try {
+      roundResponse = await anthropic.messages.create({
+        ...baseRequestParams,
+        messages,
+      });
+    } catch (toolRoundErr: any) {
+      console.error(`[solomon] Tool round ${round} API call failed:`, toolRoundErr.message);
+      // If first round fails, skip tool use entirely and go straight to streaming
+      break;
+    }
 
     // Check if response has tool_use blocks
-    const toolUseBlocks = roundResponse.content.filter((b: any) => b.type === "tool_use");
+    const toolUseBlocks = (roundResponse.content || []).filter((b: any) => b.type === "tool_use");
 
     if (toolUseBlocks.length === 0 || roundResponse.stop_reason !== "tool_use") {
       // No tool use — this is the final response

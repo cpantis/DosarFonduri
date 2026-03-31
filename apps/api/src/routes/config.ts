@@ -4,7 +4,7 @@ import { z } from "zod";
 import { db } from "../db";
 import { orgConfig, apiIntegrations, solomonKnowledge, organizations, referenceValues } from "../db/schema";
 import { DEFAULT_REFERENCE_VALUES } from "@dosarfonduri/shared";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { encrypt, decrypt } from "../lib/crypto";
 import type { AuthContext } from "../middleware/auth";
 import { extractTextFromPDF, extractTextFromDOCX } from "../services/ocr";
@@ -912,3 +912,142 @@ export async function getReferenceValuesMap(organizationId: string): Promise<Rec
   }
   return result;
 }
+
+// ═══════════════════════════════════════════
+// RAG v2 — Knowledge Base (cabinet-level documents for Solomon)
+// ═══════════════════════════════════════════
+
+import { chunks } from "../db/schema";
+import { ingestDocumentQueue, JOB_PRIORITY } from "../lib/queue";
+import { isRedisReady } from "../lib/redis";
+
+/**
+ * GET /api/config/knowledge-base
+ * List knowledge base documents (RAG v2 chunks) for the cabinet.
+ */
+configRoutes.get("/knowledge-base", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  if (!auth.organizationId) return c.json({ error: "No organization" }, 403);
+
+  const { documents } = await import("../db/schema");
+
+  // Find documents that have been ingested as knowledge_base
+  const kbDocs = await db.execute(
+    sql`SELECT d.id, d.name, d.file_type, d.file_size, d.status, d.classification, d.uploaded_at,
+        (SELECT COUNT(*) FROM chunks c WHERE c.document_id = d.id AND c.source_type = 'knowledge_base') as chunks_count
+      FROM documents d
+      WHERE d.organization_id = ${auth.organizationId}
+        AND d.classification->>'routingAction' = 'vectorize'
+        AND (d.classification->>'sourceType' = 'knowledge_base' OR d.processing_type = 'referinta_strategica')
+      ORDER BY d.uploaded_at DESC`
+  );
+
+  const rows = (kbDocs as any).rows || kbDocs;
+  return c.json(rows);
+});
+
+/**
+ * POST /api/config/knowledge-base/upload
+ * Upload a document to the cabinet knowledge base.
+ * Uses the same ingestion pipeline but with sourceType=knowledge_base.
+ */
+configRoutes.post("/knowledge-base/upload", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  if (!auth.organizationId) return c.json({ error: "No organization" }, 403);
+
+  const { documents, documentFolders, files } = await import("../db/schema");
+  const { uploadFile } = await import("../services/storage");
+
+  const formData = await c.req.formData();
+  const file = formData.get("file") as File;
+  if (!file) return c.json({ error: "Fișier lipsă" }, 400);
+
+  const buffer = Buffer.from(await file.arrayBuffer());
+
+  // Find or create a knowledge base folder for this org
+  let kbFolder = await db.query.documentFolders.findFirst({
+    where: and(
+      eq(documentFolders.organizationId, auth.organizationId),
+      eq(documentFolders.type, "referinte" as any),
+    ),
+  });
+
+  if (!kbFolder) {
+    const [created] = await db.insert(documentFolders).values({
+      organizationId: auth.organizationId,
+      name: "Bază de cunoștințe",
+      type: "referinte" as any,
+      position: 99,
+    }).returning();
+    kbFolder = created;
+  }
+
+  // Upload file
+  const fileId = await uploadFile(buffer, file.name, file.type, auth.organizationId, auth.userId, "knowledge");
+
+  // Create document record
+  const ext = file.name.split(".").pop()?.toLowerCase() || "pdf";
+  const [doc] = await db.insert(documents).values({
+    folderId: kbFolder.id,
+    organizationId: auth.organizationId,
+    name: file.name.replace(/\.[^.]+$/, ""),
+    fileType: (ext === "docx" ? "docx" : ext === "xlsx" ? "xlsx" : "pdf") as any,
+    mimeType: file.type || `application/${ext}`,
+    fileId,
+    fileSize: buffer.length,
+    status: "uploaded",
+    processingType: "referinta_strategica" as any,
+    classification: {
+      docType: "knowledge" as any,
+      routingAction: "vectorize",
+      confidence: 1.0,
+      description: file.name,
+      isProcessed: false,
+    } as any,
+    uploadedBy: auth.userId,
+  }).returning();
+
+  // Trigger ingestion pipeline with knowledge_base sourceType
+  if (isRedisReady()) {
+    try {
+      await ingestDocumentQueue.add("ingest-document", {
+        documentId: doc.id,
+        cabinetId: auth.organizationId,
+        sessionId: kbFolder.id,
+        organizationId: auth.organizationId,
+      }, {
+        priority: JOB_PRIORITY.INGEST,
+        jobId: `kb-${doc.id}`,
+      });
+    } catch (err: any) {
+      console.warn("[config] KB ingest dispatch failed:", err.message);
+    }
+  }
+
+  return c.json({ document: doc }, 201);
+});
+
+/**
+ * DELETE /api/config/knowledge-base/:docId
+ * Delete a knowledge base document and its chunks.
+ */
+configRoutes.delete("/knowledge-base/:docId", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  if (!auth.organizationId) return c.json({ error: "No organization" }, 403);
+
+  const docId = c.req.param("docId");
+  const { documents } = await import("../db/schema");
+
+  const doc = await db.query.documents.findFirst({
+    where: and(eq(documents.id, docId), eq(documents.organizationId, auth.organizationId)),
+  });
+  if (!doc) return c.json({ error: "Document not found" }, 404);
+
+  // Delete chunks first
+  await db.delete(chunks).where(eq(chunks.documentId, docId));
+
+  // Delete document
+  await db.delete(documents).where(eq(documents.id, docId));
+
+  return c.json({ ok: true });
+});

@@ -464,3 +464,25 @@ cd apps/web && npx next build
 - `solomonTools.ts` — tool handlers + definitions
 - Rollback: decomentează RAG injection + auto eligibility/scoring + scoate tools din API call
 - Următorul sprint: SPRINT_4 — UI single entry point + knowledge base
+
+## RAG v2 Migration — Sprint 4 COMPLET (MIGRATION COMPLETĂ) (2026-03-31)
+
+### Sumar complet migration RAG v2:
+- Sprint 1: pgvector + chunks + Voyage SDK + hybrid search ✅
+- Sprint 2: Single entry point documente cu clasificare AI Sonnet ✅
+- Sprint 3: Solomon tool use + faze Q0-Q11 + compose brief ✅
+- Sprint 4: UI + Neemia compose + Document versioning ✅
+
+### Sprint 4 deliverables:
+- **Documente tab** în ProjectView: upload zone + documente clasificate grupate pe categorie
+- **ReclassifyDialog**: corectare manuală clasificare AI cu re-trigger pipeline
+- **Knowledge base endpoints**: GET/POST/DELETE pe `/api/config/knowledge-base` cu ingest pipeline
+- **Compose section generation**: `POST /neemia/projects/:id/compose/generate-section` cu brief Solomon + RAG
+- **Coherence check**: `POST /neemia/projects/:id/compose/coherence-check` — Sonnet verifică coerența narativă
+- **Document versioning schema**: `document_version`, `superseded_by`, `supersedes`, `is_current_version`, `version_diff` (migration `0131_rag_v2_versioning.sql`)
+- **Version diff service** (`versionDiff.ts`): semantic diff Sonnet + `checkSameDocument` upgrade detection
+- **ProjectData type** extended cu `folderId`, `solomonPhase`, `composeBrief`
+
+### DEZACTIVAT (nu șters):
+- processGuide, guideRetrieval, auto-eligibility, auto-scoring (comentate, rollback ușor)
+- Arbore foldere documente (pagina veche funcționează în paralel)

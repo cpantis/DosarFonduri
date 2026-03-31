@@ -382,6 +382,24 @@ export const documents = pgTable("documents", {
     sectionsWithoutRules: string[];
     warnings: string[];
   }>(),
+  // RAG v2: Document versioning
+  documentVersion: integer("document_version").default(1),
+  supersededBy: uuid("superseded_by"),        // documentId of newer version (NULL = current)
+  supersedes: uuid("supersedes"),              // documentId of older version (NULL = first)
+  isCurrentVersion: boolean("is_current_version").default(true),
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
+  versionDiff: jsonb("version_diff").$type<{
+    summary: string;
+    changes: Array<{
+      type: "added" | "removed" | "modified";
+      category: string;
+      description: string;
+      severity: "critical" | "important" | "minor";
+      affectedElements: string[];
+    }>;
+    analyzedAt: string;
+    confidence: number;
+  }>(),
 }, (table) => ({
   orgIdx: index("doc_org_idx").on(table.organizationId),
   folderIdx: index("doc_folder_idx").on(table.folderId),

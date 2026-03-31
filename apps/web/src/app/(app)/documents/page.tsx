@@ -1111,10 +1111,17 @@ export default function DocumentsPage() {
                   toast("error", `${failedResults.length} document${failedResults.length > 1 ? "e" : ""} eșuat${failedResults.length > 1 ? "e" : ""}: ${firstError}`);
                 }
 
-                // Refresh
+                // Refresh — small delay to let DB writes complete, then poll for classification
                 if (selectedFolder) {
-                  apiGet<any[]>(`/api/documents/folders/${selectedFolder}/classified-documents`).then(setClassifiedDocs).catch(() => {});
-                  fetchDocs(selectedFolder);
+                  const refreshDocs = () => {
+                    apiGet<any[]>(`/api/documents/folders/${selectedFolder}/classified-documents`).then(setClassifiedDocs).catch(() => {});
+                    fetchDocs(selectedFolder);
+                  };
+                  // Immediate refresh
+                  refreshDocs();
+                  // Poll again after 3s and 8s for classification results
+                  setTimeout(refreshDocs, 3000);
+                  setTimeout(refreshDocs, 8000);
                 }
               };
 
@@ -1152,11 +1159,12 @@ export default function DocumentsPage() {
 
             {/* Classified documents grouped by routing action */}
             {(() => {
+              // Group docs: processed by routing action, unprocessed by status
               const groups = {
-                guide: classifiedDocs.filter((d: any) => d.classification?.routingAction === "vectorize" && d.status === "processed"),
-                templates: classifiedDocs.filter((d: any) => ["template_fill", "template_compose"].includes(d.classification?.routingAction) && d.status === "processed"),
-                client: classifiedDocs.filter((d: any) => ["extract_data", "vectorize_and_extract"].includes(d.classification?.routingAction) && d.status === "processed"),
-                processing: classifiedDocs.filter((d: any) => d.status === "processing" || d.status === "uploaded"),
+                guide: classifiedDocs.filter((d: any) => d.classification?.routingAction === "vectorize" && (d.status === "processed" || d.status === "processing")),
+                templates: classifiedDocs.filter((d: any) => ["template_fill", "template_compose"].includes(d.classification?.routingAction)),
+                client: classifiedDocs.filter((d: any) => ["extract_data", "vectorize_and_extract"].includes(d.classification?.routingAction)),
+                processing: classifiedDocs.filter((d: any) => (d.status === "processing" || d.status === "uploaded") && !d.classification?.routingAction),
                 errors: classifiedDocs.filter((d: any) => d.status === "error" || d.status === "failed"),
               };
 

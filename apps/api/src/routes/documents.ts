@@ -2135,7 +2135,7 @@ documentRoutes.get("/folders/:folderId/classified-documents", async (c) => {
 
   const docs = await db.query.documents.findMany({
     where: and(
-      sql`${documents.folderId} = ANY(${folderIds}::uuid[])`,
+      inArray(documents.folderId, folderIds),
       eq(documents.organizationId, auth.organizationId),
     ),
     orderBy: (d, { desc }) => [desc(d.uploadedAt)],

@@ -4,7 +4,25 @@ import { usePathname } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { useSidebar } from "@/hooks/useSidebar";
 import { useRouter } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+
+/* ─── Refine toggle hook (localStorage per user) ─── */
+function useRefineToggle() {
+  const [enabled, setEnabled] = useState(true);
+  useEffect(() => {
+    const stored = localStorage.getItem("df-refine-enabled");
+    if (stored === "false") setEnabled(false);
+  }, []);
+  const toggle = useCallback(() => {
+    setEnabled(prev => {
+      const next = !prev;
+      localStorage.setItem("df-refine-enabled", String(next));
+      window.dispatchEvent(new CustomEvent("df-refine-toggle", { detail: next }));
+      return next;
+    });
+  }, []);
+  return { enabled, toggle };
+}
 
 /* ─── Monochrome SVG icons (Linear-style) ─── */
 function NavIcon({ name, className }: { name: string; className?: string }) {
@@ -144,6 +162,7 @@ export function Sidebar() {
   const router = useRouter();
   const { organization, user, logout } = useAuth();
   const { isCollapsed, toggle } = useSidebar();
+  const { enabled: refineEnabled, toggle: toggleRefine } = useRefineToggle();
   const [mobileOpen, setMobileOpen] = useState(false);
 
   // Close mobile sidebar on route change
@@ -301,6 +320,24 @@ export function Sidebar() {
                 <div style={{ fontSize: 13, color: "#0f172a", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.name || user.email}</div>
                 <div style={{ fontSize: 10, color: "#94a3b8", textTransform: "capitalize", fontWeight: 500 }}>{user.role || "consultant"}</div>
               </div>
+              <button
+                onClick={toggleRefine}
+                title={refineEnabled ? "Rescrie text: ACTIV (click pentru dezactivare)" : "Rescrie text: DEZACTIVAT (click pentru activare)"}
+                style={{
+                  width: 30, height: 30, borderRadius: 8, flexShrink: 0,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  background: refineEnabled ? "rgba(167,139,250,.1)" : "transparent",
+                  border: refineEnabled ? "1px solid rgba(167,139,250,.3)" : "1px solid transparent",
+                  color: refineEnabled ? "#7c3aed" : "#cbd5e1", cursor: "pointer",
+                  transition: "all .2s",
+                }}
+                onMouseEnter={e => { if (!refineEnabled) { e.currentTarget.style.background = "#f1f5f9"; e.currentTarget.style.color = "#94a3b8"; } }}
+                onMouseLeave={e => { if (!refineEnabled) { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#cbd5e1"; } }}
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z" />
+                </svg>
+              </button>
               <button
                 onClick={() => { logout(); router.push("/login"); }}
                 title="Deconectare"

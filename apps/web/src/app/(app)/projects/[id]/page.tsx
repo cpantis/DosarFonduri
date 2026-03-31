@@ -1,7 +1,7 @@
 "use client";
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api";
+import { api, apiGet, apiPost, apiPut, apiDelete } from "@/lib/api";
 import { getCaenDescription } from "@/lib/caen";
 import { RuleCard, RuleCardList, RuleCardData, CATEGORY_COLORS as RC_CAT_COLORS, CATEGORY_LABELS as RC_CAT_LABELS, OPERATOR_LABELS as RC_OP_LABELS, formatFieldName as rcFormatFieldName, formatConditionValue as rcFormatConditionValue, formatConditionText as rcFormatConditionText } from "@/components/shared/RuleCard";
 import { useToast } from "@/components/shared/Toast";
@@ -157,6 +157,9 @@ type ProjectData = {
   codMysmis: string | null;
   structuraDosar: string | null;
   tipProiect: string | null;
+  folderId?: string;
+  solomonPhase?: { phase: string; label: string; progress: number; nextAction: string } | null;
+  composeBrief?: any;
 };
 
 const STATUS_MAP: Record<string, { label: string; color: string; bg: string }> = {
@@ -169,7 +172,7 @@ const STATUS_MAP: Record<string, { label: string; color: string; bg: string }> =
 const pct = (a: number, b: number) => b > 0 ? Math.round((a / b) * 100) : 0;
 const formatRON = (v: number | null | undefined) => v != null ? `${Number(v).toLocaleString("ro-RO", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} RON` : "-";
 
-type LeafType = "sumar" | "solomon" | "elemente" | "reguli" | "scor" | "tabele" | "checklist" | "neemia";
+type LeafType = "sumar" | "solomon" | "elemente" | "reguli" | "scor" | "tabele" | "checklist" | "neemia" | "documente";
 
 function parseAdresa(adresa: string | undefined): { localitate: string; judet: string } {
   if (!adresa) return { localitate: "-", judet: "-" };
@@ -457,6 +460,22 @@ export default function ProjectViewPage() {
   // RAG v2: Tool use + phase tracking
   const [solomonToolUse, setSolomonToolUse] = useState<{ toolName: string; query?: string } | null>(null);
   const [solomonPhase, setSolomonPhase] = useState<{ phase: string; label: string; progress: number; nextAction: string } | null>(null);
+  // Sprint 5: Solomon structured output
+  const [solEligibility, setSolEligibility] = useState<any[]>([]);
+  const [solScoring, setSolScoring] = useState<any[]>([]);
+  const [solChecklist, setSolChecklist] = useState<any[]>([]);
+  // RAG v2: Classified documents for the session
+  const [classifiedDocs, setClassifiedDocs] = useState<any[]>([]);
+  const [classifiedDocsLoading, setClassifiedDocsLoading] = useState(false);
+  const [docUploadFiles, setDocUploadFiles] = useState<File[]>([]);
+  const [docUploading, setDocUploading] = useState(false);
+  // RAG v2: Compose editor
+  const [composeSections, setComposeSections] = useState<Array<{ id: string; title: string; content: string; status: "pending" | "generating" | "generated" | "approved"; wordCount: number }>>([]);
+  const [composeGenerating, setComposeGenerating] = useState<string | null>(null);
+  // RAG v2: Reclassify dialog
+  const [reclassifyDoc, setReclassifyDoc] = useState<any | null>(null);
+  const [reclassifyType, setReclassifyType] = useState("");
+  const [reclassifyRoute, setReclassifyRoute] = useState("");
 
   const [recheckLoading, setRecheckLoading] = useState(false);
 
@@ -667,6 +686,12 @@ export default function ProjectViewPage() {
         setProject(proj);
         // RAG v2: Load initial phase from project
         if (proj.solomonPhase) setSolomonPhase(proj.solomonPhase);
+        // RAG v2: Load classified documents
+        apiGet<any[]>(`/api/folders/${proj.folderId}/classified-documents`).then(docs => setClassifiedDocs(docs || [])).catch(() => {});
+        // Sprint 5: Load Solomon structured output
+        apiGet<any>(`/api/solomon/projects/${projectId}/eligibility`).then(r => setSolEligibility(r?.entries || [])).catch(() => {});
+        apiGet<any>(`/api/solomon/projects/${projectId}/scoring`).then(r => setSolScoring(r?.criteria || [])).catch(() => {});
+        apiGet<any>(`/api/solomon/projects/${projectId}/document-checklist`).then(r => setSolChecklist(r?.items || [])).catch(() => {});
         setEligibilityRules(mapEligibilityRules(eligData.flat || []));
         setGuideRules(mapGuideRules(eligData.grouped || []));
         setElements(mapElements(proj.elements || []));
@@ -970,6 +995,39 @@ export default function ProjectViewPage() {
             } else if (evt.type === "phase_update" && evt.phase) {
               // RAG v2: Solomon phase update
               setSolomonPhase(evt.phase);
+            } else if (evt.type === "eligibility_update" && evt.entries) {
+              // Sprint 5: Eligibility update
+              setSolEligibility(prev => {
+                const updated = [...prev];
+                for (const entry of evt.entries) {
+                  const idx = updated.findIndex(e => e.rule === entry.rule);
+                  if (idx >= 0) updated[idx] = entry;
+                  else updated.push(entry);
+                }
+                return updated;
+              });
+            } else if (evt.type === "scoring_update" && evt.entries) {
+              // Sprint 5: Scoring update
+              setSolScoring(prev => {
+                const updated = [...prev];
+                for (const entry of evt.entries) {
+                  const idx = updated.findIndex(e => e.criterion === entry.criterion);
+                  if (idx >= 0) updated[idx] = entry;
+                  else updated.push(entry);
+                }
+                return updated;
+              });
+            } else if (evt.type === "checklist_update" && evt.entries) {
+              // Sprint 5: Checklist update
+              setSolChecklist(prev => {
+                const updated = [...prev];
+                for (const entry of evt.entries) {
+                  const idx = updated.findIndex(e => e.document === entry.document);
+                  if (idx >= 0) updated[idx] = entry;
+                  else updated.push(entry);
+                }
+                return updated;
+              });
             } else if (evt.type === "metadata_updated" && evt.metadata) {
               // Solomon confirmed program metadata — update project state
               setProject(prev => prev ? {
@@ -3318,6 +3376,7 @@ export default function ProjectViewPage() {
             { key: "scor" as LeafType, label: "Scor" },
             { key: "tabele" as LeafType, label: "Tabele" },
             { key: "checklist" as LeafType, label: "Checklist doc" },
+            { key: "documente" as LeafType, label: "Documente" },
             { key: "neemia" as LeafType, label: orgLabels.neemiaLabel },
           ]).map(tab => (
             <button
@@ -3562,6 +3621,34 @@ export default function ProjectViewPage() {
 
             {/* REGULI (combined ghid rules + eligibility status) */}
             {activeLeaf === "reguli" && (() => {
+              // Sprint 5: Solomon Eligibility Panel
+              const solEligSection = solEligibility.length > 0 ? (
+                <div style={{ marginBottom: 24, padding: 16, background: "#f8fafc", borderRadius: 12, border: "1px solid #e2e8f0" }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: "#1e293b", marginBottom: 12, display: "flex", justifyContent: "space-between" }}>
+                    <span>Eligibilitate (Solomon)</span>
+                    <span style={{ fontSize: 12, fontWeight: 400, color: "#64748b" }}>
+                      {solEligibility.filter(e => e.status === "pass").length}/{solEligibility.length} ✅
+                    </span>
+                  </div>
+                  {solEligibility.map((entry: any, i: number) => {
+                    const icon = entry.status === "pass" ? "✅" : entry.status === "fail" ? "❌" : entry.status === "pending" ? "⏳" : "░░";
+                    const color = entry.status === "pass" ? "#059669" : entry.status === "fail" ? "#dc2626" : "#d97706";
+                    return (
+                      <div key={i} style={{ padding: "6px 0", borderBottom: i < solEligibility.length - 1 ? "1px solid #f0f2f5" : "none" }}>
+                        <div style={{ fontSize: 13, display: "flex", gap: 6, alignItems: "flex-start" }}>
+                          <span>{icon}</span>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontWeight: 500, color }}>{entry.ruleName || entry.rule}</div>
+                            {entry.evidence && <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>{entry.evidence}</div>}
+                          </div>
+                          {entry.sourcePhase && <span style={{ fontSize: 10, color: "#94a3b8", fontFamily: "'JetBrains Mono', monospace" }}>{entry.sourcePhase}</span>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : null;
+
               const categoryLabels: Record<string, string> = {
                 eligibilitate: "Eligibilitate", financiar: "Financiar", tehnic: "Tehnic", administrativ: "Administrativ",
                 achizitii: "Achiziții", documente: "Documente", selectie: "Selecție", intensitate: "Intensitate",
@@ -3618,18 +3705,20 @@ export default function ProjectViewPage() {
               const eligPendingCount = eligibilityRules.filter(r => r.status === "pending").length;
               const eligStatusIcons: Record<string, string> = { pass: "\u2713", fail: "\u2715", pending: "?" };
 
-              if (guideRules.length === 0 && eligibilityRules.length === 0) {
+              if (guideRules.length === 0 && eligibilityRules.length === 0 && solEligibility.length === 0) {
                 return (
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 200, color: "#8892a8", padding: 24 }}>
                     <div style={{ fontSize: 32, marginBottom: 8 }}>&#128214;</div>
                     <div style={{ fontSize: 14, fontWeight: 600 }}>Nicio regulă extrasă încă</div>
-                    <div style={{ fontSize: 12, marginTop: 4 }}>Uploadează un ghid de finanțare pentru a extrage regulile automat</div>
+                    <div style={{ fontSize: 12, marginTop: 4 }}>Discutați eligibilitatea cu Solomon pentru a genera checklist-ul automat</div>
                   </div>
                 );
               }
 
               return (
               <div className="ghid-layout">
+                {/* Sprint 5: Solomon Eligibility Panel */}
+                {solEligSection}
                 {/* Eligibility summary stats */}
                 {eligibilityRules.length > 0 && (
                   <div className="elig-summary" style={{ marginBottom: 10 }}>
@@ -4591,12 +4680,47 @@ export default function ProjectViewPage() {
 
             {/* SCOR (scoring criteria + points) */}
             {activeLeaf === "scor" && (() => {
-              if (!projectScores || projectScores.scores.length === 0) {
+              // Sprint 5: Solomon scoring panel
+              const solScoringSection = solScoring.length > 0 ? (
+                <div style={{ marginBottom: 24, padding: 16, background: "#f8fafc", borderRadius: 12, border: "1px solid #e2e8f0" }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: "#1e293b", marginBottom: 12, display: "flex", justifyContent: "space-between" }}>
+                    <span>Punctaj estimat (Solomon)</span>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: "#2563eb" }}>
+                      {solScoring.reduce((s: number, e: any) => s + (e.pointsEstimated || e.points || 0), 0)} / {solScoring.reduce((s: number, e: any) => s + (e.maxPoints || 0), 0)}
+                    </span>
+                  </div>
+                  <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
+                    <thead>
+                      <tr style={{ borderBottom: "1px solid #e2e8f0" }}>
+                        <th style={{ textAlign: "left", padding: "4px 0", color: "#64748b", fontWeight: 600 }}>Criteriu</th>
+                        <th style={{ textAlign: "right", padding: "4px 8px", color: "#64748b", fontWeight: 600 }}>Est.</th>
+                        <th style={{ textAlign: "right", padding: "4px 8px", color: "#64748b", fontWeight: 600 }}>Max</th>
+                        <th style={{ textAlign: "right", padding: "4px 0", color: "#64748b", fontWeight: 600 }}>Conf.</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {solScoring.map((entry: any, i: number) => (
+                        <tr key={i} style={{ borderBottom: "1px solid #f0f2f5" }}>
+                          <td style={{ padding: "6px 0", color: "#1e293b" }}>
+                            {entry.criterionName || entry.criterion}
+                            {entry.evidence && <div style={{ fontSize: 10, color: "#94a3b8" }}>{entry.evidence}</div>}
+                          </td>
+                          <td style={{ textAlign: "right", padding: "6px 8px", fontWeight: 600, color: "#2563eb" }}>{entry.pointsEstimated ?? entry.points ?? "—"}</td>
+                          <td style={{ textAlign: "right", padding: "6px 8px", color: "#64748b" }}>{entry.maxPoints ?? "—"}</td>
+                          <td style={{ textAlign: "right", padding: "6px 0", color: "#94a3b8" }}>{entry.confidence ? `${Math.round(entry.confidence * 100)}%` : "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : null;
+
+              if ((!projectScores || projectScores.scores.length === 0) && solScoring.length === 0) {
                 return (
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 200, color: "#8892a8", padding: 24 }}>
                     <div style={{ fontSize: 32, marginBottom: 8 }}>📊</div>
                     <div style={{ fontSize: 14, fontWeight: 600 }}>Niciun criteriu de scor disponibil</div>
-                    <div style={{ fontSize: 12, marginTop: 4 }}>Uploadează un ghid cu grilă de evaluare pentru a genera criteriile automat</div>
+                    <div style={{ fontSize: 12, marginTop: 4 }}>Discutați punctajul cu Solomon pentru estimări automate</div>
                     <button
                       onClick={async () => {
                         try {
@@ -4612,9 +4736,14 @@ export default function ProjectViewPage() {
                   </div>
                 );
               }
+              if (!projectScores || projectScores.scores.length === 0) {
+                return (<div style={{ padding: 24 }}>{solScoringSection}</div>);
+              }
               const { scores, totalPoints, maxTotalPoints, percentage } = projectScores;
               return (
                 <div style={{ padding: 24 }}>
+                  {/* Sprint 5: Solomon Scoring Panel */}
+                  {solScoringSection}
                   {/* Summary header */}
                   <div style={{ display: "flex", gap: 16, marginBottom: 24, flexWrap: "wrap" }}>
                     <div style={{ flex: 1, minWidth: 160, padding: "16px 20px", background: "#fff", border: "1px solid rgba(226,232,240,.8)", borderRadius: 12 }}>
@@ -5248,6 +5377,191 @@ export default function ProjectViewPage() {
                     autoFocus
                   />
                   <button className="refine-submit" onClick={handleRefineSubmit}>Rescrie</button>
+                </div>
+              </div>
+            )}
+
+            {/* RAG v2 — DOCUMENTE CLASIFICATE */}
+            {activeLeaf === "documente" && (
+              <div style={{ flex: 1, overflow: "auto", padding: 24 }}>
+                <div style={{ maxWidth: 860, margin: "0 auto" }}>
+                  {/* Upload zone */}
+                  <div
+                    style={{
+                      border: "2px dashed #cbd5e1", borderRadius: 12, padding: "28px 24px",
+                      textAlign: "center", marginBottom: 24, cursor: "pointer",
+                      background: docUploading ? "#f0f9ff" : "#fafbfc",
+                      transition: "border-color 0.2s, background 0.2s",
+                    }}
+                    onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = "#2563eb"; e.currentTarget.style.background = "#eff6ff"; }}
+                    onDragLeave={e => { e.currentTarget.style.borderColor = "#cbd5e1"; e.currentTarget.style.background = "#fafbfc"; }}
+                    onDrop={async e => {
+                      e.preventDefault();
+                      e.currentTarget.style.borderColor = "#cbd5e1";
+                      e.currentTarget.style.background = "#fafbfc";
+                      const files = Array.from(e.dataTransfer.files);
+                      if (files.length === 0) return;
+                      setDocUploading(true);
+                      for (const file of files) {
+                        try {
+                          const fd = new FormData();
+                          fd.append("file", file);
+                          await api(`/api/folders/${project?.folderId}/documents`, { method: "POST", body: fd, timeout: 120000 });
+                        } catch (err: any) { toast("error", `Upload eșuat: ${file.name}`); }
+                      }
+                      setDocUploading(false);
+                      apiGet<any[]>(`/api/folders/${project?.folderId}/classified-documents`).then(docs => setClassifiedDocs(docs || [])).catch(() => {});
+                    }}
+                    onClick={() => {
+                      const input = document.createElement("input");
+                      input.type = "file";
+                      input.multiple = true;
+                      input.accept = ".pdf,.docx,.xlsx,.doc,.png,.jpg";
+                      input.onchange = async () => {
+                        const files = Array.from(input.files || []);
+                        if (files.length === 0) return;
+                        setDocUploading(true);
+                        for (const file of files) {
+                          try {
+                            const fd = new FormData();
+                            fd.append("file", file);
+                            await api(`/api/folders/${project?.folderId}/documents`, { method: "POST", body: fd, timeout: 120000 });
+                          } catch (err: any) { toast("error", `Upload eșuat: ${file.name}`); }
+                        }
+                        setDocUploading(false);
+                        apiGet<any[]>(`/api/folders/${project?.folderId}/classified-documents`).then(docs => setClassifiedDocs(docs || [])).catch(() => {});
+                      };
+                      input.click();
+                    }}
+                  >
+                    <div style={{ fontSize: 32, marginBottom: 8 }}>{docUploading ? "⏳" : "📎"}</div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: "#1e293b" }}>{docUploading ? "Se încarcă..." : "Trage documentele aici sau click pentru a selecta"}</div>
+                    <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 4 }}>Ghiduri, template-uri, anexe, CI-uri, bilanțuri, oferte — AI-ul clasifică automat.</div>
+                  </div>
+
+                  {/* Grouped document sections */}
+                  {(() => {
+                    const groups = {
+                      guide: classifiedDocs.filter(d => d.classification?.routingAction === "vectorize" && d.status === "processed"),
+                      templates: classifiedDocs.filter(d => ["template_fill", "template_compose"].includes(d.classification?.routingAction) && d.status === "processed"),
+                      client: classifiedDocs.filter(d => ["extract_data", "vectorize_and_extract"].includes(d.classification?.routingAction) && d.status === "processed"),
+                      processing: classifiedDocs.filter(d => d.status === "processing" || d.status === "uploaded"),
+                      errors: classifiedDocs.filter(d => d.status === "error" || d.status === "failed"),
+                    };
+
+                    const renderDocCard = (doc: any) => {
+                      const c = doc.classification;
+                      const icon = c?.routingAction === "vectorize" ? "📗" : ["template_fill", "template_compose"].includes(c?.routingAction) ? "📝" : "📄";
+                      const statusIcon = doc.status === "processed" ? "✅" : doc.status === "processing" ? "⏳" : doc.status === "error" ? "⚠️" : "📄";
+                      const details = [
+                        c?.docType,
+                        c?.chunksCount && `${c.chunksCount} chunks`,
+                        c?.extractedFields && `${c.extractedFields} câmpuri`,
+                        doc.documentVersion && doc.documentVersion > 1 && `v${doc.documentVersion}`,
+                      ].filter(Boolean).join(" · ");
+                      const lowConf = c?.confidence && c.confidence < 0.7;
+
+                      return (
+                        <div key={doc.id} style={{
+                          display: "flex", alignItems: "center", gap: 10, padding: "10px 14px",
+                          background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10,
+                          marginBottom: 6, transition: "border-color 0.15s",
+                        }}
+                        onMouseEnter={e => (e.currentTarget.style.borderColor = "#94a3b8")}
+                        onMouseLeave={e => (e.currentTarget.style.borderColor = "#e2e8f0")}
+                        >
+                          <span style={{ fontSize: 18 }}>{icon}</span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: "#1e293b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {doc.fileName || doc.name} <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 400 }}>{statusIcon}</span>
+                            </div>
+                            <div style={{ fontSize: 11, color: "#64748b" }}>
+                              {c?.description || details}
+                              {lowConf && <span style={{ color: "#f59e0b", marginLeft: 6 }}>⚠ Clasificare incertă</span>}
+                            </div>
+                          </div>
+                          <button
+                            style={{ fontSize: 11, color: "#64748b", background: "none", border: "1px solid #e2e8f0", borderRadius: 6, padding: "3px 8px", cursor: "pointer" }}
+                            onClick={e => { e.stopPropagation(); setReclassifyDoc(doc); }}
+                          >✏️</button>
+                        </div>
+                      );
+                    };
+
+                    const renderSection = (title: string, docs: any[]) => {
+                      if (docs.length === 0) return null;
+                      return (
+                        <div key={title} style={{ marginBottom: 20 }}>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8, display: "flex", justifyContent: "space-between" }}>
+                            <span>{title}</span>
+                            <span style={{ fontWeight: 400, color: "#94a3b8" }}>{docs.length} documente</span>
+                          </div>
+                          {docs.map(renderDocCard)}
+                        </div>
+                      );
+                    };
+
+                    if (classifiedDocs.length === 0) {
+                      return (
+                        <div style={{ textAlign: "center", padding: 40, color: "#94a3b8" }}>
+                          <div style={{ fontSize: 40, marginBottom: 12 }}>📂</div>
+                          <div style={{ fontSize: 14 }}>Niciun document încă. Începe prin a adăuga ghidul sesiunii.</div>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <>
+                        {renderSection("Ghid și referință", groups.guide)}
+                        {renderSection("Template-uri", groups.templates)}
+                        {renderSection("Documente client", groups.client)}
+                        {renderSection("În procesare", groups.processing)}
+                        {renderSection("Erori", groups.errors)}
+                      </>
+                    );
+                  })()}
+
+                  {/* Reclassify Dialog */}
+                  {reclassifyDoc && (
+                    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }} onClick={() => setReclassifyDoc(null)}>
+                      <div style={{ background: "#fff", borderRadius: 14, padding: 24, width: 420, maxWidth: "90vw" }} onClick={e => e.stopPropagation()}>
+                        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 16 }}>Corectează clasificarea</div>
+                        <div style={{ fontSize: 13, color: "#64748b", marginBottom: 12 }}>Document: {reclassifyDoc.fileName || reclassifyDoc.name}</div>
+                        <div style={{ fontSize: 13, color: "#64748b", marginBottom: 16 }}>Clasificare AI: {reclassifyDoc.classification?.docType} ({Math.round((reclassifyDoc.classification?.confidence || 0) * 100)}%)</div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 20 }}>
+                          {[
+                            { label: "Ghid / Fișă evaluare (se indexează)", type: "ghid", route: "vectorize" },
+                            { label: "Template de completat (câmpuri)", type: "template_fill", route: "template_fill" },
+                            { label: "Template narativ (memoriu, SF)", type: "template_compose", route: "template_compose" },
+                            { label: "Document client (CI, bilanț, certificat)", type: "document_client", route: "extract_data" },
+                            { label: "Ofertă furnizor", type: "oferta", route: "extract_data" },
+                            { label: "Studiu fezabilitate completat", type: "studiu_fezabilitate", route: "vectorize_and_extract" },
+                          ].map(opt => (
+                            <label key={opt.type} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderRadius: 8, border: `1px solid ${reclassifyType === opt.type ? "#2563eb" : "#e2e8f0"}`, cursor: "pointer", fontSize: 13, background: reclassifyType === opt.type ? "#eff6ff" : "transparent" }}>
+                              <input type="radio" name="reclassify" checked={reclassifyType === opt.type} onChange={() => { setReclassifyType(opt.type); setReclassifyRoute(opt.route); }} />
+                              {opt.label}
+                            </label>
+                          ))}
+                        </div>
+                        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                          <button style={{ padding: "7px 16px", borderRadius: 8, border: "1px solid #e2e8f0", background: "#fff", fontSize: 13, cursor: "pointer" }} onClick={() => setReclassifyDoc(null)}>Anulează</button>
+                          <button style={{ padding: "7px 16px", borderRadius: 8, border: "none", background: "#2563eb", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", opacity: reclassifyType ? 1 : 0.5 }}
+                            disabled={!reclassifyType}
+                            onClick={async () => {
+                              try {
+                                await apiPut(`/api/documents/${reclassifyDoc.id}/reclassify`, { docType: reclassifyType, routingAction: reclassifyRoute });
+                                toast("success", "Reclasificare trimisă. Documentul se reprocesează.");
+                                setReclassifyDoc(null);
+                                setReclassifyType("");
+                                setReclassifyRoute("");
+                                setTimeout(() => apiGet<any[]>(`/api/folders/${project?.folderId}/classified-documents`).then(docs => setClassifiedDocs(docs || [])).catch(() => {}), 2000);
+                              } catch { toast("error", "Eroare la reclasificare."); }
+                            }}
+                          >Reclasifică</button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

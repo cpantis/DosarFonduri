@@ -382,6 +382,24 @@ export const documents = pgTable("documents", {
     sectionsWithoutRules: string[];
     warnings: string[];
   }>(),
+  // RAG v2: Document versioning
+  documentVersion: integer("document_version").default(1),
+  supersededBy: uuid("superseded_by"),        // documentId of newer version (NULL = current)
+  supersedes: uuid("supersedes"),              // documentId of older version (NULL = first)
+  isCurrentVersion: boolean("is_current_version").default(true),
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
+  versionDiff: jsonb("version_diff").$type<{
+    summary: string;
+    changes: Array<{
+      type: "added" | "removed" | "modified";
+      category: string;
+      description: string;
+      severity: "critical" | "important" | "minor";
+      affectedElements: string[];
+    }>;
+    analyzedAt: string;
+    confidence: number;
+  }>(),
 }, (table) => ({
   orgIdx: index("doc_org_idx").on(table.organizationId),
   folderIdx: index("doc_folder_idx").on(table.folderId),
@@ -803,6 +821,83 @@ export const projectScores = pgTable("project_scores", {
   evaluatedAt: timestamp("evaluated_at").defaultNow().notNull(),
 }, (table) => ({
   projectIdx: index("score_project_idx").on(table.projectId),
+}));
+
+// === SOLOMON STRUCTURED OUTPUT (RAG v2 Sprint 5) ===
+
+// Solomon eligibility conclusions — one row per verified condition
+export const solomonEligibility = pgTable("solomon_eligibility", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  ruleName: text("rule_name").notNull(),
+  ruleCategory: text("rule_category"),   // 'eligibilitate' | 'conformitate' | 'administrativ'
+  status: text("status").notNull(),       // 'pass' | 'fail' | 'pending' | 'not_applicable'
+  evidence: text("evidence"),
+  confidence: decimal("confidence", { precision: 3, scale: 2 }),
+  sourcePhase: text("source_phase"),      // 'Q4', 'Q5', etc.
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  projectIdx: index("sol_elig_project_idx").on(table.projectId),
+  ruleUq: uniqueIndex("sol_elig_rule_uq").on(table.projectId, table.ruleName),
+}));
+
+// Solomon scoring estimates — one row per evaluated criterion
+export const solomonScoring = pgTable("solomon_scoring", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  criterionName: text("criterion_name").notNull(),
+  criterionCategory: text("criterion_category"),
+  pointsEstimated: integer("points_estimated"),
+  maxPoints: integer("max_points"),
+  evidence: text("evidence"),
+  confidence: decimal("confidence", { precision: 3, scale: 2 }),
+  sourcePhase: text("source_phase"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  projectIdx: index("sol_score_project_idx").on(table.projectId),
+  criterionUq: uniqueIndex("sol_score_criterion_uq").on(table.projectId, table.criterionName),
+}));
+
+// === FORM SPECS (Universal FormSpec from any form format) ===
+export const formSpecs = pgTable("form_specs", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  name: text("name").notNull(),
+  version: text("version").notNull().default(""),
+  programCode: text("program_code"),
+  sourceFormat: text("source_format").notNull(), // xfa|acroform|docx|xlsx|online
+  documentId: uuid("document_id").references(() => documents.id, { onDelete: "cascade" }),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
+  spec: jsonb("spec").notNull(),                 // Full FormSpec JSON
+  referenceData: jsonb("reference_data"),
+  isActive: boolean("is_active").default(true),
+  totalFields: integer("total_fields").default(0),
+  extractedAt: timestamp("extracted_at", { withTimezone: true }).defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  docIdx: index("formspec_doc_idx").on(table.documentId),
+  orgIdx: index("formspec_org_idx").on(table.organizationId),
+}));
+
+// === FORM DATA (field values + page approvals per project per form) ===
+export const formData = pgTable("form_data", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  formSpecId: uuid("form_spec_id").references(() => formSpecs.id, { onDelete: "cascade" }).notNull(),
+  fieldValues: jsonb("field_values").notNull().default({}),
+  fieldSources: jsonb("field_sources").default({}),     // { "field_name": "onrc" | "solomon" | "calculated" | "manual" }
+  pageApprovals: jsonb("page_approvals").notNull().default({}),
+  completionPercent: integer("completion_percent").default(0),
+  approvedPagesCount: integer("approved_pages_count").default(0),
+  totalPages: integer("total_pages"),
+  allPagesApproved: boolean("all_pages_approved").default(false),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  projectIdx: index("formdata_project_idx").on(table.projectId),
+  formSpecIdx: index("formdata_formspec_idx").on(table.formSpecId),
+  projectFormUq: uniqueIndex("formdata_project_form_uq").on(table.projectId, table.formSpecId),
 }));
 
 // === SOLOMON CONVERSATIONS ===

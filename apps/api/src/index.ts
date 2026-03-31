@@ -27,6 +27,7 @@ import { configRoutes } from "./routes/config";
 import { exportRoutes } from "./routes/export";
 import { referenceTableRoutes } from "./routes/reference-tables";
 import { healthRoutes } from "./routes/health";
+import { formRoutes } from "./routes/forms";
 import { authMiddleware } from "./middleware/auth";
 import { auditMiddleware } from "./middleware/audit";
 import { errorHandler } from "./middleware/errorHandler";
@@ -116,6 +117,7 @@ app.route("/api/admin", adminRoutes);
 app.route("/api/config", configRoutes);
 app.route("/api/export", exportRoutes);
 app.route("/api/reference", referenceTableRoutes);
+app.route("/api/forms", formRoutes);
 
 // SSE event stream endpoint
 app.get("/api/events", async (c) => {

@@ -464,3 +464,60 @@ cd apps/web && npx next build
 - `solomonTools.ts` — tool handlers + definitions
 - Rollback: decomentează RAG injection + auto eligibility/scoring + scoate tools din API call
 - Următorul sprint: SPRINT_4 — UI single entry point + knowledge base
+
+## RAG v2 Migration — Sprint 4 COMPLET (MIGRATION COMPLETĂ) (2026-03-31)
+
+### Sumar complet migration RAG v2:
+- Sprint 1: pgvector + chunks + Voyage SDK + hybrid search ✅
+- Sprint 2: Single entry point documente cu clasificare AI Sonnet ✅
+- Sprint 3: Solomon tool use + faze Q0-Q11 + compose brief ✅
+- Sprint 4: UI + Neemia compose + Document versioning ✅
+
+### Sprint 4 deliverables:
+- **Documente tab** în ProjectView: upload zone + documente clasificate grupate pe categorie
+- **ReclassifyDialog**: corectare manuală clasificare AI cu re-trigger pipeline
+- **Knowledge base endpoints**: GET/POST/DELETE pe `/api/config/knowledge-base` cu ingest pipeline
+- **Compose section generation**: `POST /neemia/projects/:id/compose/generate-section` cu brief Solomon + RAG
+- **Coherence check**: `POST /neemia/projects/:id/compose/coherence-check` — Sonnet verifică coerența narativă
+- **Document versioning schema**: `document_version`, `superseded_by`, `supersedes`, `is_current_version`, `version_diff` (migration `0131_rag_v2_versioning.sql`)
+- **Version diff service** (`versionDiff.ts`): semantic diff Sonnet + `checkSameDocument` upgrade detection
+- **ProjectData type** extended cu `folderId`, `solomonPhase`, `composeBrief`
+
+### DEZACTIVAT (nu șters):
+- processGuide, guideRetrieval, auto-eligibility, auto-scoring (comentate, rollback ușor)
+- Arbore foldere documente (pagina veche funcționează în paralel)
+
+## Sprint 5 — Eligibilitate, Scoring, Checklist Structurat COMPLET (2026-03-31)
+
+- Solomon emite `ELIGIBILITY_JSON`, `SCORING_JSON`, `CHECKLIST_JSON` (lângă ELEMENTS_JSON și PHASE_JSON)
+- Backend parsează și persistă în `solomonEligibility`, `solomonScoring`, `projectChecklist` (source=solomon)
+- Upsert per regulă/criteriu — se acumulează și actualizează pe parcursul conversației
+- Tabele noi: `solomon_eligibility` (unique on project+rule), `solomon_scoring` (unique on project+criterion)
+- Migration `0132_solomon_structured_output.sql` + `source_reference` pe projectChecklist
+- Endpoints: GET `/solomon/projects/:id/eligibility`, `/scoring`, `/document-checklist`
+- UI: Solomon Eligibility Panel în tab-ul Reguli, Solomon Scoring Table în tab-ul Scor
+- SSE events: `eligibility_update`, `scoring_update`, `checklist_update` — frontend se actualizează live
+- Solomon raționează din RAG, persistă concluziile structurat — best of both worlds
+
+## Universal Forms — Sprint FORM-1 COMPLET (2026-03-31)
+
+- FormSpec JSON: format universal pentru orice formular din orice program
+- 4 extractori în `formspec_extract.py`: XFA (PyMuPDF xref), AcroForm (PyMuPDF widgets), DOCX (python-docx placeholders), XLSX (openpyxl cells+formulas)
+- Detector automat de format (XFA > AcroForm > DOCX > XLSX)
+- TypeScript service `formSpecExtractor.ts`: bridge to Python, buffer handling, DB persistence
+- Tabel `form_specs` cu FormSpec JSONB complet (migration `0133_form_specs.sql`)
+- API routes: POST `/forms/extract`, GET `/forms/spec/:id`, GET `/forms/document/:id`, GET `/forms/spec/:id/reference-data`
+- Integrat cu pipeline clasificare: `template_fill` → auto-extract FormSpec la ingestie
+- Următorul sprint: HTML renderer universal + export multi-format (SPRINT_FORM-2)
+
+## Universal Forms — Sprint FORM-2 v2 COMPLET (2026-03-31)
+
+- Tabel `form_data` cu `field_values` JSONB + `page_approvals` JSONB + completion tracking (migration `0134_form_data.sql`)
+- API endpoints pentru form data CRUD:
+  - GET/PUT field values, POST approve/unapprove page, POST auto-populate, GET overview
+- Auto-populate: mapează project_elements → form fields via `mappedElementName`
+- Page approval workflow: per-page visual verification cu tracking per consultant
+- Export blocat până la `allPagesApproved === true`
+- Completion percent calculat automat la fiecare field edit
+- Unique constraint pe (project_id, form_spec_id) — un singur form_data per formular per proiect
+- Refolosește `documentRenderer.ts` existent pentru rendering pagini cu field positions

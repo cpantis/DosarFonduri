@@ -2,8 +2,8 @@ import type { AppEnv } from "../types/hono";
 import { Hono } from "hono";
 import { createHash } from "crypto";
 import { db } from "../db";
-import { solomonConversations, solomonMessages, projects, documents, documentFolders } from "../db/schema";
-import { eq, and } from "drizzle-orm";
+import { solomonConversations, solomonMessages, projects, documents, documentFolders, solomonEligibility, solomonScoring, projectChecklist } from "../db/schema";
+import { eq, and, sql, desc } from "drizzle-orm";
 import { AuthContext } from "../middleware/auth";
 import { processSolomonMessage, processInlineRefine, generateSolomonGreeting } from "../services/solomon";
 import { uploadFile } from "../services/storage";
@@ -448,4 +448,84 @@ Generează brief JSON:
   } catch {
     return c.json({ error: "Failed to generate compose brief" }, 500);
   }
+});
+
+// ═══════════════════════════════════════════
+// Sprint 5 — Structured output endpoints
+// ═══════════════════════════════════════════
+
+/**
+ * GET /api/solomon/projects/:projectId/eligibility
+ * Returns Solomon's eligibility conclusions.
+ */
+solomonRoutes.get("/projects/:projectId/eligibility", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const projectId = c.req.param("projectId");
+
+  const project = await verifyProjectOrg(projectId, auth.organizationId!);
+  if (!project) return c.json({ error: "Project not found" }, 404);
+
+  const entries = await db.query.solomonEligibility.findMany({
+    where: eq(solomonEligibility.projectId, projectId),
+    orderBy: (e, { asc }) => [asc(e.createdAt)],
+  });
+
+  const passed = entries.filter(e => e.status === "pass").length;
+  const failed = entries.filter(e => e.status === "fail").length;
+  const pending = entries.filter(e => e.status === "pending").length;
+
+  return c.json({
+    entries,
+    summary: { total: entries.length, passed, failed, pending },
+  });
+});
+
+/**
+ * GET /api/solomon/projects/:projectId/scoring
+ * Returns Solomon's scoring estimates.
+ */
+solomonRoutes.get("/projects/:projectId/scoring", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const projectId = c.req.param("projectId");
+
+  const project = await verifyProjectOrg(projectId, auth.organizationId!);
+  if (!project) return c.json({ error: "Project not found" }, 404);
+
+  const entries = await db.query.solomonScoring.findMany({
+    where: eq(solomonScoring.projectId, projectId),
+    orderBy: (e, { desc: d }) => [d(e.pointsEstimated)],
+  });
+
+  const totalEstimated = entries.reduce((s, e) => s + (e.pointsEstimated || 0), 0);
+  const totalMax = entries.reduce((s, e) => s + (e.maxPoints || 0), 0);
+
+  return c.json({
+    criteria: entries,
+    totalEstimated,
+    totalMax,
+  });
+});
+
+/**
+ * GET /api/solomon/projects/:projectId/document-checklist
+ * Returns Solomon-generated document checklist with upload matching.
+ */
+solomonRoutes.get("/projects/:projectId/document-checklist", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const projectId = c.req.param("projectId");
+
+  const project = await verifyProjectOrg(projectId, auth.organizationId!);
+  if (!project) return c.json({ error: "Project not found" }, 404);
+
+  const items = await db.query.projectChecklist.findMany({
+    where: and(eq(projectChecklist.projectId, projectId), eq(projectChecklist.source, "solomon")),
+    orderBy: (c, { asc }) => [asc(c.sortOrder), asc(c.createdAt)],
+  });
+
+  const uploaded = items.filter(i => i.done).length;
+
+  return c.json({
+    items,
+    summary: { total: items.length, uploaded, missing: items.length - uploaded },
+  });
 });

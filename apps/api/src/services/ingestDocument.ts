@@ -128,7 +128,7 @@ export async function ingestDocument(options: IngestOptions): Promise<IngestResu
       }
 
       case "template_fill": {
-        await routeTemplateFill(documentId, classification, progress);
+        await routeTemplateFill(documentId, organizationId, buffer, fileName, classification, progress);
         break;
       }
 
@@ -287,15 +287,30 @@ async function routeVectorize(
  */
 async function routeTemplateFill(
   documentId: string,
+  organizationId: string,
+  buffer: Buffer,
+  fileName: string,
   classification: ClassificationResult,
   progress: ProgressFn,
 ): Promise<void> {
-  progress("Pregătire template fill...", 50);
+  progress("Pregătire template fill...", 30);
 
-  // The document remains as-is in R2.
-  // Neemia fill will receive the original file for XFA/DOCX field filling.
-  // We just update the classification metadata.
-  progress("Template marcat pentru completare.", 90);
+  // FORM-1: Extract FormSpec from the template
+  try {
+    progress("Extragere structură formular...", 50);
+    const { extractAndSaveFormSpec } = await import("./formSpecExtractor");
+    const { formSpecId, spec } = await extractAndSaveFormSpec(
+      buffer, fileName, documentId, organizationId,
+    );
+    progress(`FormSpec extras: ${spec.sourceFormat}, ${spec.totalFields} câmpuri`, 85);
+    console.log(`[ingest] FormSpec extracted for ${documentId}: ${spec.sourceFormat}, ${spec.totalFields} fields`);
+  } catch (err) {
+    // Non-critical — template can still be used without FormSpec
+    console.warn(`[ingest] FormSpec extraction failed for ${documentId}:`, (err as Error).message);
+    progress("Template marcat pentru completare (FormSpec indisponibil).", 90);
+  }
+
+  progress("Template pregătit pentru completare.", 90);
 }
 
 /**

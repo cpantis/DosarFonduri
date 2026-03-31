@@ -4594,6 +4594,47 @@ export default function ProjectViewPage() {
                   </div>
                 )}
 
+                {/* FIX G: Solomon-detected document checklist */}
+                {solChecklist.length > 0 && (
+                  <div style={{ margin: "12px 16px", padding: 14, background: "#f8fafc", borderRadius: 10, border: "1px solid #e2e8f0" }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#1e293b", marginBottom: 10, display: "flex", justifyContent: "space-between" }}>
+                      <span>Documente necesare (Solomon)</span>
+                      <span style={{ fontWeight: 400, color: "#64748b" }}>
+                        {solChecklist.filter((i: any) => {
+                          const name = (i.document || i.name || "").toLowerCase();
+                          return classifiedDocs.some((d: any) => {
+                            const dName = (d.fileName || d.name || "").toLowerCase();
+                            const dDesc = ((d.classification as any)?.description || "").toLowerCase();
+                            return dName.includes(name.slice(0, 15)) || dDesc.includes(name.slice(0, 15));
+                          });
+                        }).length}/{solChecklist.length}
+                      </span>
+                    </div>
+                    {solChecklist.map((item: any, i: number) => {
+                      const docName = item.document || item.name || "";
+                      const matched = classifiedDocs.some((d: any) => {
+                        const dName = (d.fileName || d.name || "").toLowerCase();
+                        const dDesc = ((d.classification as any)?.description || "").toLowerCase();
+                        const searchKey = docName.toLowerCase().slice(0, 15);
+                        return dName.includes(searchKey) || dDesc.includes(searchKey);
+                      });
+                      const catColor = item.category === "obligatoriu_depunere" ? "#dc2626" : item.category === "obligatoriu_contractare" ? "#d97706" : "#64748b";
+                      return (
+                        <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "6px 0", borderBottom: i < solChecklist.length - 1 ? "1px solid #f0f2f5" : "none" }}>
+                          <span style={{ fontSize: 13, flexShrink: 0, marginTop: 1 }}>{matched ? "✅" : "❌"}</span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 12.5, color: "#1e293b", fontWeight: matched ? 400 : 500 }}>{docName}</div>
+                            {item.notes && <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 1 }}>{item.notes}</div>}
+                          </div>
+                          <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 4, background: `${catColor}10`, color: catColor, fontWeight: 600, flexShrink: 0 }}>
+                            {item.category === "obligatoriu_depunere" ? "depunere" : item.category === "obligatoriu_contractare" ? "contractare" : "opțional"}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
                 {/* Add document button / form */}
                 {!readOnly && (
                   checkAddOpen ? (

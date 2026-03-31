@@ -15,7 +15,7 @@ import { eq, and, inArray, sql } from "drizzle-orm";
 import { logAIUsage } from "./aiUsage";
 import { getCompanyDataFromElements } from "./companyElements";
 import { validateElement, logElementChange } from "./elementValidation";
-import { checkEligibility } from "./eligibility";
+// import { checkEligibility } from "./eligibility"; // RAG v2: disabled, Solomon reasons via tool use
 import { computeProjectScores } from "./scoring";
 import { publishElementValidated, publishEligibilityUpdated, publishScoreUpdated } from "../lib/sse";
 import { preflightCached } from "./dbPreflight";

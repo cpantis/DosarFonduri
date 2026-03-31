@@ -79,7 +79,7 @@ Returnează JSON:
     "batch",
   );
 
-  const text = response.content[0].type === "text" ? response.content[0].text : "{}";
+  const text = response.content?.[0]?.type === "text" ? response.content[0].text : "{}";
   const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
 
   try {
@@ -132,7 +132,7 @@ export async function checkSameDocument(
     "batch",
   );
 
-  const text = response.content[0].type === "text" ? response.content[0].text : "{}";
+  const text = response.content?.[0]?.type === "text" ? response.content[0].text : "{}";
   try {
     const parsed = JSON.parse(text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim());
     return {

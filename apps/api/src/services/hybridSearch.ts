@@ -90,7 +90,7 @@ export async function hybridSearch(options: HybridSearchOptions): Promise<Hybrid
   return (rows as any[]).map(row => ({
     id: row.id,
     content: row.content,
-    metadata: typeof row.metadata === "string" ? JSON.parse(row.metadata) : row.metadata,
+    metadata: typeof row.metadata === "string" ? (() => { try { return JSON.parse(row.metadata); } catch { return {}; } })() : (row.metadata || {}),
     score: parseFloat(row.rrf_score),
     matchType: row.match_type,
   }));

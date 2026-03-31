@@ -110,7 +110,7 @@ Returnează JSON:
   );
 
   const responseText =
-    response.content[0].type === "text" ? response.content[0].text : "{}";
+    response.content?.[0]?.type === "text" ? response.content[0].text : "{}";
   const cleaned = responseText
     .replace(/```json\n?/g, "")
     .replace(/```\n?/g, "")

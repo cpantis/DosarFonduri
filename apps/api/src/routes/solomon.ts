@@ -433,7 +433,7 @@ Generează brief JSON:
     });
   }, "batch");
 
-  const text = briefResponse.content[0].type === "text" ? briefResponse.content[0].text : "{}";
+  const text = briefResponse.content?.[0]?.type === "text" ? briefResponse.content[0].text : "{}";
   const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
 
   try {
@@ -445,7 +445,8 @@ Generează brief JSON:
       .where(eq(projects.id, projectId));
 
     return c.json({ brief });
-  } catch {
+  } catch (err: any) {
+    console.error("[solomon] compose-brief failed:", err?.message || err);
     return c.json({ error: "Failed to generate compose brief" }, 500);
   }
 });
@@ -584,7 +585,7 @@ Scrie în română, concis, max 300 cuvinte. Structurează cu bullet points.`,
     });
   }, "batch");
 
-  const summaryText = response.content[0].type === "text" ? response.content[0].text : "";
+  const summaryText = response.content?.[0]?.type === "text" ? response.content[0].text : "";
 
   // Save summary on conversation
   await db.update(solomonConversations).set({
@@ -614,7 +615,7 @@ Returnează JSON array: [{"type":"pattern|rule_interpretation","content":"...","
       });
     }, "batch");
 
-    const memText = memResponse.content[0].type === "text" ? memResponse.content[0].text : "[]";
+    const memText = memResponse.content?.[0]?.type === "text" ? memResponse.content[0].text : "[]";
     const cleaned = memText.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
     const memories = JSON.parse(cleaned);
 

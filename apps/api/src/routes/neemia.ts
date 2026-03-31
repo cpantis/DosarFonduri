@@ -1165,7 +1165,7 @@ Scrie text profesional, formal, cu date concrete din elementele proiectului. 500
     "batch",
   );
 
-  const generatedText = response.content[0].type === "text" ? response.content[0].text : "";
+  const generatedText = response.content?.[0]?.type === "text" ? response.content[0].text : "";
   const wordCount = generatedText.split(/\s+/).length;
 
   // Save version
@@ -1234,7 +1234,7 @@ JSON: { "isCoherent": true/false, "issues": [{ "section": "...", "issue": "...",
     "batch",
   );
 
-  const text = response.content[0].type === "text" ? response.content[0].text : "{}";
+  const text = response.content?.[0]?.type === "text" ? response.content[0].text : "{}";
   const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
 
   try {

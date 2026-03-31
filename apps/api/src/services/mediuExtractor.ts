@@ -40,7 +40,7 @@ ${pdfText.slice(0, 60000)}`,
     }],
   }));
 
-  const text = response.content[0].type === "text" ? response.content[0].text : "";
+  const text = response.content?.[0]?.type === "text" ? response.content[0].text : "";
 
   const fields: ExtractionResult["extracted_fields"] = [];
 

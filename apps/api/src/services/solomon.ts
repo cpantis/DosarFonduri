@@ -1930,7 +1930,8 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
         }
 
         // RAG v2 Sprint 5: Extract and save structured eligibility/scoring/checklist
-        const currentPhaseStr = phaseMatch ? (JSON.parse(phaseMatch[1])?.phase || "") : "";
+        let currentPhaseStr = "";
+        if (phaseMatch) { try { currentPhaseStr = JSON.parse(phaseMatch[1])?.phase || ""; } catch {} }
 
         // ELIGIBILITY_JSON
         const eligJsonStr = extractBalancedJSON(fullResponse, "<!--ELIGIBILITY_JSON", "ELIGIBILITY_JSON-->");

@@ -168,7 +168,7 @@ export async function parseBilantPDF(pdfText: string, year?: number): Promise<Pa
       }],
     }));
 
-    let responseText = response.content[0].type === "text" ? response.content[0].text : "";
+    let responseText = response.content?.[0]?.type === "text" ? response.content[0].text : "";
 
     // Handle truncation — bilant with many F10/F20/F30/F40 fields
     if (response.stop_reason === "max_tokens") {
@@ -183,7 +183,7 @@ export async function parseBilantPDF(pdfText: string, year?: number): Promise<Pa
           { role: "user", content: "JSON-ul a fost trunchiat. Continuă EXACT de unde ai rămas:" },
         ],
       }));
-      const contText = contResponse.content[0].type === "text" ? contResponse.content[0].text : "";
+      const contText = contResponse.content?.[0]?.type === "text" ? contResponse.content[0].text : "";
       responseText += contText;
       console.log(`[bilantParser] Continuation: +${contText.length} chars (total: ${responseText.length})`);
     }

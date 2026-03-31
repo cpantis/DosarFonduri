@@ -88,13 +88,13 @@ async function handleSearchKnowledge(
 
   return results
     .map((r, i) => {
-      const meta = r.metadata as Record<string, any>;
+      const meta = (r.metadata || {}) as Record<string, any>;
       const location = [
         meta.section && `§ ${meta.section}`,
         meta.page && `pag. ${meta.page}`,
-        meta.doc_type,
-        meta.layer,
-        meta.importance === "critical" && "⚠️ CRITIC",
+        meta.doc_type && `${meta.doc_type}`,
+        meta.layer && `${meta.layer}`,
+        meta.importance === "critical" && "CRITIC",
       ]
         .filter(Boolean)
         .join(" · ");

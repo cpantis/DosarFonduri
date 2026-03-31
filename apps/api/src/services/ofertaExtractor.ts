@@ -61,7 +61,7 @@ ${pdfText.slice(0, 100000)}`;
         }],
       }));
 
-      let fullText = response.content[0].type === "text" ? response.content[0].text : "";
+      let fullText = response.content?.[0]?.type === "text" ? response.content[0].text : "";
 
       // Handle truncation
       if (response.stop_reason === "max_tokens") {
@@ -76,7 +76,7 @@ ${pdfText.slice(0, 100000)}`;
             { role: "user", content: "JSON-ul a fost trunchiat. Continuă EXACT de unde ai rămas:" },
           ],
         }));
-        const contText = contResponse.content[0].type === "text" ? contResponse.content[0].text : "";
+        const contText = contResponse.content?.[0]?.type === "text" ? contResponse.content[0].text : "";
         fullText += contText;
         console.log(`[ofertaExtractor] Continuation: +${contText.length} chars (total: ${fullText.length})`);
       }

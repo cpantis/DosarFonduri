@@ -238,7 +238,7 @@ Mapează datele firmei la elementele de mai sus. Returnează DOAR un JSON array.
       messages: [{ role: "user", content: userPrompt }],
     }));
 
-    const content = response.content[0].type === "text" ? response.content[0].text : "[]";
+    const content = response.content?.[0]?.type === "text" ? response.content[0].text : "[]";
     const cleaned = content.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
 
     await logAIUsage({

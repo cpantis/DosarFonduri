@@ -274,9 +274,9 @@ Returnează DOAR un JSON valid (fără backticks):
 
 async function buildSystemPrompt(projectId: string, organizationId: string): Promise<string> {
   const project = await db.query.projects.findFirst({
-    where: eq(projects.id, projectId),
+    where: and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)),
   });
-  if (!project) throw new Error("Project not found");
+  if (!project) throw new Error("Project not found or not authorized");
 
   const company = await db.query.companies.findFirst({
     where: eq(companies.id, project.companyId),
@@ -970,7 +970,7 @@ export async function generateSolomonGreeting(params: {
 }): Promise<string> {
   const { conversationId, projectId, organizationId } = params;
 
-  const project = await db.query.projects.findFirst({ where: eq(projects.id, projectId) });
+  const project = await db.query.projects.findFirst({ where: and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)) });
   if (!project) return "";
 
   const company = await db.query.companies.findFirst({ where: eq(companies.id, project.companyId) });
@@ -1026,7 +1026,7 @@ export async function generateSolomonGreeting(params: {
     if (ctx.programDetected) metaUpdate.programFinantare = ctx.programDetected;
     if (ctx.masura) metaUpdate.codMasura = ctx.masura;
     if (ctx.sesiune) metaUpdate.codSesiune = ctx.sesiune;
-    await db.update(projects).set(metaUpdate).where(eq(projects.id, projectId));
+    await db.update(projects).set(metaUpdate).where(and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)));
   }
 
   // Save greeting as assistant message
@@ -1299,7 +1299,7 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
 
   // Resolve sessionId for tool context (folderId serves as session)
   const projectForTools = await db.query.projects.findFirst({
-    where: eq(projects.id, projectId),
+    where: and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)),
     columns: { folderId: true },
   });
   const toolContext = {
@@ -1509,7 +1509,7 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
           let guideDocIdCache: string | null | undefined = undefined;
           async function getGuideDocId(): Promise<string | null> {
             if (guideDocIdCache !== undefined) return guideDocIdCache;
-            const proj = await db.query.projects.findFirst({ where: eq(projects.id, projectId) });
+            const proj = await db.query.projects.findFirst({ where: and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)) });
             if (!proj) { guideDocIdCache = null; return null; }
             // Find ghiduri subfolder
             const ghiduriFolder = await db.query.documentFolders.findFirst({
@@ -1738,7 +1738,7 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
           // Sync tip_proiect element → projects.tipProiect column
           const tipProiectEl = extractedElements.find(el => el.key === "tip_proiect");
           if (tipProiectEl?.value) {
-            await db.update(projects).set({ tipProiect: tipProiectEl.value, updatedAt: new Date() }).where(eq(projects.id, projectId));
+            await db.update(projects).set({ tipProiect: tipProiectEl.value, updatedAt: new Date() }).where(and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)));
           }
 
           // Resolve human-readable labels before sending SSE event
@@ -1776,7 +1776,7 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
               }
 
               if (Object.keys(metaUpdate).length > 1) {
-                await db.update(projects).set(metaUpdate).where(eq(projects.id, projectId));
+                await db.update(projects).set(metaUpdate).where(and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)));
 
                 // Notify frontend about metadata update
                 controller.enqueue(encoder.encode(`data: ${JSON.stringify({
@@ -1793,7 +1793,7 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
           try {
             const { checkPreEligibility } = await import("./preEligibility");
             const project = await db.query.projects.findFirst({
-              where: eq(projects.id, projectId),
+              where: and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)),
             });
             if (project?.folderId) {
               const eligResult = await checkPreEligibility(
@@ -1844,7 +1844,7 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
               };
               await db.update(projects)
                 .set({ solomonPhase: phaseRecord })
-                .where(eq(projects.id, projectId));
+                .where(and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)));
 
               controller.enqueue(encoder.encode(`data: ${JSON.stringify({
                 type: "phase_update",

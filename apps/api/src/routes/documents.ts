@@ -2123,7 +2123,7 @@ documentRoutes.get("/folders/:folderId/classified-documents", async (c) => {
     orderBy: (d, { desc }) => [desc(d.uploadedAt)],
   });
 
-  // Enrich with chunk counts for vectorized documents
+  // Enrich with chunk counts + versioning for classified documents
   const result = docs.map(doc => ({
     id: doc.id,
     fileName: doc.name,
@@ -2135,6 +2135,9 @@ documentRoutes.get("/folders/:folderId/classified-documents", async (c) => {
     uploadedAt: doc.uploadedAt,
     processedAt: doc.processedAt,
     uploadedBy: doc.uploadedBy,
+    documentVersion: doc.documentVersion,
+    isCurrentVersion: doc.isCurrentVersion,
+    versionDiff: doc.versionDiff,
   }));
 
   return c.json(result);

@@ -1295,7 +1295,7 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
   // RAG v2: Tool use loop — Solomon can search multiple times before responding
   // Non-streaming for tool rounds, streaming for final response
   const MAX_TOOL_ROUNDS = 6;
-  const toolUseEvents: Array<{ toolName: string; query?: string }> = [];
+  const toolUseEvents: Array<{ toolName: string; query?: string; sources?: Array<{ section?: string; page?: string; docType?: string; layer?: string }> }> = [];
 
   // Resolve sessionId for tool context (folderId serves as session)
   const projectForTools = await db.query.projects.findFirst({
@@ -1328,9 +1328,25 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
     const toolResults: any[] = [];
     for (const toolBlock of toolUseBlocks) {
       const tb = toolBlock as any;
-      toolUseEvents.push({ toolName: tb.name, query: tb.input?.query });
-
       const result = await executeSolomonTool(tb.name, tb.input, toolContext);
+
+      // Parse source references from search results for source trail
+      const sources: Array<{ section?: string; page?: string; docType?: string; layer?: string }> = [];
+      if (tb.name === "search_knowledge") {
+        const sourcePattern = /\[(\d+)\]\s*(.*)/g;
+        let match;
+        while ((match = sourcePattern.exec(result)) !== null) {
+          const parts = match[2].split("\n")[0].split(" · ");
+          sources.push({
+            section: parts.find((p: string) => p.startsWith("§"))?.replace("§ ", ""),
+            page: parts.find((p: string) => p.startsWith("pag."))?.replace("pag. ", ""),
+            docType: parts.find((p: string) => !p.startsWith("§") && !p.startsWith("pag.") && !["regula", "punctaj", "referinta", "formula", "structura", "narativ"].includes(p)),
+            layer: parts.find((p: string) => ["regula", "punctaj", "referinta", "formula", "structura", "narativ"].includes(p)),
+          });
+        }
+      }
+
+      toolUseEvents.push({ toolName: tb.name, query: tb.input?.query, sources });
       toolResults.push({
         type: "tool_result",
         tool_use_id: tb.id,
@@ -1377,7 +1393,7 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
       try {
         // RAG v2: Emit tool_use events so frontend shows search indicator
         for (const tue of toolUseEvents) {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "tool_use", toolName: tue.toolName, query: tue.query })}\n\n`));
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "tool_use", toolName: tue.toolName, query: tue.query, sources: tue.sources || [] })}\n\n`));
         }
         for await (const event of stream) {
           if (event.type === "content_block_delta") {

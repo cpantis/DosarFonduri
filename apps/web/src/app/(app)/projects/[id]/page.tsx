@@ -448,6 +448,8 @@ export default function ProjectViewPage() {
   const solomonTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // RAG v2: Tool use + phase tracking
   const [solomonToolUse, setSolomonToolUse] = useState<{ toolName: string; query?: string } | null>(null);
+  // FIX I: Source trail — accumulated per streaming turn
+  const [solomonSourceTrail, setSolomonSourceTrail] = useState<Array<{ query: string; sources: Array<{ section?: string; page?: string; docType?: string; layer?: string }> }>>([]);
   const [solomonPhase, setSolomonPhase] = useState<{ phase: string; label: string; progress: number; nextAction: string } | null>(null);
   // Sprint 5: Solomon structured output
   const [solEligibility, setSolEligibility] = useState<any[]>([]);
@@ -898,6 +900,7 @@ export default function ProjectViewPage() {
     setSolomonAutoScroll(true);
     setSolomonStreaming(true);
     setSolomonTimedOut(false);
+    setSolomonSourceTrail([]); // FIX I: clear source trail for new turn
 
     // Auto-detect Opus requests — temporarily upgrade model for this message
     const requestedOpus = needsOpus(userText);
@@ -994,9 +997,12 @@ export default function ProjectViewPage() {
                 return prev;
               });
             } else if (evt.type === "tool_use") {
-              // RAG v2: Solomon is searching — show indicator
+              // FIX I: Accumulate source trail instead of 3s flash
               setSolomonToolUse({ toolName: evt.toolName, query: evt.query });
-              setTimeout(() => setSolomonToolUse(null), 3000);
+              if (evt.sources && evt.sources.length > 0) {
+                setSolomonSourceTrail(prev => [...prev, { query: evt.query || "", sources: evt.sources }]);
+              }
+              setTimeout(() => setSolomonToolUse(null), 5000);
             } else if (evt.type === "phase_update" && evt.phase) {
               // RAG v2: Solomon phase update
               setSolomonPhase(evt.phase);
@@ -5195,12 +5201,38 @@ export default function ProjectViewPage() {
                       <span style={{ fontSize: 12, color: "#1e40af" }}>{solomonPhase.phase} {solomonPhase.label}</span>
                     </div>
                   )}
-                  {/* RAG v2: Tool use indicator */}
+                  {/* FIX I: Source trail — persistent per turn */}
+                  {solomonSourceTrail.length > 0 && (
+                    <div style={{ padding: "6px 20px", background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
+                      <div style={{ maxWidth: 720, margin: "0 auto" }}>
+                        {solomonSourceTrail.map((trail, ti) => (
+                          <div key={ti} style={{ borderLeft: "2px solid #2563eb", paddingLeft: 12, marginBottom: ti < solomonSourceTrail.length - 1 ? 8 : 0 }}>
+                            <div style={{ fontSize: 11, fontWeight: 500, color: "#64748b", marginBottom: 4 }}>
+                              {trail.query}
+                            </div>
+                            {trail.sources.map((src, si) => (
+                              <div key={si} style={{ display: "flex", alignItems: "flex-start", gap: 8, paddingLeft: 2, marginBottom: 2 }}>
+                                <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#2563eb", flexShrink: 0, marginTop: 5 }} />
+                                <div>
+                                  <span style={{ fontSize: 12, color: "#1e293b" }}>
+                                    {[src.docType, src.section && `§ ${src.section}`, src.page && `pag. ${src.page}`].filter(Boolean).join(" · ")}
+                                  </span>
+                                  {src.layer && <span style={{ fontSize: 10, color: "#64748b", fontFamily: "'JetBrains Mono', monospace", marginLeft: 6 }}>{src.layer}</span>}
+                                </div>
+                              </div>
+                            ))}
+                            <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 2 }}>{trail.sources.length} surse</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {/* Tool use loading indicator (while searching) */}
                   {solomonToolUse && (
                     <div style={{ padding: "4px 20px", background: "#eff6ff" }}>
                       <div style={{ maxWidth: 720, margin: "0 auto", display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#2563eb" }}>
-                        <span style={{ animation: "statusPulse 1s ease infinite" }}>🔍</span>
-                        <span>Caut{solomonToolUse.toolName === "search_knowledge" ? " în ghid" : " documente"}: &quot;{solomonToolUse.query || "..."}&quot;</span>
+                        <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#2563eb", animation: "statusPulse 1s ease infinite" }} />
+                        <span>Se caută: {solomonToolUse.query || "..."}</span>
                       </div>
                     </div>
                   )}

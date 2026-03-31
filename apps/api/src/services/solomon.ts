@@ -462,7 +462,15 @@ La FIECARE răspuns, include pe o linie separată:
 <!--PHASE_JSON{"phase":"Q4","label":"Verificare eligibilitate","progress":40,"nextAction":"Verific criteriile de eligibilitate din ghid"}PHASE_JSON-->
 
 Faze:
-Q0 — Ce problemă vrea clientul să rezolve? (firul narativ — CEL MAI IMPORTANT)
+Q0 — DE CE? (OBLIGATORIU, PRIMA FAZĂ)
+  Extrage și salvează ca ELEMENTS_JSON aceste 5 elemente:
+  - problema_client: ce problemă concretă are (NU "vreau să cumpăr X", ci "nu fac față volumului")
+  - impact_problema: consecințe financiare, operaționale, sociale
+  - solutia_dorita: cum vede clientul rezolvarea (reformulat ca obiectiv, nu ca achiziție)
+  - context_local: zona, infrastructura, piața, concurența, specificul local
+  - ambitia_3_5_ani: unde vrea clientul să fie în 3-5 ani
+  Aceste 5 elemente COLOREAZĂ tot dosarul. NU avansa la Q1 fără ele.
+  Dacă răspunsuri vagi: "Ce te nemulțumește în activitatea de zi cu zi?" "Dacă rezolvi asta, ce se schimbă?"
 Q1 — Cine e clientul? (tip, experiență, vârstă, studii)
 Q2 — Ce are acum? (suprafață, animale, utilaje, venituri)
 Q3 — Ce vrea să facă? (investiții concrete)
@@ -472,11 +480,52 @@ Q6 — Verificări încrucișate (proiecte anterioare, ajutoare de stat)
 Q7 — Cofinanțare și capacitate financiară
 Q8 — Buget estimativ
 Q9 — Criterii selecție și punctaj estimat (caută cu layers=['punctaj'])
-Q10 — Documente necesare (caută cu layers=['structura'])
-Q11 — Sinteză și recomandări finale
+Q10 — FINALIZARE (Faza 5: "E trimis?")
+  - Checklist revizie finală: verifică toate documentele, semnăturile, termenele
+  - Semnătură electronică: explică tip token calificat (eIDAS)
+  - Depunere portal: pași concreti per platformă
+  - Emite CHECKLIST_JSON cu documentele de revizie finală
+  - RISC: depunerea cu < 48h înainte de termen = SIGNAL risc high
+Q11 — POST-DEPUNERE
+  Q11a: Evaluare/informații suplimentare (la clarificări: revino la Q0, nu inventa)
+  Q11b: Contractare (documente actualizate, garanții, termen semnare)
+  Q11c: Implementare (oferte conforme, dosare plată, rapoarte progres)
+  Q11d: Monitorizare (3-5 ani, interdicție înstrăinare, raportări periodice)
+  La respingere: sugerează redepunere, alt program, contestație. Datele rămân.
+
+BUCLE ÎNTRE FAZE:
+Când date noi invalidează o concluzie anterioară, REVINO la faza relevantă.
+Emite PHASE_JSON cu "regression" când revii:
+<!--PHASE_JSON{"phase":"Q4","label":"Recalculare SO","progress":35,"nextAction":"Recalculez cu suprafața actualizată","regression":{"from":"Q7","reason":"Suprafața modificată","affectedConclusions":["dimensiune_economica"]}}PHASE_JSON-->
+Regresii tipice: suprafață/culturi schimbate → Q4+Q5, investiție schimbată → Q4+Q5+Q6, eligibilitate schimbată → Q2.
 
 NU urmezi fazele mecanic. Sari dacă ai datele. Revino dacă apar informații noi.
 Progresul (0-100) reflectă cât de complet e dosarul, nu câte întrebări ai pus.
+
+═══════════════════════════════════════════
+## SEMNALE (emite când detectezi situații importante)
+═══════════════════════════════════════════
+
+<!--SIGNAL_JSON{"type":"risc","message":"Descriere","severity":"high","phase":"Q4"}SIGNAL_JSON-->
+
+Tipuri:
+- risc: orice ar putea cauza respingere, pierdere punctaj, termen ratat (severity: high/medium/low)
+- bucla: date noi care invalidează o concluzie anterioară (include target = faza de revizitat)
+- discutie_client: consultantul trebuie să vorbească cu beneficiarul
+- baza_cunostinte: ai găsit experiență relevantă din KB
+
+Emite la:
+- Regresie între faze (automatic la PHASE_JSON cu regression)
+- Document expirat sau aproape de expirare (certificat fiscal 30 zile, constatator 30 zile)
+- Rezultat exploatare negativ, capitaluri proprii negative, IMM la limită
+- Când trebuie confirmare de la client (cofinanțare, documente lipsă)
+
+TERMENE VALABILITATE:
+La Q10, verifică termenele documentelor:
+- Certificat constatator ONRC: 30 zile de la emitere
+- Certificat fiscal: 30 zile
+- Extras carte funciară: 30 zile
+Dacă un document expiră înainte de data estimată a depunerii, emite SIGNAL risc.
 
 ═══════════════════════════════════════════
 ## RAPORTARE STRUCTURATĂ (include la FIECARE răspuns unde e relevant)
@@ -1851,13 +1900,21 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
           try {
             const phaseData = JSON.parse(phaseMatch[1]);
             if (phaseData.phase && phaseData.label) {
-              const phaseRecord = {
+              const phaseRecord: any = {
                 phase: phaseData.phase,
                 label: phaseData.label,
                 progress: Math.min(100, Math.max(0, phaseData.progress || 0)),
                 nextAction: phaseData.nextAction || "",
                 updatedAt: new Date().toISOString(),
               };
+              // FIX L: Include regression data if phase went backwards
+              if (phaseData.regression) {
+                phaseRecord.regression = {
+                  from: phaseData.regression.from,
+                  reason: phaseData.regression.reason,
+                  affectedConclusions: phaseData.regression.affectedConclusions || [],
+                };
+              }
               await db.update(projects)
                 .set({ solomonPhase: phaseRecord })
                 .where(and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)));
@@ -1945,6 +2002,27 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
           } catch (e) { console.warn("[solomon] CHECKLIST_JSON parse failed:", (e as Error).message); }
         }
 
+        // FIX K: Parse SIGNAL_JSON (risks, loops, client discussions)
+        const signalJsonStr = extractBalancedJSON(fullResponse, "<!--SIGNAL_JSON", "SIGNAL_JSON-->");
+        if (signalJsonStr) {
+          try {
+            const signal = JSON.parse(signalJsonStr);
+            if (signal && signal.type && signal.message) {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+                type: "signal",
+                signal: {
+                  signalType: signal.type,
+                  message: signal.message,
+                  severity: signal.severity || "medium",
+                  phase: signal.phase || currentPhaseStr,
+                  target: signal.target,
+                  timestamp: new Date().toISOString(),
+                },
+              })}\n\n`));
+            }
+          } catch (e) { console.warn("[solomon] SIGNAL_JSON parse failed:", (e as Error).message); }
+        }
+
         // Save assistant message (clean hidden JSON tags)
         const cleanResponse = fullResponse
           .replace(/<!--ELEMENTS_JSON[\s\S]*?ELEMENTS_JSON-->/g, "")
@@ -1954,6 +2032,7 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
           .replace(/<!--ELIGIBILITY_JSON[\s\S]*?ELIGIBILITY_JSON-->/g, "")
           .replace(/<!--SCORING_JSON[\s\S]*?SCORING_JSON-->/g, "")
           .replace(/<!--CHECKLIST_JSON[\s\S]*?CHECKLIST_JSON-->/g, "")
+          .replace(/<!--SIGNAL_JSON[\s\S]*?SIGNAL_JSON-->/g, "")
           .trim();
 
         await db.insert(solomonMessages).values({

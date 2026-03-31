@@ -450,7 +450,9 @@ export default function ProjectViewPage() {
   const [solomonToolUse, setSolomonToolUse] = useState<{ toolName: string; query?: string } | null>(null);
   // FIX I: Source trail — accumulated per streaming turn
   const [solomonSourceTrail, setSolomonSourceTrail] = useState<Array<{ query: string; sources: Array<{ section?: string; page?: string; docType?: string; layer?: string }> }>>([]);
-  const [solomonPhase, setSolomonPhase] = useState<{ phase: string; label: string; progress: number; nextAction: string } | null>(null);
+  const [solomonPhase, setSolomonPhase] = useState<{ phase: string; label: string; progress: number; nextAction: string; regression?: { from: string; reason: string; affectedConclusions?: string[] } } | null>(null);
+  // FIX K: Active signals (risks, loops, client discussions)
+  const [solomonSignals, setSolomonSignals] = useState<Array<{ signalType: string; message: string; severity: string; phase: string; target?: string; timestamp: string; dismissed?: boolean }>>([]);
   // Sprint 5: Solomon structured output
   const [solEligibility, setSolEligibility] = useState<any[]>([]);
   const [solScoring, setSolScoring] = useState<any[]>([]);
@@ -1039,6 +1041,9 @@ export default function ProjectViewPage() {
                 }
                 return updated;
               });
+            } else if (evt.type === "signal" && evt.signal) {
+              // FIX K: Solomon signal (risk, loop, client discussion)
+              setSolomonSignals(prev => [...prev, evt.signal]);
             } else if (evt.type === "metadata_updated" && evt.metadata) {
               // Solomon confirmed program metadata — update project state
               setProject(prev => prev ? {
@@ -5198,7 +5203,48 @@ export default function ProjectViewPage() {
                         })()}
                       </span>
                       <span style={{ fontSize: 11, color: "#94a3b8" }}>·</span>
-                      <span style={{ fontSize: 12, color: "#1e40af" }}>{solomonPhase.phase} {solomonPhase.label}</span>
+                      <span style={{ fontSize: 12, color: "#1e40af" }}>
+                        {solomonPhase.regression ? "↺ " : ""}{solomonPhase.phase} {solomonPhase.label}
+                      </span>
+                    </div>
+                  )}
+                  {/* FIX L: Regression indicator */}
+                  {solomonPhase?.regression && (
+                    <div style={{ padding: "4px 20px", background: "#fffbeb", borderBottom: "1px solid #fde68a" }}>
+                      <div style={{ maxWidth: 720, margin: "0 auto", fontSize: 11, color: "#92400e" }}>
+                        ↺ Revenire din {solomonPhase.regression.from}: {solomonPhase.regression.reason}
+                      </div>
+                    </div>
+                  )}
+                  {/* FIX K: Active signals */}
+                  {solomonSignals.filter(s => !s.dismissed).length > 0 && (
+                    <div style={{ padding: "4px 16px", display: "flex", flexDirection: "column", gap: 4 }}>
+                      {solomonSignals.filter(s => !s.dismissed).map((sig, i) => {
+                        const colors: Record<string, { border: string; bg: string; text: string }> = {
+                          risc: { border: "#dc2626", bg: "#fef2f2", text: "#991b1b" },
+                          bucla: { border: "#d97706", bg: "#fffbeb", text: "#92400e" },
+                          discutie_client: { border: "#2563eb", bg: "#eff6ff", text: "#1e40af" },
+                          baza_cunostinte: { border: "#7c3aed", bg: "#f5f3ff", text: "#5b21b6" },
+                        };
+                        const c = colors[sig.signalType] || colors.risc;
+                        const icons: Record<string, string> = { risc: "!", bucla: "↺", discutie_client: "?", baza_cunostinte: "i" };
+                        return (
+                          <div key={i} style={{ borderLeft: `3px solid ${c.border}`, background: c.bg, padding: "6px 10px", borderRadius: "0 6px 6px 0", display: "flex", alignItems: "flex-start", gap: 8 }}>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: c.text, flexShrink: 0, width: 14, textAlign: "center" }}>{icons[sig.signalType] || "!"}</span>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 11, fontWeight: 600, color: c.text, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                                {sig.signalType.replace("_", " ")} {sig.severity === "high" ? "· BLOCHANT" : ""}
+                              </div>
+                              <div style={{ fontSize: 12, color: c.text }}>{sig.message}</div>
+                            </div>
+                            {sig.severity !== "high" && (
+                              <button style={{ background: "none", border: "none", cursor: "pointer", fontSize: 12, color: c.text, opacity: 0.5, padding: 0 }}
+                                onClick={() => setSolomonSignals(prev => prev.map((s, j) => j === i ? { ...s, dismissed: true } : s))}
+                              >✕</button>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                   {/* FIX I: Source trail — persistent per turn */}

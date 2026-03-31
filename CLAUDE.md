@@ -498,3 +498,14 @@ cd apps/web && npx next build
 - UI: Solomon Eligibility Panel în tab-ul Reguli, Solomon Scoring Table în tab-ul Scor
 - SSE events: `eligibility_update`, `scoring_update`, `checklist_update` — frontend se actualizează live
 - Solomon raționează din RAG, persistă concluziile structurat — best of both worlds
+
+## Universal Forms — Sprint FORM-1 COMPLET (2026-03-31)
+
+- FormSpec JSON: format universal pentru orice formular din orice program
+- 4 extractori în `formspec_extract.py`: XFA (PyMuPDF xref), AcroForm (PyMuPDF widgets), DOCX (python-docx placeholders), XLSX (openpyxl cells+formulas)
+- Detector automat de format (XFA > AcroForm > DOCX > XLSX)
+- TypeScript service `formSpecExtractor.ts`: bridge to Python, buffer handling, DB persistence
+- Tabel `form_specs` cu FormSpec JSONB complet (migration `0133_form_specs.sql`)
+- API routes: POST `/forms/extract`, GET `/forms/spec/:id`, GET `/forms/document/:id`, GET `/forms/spec/:id/reference-data`
+- Integrat cu pipeline clasificare: `template_fill` → auto-extract FormSpec la ingestie
+- Următorul sprint: HTML renderer universal + export multi-format (SPRINT_FORM-2)

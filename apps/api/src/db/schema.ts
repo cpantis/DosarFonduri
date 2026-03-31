@@ -860,6 +860,26 @@ export const solomonScoring = pgTable("solomon_scoring", {
   criterionUq: uniqueIndex("sol_score_criterion_uq").on(table.projectId, table.criterionName),
 }));
 
+// === FORM SPECS (Universal FormSpec from any form format) ===
+export const formSpecs = pgTable("form_specs", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  name: text("name").notNull(),
+  version: text("version").notNull().default(""),
+  programCode: text("program_code"),
+  sourceFormat: text("source_format").notNull(), // xfa|acroform|docx|xlsx|online
+  documentId: uuid("document_id").references(() => documents.id, { onDelete: "cascade" }),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
+  spec: jsonb("spec").notNull(),                 // Full FormSpec JSON
+  referenceData: jsonb("reference_data"),
+  isActive: boolean("is_active").default(true),
+  totalFields: integer("total_fields").default(0),
+  extractedAt: timestamp("extracted_at", { withTimezone: true }).defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  docIdx: index("formspec_doc_idx").on(table.documentId),
+  orgIdx: index("formspec_org_idx").on(table.organizationId),
+}));
+
 // === SOLOMON CONVERSATIONS ===
 export const solomonConversations = pgTable("solomon_conversations", {
   id: uuid("id").defaultRandom().primaryKey(),

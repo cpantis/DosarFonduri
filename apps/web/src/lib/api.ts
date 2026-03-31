@@ -52,7 +52,10 @@ export async function api<T = any>(path: string, options: FetchOptions = {}): Pr
     });
 
     if (!res.ok) {
-      const body = await res.json().catch(() => ({ error: "Request failed" }));
+      const body = await res.json().catch(async () => {
+        const text = await res.text().catch(() => "");
+        return { error: text ? text.slice(0, 200) : `HTTP ${res.status} ${res.statusText}` };
+      });
       const errorMsg = typeof body.error === "string" ? body.error.slice(0, 200) : `HTTP ${res.status}`;
       throw new Error(errorMsg);
     }

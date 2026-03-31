@@ -526,6 +526,8 @@ function resolveProcessingType(folderType: string, explicitType: string | null):
   if (folderType === "templateuri") return "template";
   if (folderType === "referinte") return "referinta_strategica";
   if (folderType === "clienti_prospecti" || folderType === "clienti_finali") return "client_doc";
+  // RAG v2: session-level upload — AI classifies automatically via ingest pipeline
+  if (folderType === "sesiune" || folderType === "program" || folderType === "masura") return "client_doc";
   return "reference";
 }
 

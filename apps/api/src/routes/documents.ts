@@ -1156,7 +1156,8 @@ documentRoutes.post("/documents/:id/replace", async (c) => {
     const jobPayload = { documentId: id, organizationId: auth.organizationId };
     const dedup = { jobId: `replace-${id}-${Date.now()}` };
     if (doc.processingType === "ghid") {
-      await processGuideQueue.add("process-guide", jobPayload, { priority: JOB_PRIORITY.GUIDE, ...dedup });
+      // FIX 1.4: processGuide DISABLED — RAG v2 ingest pipeline handles guide chunking
+      // await processGuideQueue.add("process-guide", jobPayload, { priority: JOB_PRIORITY.GUIDE, ...dedup });
     } else if (doc.processingType === "template") {
       await processTemplateQueue.add("process-template", jobPayload, { priority: JOB_PRIORITY.TEMPLATE, ...dedup });
     } else if (doc.processingType === "reference_data") {
@@ -1205,7 +1206,8 @@ documentRoutes.post("/documents/:id/process", async (c) => {
     const jobPayload = { documentId: doc.id, organizationId: auth.organizationId!, reprocessMode: mode };
     const dedup = { jobId: `reprocess-${doc.id}-${Date.now()}` };
     if (doc.processingType === "ghid") {
-      await processGuideQueue.add("process-guide", jobPayload, { priority: JOB_PRIORITY.GUIDE, ...dedup });
+      // FIX 1.4: processGuide DISABLED — RAG v2 ingest pipeline handles guide chunking
+      // await processGuideQueue.add("process-guide", jobPayload, { priority: JOB_PRIORITY.GUIDE, ...dedup });
     } else if (doc.processingType === "template") {
       await processTemplateQueue.add("process-template", jobPayload, { priority: JOB_PRIORITY.TEMPLATE, ...dedup });
     } else if (doc.processingType === "reference_data") {

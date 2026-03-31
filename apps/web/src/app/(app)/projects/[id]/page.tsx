@@ -459,6 +459,8 @@ export default function ProjectViewPage() {
   const solomonTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // RAG v2: Tool use + phase tracking
   const [solomonToolUse, setSolomonToolUse] = useState<{ toolName: string; query?: string } | null>(null);
+  // FIX I: Source trail — accumulated per streaming turn
+  const [solomonSourceTrail, setSolomonSourceTrail] = useState<Array<{ query: string; sources: Array<{ section?: string; page?: string; docType?: string; layer?: string }> }>>([]);
   const [solomonPhase, setSolomonPhase] = useState<{ phase: string; label: string; progress: number; nextAction: string } | null>(null);
   // Sprint 5: Solomon structured output
   const [solEligibility, setSolEligibility] = useState<any[]>([]);
@@ -909,6 +911,7 @@ export default function ProjectViewPage() {
     setSolomonAutoScroll(true);
     setSolomonStreaming(true);
     setSolomonTimedOut(false);
+    setSolomonSourceTrail([]); // FIX I: clear source trail for new turn
 
     // Auto-detect Opus requests — temporarily upgrade model for this message
     const requestedOpus = needsOpus(userText);
@@ -1005,9 +1008,12 @@ export default function ProjectViewPage() {
                 return prev;
               });
             } else if (evt.type === "tool_use") {
-              // RAG v2: Solomon is searching — show indicator
+              // FIX I: Accumulate source trail instead of 3s flash
               setSolomonToolUse({ toolName: evt.toolName, query: evt.query });
-              setTimeout(() => setSolomonToolUse(null), 3000);
+              if (evt.sources && evt.sources.length > 0) {
+                setSolomonSourceTrail(prev => [...prev, { query: evt.query || "", sources: evt.sources }]);
+              }
+              setTimeout(() => setSolomonToolUse(null), 5000);
             } else if (evt.type === "phase_update" && evt.phase) {
               // RAG v2: Solomon phase update
               setSolomonPhase(evt.phase);
@@ -4606,6 +4612,47 @@ export default function ProjectViewPage() {
                   </div>
                 )}
 
+                {/* FIX G: Solomon-detected document checklist */}
+                {solChecklist.length > 0 && (
+                  <div style={{ margin: "12px 16px", padding: 14, background: "#f8fafc", borderRadius: 10, border: "1px solid #e2e8f0" }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#1e293b", marginBottom: 10, display: "flex", justifyContent: "space-between" }}>
+                      <span>Documente necesare (Solomon)</span>
+                      <span style={{ fontWeight: 400, color: "#64748b" }}>
+                        {solChecklist.filter((i: any) => {
+                          const name = (i.document || i.name || "").toLowerCase();
+                          return classifiedDocs.some((d: any) => {
+                            const dName = (d.fileName || d.name || "").toLowerCase();
+                            const dDesc = ((d.classification as any)?.description || "").toLowerCase();
+                            return dName.includes(name.slice(0, 15)) || dDesc.includes(name.slice(0, 15));
+                          });
+                        }).length}/{solChecklist.length}
+                      </span>
+                    </div>
+                    {solChecklist.map((item: any, i: number) => {
+                      const docName = item.document || item.name || "";
+                      const matched = classifiedDocs.some((d: any) => {
+                        const dName = (d.fileName || d.name || "").toLowerCase();
+                        const dDesc = ((d.classification as any)?.description || "").toLowerCase();
+                        const searchKey = docName.toLowerCase().slice(0, 15);
+                        return dName.includes(searchKey) || dDesc.includes(searchKey);
+                      });
+                      const catColor = item.category === "obligatoriu_depunere" ? "#dc2626" : item.category === "obligatoriu_contractare" ? "#d97706" : "#64748b";
+                      return (
+                        <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "6px 0", borderBottom: i < solChecklist.length - 1 ? "1px solid #f0f2f5" : "none" }}>
+                          <span style={{ fontSize: 13, flexShrink: 0, marginTop: 1 }}>{matched ? "✅" : "❌"}</span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 12.5, color: "#1e293b", fontWeight: matched ? 400 : 500 }}>{docName}</div>
+                            {item.notes && <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 1 }}>{item.notes}</div>}
+                          </div>
+                          <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 4, background: `${catColor}10`, color: catColor, fontWeight: 600, flexShrink: 0 }}>
+                            {item.category === "obligatoriu_depunere" ? "depunere" : item.category === "obligatoriu_contractare" ? "contractare" : "opțional"}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
                 {/* Add document button / form */}
                 {!readOnly && (
                   checkAddOpen ? (
@@ -5166,12 +5213,38 @@ export default function ProjectViewPage() {
                       <span style={{ fontSize: 12, color: "#1e40af" }}>{solomonPhase.phase} {solomonPhase.label}</span>
                     </div>
                   )}
-                  {/* RAG v2: Tool use indicator */}
+                  {/* FIX I: Source trail — persistent per turn */}
+                  {solomonSourceTrail.length > 0 && (
+                    <div style={{ padding: "6px 20px", background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
+                      <div style={{ maxWidth: 720, margin: "0 auto" }}>
+                        {solomonSourceTrail.map((trail, ti) => (
+                          <div key={ti} style={{ borderLeft: "2px solid #2563eb", paddingLeft: 12, marginBottom: ti < solomonSourceTrail.length - 1 ? 8 : 0 }}>
+                            <div style={{ fontSize: 11, fontWeight: 500, color: "#64748b", marginBottom: 4 }}>
+                              {trail.query}
+                            </div>
+                            {trail.sources.map((src, si) => (
+                              <div key={si} style={{ display: "flex", alignItems: "flex-start", gap: 8, paddingLeft: 2, marginBottom: 2 }}>
+                                <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#2563eb", flexShrink: 0, marginTop: 5 }} />
+                                <div>
+                                  <span style={{ fontSize: 12, color: "#1e293b" }}>
+                                    {[src.docType, src.section && `§ ${src.section}`, src.page && `pag. ${src.page}`].filter(Boolean).join(" · ")}
+                                  </span>
+                                  {src.layer && <span style={{ fontSize: 10, color: "#64748b", fontFamily: "'JetBrains Mono', monospace", marginLeft: 6 }}>{src.layer}</span>}
+                                </div>
+                              </div>
+                            ))}
+                            <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 2 }}>{trail.sources.length} surse</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {/* Tool use loading indicator (while searching) */}
                   {solomonToolUse && (
                     <div style={{ padding: "4px 20px", background: "#eff6ff" }}>
                       <div style={{ maxWidth: 720, margin: "0 auto", display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#2563eb" }}>
-                        <span style={{ animation: "statusPulse 1s ease infinite" }}>🔍</span>
-                        <span>Caut{solomonToolUse.toolName === "search_knowledge" ? " în ghid" : " documente"}: &quot;{solomonToolUse.query || "..."}&quot;</span>
+                        <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#2563eb", animation: "statusPulse 1s ease infinite" }} />
+                        <span>Se caută: {solomonToolUse.query || "..."}</span>
                       </div>
                     </div>
                   )}
@@ -5843,6 +5916,36 @@ export default function ProjectViewPage() {
                         &#128230; Descarcă tot (ZIP)
                       </button>
                     )}
+                  </div>
+
+                  {/* FIX H: Compose Brief status + generate button */}
+                  <div style={{ margin: "8px 0", padding: "10px 12px", background: project?.composeBrief && !(project.composeBrief as any)?._outdated ? "#ecfdf5" : "#f8fafc", borderRadius: 8, border: `1px solid ${project?.composeBrief && !(project.composeBrief as any)?._outdated ? "#a7f3d0" : "#e2e8f0"}`, display: "flex", alignItems: "center", gap: 10 }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: "#1e293b" }}>
+                        {project?.composeBrief
+                          ? (project.composeBrief as any)?._outdated
+                            ? "Brief outdated — regenerează"
+                            : `Brief generat ${(project.composeBrief as any)?.generatedAt ? new Date((project.composeBrief as any).generatedAt).toLocaleDateString("ro-RO") : ""}`
+                          : "Brief negenereat"}
+                      </div>
+                      <div style={{ fontSize: 11, color: "#64748b" }}>
+                        {project?.composeBrief
+                          ? "Solomon a sintetizat contextul narativ pentru Neemia."
+                          : "Generează brief-ul ca Solomon să furnizeze context narativ pentru documente."}
+                      </div>
+                    </div>
+                    <button
+                      style={{ padding: "6px 14px", fontSize: 11, fontWeight: 700, borderRadius: 7, border: "none", background: project?.composeBrief && !(project.composeBrief as any)?._outdated ? "#e2e8f0" : "#2563eb", color: project?.composeBrief && !(project.composeBrief as any)?._outdated ? "#475569" : "#fff", cursor: "pointer", whiteSpace: "nowrap" }}
+                      disabled={readOnly}
+                      onClick={async () => {
+                        try {
+                          toast("info", "Se generează brief-ul...");
+                          const result = await apiPost<any>(`/api/solomon/projects/${projectId}/compose-brief`, {});
+                          setProject(prev => prev ? { ...prev, composeBrief: result.brief } : prev);
+                          toast("success", "Brief generat cu succes.");
+                        } catch (err: any) { toast("error", err.message || "Eroare la generare brief"); }
+                      }}
+                    >{project?.composeBrief && !(project.composeBrief as any)?._outdated ? "Regenerează brief" : "Generează brief"}</button>
                   </div>
 
                   {neemiaGenStatus && (

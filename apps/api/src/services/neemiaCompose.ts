@@ -142,7 +142,7 @@ export async function buildComposeContext(
   templateDocumentId: string,
 ): Promise<ComposeContext> {
   const project = await db.query.projects.findFirst({
-    where: eq(projects.id, projectId),
+    where: and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)),
   });
   if (!project) throw new Error("Project not found");
 
@@ -1247,7 +1247,7 @@ export async function composeDocument(params: ComposeDocParams): Promise<Readabl
         emit({ type: "status", message: "Se salvează documentul..." });
 
         const project = await db.query.projects.findFirst({
-          where: eq(projects.id, projectId),
+          where: and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)),
         });
         const prefix = project?.prefixDocumente ? `${project.prefixDocumente}` : "";
         const generatedFileName = `${prefix}${templateDoc.name}_compus_${new Date().toISOString().slice(0, 10)}.docx`;

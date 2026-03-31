@@ -412,7 +412,7 @@ export async function generateDocument(params: GenerateDocParams): Promise<Reada
 
         // Load project for metadata (program, prefix, nomenclator etc.)
         const project = await db.query.projects.findFirst({
-          where: eq(projects.id, projectId),
+          where: and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)),
         });
         const company = project ? await db.query.companies.findFirst({
           where: eq(companies.id, project.companyId),
@@ -1179,7 +1179,7 @@ export async function generateAllDocuments(params: {
       try {
         // Find all template documents for this project's session
         const project = await db.query.projects.findFirst({
-          where: eq(projects.id, projectId),
+          where: and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)),
         });
         if (!project) throw new Error("Project not found");
 

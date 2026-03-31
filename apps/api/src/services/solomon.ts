@@ -5,7 +5,7 @@ import {
   projects, projectElements, templateElements,
   projectEligibility, rules, documents, documentFolders,
   companies, companyLinkedCompanies,
-  solomonConversations, solomonMessages,
+  solomonConversations, solomonMessages, solomonCaseMemory,
   solomonEligibility, solomonScoring,
   orgConfig, solomonKnowledge,
   elementRuleLinks, elementDefinitions, guideReferenceTables,
@@ -15,7 +15,7 @@ import { eq, and, inArray, sql } from "drizzle-orm";
 import { logAIUsage } from "./aiUsage";
 import { getCompanyDataFromElements } from "./companyElements";
 import { validateElement, logElementChange } from "./elementValidation";
-import { checkEligibility } from "./eligibility";
+// import { checkEligibility } from "./eligibility"; // RAG v2: disabled, Solomon reasons via tool use
 import { computeProjectScores } from "./scoring";
 import { publishElementValidated, publishEligibilityUpdated, publishScoreUpdated } from "../lib/sse";
 import { preflightCached } from "./dbPreflight";
@@ -274,14 +274,45 @@ Returnează DOAR un JSON valid (fără backticks):
 
 async function buildSystemPrompt(projectId: string, organizationId: string): Promise<string> {
   const project = await db.query.projects.findFirst({
-    where: eq(projects.id, projectId),
+    where: and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)),
   });
-  if (!project) throw new Error("Project not found");
+  if (!project) throw new Error("Project not found or not authorized");
 
   const company = await db.query.companies.findFirst({
     where: eq(companies.id, project.companyId),
   });
   if (!company) throw new Error("Company not found");
+
+  // Load persistent memory: previous conversation summaries + case memories
+  let memoryContext = "";
+  try {
+    // Previous conversation summaries on this project
+    const prevConvs = await db.query.solomonConversations.findMany({
+      where: and(eq(solomonConversations.projectId, projectId)),
+      orderBy: (c, { desc }) => [desc(c.createdAt)],
+      columns: { summary: true, summaryGeneratedAt: true, createdAt: true },
+      limit: 5,
+    });
+    const summaries = prevConvs.filter(c => c.summary).map(c => c.summary);
+
+    // Cross-project case memories DISABLED — risk of mixing client data between projects
+    // Only conversation summaries from the SAME project are injected
+    // Case memory table kept for future use (audit trail, consultant review)
+
+    if (summaries.length > 0) {
+      const parts: string[] = [];
+      parts.push(`### Ce am discutat anterior pe acest proiect:\n${summaries.slice(0, 3).join("\n\n---\n\n")}`);
+      memoryContext = `═══════════════════════════════════════════
+## MEMORIE PERSISTENTĂ (din conversații anterioare)
+═══════════════════════════════════════════
+${parts.join("\n\n")}
+
+Folosește aceste informații ca context. NU repeta ce s-a discutat — continuă de unde ai rămas.
+`;
+    }
+  } catch (err) {
+    console.warn("[solomon] Memory loading failed:", (err as Error).message);
+  }
 
   // Get project elements
   const elements = await db.query.projectElements.findMany({
@@ -376,7 +407,7 @@ async function buildSystemPrompt(projectId: string, organizationId: string): Pro
 
   return `Ești Solomon — consultant senior cu experiență vastă în fonduri europene și nerambursabile, integrat în platforma DosarFonduri. Lucrezi pe dosarul "${project.name}" pentru "${company.denumire}" (CUI: ${company.cui}).
 
-═══════════════════════════════════════════
+${memoryContext}═══════════════════════════════════════════
 ## CINE EȘTI
 ═══════════════════════════════════════════
 
@@ -939,7 +970,7 @@ export async function generateSolomonGreeting(params: {
 }): Promise<string> {
   const { conversationId, projectId, organizationId } = params;
 
-  const project = await db.query.projects.findFirst({ where: eq(projects.id, projectId) });
+  const project = await db.query.projects.findFirst({ where: and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)) });
   if (!project) return "";
 
   const company = await db.query.companies.findFirst({ where: eq(companies.id, project.companyId) });
@@ -995,7 +1026,7 @@ export async function generateSolomonGreeting(params: {
     if (ctx.programDetected) metaUpdate.programFinantare = ctx.programDetected;
     if (ctx.masura) metaUpdate.codMasura = ctx.masura;
     if (ctx.sesiune) metaUpdate.codSesiune = ctx.sesiune;
-    await db.update(projects).set(metaUpdate).where(eq(projects.id, projectId));
+    await db.update(projects).set(metaUpdate).where(and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)));
   }
 
   // Save greeting as assistant message
@@ -1062,11 +1093,11 @@ export async function processSolomonMessage(params: {
     });
   }
 
-  // Get conversation history
+  // Get conversation history — 100 messages for full context on deep projects
   const history = await db.query.solomonMessages.findMany({
     where: eq(solomonMessages.conversationId, conversationId),
     orderBy: (m, { asc }) => [asc(m.createdAt)],
-    limit: 50,
+    limit: 100,
   });
 
   // Build messages array — only allow valid roles (user/assistant), skip system messages
@@ -1264,11 +1295,11 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
   // RAG v2: Tool use loop — Solomon can search multiple times before responding
   // Non-streaming for tool rounds, streaming for final response
   const MAX_TOOL_ROUNDS = 6;
-  const toolUseEvents: Array<{ toolName: string; query?: string }> = [];
+  const toolUseEvents: Array<{ toolName: string; query?: string; sources?: Array<{ section?: string; page?: string; docType?: string; layer?: string }> }> = [];
 
   // Resolve sessionId for tool context (folderId serves as session)
   const projectForTools = await db.query.projects.findFirst({
-    where: eq(projects.id, projectId),
+    where: and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)),
     columns: { folderId: true },
   });
   const toolContext = {
@@ -1297,9 +1328,25 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
     const toolResults: any[] = [];
     for (const toolBlock of toolUseBlocks) {
       const tb = toolBlock as any;
-      toolUseEvents.push({ toolName: tb.name, query: tb.input?.query });
-
       const result = await executeSolomonTool(tb.name, tb.input, toolContext);
+
+      // Parse source references from search results for source trail
+      const sources: Array<{ section?: string; page?: string; docType?: string; layer?: string }> = [];
+      if (tb.name === "search_knowledge") {
+        const sourcePattern = /\[(\d+)\]\s*(.*)/g;
+        let match;
+        while ((match = sourcePattern.exec(result)) !== null) {
+          const parts = match[2].split("\n")[0].split(" · ");
+          sources.push({
+            section: parts.find((p: string) => p.startsWith("§"))?.replace("§ ", ""),
+            page: parts.find((p: string) => p.startsWith("pag."))?.replace("pag. ", ""),
+            docType: parts.find((p: string) => !p.startsWith("§") && !p.startsWith("pag.") && !["regula", "punctaj", "referinta", "formula", "structura", "narativ"].includes(p)),
+            layer: parts.find((p: string) => ["regula", "punctaj", "referinta", "formula", "structura", "narativ"].includes(p)),
+          });
+        }
+      }
+
+      toolUseEvents.push({ toolName: tb.name, query: tb.input?.query, sources });
       toolResults.push({
         type: "tool_result",
         tool_use_id: tb.id,
@@ -1308,6 +1355,18 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
     }
 
     messages.push({ role: "user", content: toolResults });
+  }
+
+  // Persist tool call summary to DB so next turn remembers what was searched
+  if (toolUseEvents.length > 0) {
+    const toolSummary = toolUseEvents
+      .map(t => `[${t.toolName}] ${t.query || ""}`)
+      .join("; ");
+    await db.insert(solomonMessages).values({
+      conversationId,
+      role: "assistant" as any,
+      content: `[Căutare automată: ${toolSummary}]`,
+    });
   }
 
   // Final streaming response (after all tool rounds)
@@ -1334,7 +1393,7 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
       try {
         // RAG v2: Emit tool_use events so frontend shows search indicator
         for (const tue of toolUseEvents) {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "tool_use", toolName: tue.toolName, query: tue.query })}\n\n`));
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "tool_use", toolName: tue.toolName, query: tue.query, sources: tue.sources || [] })}\n\n`));
         }
         for await (const event of stream) {
           if (event.type === "content_block_delta") {
@@ -1466,7 +1525,7 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
           let guideDocIdCache: string | null | undefined = undefined;
           async function getGuideDocId(): Promise<string | null> {
             if (guideDocIdCache !== undefined) return guideDocIdCache;
-            const proj = await db.query.projects.findFirst({ where: eq(projects.id, projectId) });
+            const proj = await db.query.projects.findFirst({ where: and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)) });
             if (!proj) { guideDocIdCache = null; return null; }
             // Find ghiduri subfolder
             const ghiduriFolder = await db.query.documentFolders.findFirst({
@@ -1695,7 +1754,7 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
           // Sync tip_proiect element → projects.tipProiect column
           const tipProiectEl = extractedElements.find(el => el.key === "tip_proiect");
           if (tipProiectEl?.value) {
-            await db.update(projects).set({ tipProiect: tipProiectEl.value, updatedAt: new Date() }).where(eq(projects.id, projectId));
+            await db.update(projects).set({ tipProiect: tipProiectEl.value, updatedAt: new Date() }).where(and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)));
           }
 
           // Resolve human-readable labels before sending SSE event
@@ -1733,7 +1792,7 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
               }
 
               if (Object.keys(metaUpdate).length > 1) {
-                await db.update(projects).set(metaUpdate).where(eq(projects.id, projectId));
+                await db.update(projects).set(metaUpdate).where(and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)));
 
                 // Notify frontend about metadata update
                 controller.enqueue(encoder.encode(`data: ${JSON.stringify({
@@ -1750,7 +1809,7 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
           try {
             const { checkPreEligibility } = await import("./preEligibility");
             const project = await db.query.projects.findFirst({
-              where: eq(projects.id, projectId),
+              where: and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)),
             });
             if (project?.folderId) {
               const eligResult = await checkPreEligibility(
@@ -1801,7 +1860,7 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
               };
               await db.update(projects)
                 .set({ solomonPhase: phaseRecord })
-                .where(eq(projects.id, projectId));
+                .where(and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)));
 
               controller.enqueue(encoder.encode(`data: ${JSON.stringify({
                 type: "phase_update",

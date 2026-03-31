@@ -1081,67 +1081,66 @@ export default function DocumentsPage() {
         ) : !isLeafSelected && selectedNode?.type === "sesiune" ? (
           /* Session folder — RAG v2: upload zone + classified documents */
           <div style={{ padding: 20 }}>
-            {/* Upload zone */}
-            <div
-              style={{
-                border: "2px dashed #cbd5e1", borderRadius: 12, padding: "24px 20px",
-                textAlign: "center", marginBottom: 20, cursor: "pointer",
-                background: "#fafbfc", transition: "border-color 0.2s, background 0.2s",
-              }}
-              onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = "#2563eb"; e.currentTarget.style.background = "#eff6ff"; }}
-              onDragLeave={e => { e.currentTarget.style.borderColor = "#cbd5e1"; e.currentTarget.style.background = "#fafbfc"; }}
-              onDrop={async e => {
-                e.preventDefault();
-                e.currentTarget.style.borderColor = "#cbd5e1";
-                e.currentTarget.style.background = "#fafbfc";
-                const files = Array.from(e.dataTransfer.files);
-                for (const file of files) {
-                  try {
-                    // Find any leaf folder under this session for upload
-                    const children = selectedNode.children || [];
-                    const leafFolder = children.find((c: any) => LEAF_TYPES.has(c.type));
-                    const targetFolderId = leafFolder?.id || selectedFolder;
+            {/* Upload zone — FIX J: parallel upload with progress */}
+            {(() => {
+              const uploadFilesToSession = async (files: File[]) => {
+                if (files.length === 0) return;
+                const children = selectedNode?.children || [];
+                const leafFolder = children.find((c: any) => LEAF_TYPES.has(c.type));
+                const targetFolderId = leafFolder?.id || selectedFolder;
+
+                // Parallel upload with Promise.allSettled
+                const results = await Promise.allSettled(
+                  files.map(async (file) => {
                     const fd = new FormData();
                     fd.append("file", file);
                     await api(`/api/folders/${targetFolderId}/documents`, { method: "POST", body: fd, timeout: 120000 });
-                    toast("success", `Upload: ${file.name}`);
-                  } catch (err: any) { toast("error", `Eroare: ${file.name}`); }
-                }
-                // Refresh classified docs
+                    return file.name;
+                  })
+                );
+
+                const succeeded = results.filter(r => r.status === "fulfilled").length;
+                const failed = results.filter(r => r.status === "rejected").length;
+
+                if (succeeded > 0) toast("success", `${succeeded} document${succeeded > 1 ? "e" : ""} uploadat${succeeded > 1 ? "e" : ""}`);
+                if (failed > 0) toast("error", `${failed} document${failed > 1 ? "e" : ""} eșuat${failed > 1 ? "e" : ""}`);
+
+                // Refresh
                 if (selectedFolder) {
                   apiGet<any[]>(`/api/folders/${selectedFolder}/classified-documents`).then(setClassifiedDocs).catch(() => {});
                   fetchDocs(selectedFolder);
                 }
-              }}
-              onClick={() => {
-                const input = document.createElement("input");
-                input.type = "file"; input.multiple = true;
-                input.accept = ".pdf,.docx,.xlsx,.doc,.png,.jpg";
-                input.onchange = async () => {
-                  const files = Array.from(input.files || []);
-                  for (const file of files) {
-                    try {
-                      const children = selectedNode.children || [];
-                      const leafFolder = children.find((c: any) => LEAF_TYPES.has(c.type));
-                      const targetFolderId = leafFolder?.id || selectedFolder;
-                      const fd = new FormData();
-                      fd.append("file", file);
-                      await api(`/api/folders/${targetFolderId}/documents`, { method: "POST", body: fd, timeout: 120000 });
-                      toast("success", `Upload: ${file.name}`);
-                    } catch (err: any) { toast("error", `Eroare: ${file.name}`); }
-                  }
-                  if (selectedFolder) {
-                    apiGet<any[]>(`/api/folders/${selectedFolder}/classified-documents`).then(setClassifiedDocs).catch(() => {});
-                    fetchDocs(selectedFolder);
-                  }
-                };
-                input.click();
-              }}
-            >
-              <div style={{ fontSize: 28, marginBottom: 6 }}>📎</div>
-              <div style={{ fontSize: 14, fontWeight: 600, color: "#1e293b" }}>Trage documentele aici sau click pentru a selecta</div>
-              <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 4 }}>Ghiduri, template-uri, anexe, CI-uri, bilanțuri, oferte — AI-ul clasifică automat.</div>
-            </div>
+              };
+
+              return (
+                <div
+                  style={{
+                    border: "2px dashed #cbd5e1", borderRadius: 12, padding: "24px 20px",
+                    textAlign: "center", marginBottom: 20, cursor: "pointer",
+                    background: "#fafbfc", transition: "border-color 0.2s, background 0.2s",
+                  }}
+                  onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = "#2563eb"; e.currentTarget.style.background = "#eff6ff"; }}
+                  onDragLeave={e => { e.currentTarget.style.borderColor = "#cbd5e1"; e.currentTarget.style.background = "#fafbfc"; }}
+                  onDrop={async e => {
+                    e.preventDefault();
+                    e.currentTarget.style.borderColor = "#cbd5e1";
+                    e.currentTarget.style.background = "#fafbfc";
+                    await uploadFilesToSession(Array.from(e.dataTransfer.files));
+                  }}
+                  onClick={() => {
+                    const input = document.createElement("input");
+                    input.type = "file"; input.multiple = true;
+                    input.accept = ".pdf,.docx,.xlsx,.doc,.png,.jpg";
+                    input.onchange = async () => await uploadFilesToSession(Array.from(input.files || []));
+                    input.click();
+                  }}
+                >
+                  <div style={{ fontSize: 28, marginBottom: 6 }}>📎</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: "#1e293b" }}>Trage documentele aici sau click pentru a selecta</div>
+                  <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 4 }}>Ghiduri, template-uri, anexe, CI-uri, bilanțuri, oferte — AI-ul clasifică automat.</div>
+                </div>
+              );
+            })()}
 
             {/* Classified documents grouped by routing action */}
             {(() => {

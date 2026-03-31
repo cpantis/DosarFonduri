@@ -907,9 +907,30 @@ export const solomonConversations = pgTable("solomon_conversations", {
   userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
   model: varchar("model", { length: 100 }).notNull(),
   status: varchar("status", { length: 20 }).notNull().default("active"),
+  // Persistent memory: AI-generated summary of this conversation (injected in next conversation)
+  summary: text("summary"),
+  summaryGeneratedAt: timestamp("summary_generated_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
   projectIdx: index("solomon_conv_project_idx").on(table.projectId),
+}));
+
+// === SOLOMON CASE MEMORY (persistent learnings across projects per cabinet) ===
+export const solomonCaseMemory = pgTable("solomon_case_memory", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }),
+  conversationId: uuid("conversation_id").references(() => solomonConversations.id, { onDelete: "set null" }),
+  memoType: text("memo_type").notNull(),  // 'strategic_decision' | 'risk_identified' | 'rule_interpretation' | 'pattern' | 'lesson_learned'
+  content: text("content").notNull(),
+  context: text("context"),               // what triggered this insight
+  confidence: decimal("confidence", { precision: 3, scale: 2 }).default("0.8"),
+  programCode: text("program_code"),      // relevant program (AFIR_SM41, etc.)
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  orgIdx: index("case_mem_org_idx").on(table.organizationId),
+  projectIdx: index("case_mem_project_idx").on(table.projectId),
+  programIdx: index("case_mem_program_idx").on(table.programCode),
 }));
 
 // === SOLOMON MESSAGES ===

@@ -421,3 +421,12 @@ cd apps/web && npx next build
 - Dacă **ORICARE** eșuează → **NU face commit**. Fixează mai întâi.
 - TypeScript build LOCAL nu e suficient. Docker build-ul poate eșua din motive diferite (dependințe lipsă, shared packages, env vars).
 - Shared package trebuie compilat înainte de web: `cd packages/shared && npx tsc`
+
+## RAG v2 Migration — Sprint 1 COMPLET (2026-03-31)
+
+- Tabel `chunks` creat (vector 1024 + tsvector GENERATED + JSONB metadata) — `schema.ts` + `0128_rag_v2_chunks.sql`
+- Voyage AI SDK instalat (`voyageai`), serviciu `voyageEmbeddings.ts` funcțional (embedQuery, embedDocumentChunks, embedTexts)
+- Hybrid search (vector cosine + BM25 keyword + RRF K=60) în `hybridSearch.ts`
+- `vectorType()` helper factorizat din `vector1536` — reutilizabil pentru orice dimensiune
+- Tabelele vechi (`guideChunks`, `solomonKnowledge`) și `embeddings.ts` (OpenAI) — INTACTE
+- Următorul sprint: SPRINT_2 — Single Entry Point (clasificare + routing pipeline)

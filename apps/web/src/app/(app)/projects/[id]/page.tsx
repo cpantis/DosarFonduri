@@ -360,12 +360,12 @@ export default function ProjectViewPage() {
       if (evt.event === "elements_updated" || evt.event === "element_validated" || evt.event === "extraction_complete") {
         apiGet<any>(`/api/projects/${projectId}`).then(proj => {
           setElements(mapElements(proj.elements || []));
-        }).catch(() => {});
+        }).catch(e => console.warn("[project]", e?.message || e));
       }
       if (evt.event === "eligibility_updated") {
         apiGet<any>(`/api/projects/${projectId}/eligibility`).then(eligData => {
           setEligibilityRules(mapEligibilityRules(eligData.flat || []));
-        }).catch(() => {});
+        }).catch(e => console.warn("[project]", e?.message || e));
       }
       if (evt.event === "score_updated") {
         apiGet<any>(`/api/projects/${projectId}/scores`)
@@ -376,7 +376,7 @@ export default function ProjectViewPage() {
         // Re-fetch checklist when backend auto-matches an item
         apiGet<any>(`/api/projects/${projectId}`).then(proj => {
           setChecklistItems(mapChecklist(proj.checklist || []));
-        }).catch(() => {});
+        }).catch(e => console.warn("[project]", e?.message || e));
       }
     }, [projectId]),
   });
@@ -644,7 +644,7 @@ export default function ProjectViewPage() {
           Authorization: `Bearer ${token}`,
         },
         keepalive: true,
-      }).catch(() => {});
+      }).catch(e => console.warn("[project]", e?.message || e));
     };
 
     window.addEventListener("beforeunload", releaseLock);
@@ -705,18 +705,18 @@ export default function ProjectViewPage() {
               changes: upgraded.versionDiff.changes || [],
             });
           }
-        }).catch(() => {});
+        }).catch(e => console.warn("[project]", e?.message || e));
         // Sprint 5: Load Solomon structured output
-        apiGet<any>(`/api/solomon/projects/${projectId}/eligibility`).then(r => setSolEligibility(r?.entries || [])).catch(() => {});
-        apiGet<any>(`/api/solomon/projects/${projectId}/scoring`).then(r => setSolScoring(r?.criteria || [])).catch(() => {});
-        apiGet<any>(`/api/solomon/projects/${projectId}/document-checklist`).then(r => setSolChecklist(r?.items || [])).catch(() => {});
+        apiGet<any>(`/api/solomon/projects/${projectId}/eligibility`).then(r => setSolEligibility(r?.entries || [])).catch(e => console.warn("[project]", e?.message || e));
+        apiGet<any>(`/api/solomon/projects/${projectId}/scoring`).then(r => setSolScoring(r?.criteria || [])).catch(e => console.warn("[project]", e?.message || e));
+        apiGet<any>(`/api/solomon/projects/${projectId}/document-checklist`).then(r => setSolChecklist(r?.items || [])).catch(e => console.warn("[project]", e?.message || e));
         setEligibilityRules(mapEligibilityRules(eligData.flat || []));
         setGuideRules(mapGuideRules(eligData.grouped || []));
         setElements(mapElements(proj.elements || []));
         setChecklistItems(mapChecklist(checkData.items || proj.checklist || []));
 
         // Load reference tables for the organization
-        apiGet<any[]>("/api/reference/tables").then(tables => setReferenceTables(tables || [])).catch(() => {});
+        apiGet<any[]>("/api/reference/tables").then(tables => setReferenceTables(tables || [])).catch(e => console.warn("[project]", e?.message || e));
 
         // Enrich eligibility rules with reference data sources
         const eligRules = mapEligibilityRules(eligData.flat || []);
@@ -734,7 +734,7 @@ export default function ProjectViewPage() {
             };
           });
           setEligibilityRules(enriched);
-        }).catch(() => {});
+        }).catch(e => console.warn("[project]", e?.message || e));
 
         const neemiaMapped: NeemiaTemplate[] = (neemiaDocs || []).map((doc: any) => ({
           id: doc.id,
@@ -752,15 +752,15 @@ export default function ProjectViewPage() {
         setNeemiaTemplates(neemiaMapped);
 
         // GAP 1+2+8: Load scores, budget validation, learnings, branding in parallel (non-blocking)
-        apiGet<any>(`/api/projects/${projectId}/scores`).then(setProjectScores).catch(() => {});
-        apiGet<any>(`/api/projects/${projectId}/budget-validation`).then(setBudgetValidation).catch(() => {});
-        apiGet<any>(`/api/projects/${projectId}/learnings`).then(setLearnings).catch(() => {});
+        apiGet<any>(`/api/projects/${projectId}/scores`).then(setProjectScores).catch(e => console.warn("[project]", e?.message || e));
+        apiGet<any>(`/api/projects/${projectId}/budget-validation`).then(setBudgetValidation).catch(e => console.warn("[project]", e?.message || e));
+        apiGet<any>(`/api/projects/${projectId}/learnings`).then(setLearnings).catch(e => console.warn("[project]", e?.message || e));
         // FIX 8: Load cabinet branding for document preview
-        apiGet<any>(`/api/config/branding`).then(setCabinetBranding).catch(() => {});
+        apiGet<any>(`/api/config/branding`).then(setCabinetBranding).catch(e => console.warn("[project]", e?.message || e));
         // Load org config for custom labels
         apiGet<any>(`/api/config`).then(cfg => {
           if (cfg) setOrgLabels({ solomonLabel: cfg.solomonLabel || "Solomon", neemiaLabel: cfg.neemiaLabel || "Neemia" });
-        }).catch(() => {});
+        }).catch(e => console.warn("[project]", e?.message || e));
       } catch (err: any) {
         console.error("Failed to load project:", err);
         setLoadError(err?.message || "Eroare la încărcarea proiectului");
@@ -777,7 +777,7 @@ export default function ProjectViewPage() {
     setGhidViewerLoading(true);
     apiGet<any>(`/api/projects/${projectId}/ghid-viewer`)
       .then(data => { setGhidViewerData(data); setGhidViewerPage(1); })
-      .catch(() => {})
+      .catch(e => console.warn("[project]", e?.message || e))
       .finally(() => setGhidViewerLoading(false));
   }, [ghidTab, projectId, ghidViewerData, ghidViewerLoading]);
 
@@ -817,7 +817,7 @@ export default function ProjectViewPage() {
         const conv = sorted[0];
         setSolomonConvId(conv.id);
         // Ensure conversation uses Sonnet by default
-        apiPut(`/api/solomon/conversations/${conv.id}/model`, { model: "claude-sonnet-4-6" }).catch(() => {});
+        apiPut(`/api/solomon/conversations/${conv.id}/model`, { model: "claude-sonnet-4-6" }).catch(e => console.warn("[project]", e?.message || e));
         const msgs = await apiGet<any[]>(`/api/solomon/conversations/${conv.id}/messages`);
         setSolomonMessages((msgs || []).map((m: any) => ({
           role: m.role as "user" | "assistant",
@@ -998,7 +998,7 @@ export default function ProjectViewPage() {
               setTimeout(() => {
                 apiGet<any>(`/api/projects/${projectId}`).then(proj => {
                   setElements(mapElements(proj.elements || []));
-                }).catch(() => {});
+                }).catch(e => console.warn("[project]", e?.message || e));
               }, 800);
             } else if (evt.type === "error") {
               // Backend sent an error event (preflight failure, AI timeout, etc.)
@@ -1069,7 +1069,7 @@ export default function ProjectViewPage() {
                 tipProiect: evt.metadata.tipProiect || prev.tipProiect,
               } : prev);
             }
-          } catch {}
+          } catch { /* SSE parse — incomplete chunk, expected */ }
         }
       }
     } catch (err: any) {
@@ -1127,12 +1127,15 @@ export default function ProjectViewPage() {
         formData.append("files", f);
       }
 
+      const uploadAbort = new AbortController();
+      solomonAbortRef.current = uploadAbort;
       const res = await fetch(`${API_URL}/api/solomon/conversations/${convId}/upload`, {
         method: "POST",
         headers: {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: formData,
+        signal: uploadAbort.signal,
       });
 
       if (!res.ok) {
@@ -1187,7 +1190,7 @@ export default function ProjectViewPage() {
               }
               apiGet<any>(`/api/projects/${projectId}`).then(proj => {
                 setElements(mapElements(proj.elements || []));
-              }).catch(() => {});
+              }).catch(e => console.warn("[project]", e?.message || e));
             } else if (evt.type === "error") {
               toast("error", evt.message || "Eroare Solomon.");
               setSolomonMessages(prev => {
@@ -1209,7 +1212,7 @@ export default function ProjectViewPage() {
                 tipProiect: evt.metadata.tipProiect || prev.tipProiect,
               } : prev);
             }
-          } catch {}
+          } catch { /* SSE parse — incomplete chunk, expected */ }
         }
       }
     } catch (err: any) {
@@ -1222,6 +1225,7 @@ export default function ProjectViewPage() {
         return prev;
       });
     } finally {
+      solomonAbortRef.current = null;
       setSolomonStreaming(false);
     }
   };
@@ -1270,7 +1274,7 @@ export default function ProjectViewPage() {
             if (validation && (validation as any).totalChecks > 0) {
               setExtractionValidations(prev => ({ ...prev, [k]: validation }));
             }
-          }).catch(() => {});
+          }).catch(e => console.warn("[project]", e?.message || e));
         } catch (err) {
           console.error("Failed to persist Solomon extraction:", err);
           toast("error", "Eroare la salvarea datelor extrase");
@@ -1414,7 +1418,7 @@ export default function ProjectViewPage() {
                 return updated;
               });
             }
-          } catch {}
+          } catch { /* SSE parse — incomplete chunk, expected */ }
         }
       }
     } catch (err) {
@@ -1909,7 +1913,7 @@ export default function ProjectViewPage() {
               await refreshNeemiaDocs();
             }
             else if (evt.type === "error") { setNeemiaGenStatus(`Eroare: ${evt.message}`); setNeemiaGenProgress(0); }
-          } catch {}
+          } catch { /* SSE parse — incomplete chunk, expected */ }
         }
       }
     } catch (err) {
@@ -1956,7 +1960,7 @@ export default function ProjectViewPage() {
               await refreshNeemiaDocs();
             }
             else if (evt.type === "error") setNeemiaGenStatus(`Eroare: ${evt.message}`);
-          } catch {}
+          } catch { /* SSE parse — incomplete chunk, expected */ }
         }
       }
     } catch (err) {
@@ -2009,7 +2013,7 @@ export default function ProjectViewPage() {
               setNeemiaGenStatus(`✓ Previzualizare COMPOSE gata — ${(evt.sections || []).length} secțiuni generate`);
             }
             else if (evt.type === "error") setNeemiaGenStatus(`Eroare: ${evt.message}`);
-          } catch {}
+          } catch { /* SSE parse — incomplete chunk, expected */ }
         }
       }
     } catch (err) {
@@ -2053,7 +2057,7 @@ export default function ProjectViewPage() {
               await refreshNeemiaDocs();
             }
             else if (evt.type === "error") setNeemiaGenStatus(`Eroare: ${evt.message}`);
-          } catch {}
+          } catch { /* SSE parse — incomplete chunk, expected */ }
         }
       }
     } catch (err) {
@@ -5752,7 +5756,7 @@ export default function ProjectViewPage() {
                         } catch (err: any) { toast("error", `Upload eșuat: ${file.name}`); }
                       }
                       setDocUploading(false);
-                      apiGet<any[]>(`/api/documents/folders/${project?.folderId}/classified-documents`).then(docs => setClassifiedDocs(docs || [])).catch(() => {});
+                      apiGet<any[]>(`/api/documents/folders/${project?.folderId}/classified-documents`).then(docs => setClassifiedDocs(docs || [])).catch(e => console.warn("[project]", e?.message || e));
                     }}
                     onClick={() => {
                       const input = document.createElement("input");
@@ -5771,7 +5775,7 @@ export default function ProjectViewPage() {
                           } catch (err: any) { toast("error", `Upload eșuat: ${file.name}`); }
                         }
                         setDocUploading(false);
-                        apiGet<any[]>(`/api/documents/folders/${project?.folderId}/classified-documents`).then(docs => setClassifiedDocs(docs || [])).catch(() => {});
+                        apiGet<any[]>(`/api/documents/folders/${project?.folderId}/classified-documents`).then(docs => setClassifiedDocs(docs || [])).catch(e => console.warn("[project]", e?.message || e));
                       };
                       input.click();
                     }}
@@ -5896,7 +5900,7 @@ export default function ProjectViewPage() {
                                 setReclassifyDoc(null);
                                 setReclassifyType("");
                                 setReclassifyRoute("");
-                                setTimeout(() => apiGet<any[]>(`/api/documents/folders/${project?.folderId}/classified-documents`).then(docs => setClassifiedDocs(docs || [])).catch(() => {}), 2000);
+                                setTimeout(() => apiGet<any[]>(`/api/documents/folders/${project?.folderId}/classified-documents`).then(docs => setClassifiedDocs(docs || [])).catch(e => console.warn("[project]", e?.message || e)), 2000);
                               } catch { toast("error", "Eroare la reclasificare."); }
                             }}
                           >Reclasifică</button>
@@ -6498,7 +6502,7 @@ export default function ProjectViewPage() {
                             try {
                               const res = await apiGet<any>(`/api/neemia/documents/${neemiaTemplate.id}/download`);
                               if (res.downloadUrl) window.open(res.downloadUrl, "_blank");
-                            } catch {}
+                            } catch { /* SSE parse — incomplete chunk, expected */ }
                           }
                         }}>
                           &#8595; Descarcă

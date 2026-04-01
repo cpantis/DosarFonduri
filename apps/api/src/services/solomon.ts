@@ -425,123 +425,60 @@ Ești echivalentul unui consultant senior cu 15+ ani experiență în fonduri eu
 ## INSTRUCȚIUNI TOOL USE (CRITICE)
 ═══════════════════════════════════════════
 
-Ai la dispoziție tools pentru a căuta informații. FOLOSEȘTE-LE:
-- **search_knowledge**: Caută în ghid, fișe evaluare, anexe, baza de cunoștințe
-  - Folosește layers=['regula'] pentru eligibilitate
-  - Folosește layers=['punctaj'] pentru criterii de selecție
-  - Folosește layers=['referinta'] pentru tabele de referință
-  - Caută MEREU înainte să afirmi ceva despre regulile ghidului
-- **get_session_documents**: Vezi ce documente sunt disponibile pe sesiune
-  - Folosește la începutul conversației
-  - Folosește când trebuie să știi ce documente are consultantul
+Ai 9 tools. Folosește-le ACTIV — nu scrie text fără a salva datele:
 
-Dacă nu găsești informația, spune sincer și sugerează verificare manuală.
+**Căutare:**
+- **search_documents**: Caută în ghid, fișe evaluare, anexe. Caută MEREU înainte să afirmi ceva despre reguli, criterii, cheltuieli.
+- **get_session_documents**: Vezi ce documente sunt pe sesiune.
+
+**Persistență date:**
+- **save_element**: Salvează orice dată extrasă (cheia + valoare). Folosește IMEDIAT ce obții o informație.
+- **check_eligibility**: Verifică și salvează o condiție de eligibilitate (pass/fail/pending).
+- **estimate_score**: Estimează punctaj pentru un criteriu de selecție.
+- **update_checklist**: Adaugă un document necesar la checklist.
+
+**Metadate:**
+- **update_phase**: Actualizează faza conversației. Apelează la FIECARE răspuns.
+- **update_metadata**: Salvează metadate proiect (program, măsură, sesiune) — apelează când consultantul confirmă.
+- **compose_section**: Generează text pentru o secțiune de document.
+
+REGULI TOOL USE:
+- Apelează save_element DE FIECARE DATĂ când obții o informație concretă
+- Apelează update_phase la FIECARE răspuns cu faza curentă și progresul
+- Apelează check_eligibility când verifici o regulă din ghid
+- NU scrie JSON în text. Folosește EXCLUSIV tools pentru a salva date.
 
 ═══════════════════════════════════════════
-## FAZE CONVERSAȚIE (emite la FIECARE răspuns)
+## FAZE CONVERSAȚIE
 ═══════════════════════════════════════════
 
-La FIECARE răspuns, include pe o linie separată:
-<!--PHASE_JSON{"phase":"Q4","label":"Verificare eligibilitate","progress":40,"nextAction":"Verific criteriile de eligibilitate din ghid"}PHASE_JSON-->
+La FIECARE răspuns, apelează update_phase cu faza curentă.
 
-Faze:
 Q0 — DE CE? (OBLIGATORIU, PRIMA FAZĂ)
-  Extrage și salvează ca ELEMENTS_JSON aceste 5 elemente:
-  - problema_client: ce problemă concretă are (NU "vreau să cumpăr X", ci "nu fac față volumului")
-  - impact_problema: consecințe financiare, operaționale, sociale
-  - solutia_dorita: cum vede clientul rezolvarea (reformulat ca obiectiv, nu ca achiziție)
-  - context_local: zona, infrastructura, piața, concurența, specificul local
-  - ambitia_3_5_ani: unde vrea clientul să fie în 3-5 ani
-  Aceste 5 elemente COLOREAZĂ tot dosarul. NU avansa la Q1 fără ele.
-  Dacă răspunsuri vagi: "Ce te nemulțumește în activitatea de zi cu zi?" "Dacă rezolvi asta, ce se schimbă?"
+  Extrage cu save_element aceste 5 elemente:
+  - problema_client, impact_problema, solutia_dorita, context_local, ambitia_3_5_ani
+  NU avansa la Q1 fără ele.
 Q1 — Cine e clientul? (tip, experiență, vârstă, studii)
 Q2 — Ce are acum? (suprafață, animale, utilaje, venituri)
 Q3 — Ce vrea să facă? (investiții concrete)
-Q4 — Eligibilitate de bază (caută cu search_knowledge layers=['regula'])
+Q4 — Eligibilitate de bază (caută cu search_documents, salvează cu check_eligibility)
 Q5 — Eligibilitate specifică (dimensiune economică, restricții)
 Q6 — Verificări încrucișate (proiecte anterioare, ajutoare de stat)
 Q7 — Cofinanțare și capacitate financiară
 Q8 — Buget estimativ
-Q9 — Criterii selecție și punctaj estimat (caută cu layers=['punctaj'])
-Q10 — FINALIZARE (Faza 5: "E trimis?")
-  - Checklist revizie finală: verifică toate documentele, semnăturile, termenele
-  - Semnătură electronică: explică tip token calificat (eIDAS)
-  - Depunere portal: pași concreti per platformă
-  - Emite CHECKLIST_JSON cu documentele de revizie finală
-  - RISC: depunerea cu < 48h înainte de termen = SIGNAL risc high
-Q11 — POST-DEPUNERE
-  Q11a: Evaluare/informații suplimentare (la clarificări: revino la Q0, nu inventa)
-  Q11b: Contractare (documente actualizate, garanții, termen semnare)
-  Q11c: Implementare (oferte conforme, dosare plată, rapoarte progres)
-  Q11d: Monitorizare (3-5 ani, interdicție înstrăinare, raportări periodice)
-  La respingere: sugerează redepunere, alt program, contestație. Datele rămân.
+Q9 — Criterii selecție (caută, estimează cu estimate_score)
+Q10 — FINALIZARE (checklist cu update_checklist, verificare termene)
+Q11 — POST-DEPUNERE (evaluare, contractare, implementare, monitorizare)
 
-BUCLE ÎNTRE FAZE:
-Când date noi invalidează o concluzie anterioară, REVINO la faza relevantă.
-Emite PHASE_JSON cu "regression" când revii:
-<!--PHASE_JSON{"phase":"Q4","label":"Recalculare SO","progress":35,"nextAction":"Recalculez cu suprafața actualizată","regression":{"from":"Q7","reason":"Suprafața modificată","affectedConclusions":["dimensiune_economica"]}}PHASE_JSON-->
-Regresii tipice: suprafață/culturi schimbate → Q4+Q5, investiție schimbată → Q4+Q5+Q6, eligibilitate schimbată → Q2.
-
-NU urmezi fazele mecanic. Sari dacă ai datele. Revino dacă apar informații noi.
-Progresul (0-100) reflectă cât de complet e dosarul, nu câte întrebări ai pus.
+BUCLE: Când date noi invalidează o concluzie, revino la faza relevantă. Apelează update_phase cu regression_from.
+Progresul (0-100) reflectă completitudinea dosarului, nu nr. întrebări.
 
 ═══════════════════════════════════════════
-## SEMNALE (emite când detectezi situații importante)
+## GENERARE DOCUMENTE
 ═══════════════════════════════════════════
 
-<!--SIGNAL_JSON{"type":"risc","message":"Descriere","severity":"high","phase":"Q4"}SIGNAL_JSON-->
-
-Tipuri:
-- risc: orice ar putea cauza respingere, pierdere punctaj, termen ratat (severity: high/medium/low)
-- bucla: date noi care invalidează o concluzie anterioară (include target = faza de revizitat)
-- discutie_client: consultantul trebuie să vorbească cu beneficiarul
-- baza_cunostinte: ai găsit experiență relevantă din KB
-
-Emite la:
-- Regresie între faze (automatic la PHASE_JSON cu regression)
-- Document expirat sau aproape de expirare (certificat fiscal 30 zile, constatator 30 zile)
-- Rezultat exploatare negativ, capitaluri proprii negative, IMM la limită
-- Când trebuie confirmare de la client (cofinanțare, documente lipsă)
-
-TERMENE VALABILITATE:
-La Q10, verifică termenele documentelor:
-- Certificat constatator ONRC: 30 zile de la emitere
-- Certificat fiscal: 30 zile
-- Extras carte funciară: 30 zile
-Dacă un document expiră înainte de data estimată a depunerii, emite SIGNAL risc.
-
-═══════════════════════════════════════════
-## RAPORTARE STRUCTURATĂ (include la FIECARE răspuns unde e relevant)
-═══════════════════════════════════════════
-
-Când verifici eligibilitatea (fazele Q4-Q7), include:
-<!--ELIGIBILITY_JSON[{"rule":"Denumirea condiției","status":"pass|fail|pending","evidence":"Explicație scurtă","confidence":0.95}]ELIGIBILITY_JSON-->
-
-Când evaluezi punctajul (fazele Q9-Q10), include:
-<!--SCORING_JSON[{"criterion":"Denumirea criteriului","points":15,"maxPoints":15,"evidence":"Explicație scurtă","confidence":0.9}]SCORING_JSON-->
-
-Când discuți documente necesare (fazele Q10-Q11), include:
-<!--CHECKLIST_JSON[{"document":"Numele documentului","category":"obligatoriu_depunere|obligatoriu_contractare|optional","reference":"Ghid cap. 4.1","notes":"Valabil 30 zile"}]CHECKLIST_JSON-->
-
-REGULI RAPORTARE:
-- Poți emite mai multe JSON-uri în același răspuns
-- Fiecare JSON ACUMULEAZĂ — emite DOAR regulile/criteriile NOI sau MODIFICATE
-- status "pending" = nu ai suficiente date, cere informații suplimentare
-- CAUTĂ MEREU cu search_knowledge înainte de a emite concluzii
-- NU menționa aceste tag-uri în textul vizibil al conversației
-
-═══════════════════════════════════════════
-## GENERARE BRIEF COMPOSE
-═══════════════════════════════════════════
-
-Când consultantul cere generarea documentelor ("pregătește memoriul", "generează documentele", "sunt gata de redactare"), generezi un brief structurat cu:
-- Firul narativ (Q0) — motivația centrală a investiției
-- Profilul clientului — cine e, ce are, ce vrea
-- Concluziile de eligibilitate — ce ai verificat, ce e OK, ce e risc
-- Punctajul estimat — câte puncte, din ce criterii
-- Argumente strategice — CE trebuie argumentat, nu CUM
-
-NU scrie tu documentul. Generezi brief-ul, Neemia scrie. Tu ești consultantul senior care dictează. Neemia e redactorul.
+Când consultantul cere generarea documentelor, folosește compose_section pentru fiecare secțiune.
+NU scrie tu documentul în chat. Generezi prin compose_section, Neemia formatează.
 
 ═══════════════════════════════════════════
 ## DATE FIRMĂ (din ONRC + bilanțuri)
@@ -869,44 +806,23 @@ Nu aștepta să fii întrebat. Un consultant senior:
 - ATENȚIONEAZĂ pe deadline-uri: dacă documente expiră înainte de depunere estimată
 - Dacă observă o regulă din ghid care e ambiguă sau poate fi interpretată, menționează ambele interpretări și recomandă varianta conservatoare
 
-### Format extragere
-6. IMPORTANT: returnează câmpurile extrase în format JSON ascuns la sfârșitul mesajului:
-   <!--ELEMENTS_JSON[{"key": "camp", "value": "valoare", "confidence": 0.95}]ELEMENTS_JSON-->
-   - key = cheia câmpului din lista de mai sus
-   - value = valoarea extrasă/formulată
-   - confidence = 0.0-1.0 (cât de sigur ești de extragere)
-   - Dacă ai extras dintr-un document uploadat, confidence ≥ 0.9
-   - Dacă ai dedus/calculat, confidence 0.7-0.9
-   - Dacă ai propus o formulare, confidence 0.5-0.7 (necesită confirmare consultant)
+### Salvare date
+Când obții o dată concretă, apelează IMEDIAT save_element cu cheia și valoarea. NU aștepta sfârșitul răspunsului.
+- Datele financiare din secțiunea "Evoluție financiară" → salvează DIRECT cu save_element (confidence: 0.95)
+- Date din documente uploadate → confidence ≥ 0.9
+- Date deduse/calculate → confidence 0.7-0.9
+- Formulări propuse → confidence 0.5-0.7
+- Valori multi-an: salvează ca JSON string (ex: '{"2024":"1913806","2023":"1750000"}')
 
-   **LIMBAJ VIZIBIL:** NU menționa niciodată "ELEMENTS_JSON", "JSON", "tag-uri ascunse" sau termeni tehnici în textul conversației. Consultantul nu știe de formatul intern. Când salvezi un câmp, spune natural: "Am notat valoarea X pentru câmpul Y" sau "Am completat: [numele câmpului] = [valoare]" sau pur și simplu confirmă datele fără a menționa mecanismul tehnic.
+### Metadate proiect
+Când consultantul confirmă programul, măsura, sesiunea, etc. → apelează update_metadata imediat.
 
-   **VALORI STRUCTURATE (multi-an, tabelar):** Când un element reprezintă date pe mai mulți ani sau categorii (ex: "Cifra de afaceri ultimii 3 ani", "Număr angajați pe ani", "Capitaluri proprii pe ani"), salvează valoarea ca JSON structurat:
-   - Exemplu multi-an: {"2024": "1913806", "2023": "1750000", "2022": "1520000"}
-   - Exemplu tabel: [{"an": "2024", "CA": "1913806", "profit": "125000"}, {"an": "2023", ...}]
-   - IMPORTANT: Datele financiare ale firmei sunt deja listate în secțiunea "Evoluție financiară". Folosește-le DIRECT — nu cere consultantului date pe care le ai deja!
-   - Dacă ai date parțiale (ex: doar 2024, lipsesc 2022-2023), salvează ce ai cu confidence 0.9 pentru datele existente și menționează ce lipsește
+### Verificare eligibilitate
+Când verifici o regulă din ghid → apelează check_eligibility pentru fiecare regulă verificată.
+Când estimezi punctaj → apelează estimate_score.
 
-   **CERERE EXPLICITĂ DE COMPLETARE:** Când consultantul scrie "Completează elementul X (cheie: Y)" sau similar, TREBUIE OBLIGATORIU să:
-   (a) Propui o valoare concretă bazată pe datele disponibile (firmă, ghid, conversație anterioară)
-   (b) Returnezi ELEMENTS_JSON cu cheia specificată și valoarea propusă
-   (c) Dacă nu ai suficiente date, explică ce lipsește dar propune o valoare parțială cu confidence scăzut (0.3-0.5)
-   NU răspunde doar conversațional fără a nota valoarea când primești cerere explicită de completare.
-
-### Format metadate proiect (CRITIC pentru Neemia)
-7. Când consultantul CONFIRMĂ sau furnizează informații despre program, nomenclator, prefix, structura dosarului, cod MySMIS sau sesiune, returnează-le în format JSON ascuns:
-   <!--METADATA_JSON{"programFinantare":"PNDR/AFIR","codMasura":"6.4","codSesiune":"Sesiunea 1/2024","codNomenclator":"sM6.4","prefixDocumente":"C6.4_","codMysmis":"12345","tipProiect":"bunuri_cu_montaj","structuraDosar":"1. Cerere finanțare\\n2. Plan de afaceri\\n3. Anexe tehnice"}METADATA_JSON-->
-   - Includ DOAR câmpurile pe care le-ai obținut (confirmate de consultant sau deduse cu certitudine)
-   - Nu inventa valori — include doar ce a confirmat/furnizat consultantul sau ce ai detectat automat și consultantul a confirmat
-   - Actualizează câmpurile la fiecare confirmare/corecție din conversație
-   - Aceste metadate sunt ESENȚIALE — Neemia le folosește pentru denumirea și structurarea documentelor generate
-
-### Verificare eligibilitate solicitant
-8. Când consultantul solicită verificarea eligibilității firmei (ex: "verifică eligibilitatea", "poate aplica firma?", "e eligibilă?"), sau când consideri oportun (la începutul proiectului, după completarea datelor firmei), poți declanșa verificarea automată cu:
-   <!--CHECK_ELIGIBILITY-->
-   Sistemul va rula automat verificarea contra tuturor regulilor din ghidul sesiunii și va returna rezultatul în mesajul următor.
-   Folosește rezultatul pentru a explica consultantului: ce reguli sunt îndeplinite, ce reguli au eșuat (cu soluții concrete), și ce date lipsesc.
-   NU adăuga acest tag de mai multe ori în același mesaj. Un singur tag per mesaj e suficient.`;
+### Checklist documente
+Când discuți documente necesare → apelează update_checklist pentru fiecare document.`;
 }
 
 // ═══ INLINE REFINE ═══
@@ -1125,16 +1041,35 @@ export async function processSolomonMessage(params: {
     });
   }
 
-  // Get conversation history — 100 messages for full context on deep projects
+  // Get conversation history with token budgeting
+  // Estimate ~3.5 chars/token for Romanian. Budget: 40K tokens for history (leaves room for system prompt + response)
+  const MAX_HISTORY_TOKENS = 40000;
+  const CHARS_PER_TOKEN = 3.5;
+  const MAX_HISTORY_CHARS = MAX_HISTORY_TOKENS * CHARS_PER_TOKEN;
+
   const history = await db.query.solomonMessages.findMany({
     where: eq(solomonMessages.conversationId, conversationId),
     orderBy: (m, { asc }) => [asc(m.createdAt)],
     limit: 100,
   });
 
-  // Build messages array — only allow valid roles (user/assistant), skip system messages
-  const messages: Anthropic.MessageParam[] = history
-    .filter(m => m.role === "user" || m.role === "assistant")
+  // Filter valid roles, then truncate from oldest if over token budget
+  const validHistory = history.filter(m => m.role === "user" || m.role === "assistant");
+  let totalChars = 0;
+  let startIdx = 0;
+  // Count from newest to oldest, find cutoff point
+  for (let i = validHistory.length - 1; i >= 0; i--) {
+    totalChars += (validHistory[i].content || "").length;
+    if (totalChars > MAX_HISTORY_CHARS) {
+      startIdx = i + 1;
+      break;
+    }
+  }
+  // Always keep at least the last 4 messages for context
+  startIdx = Math.min(startIdx, Math.max(0, validHistory.length - 4));
+
+  const messages: Anthropic.MessageParam[] = validHistory
+    .slice(startIdx)
     .map(m => ({
       role: m.role as "user" | "assistant",
       content: m.content,
@@ -1440,596 +1375,23 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
           }
         }
 
-        // Extract elements from response (hidden JSON format)
-        // Use balanced bracket parser instead of fragile regex — handles values containing ] characters
-        let extractedElements: any[] = [];
-        const elementsJsonStr = extractBalancedJSON(fullResponse, "<!--ELEMENTS_JSON", "ELEMENTS_JSON-->");
-        if (elementsJsonStr) {
-          try {
-            const parsed = JSON.parse(elementsJsonStr);
-            // Validate: must be an array, cap at 200 elements, each must have key+value strings
-            if (Array.isArray(parsed)) {
-              extractedElements = parsed
-                .slice(0, 200)
-                .filter((el: any) =>
-                  el && typeof el.key === "string" && el.key.length <= 255
-                  && typeof el.value === "string" && el.value.length <= 10000
-                )
-                .map((el: any) => ({
-                  ...el,
-                  confidence: Math.min(1, Math.max(0, Number(el.confidence) || 0.5)),
-                }));
-            }
-          } catch (parseErr) {
-            console.warn("[solomon] ELEMENTS_JSON parse failed", { error: parseErr, rawJson: elementsJsonStr?.slice(0, 200) });
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({
-              type: "extraction_warning",
-              message: "Nu am putut extrage date structurate din răspuns. Răspunsul conversațional e valid.",
-            })}\n\n`));
-          }
-        }
+        // All data persistence is now handled by native tool_use (save_element, check_eligibility, etc.)
+        // The streaming response is clean text — no hidden JSON markers to parse.
 
-        // Save extracted elements to project — using elementDefinitions as primary, templateElements as fallback
-        if (extractedElements.length > 0) {
-          // Load elementDefinitions (canonical source of truth)
-          const orgElemDefs = await db.query.elementDefinitions.findMany({
-            where: eq(elementDefinitions.organizationId, organizationId),
-          });
-          const keyToElemDef = new Map(orgElemDefs.map(ed => [ed.elementKey, ed]));
-
-          // Load templateElements as fallback for legacy keys
-          const orgTmplEls = await db.query.templateElements.findMany({
-            where: eq(templateElements.organizationId, organizationId),
-          });
-          const keyToTmplEl = new Map(orgTmplEls.map(t => [t.key, t]));
-
-          // Batch-load all existing project elements for this project
-          const allProjectElements = await db.query.projectElements.findMany({
-            where: eq(projectElements.projectId, projectId),
-          });
-          // Build lookup maps: elementDefId → PE, templateElementId → PE
-          const peByDefId = new Map(allProjectElements.filter(pe => pe.elementDefId).map(pe => [pe.elementDefId!, pe]));
-          const peByTmplId = new Map(allProjectElements.filter(pe => pe.templateElementId).map(pe => [pe.templateElementId!, pe]));
-
-          const toUpdate: Array<{ id: string; value: string; oldValue: string | null; elementDefId?: string }> = [];
-          const toInsert: Array<{ projectId: string; elementDefId?: string; templateElementId?: string; value: string; source: "solomon_chat"; confirmed: boolean; validationStatus: "pending" }> = [];
-          const modifiedElementIds: string[] = [];
-
-          // Known client document field definitions for auto-creation
-          const CLIENT_DOC_FIELD_DEFS: Record<string, { displayName: string; category: "beneficiary" | "legal" | "location" | "other"; dataType: "text" | "number" | "date"; required?: boolean }> = {
-            cnp: { displayName: "CNP reprezentant legal", category: "beneficiary", dataType: "text", required: true },
-            serie_ci: { displayName: "Serie CI", category: "legal", dataType: "text", required: true },
-            numar_ci: { displayName: "Număr CI", category: "legal", dataType: "text", required: true },
-            nume: { displayName: "Nume reprezentant legal", category: "beneficiary", dataType: "text", required: true },
-            prenume: { displayName: "Prenume reprezentant legal", category: "beneficiary", dataType: "text", required: true },
-            cetatenie: { displayName: "Cetățenie", category: "beneficiary", dataType: "text" },
-            loc_nastere: { displayName: "Localitate naștere", category: "beneficiary", dataType: "text" },
-            judet_nastere: { displayName: "Județ naștere", category: "beneficiary", dataType: "text" },
-            domiciliu: { displayName: "Adresă domiciliu", category: "location", dataType: "text", required: true },
-            localitate_domiciliu: { displayName: "Localitate domiciliu", category: "location", dataType: "text", required: true },
-            judet_domiciliu: { displayName: "Județ domiciliu", category: "location", dataType: "text", required: true },
-            data_nastere: { displayName: "Data naștere", category: "beneficiary", dataType: "date", required: true },
-            sex: { displayName: "Sex", category: "beneficiary", dataType: "text" },
-            data_emitere_ci: { displayName: "Data emitere CI", category: "legal", dataType: "date", required: true },
-            data_expirare_ci: { displayName: "Data expirare CI", category: "legal", dataType: "date", required: true },
-            emitent_ci: { displayName: "Emitent CI (SPCLEP)", category: "legal", dataType: "text" },
-            tip_diploma: { displayName: "Tip diplomă", category: "beneficiary", dataType: "text" },
-            institutie_invatamant: { displayName: "Instituție învățământ", category: "beneficiary", dataType: "text" },
-            specializare: { displayName: "Specializare", category: "beneficiary", dataType: "text" },
-            data_absolvire: { displayName: "Data absolvire", category: "beneficiary", dataType: "date" },
-            numar_diploma: { displayName: "Număr diplomă", category: "beneficiary", dataType: "text" },
-            tip_proiect: { displayName: "Tip proiect (bunuri / construcții / servicii / mixt)", category: "other", dataType: "text", required: true },
-            // ── Oferte de preț (3 furnizori) ──
-            furnizor_1_nume: { displayName: "Furnizor 1 — Nume", category: "other", dataType: "text" },
-            furnizor_1_cui: { displayName: "Furnizor 1 — CUI", category: "other", dataType: "text" },
-            furnizor_1_articole: { displayName: "Furnizor 1 — Articole (denumire × cantitate)", category: "other", dataType: "text" },
-            furnizor_1_total_eur: { displayName: "Furnizor 1 — Total fără TVA (EUR)", category: "other", dataType: "number" },
-            furnizor_1_total_ron: { displayName: "Furnizor 1 — Total fără TVA (RON)", category: "other", dataType: "number" },
-            furnizor_1_valabilitate: { displayName: "Furnizor 1 — Valabilitate ofertă", category: "other", dataType: "text" },
-            furnizor_1_data_oferta: { displayName: "Furnizor 1 — Data ofertă", category: "other", dataType: "date" },
-            furnizor_1_nr_oferta: { displayName: "Furnizor 1 — Nr. ofertă", category: "other", dataType: "text" },
-            furnizor_2_nume: { displayName: "Furnizor 2 — Nume", category: "other", dataType: "text" },
-            furnizor_2_cui: { displayName: "Furnizor 2 — CUI", category: "other", dataType: "text" },
-            furnizor_2_articole: { displayName: "Furnizor 2 — Articole (denumire × cantitate)", category: "other", dataType: "text" },
-            furnizor_2_total_eur: { displayName: "Furnizor 2 — Total fără TVA (EUR)", category: "other", dataType: "number" },
-            furnizor_2_total_ron: { displayName: "Furnizor 2 — Total fără TVA (RON)", category: "other", dataType: "number" },
-            furnizor_2_valabilitate: { displayName: "Furnizor 2 — Valabilitate ofertă", category: "other", dataType: "text" },
-            furnizor_2_data_oferta: { displayName: "Furnizor 2 — Data ofertă", category: "other", dataType: "date" },
-            furnizor_2_nr_oferta: { displayName: "Furnizor 2 — Nr. ofertă", category: "other", dataType: "text" },
-            furnizor_3_nume: { displayName: "Furnizor 3 — Nume", category: "other", dataType: "text" },
-            furnizor_3_cui: { displayName: "Furnizor 3 — CUI", category: "other", dataType: "text" },
-            furnizor_3_articole: { displayName: "Furnizor 3 — Articole (denumire × cantitate)", category: "other", dataType: "text" },
-            furnizor_3_total_eur: { displayName: "Furnizor 3 — Total fără TVA (EUR)", category: "other", dataType: "number" },
-            furnizor_3_total_ron: { displayName: "Furnizor 3 — Total fără TVA (RON)", category: "other", dataType: "number" },
-            furnizor_3_valabilitate: { displayName: "Furnizor 3 — Valabilitate ofertă", category: "other", dataType: "text" },
-            furnizor_3_data_oferta: { displayName: "Furnizor 3 — Data ofertă", category: "other", dataType: "date" },
-            furnizor_3_nr_oferta: { displayName: "Furnizor 3 — Nr. ofertă", category: "other", dataType: "text" },
-            furnizor_selectat: { displayName: "Furnizor selectat (1, 2 sau 3)", category: "other", dataType: "text" },
-            justificare_selectie_furnizor: { displayName: "Justificare selecție furnizor", category: "other", dataType: "text" },
-            valoare_totala_investitie_eur: { displayName: "Valoare totală investiție fără TVA (EUR)", category: "other", dataType: "number" },
-            valoare_totala_investitie_ron: { displayName: "Valoare totală investiție fără TVA (RON)", category: "other", dataType: "number" },
-          };
-
-          // Find guide document for auto-creating element definitions
-          let guideDocIdCache: string | null | undefined = undefined;
-          async function getGuideDocId(): Promise<string | null> {
-            if (guideDocIdCache !== undefined) return guideDocIdCache;
-            const proj = await db.query.projects.findFirst({ where: and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)) });
-            if (!proj) { guideDocIdCache = null; return null; }
-            // Find ghiduri subfolder
-            const ghiduriFolder = await db.query.documentFolders.findFirst({
-              where: and(
-                eq(documentFolders.parentId, proj.folderId),
-                eq(documentFolders.type, "ghiduri"),
-                eq(documentFolders.organizationId, organizationId),
-              ),
-            });
-            if (ghiduriFolder) {
-              const guide = await db.query.documents.findFirst({
-                where: and(eq(documents.folderId, ghiduriFolder.id), eq(documents.processingType, "ghid"), eq(documents.status, "processed")),
-              });
-              guideDocIdCache = guide?.id ?? null;
-            } else {
-              guideDocIdCache = null;
-            }
-            return guideDocIdCache;
-          }
-
-          for (const el of extractedElements) {
-            let elemDef = keyToElemDef.get(el.key);
-            const tmplEl = keyToTmplEl.get(el.key);
-
-            // Auto-create elementDefinition for known client doc fields
-            if (!elemDef && !tmplEl && CLIENT_DOC_FIELD_DEFS[el.key]) {
-              const guideDocId = await getGuideDocId();
-              try {
-                const knownDef = CLIENT_DOC_FIELD_DEFS[el.key];
-                const created = await upsertElementDefinition({
-                  guideDocumentId: guideDocId,
-                  organizationId,
-                  elementKey: el.key,
-                  displayName: knownDef.displayName,
-                  category: knownDef.category,
-                  dataType: knownDef.dataType,
-                  required: knownDef.required ?? false,
-                  sourcePriority: ["document_extracted", "solomon_chat", "consultant_manual"],
-                });
-                elemDef = created;
-                keyToElemDef.set(el.key, created);
-                console.log(`[solomon] Auto-created elementDefinition for "${el.key}" → ${created.id}`);
-              } catch (err) {
-                console.warn(`[solomon] Failed to auto-create elementDef for "${el.key}":`, err);
-              }
-            }
-
-            if (!elemDef && !tmplEl) continue;
-
-            // Find existing from in-memory maps
-            const existing = (elemDef ? peByDefId.get(elemDef.id) : null) || (tmplEl ? peByTmplId.get(tmplEl.id) : null);
-
-            if (existing) {
-              if (existing.confirmed && (existing.source === "consultant_manual" || existing.source === "document_extracted")) {
-                console.log(`[solomon] Skipping confirmed element ${el.key} (source: ${existing.source})`);
-              } else {
-                toUpdate.push({
-                  id: existing.id,
-                  value: el.value,
-                  oldValue: existing.value || null,
-                  ...(elemDef && !existing.elementDefId ? { elementDefId: elemDef.id } : {}),
-                });
-                modifiedElementIds.push(existing.id);
-              }
-            } else {
-              toInsert.push({
-                projectId,
-                ...(elemDef ? { elementDefId: elemDef.id } : {}),
-                ...(tmplEl ? { templateElementId: tmplEl.id } : {}),
-                value: el.value,
-                source: "solomon_chat",
-                confirmed: false,
-                validationStatus: "pending",
-              });
-            }
-          }
-
-          // Batch updates
-          for (const upd of toUpdate) {
-            await db.update(projectElements).set({
-              value: upd.value,
-              source: "solomon_chat",
-              confirmed: false,
-              ...(upd.elementDefId ? { elementDefId: upd.elementDefId } : {}),
-              updatedAt: new Date(),
-            }).where(eq(projectElements.id, upd.id));
-            await logElementChange({
-              projectElementId: upd.id,
-              oldValue: upd.oldValue,
-              newValue: upd.value,
-              changedBy: userId,
-              changeSource: "solomon",
-            });
-          }
-
-          // Batch inserts
-          if (toInsert.length > 0) {
-            try {
-              const inserted = await db.insert(projectElements).values(toInsert).returning({ id: projectElements.id });
-              modifiedElementIds.push(...inserted.map(r => r.id));
-              for (let idx = 0; idx < inserted.length; idx++) {
-                await logElementChange({
-                  projectElementId: inserted[idx].id,
-                  oldValue: null,
-                  newValue: toInsert[idx].value || null,
-                  changedBy: userId,
-                  changeSource: "solomon",
-                });
-              }
-            } catch (insertErr: any) {
-              // Fallback to per-element insert on conflict
-              if (insertErr.code === "23505") {
-                console.warn(`[solomon] Batch insert conflict — falling back to per-element upsert`);
-                for (const row of toInsert) {
-                  try {
-                    const [ins] = await db.insert(projectElements).values(row).returning({ id: projectElements.id });
-                    modifiedElementIds.push(ins.id);
-                    await logElementChange({
-                      projectElementId: ins.id,
-                      oldValue: null,
-                      newValue: row.value || null,
-                      changedBy: userId,
-                      changeSource: "solomon",
-                    });
-                  } catch (perErr: any) {
-                    if (perErr.code === "23505") {
-                      const retryExisting = await db.query.projectElements.findFirst({
-                        where: and(
-                          eq(projectElements.projectId, projectId),
-                          row.elementDefId ? eq(projectElements.elementDefId, row.elementDefId) : eq(projectElements.templateElementId, row.templateElementId!),
-                        ),
-                      });
-                      if (retryExisting) {
-                        await db.update(projectElements).set({ value: row.value, source: "solomon_chat", confirmed: false, updatedAt: new Date() }).where(eq(projectElements.id, retryExisting.id));
-                        modifiedElementIds.push(retryExisting.id);
-                        await logElementChange({
-                          projectElementId: retryExisting.id,
-                          oldValue: retryExisting.value || null,
-                          newValue: row.value || null,
-                          changedBy: userId,
-                          changeSource: "solomon",
-                        });
-                      }
-                    } else {
-                      throw perErr;
-                    }
-                  }
-                }
-              } else {
-                throw insertErr;
-              }
-            }
-          }
-
-          // 1. Validate each modified element
-          for (const elementId of modifiedElementIds) {
-            try {
-              const validation = await validateElement(elementId, projectId);
-              await db.update(projectElements).set({
-                validationStatus: validation.status,
-                validationDetails: validation.details,
-              }).where(eq(projectElements.id, elementId));
-
-              // SSE per element — resolve label from elementDefinitions or templateElements
-              const pe = await db.query.projectElements.findFirst({ where: eq(projectElements.id, elementId) });
-              let elementKey = "";
-              let elementLabel = "";
-              if (pe?.elementDefId) {
-                const ed = orgElemDefs.find(d => d.id === pe.elementDefId);
-                if (ed) { elementKey = ed.elementKey; elementLabel = ed.displayName || ed.elementKey; }
-              }
-              if (!elementKey && pe?.templateElementId) {
-                const te = orgTmplEls.find(t => t.id === pe.templateElementId);
-                if (te) { elementKey = te.key; elementLabel = te.label || te.key; }
-              }
-              if (pe && elementKey) {
-                publishElementValidated(projectId, {
-                  elementId,
-                  elementKey,
-                  value: pe.value,
-                  validationStatus: validation.status,
-                  message: `Element "${elementLabel}" → ${validation.status}`,
-                }).catch((e: any) => console.warn("[solomon] SSE element_validated:", e.message));
-              }
-            } catch (err) {
-              console.error(`[solomon] Validation failed for element ${elementId}:`, err);
-            }
-          }
-
-          // RAG v2: Auto eligibility/scoring disabled — Solomon reasons via tool use
-          // Rollback: uncomment the blocks below
-          // 2. Re-check eligibility
-          // if (modifiedElementIds.length > 0) {
-          //   try {
-          //     await checkEligibility(projectId, organizationId);
-          //     const eligibility = await db.query.projectEligibility.findMany({
-          //       where: eq(projectEligibility.projectId, projectId),
-          //     });
-          //     publishEligibilityUpdated(projectId, {
-          //       total: eligibility.length,
-          //       passed: eligibility.filter(e => e.status === "passed").length,
-          //       failed: eligibility.filter(e => e.status === "failed").length,
-          //       pending: eligibility.filter(e => e.status === "pending").length,
-          //       message: `Eligibilitate re-evaluată`,
-          //     }).catch((e: any) => console.warn("[solomon] SSE eligibility_updated:", e.message));
-          //   } catch (err) {
-          //     console.error(`[solomon] Eligibility check failed for project ${projectId}:`, err);
-          //   }
-          //
-          //   // 3. Recompute scoring
-          //   try {
-          //     const scoreResult = await computeProjectScores(projectId);
-          //     if (scoreResult.scores.length > 0) {
-          //       publishScoreUpdated(projectId, {
-          //         totalPoints: scoreResult.totalPoints,
-          //         maxTotalPoints: scoreResult.maxTotalPoints,
-          //         percentage: scoreResult.percentage,
-          //         message: `Punctaj actualizat`,
-          //       }).catch((e: any) => console.warn("[solomon] SSE score_updated:", e.message));
-          //     }
-          //   } catch (err) {
-          //     console.error(`[solomon] Score computation failed for project ${projectId}:`, err);
-          //   }
-          // }
-
-          // Sync tip_proiect element → projects.tipProiect column
-          const tipProiectEl = extractedElements.find(el => el.key === "tip_proiect");
-          if (tipProiectEl?.value) {
-            await db.update(projects).set({ tipProiect: tipProiectEl.value, updatedAt: new Date() }).where(and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)));
-          }
-
-          // Resolve human-readable labels before sending SSE event
-          for (const el of extractedElements) {
-            if (!el.label) {
-              const elemDef = keyToElemDef.get(el.key);
-              const tmplEl = keyToTmplEl.get(el.key);
-              const knownDef = CLIENT_DOC_FIELD_DEFS[el.key];
-              el.label = elemDef?.displayName || tmplEl?.label || knownDef?.displayName || el.key;
-            }
-          }
-
-          // Send extraction event
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({
-            type: "elements_extracted",
-            elements: extractedElements,
-          })}\n\n`));
-        }
-
-        // Extract project metadata (program, nomenclator, prefix, structure)
-        // Only allow known keys with bounded values to prevent injection
-        const metadataJsonStr = extractBalancedJSON(fullResponse, "<!--METADATA_JSON", "METADATA_JSON-->");
-        if (metadataJsonStr) {
-          try {
-            const rawMetadata = JSON.parse(metadataJsonStr);
-            if (rawMetadata && typeof rawMetadata === "object" && !Array.isArray(rawMetadata)) {
-              const metaUpdate: any = { updatedAt: new Date() };
-              const validatedMetadata: Record<string, string> = {};
-
-              for (const [key, value] of Object.entries(rawMetadata)) {
-                if (ALLOWED_METADATA_KEYS.has(key) && typeof value === "string" && value.length <= MAX_METADATA_VALUE_LENGTH) {
-                  metaUpdate[key] = value;
-                  validatedMetadata[key] = value;
-                }
-              }
-
-              if (Object.keys(metaUpdate).length > 1) {
-                await db.update(projects).set(metaUpdate).where(and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)));
-
-                // Notify frontend about metadata update
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify({
-                  type: "metadata_updated",
-                  metadata: validatedMetadata,
-                })}\n\n`));
-              }
-            }
-          } catch {}
-        }
-
-        // Process CHECK_ELIGIBILITY tool — run pre-eligibility and send results as SSE event
-        if (fullResponse.includes("<!--CHECK_ELIGIBILITY-->")) {
-          try {
-            const { checkPreEligibility } = await import("./preEligibility");
-            const project = await db.query.projects.findFirst({
-              where: and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)),
-            });
-            if (project?.folderId) {
-              const eligResult = await checkPreEligibility(
-                project.companyId,
-                project.folderId,
-                organizationId,
-              );
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify({
-                type: "eligibility_check_result",
-                result: {
-                  total: eligResult.summary.total,
-                  passed: eligResult.summary.passed,
-                  failed: eligResult.summary.failed,
-                  pending: eligResult.summary.pending,
-                  rules: eligResult.rules.map(r => ({
-                    description: r.description,
-                    category: r.category,
-                    status: r.status,
-                    notes: r.notes,
-                    elements: r.elements?.map(e => ({
-                      key: e.elementKey,
-                      name: e.displayName,
-                      value: e.value,
-                      missing: e.isMissing,
-                    })),
-                  })),
-                  missingElements: eligResult.summary.missingElements,
-                },
-              })}\n\n`));
-            }
-          } catch (eligErr) {
-            console.warn("[solomon] CHECK_ELIGIBILITY failed:", (eligErr as Error).message);
-          }
-        }
-
-        // RAG v2: Extract PHASE_JSON and save to project
-        const phaseMatch = fullResponse.match(/<!--PHASE_JSON({.*?})PHASE_JSON-->/s);
-        if (phaseMatch) {
-          try {
-            const phaseData = JSON.parse(phaseMatch[1]);
-            if (phaseData.phase && phaseData.label) {
-              const phaseRecord: any = {
-                phase: phaseData.phase,
-                label: phaseData.label,
-                progress: Math.min(100, Math.max(0, phaseData.progress || 0)),
-                nextAction: phaseData.nextAction || "",
-                updatedAt: new Date().toISOString(),
-              };
-              // FIX L: Include regression data if phase went backwards
-              if (phaseData.regression) {
-                phaseRecord.regression = {
-                  from: phaseData.regression.from,
-                  reason: phaseData.regression.reason,
-                  affectedConclusions: phaseData.regression.affectedConclusions || [],
-                };
-              }
-              await db.update(projects)
-                .set({ solomonPhase: phaseRecord })
-                .where(and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)));
-
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify({
-                type: "phase_update",
-                phase: phaseRecord,
-              })}\n\n`));
-            }
-          } catch (phaseErr) {
-            console.warn("[solomon] PHASE_JSON parse failed:", (phaseErr as Error).message);
-          }
-        }
-
-        // Extract and save structured eligibility/scoring/checklist (batched — no N+1)
-        let currentPhaseStr = "";
-        if (phaseMatch) { try { currentPhaseStr = JSON.parse(phaseMatch[1])?.phase || ""; } catch {} }
-
-        // ELIGIBILITY_JSON — batch upsert
-        const eligJsonStr = extractBalancedJSON(fullResponse, "<!--ELIGIBILITY_JSON", "ELIGIBILITY_JSON-->");
-        if (eligJsonStr) {
-          try {
-            const eligEntries = JSON.parse(eligJsonStr);
-            if (Array.isArray(eligEntries)) {
-              const validEntries = eligEntries.slice(0, 50).filter((e: any) => e.rule && e.status);
-              if (validEntries.length > 0) {
-                // Build batch VALUES for single INSERT ... ON CONFLICT
-                const valuesSql = validEntries.map((entry: any) =>
-                  sql`(gen_random_uuid(), ${projectId}, ${String(entry.rule).slice(0, 500)}, ${entry.category || "eligibilitate"}, ${entry.status}, ${entry.evidence?.slice(0, 2000) || null}, ${Math.min(1, Math.max(0, entry.confidence || 0.5))}, ${currentPhaseStr}, NOW(), NOW())`
-                );
-                await db.execute(sql`
-                  INSERT INTO solomon_eligibility (id, project_id, rule_name, rule_category, status, evidence, confidence, source_phase, updated_at, created_at)
-                  VALUES ${sql.join(valuesSql, sql`, `)}
-                  ON CONFLICT (project_id, rule_name) DO UPDATE SET
-                    status = EXCLUDED.status, evidence = EXCLUDED.evidence, confidence = EXCLUDED.confidence,
-                    source_phase = EXCLUDED.source_phase, updated_at = NOW()
-                `);
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "eligibility_update", entries: validEntries })}\n\n`));
-              }
-            }
-          } catch (e) { console.warn("[solomon] ELIGIBILITY_JSON parse failed:", (e as Error).message); }
-        }
-
-        // SCORING_JSON — batch upsert
-        const scoreJsonStr = extractBalancedJSON(fullResponse, "<!--SCORING_JSON", "SCORING_JSON-->");
-        if (scoreJsonStr) {
-          try {
-            const scoreEntries = JSON.parse(scoreJsonStr);
-            if (Array.isArray(scoreEntries)) {
-              const validEntries = scoreEntries.slice(0, 50).filter((e: any) => e.criterion);
-              if (validEntries.length > 0) {
-                const valuesSql = validEntries.map((entry: any) =>
-                  sql`(gen_random_uuid(), ${projectId}, ${String(entry.criterion).slice(0, 500)}, ${entry.category || null}, ${entry.points || 0}, ${entry.maxPoints || 0}, ${entry.evidence?.slice(0, 2000) || null}, ${Math.min(1, Math.max(0, entry.confidence || 0.5))}, ${currentPhaseStr}, NOW(), NOW())`
-                );
-                await db.execute(sql`
-                  INSERT INTO solomon_scoring (id, project_id, criterion_name, criterion_category, points_estimated, max_points, evidence, confidence, source_phase, updated_at, created_at)
-                  VALUES ${sql.join(valuesSql, sql`, `)}
-                  ON CONFLICT (project_id, criterion_name) DO UPDATE SET
-                    points_estimated = EXCLUDED.points_estimated, max_points = EXCLUDED.max_points,
-                    evidence = EXCLUDED.evidence, confidence = EXCLUDED.confidence,
-                    source_phase = EXCLUDED.source_phase, updated_at = NOW()
-                `);
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "scoring_update", entries: validEntries })}\n\n`));
-              }
-            }
-          } catch (e) { console.warn("[solomon] SCORING_JSON parse failed:", (e as Error).message); }
-        }
-
-        // CHECKLIST_JSON — batch insert (skip existing via ON CONFLICT DO NOTHING)
-        const checkJsonStr = extractBalancedJSON(fullResponse, "<!--CHECKLIST_JSON", "CHECKLIST_JSON-->");
-        if (checkJsonStr) {
-          try {
-            const checkEntries = JSON.parse(checkJsonStr);
-            if (Array.isArray(checkEntries)) {
-              const validEntries = checkEntries.slice(0, 50).filter((e: any) => e.document);
-              if (validEntries.length > 0) {
-                // Use INSERT ... ON CONFLICT DO NOTHING to skip duplicates in one query
-                const valuesSql = validEntries.map((entry: any) =>
-                  sql`(gen_random_uuid(), ${projectId}, ${String(entry.document).slice(0, 500)}, ${entry.category || "obligatoriu_depunere"}, ${"solomon"}, ${[entry.reference, entry.notes].filter(Boolean).join(" · ").slice(0, 1000) || null}, NOW())`
-                );
-                await db.execute(sql`
-                  INSERT INTO project_checklist (id, project_id, name, category, source, notes, created_at)
-                  VALUES ${sql.join(valuesSql, sql`, `)}
-                  ON CONFLICT (project_id, name) DO NOTHING
-                `);
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "checklist_update", entries: validEntries })}\n\n`));
-              }
-            }
-          } catch (e) { console.warn("[solomon] CHECKLIST_JSON parse failed:", (e as Error).message); }
-        }
-
-        // FIX K: Parse SIGNAL_JSON (risks, loops, client discussions)
-        const signalJsonStr = extractBalancedJSON(fullResponse, "<!--SIGNAL_JSON", "SIGNAL_JSON-->");
-        if (signalJsonStr) {
-          try {
-            const signal = JSON.parse(signalJsonStr);
-            if (signal && signal.type && signal.message) {
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify({
-                type: "signal",
-                signal: {
-                  signalType: signal.type,
-                  message: signal.message,
-                  severity: signal.severity || "medium",
-                  phase: signal.phase || currentPhaseStr,
-                  target: signal.target,
-                  timestamp: new Date().toISOString(),
-                },
-              })}\n\n`));
-            }
-          } catch (e) { console.warn("[solomon] SIGNAL_JSON parse failed:", (e as Error).message); }
-        }
-
-        // Save assistant message (clean hidden JSON tags)
-        const cleanResponse = fullResponse
-          .replace(/<!--ELEMENTS_JSON[\s\S]*?ELEMENTS_JSON-->/g, "")
-          .replace(/<!--METADATA_JSON[\s\S]*?METADATA_JSON-->/g, "")
-          .replace(/<!--CHECK_ELIGIBILITY-->/g, "")
-          .replace(/<!--PHASE_JSON[\s\S]*?PHASE_JSON-->/g, "")
-          .replace(/<!--ELIGIBILITY_JSON[\s\S]*?ELIGIBILITY_JSON-->/g, "")
-          .replace(/<!--SCORING_JSON[\s\S]*?SCORING_JSON-->/g, "")
-          .replace(/<!--CHECKLIST_JSON[\s\S]*?CHECKLIST_JSON-->/g, "")
-          .replace(/<!--SIGNAL_JSON[\s\S]*?SIGNAL_JSON-->/g, "")
-          .trim();
-
+        // Save assistant message directly — tools have already persisted all structured data
         await db.insert(solomonMessages).values({
           conversationId,
           role: "assistant",
-          content: cleanResponse,
-          elementsExtracted: extractedElements.length > 0 ? JSON.stringify(extractedElements) : null,
+          content: fullResponse.trim(),
           tokensInput: tokensIn,
           tokensOutput: tokensOut,
           cost: calculateCost(model, tokensIn, tokensOut),
           model,
         });
 
+        // LEGACY FALLBACK: If Solomon still emits hidden JSON markers (transition period),
+        // parse them for backward compatibility. This block will be removed once all
+        // conversations use tool_use exclusively.
         await logAIUsage({
           organizationId,
           projectId,

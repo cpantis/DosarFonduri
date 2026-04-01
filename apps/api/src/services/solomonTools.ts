@@ -14,8 +14,8 @@
 import { searchChapters, getSessionBriefs } from "./chapterSearch";
 import { hybridSearch } from "./hybridSearch";
 import { db } from "../db";
-import { documents, projectElements, elementDefinitions, solomonEligibility, solomonScoring } from "../db/schema";
-import { eq, and } from "drizzle-orm";
+import { documents, projectElements, elementDefinitions, solomonEligibility, solomonScoring, projects, projectChecklist } from "../db/schema";
+import { eq, and, sql } from "drizzle-orm";
 import { anthropic, withAILimit } from "../lib/anthropic";
 import { logAIUsage } from "./aiUsage";
 
@@ -153,6 +153,54 @@ export const SOLOMON_TOOLS = [
         },
       },
       required: ["section_title" as const, "instructions" as const],
+    },
+  },
+  {
+    name: "update_phase" as const,
+    description: "Actualizează faza conversației (Q0-Q11). Apelează la FIECARE răspuns.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        phase: { type: "string" as const, description: "Faza: Q0, Q1, ..., Q11" },
+        label: { type: "string" as const, description: "Descriere scurtă a fazei" },
+        progress: { type: "integer" as const, description: "Progres 0-100" },
+        next_action: { type: "string" as const, description: "Ce urmează" },
+        regression_from: { type: "string" as const, description: "Faza anterioară dacă e regresie" },
+        regression_reason: { type: "string" as const, description: "Motivul regresiei" },
+      },
+      required: ["phase" as const, "label" as const, "progress" as const],
+    },
+  },
+  {
+    name: "update_metadata" as const,
+    description: "Salvează metadate proiect (program, măsură, sesiune, nomenclator). Apelează când consultantul confirmă aceste informații.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        program_finantare: { type: "string" as const },
+        cod_masura: { type: "string" as const },
+        cod_sesiune: { type: "string" as const },
+        cod_nomenclator: { type: "string" as const },
+        prefix_documente: { type: "string" as const },
+        cod_mysmis: { type: "string" as const },
+        tip_proiect: { type: "string" as const },
+        structura_dosar: { type: "string" as const },
+      },
+      required: [] as const,
+    },
+  },
+  {
+    name: "update_checklist" as const,
+    description: "Adaugă un document necesar la checklist-ul proiectului.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        document: { type: "string" as const, description: "Numele documentului" },
+        category: { type: "string" as const, enum: ["obligatoriu_depunere", "obligatoriu_contractare", "optional"] },
+        reference: { type: "string" as const, description: "Referință ghid" },
+        notes: { type: "string" as const, description: "Note suplimentare" },
+      },
+      required: ["document" as const],
     },
   },
 ];
@@ -459,6 +507,76 @@ ${contextText.slice(0, 10000)}`,
   return sectionText;
 }
 
+async function handleUpdatePhase(
+  input: { phase: string; label: string; progress: number; next_action?: string; regression_from?: string; regression_reason?: string },
+  ctx: ToolContext,
+): Promise<string> {
+  const phaseRecord: any = {
+    phase: (input.phase || "Q0").slice(0, 10),
+    label: (input.label || "").slice(0, 200),
+    progress: Math.min(100, Math.max(0, input.progress || 0)),
+    nextAction: (input.next_action || "").slice(0, 500),
+    updatedAt: new Date().toISOString(),
+  };
+  if (input.regression_from) {
+    phaseRecord.regression = {
+      from: input.regression_from.slice(0, 10),
+      reason: (input.regression_reason || "").slice(0, 500),
+    };
+  }
+  await db.update(projects)
+    .set({ solomonPhase: phaseRecord })
+    .where(and(eq(projects.id, ctx.projectId), eq(projects.organizationId, ctx.organizationId)));
+  return `Faza actualizată: ${phaseRecord.phase} — ${phaseRecord.label} (${phaseRecord.progress}%)`;
+}
+
+async function handleUpdateMetadata(
+  input: Record<string, string>,
+  ctx: ToolContext,
+): Promise<string> {
+  const ALLOWED_KEYS: Record<string, string> = {
+    program_finantare: "programFinantare",
+    cod_masura: "codMasura",
+    cod_sesiune: "codSesiune",
+    cod_nomenclator: "codNomenclator",
+    prefix_documente: "prefixDocumente",
+    cod_mysmis: "codMysmis",
+    tip_proiect: "tipProiect",
+    structura_dosar: "structuraDosar",
+  };
+  const update: any = { updatedAt: new Date() };
+  const saved: string[] = [];
+  for (const [inputKey, dbKey] of Object.entries(ALLOWED_KEYS)) {
+    const val = input[inputKey];
+    if (val && typeof val === "string" && val.length <= 500) {
+      update[dbKey] = val;
+      saved.push(`${inputKey}: ${val}`);
+    }
+  }
+  if (saved.length === 0) return "Nicio metadată validă de salvat.";
+  await db.update(projects).set(update).where(and(eq(projects.id, ctx.projectId), eq(projects.organizationId, ctx.organizationId)));
+  return `Metadate proiect actualizate: ${saved.join(", ")}`;
+}
+
+async function handleUpdateChecklist(
+  input: { document: string; category?: string; reference?: string; notes?: string },
+  ctx: ToolContext,
+): Promise<string> {
+  if (!input.document || input.document.length > 500) return "Eroare: numele documentului lipsește sau e prea lung.";
+  const existing = await db.query.projectChecklist.findFirst({
+    where: and(eq(projectChecklist.projectId, ctx.projectId), eq(projectChecklist.name, input.document)),
+  });
+  if (existing) return `Document deja în checklist: ${input.document}`;
+  await db.insert(projectChecklist).values({
+    projectId: ctx.projectId,
+    name: input.document.slice(0, 500),
+    category: input.category || "obligatoriu_depunere",
+    source: "solomon",
+    notes: [input.reference, input.notes].filter(Boolean).join(" · ").slice(0, 1000) || null,
+  });
+  return `✅ Adăugat la checklist: ${input.document} (${input.category || "obligatoriu_depunere"})`;
+}
+
 // ═══════════════════════════════════════════
 // ROUTER — execute the correct tool
 // ═══════════════════════════════════════════
@@ -482,6 +600,12 @@ export async function executeSolomonTool(
       return handleEstimateScore(toolInput, context);
     case "compose_section":
       return handleComposeSection(toolInput, context);
+    case "update_phase":
+      return handleUpdatePhase(toolInput, context);
+    case "update_metadata":
+      return handleUpdateMetadata(toolInput, context);
+    case "update_checklist":
+      return handleUpdateChecklist(toolInput, context);
     default:
       return `Tool necunoscut: ${toolName}`;
   }

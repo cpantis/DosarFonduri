@@ -1718,13 +1718,12 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         processedAt: new Date(),
       }).where(eq(documents.id, documentId));
 
-      // ─── STEP 8: RAG — Chunk + Embed for vector retrieval ───
+      // ─── STEP 8: RAG — Chunk for text search retrieval ───
       setStep("link", "done");
       setStep("rag", "active");
-      publishSteps(96, `Indexare vectori pentru cautare semantica...`);
+      publishSteps(96, `Indexare text pentru căutare...`);
       try {
         const { chunkGuideText } = await import("../services/guideChunker");
-        const { embedTexts } = await import("../services/embeddings");
         const { guideChunks: guideChunksTable } = await import("../db/schema");
 
         const ragStart = Date.now();
@@ -1737,12 +1736,8 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
         console.log(`[processGuide] RAG: ${chunks.length} chunks created`);
 
         if (chunks.length > 0) {
-          // Generate embeddings in batch
-          const chunkTexts = chunks.map(c => c.content);
-          const embeddings = await embedTexts(chunkTexts);
-
-          // Insert chunks with embeddings
-          const chunkRows = chunks.map((chunk, i) => ({
+          // Insert chunks — full-text search via tsvector handles retrieval
+          const chunkRows = chunks.map((chunk) => ({
             documentId,
             organizationId,
             chunkIndex: chunk.chunkIndex,
@@ -1752,7 +1747,6 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
             pageEnd: chunk.pageEnd,
             sectionType: chunk.sectionType,
             sectionTitle: chunk.sectionTitle,
-            embedding: embeddings[i],
             metadata: {
               totalChunks: chunks.length,
               guideName: doc.name,
@@ -1767,12 +1761,12 @@ export const processGuideWorker = new Worker<ProcessGuidePayload>(
           }
 
           const ragDuration = Date.now() - ragStart;
-          console.log(`[processGuide] RAG complete: ${chunks.length} chunks embedded in ${ragDuration}ms`);
+          console.log(`[processGuide] RAG complete: ${chunks.length} chunks indexed in ${ragDuration}ms`);
         }
         setStep("rag", "done", `${chunks.length} chunks`);
       } catch (ragErr: any) {
-        // Non-critical: RAG embedding failure should not block guide processing
-        console.warn(`[processGuide] RAG embedding failed (non-critical): ${ragErr.message}`);
+        // Non-critical: RAG failure should not block guide processing
+        console.warn(`[processGuide] RAG indexing failed (non-critical): ${ragErr.message}`);
         setStep("rag", "error", (ragErr as Error).message?.slice(0, 50));
       }
 

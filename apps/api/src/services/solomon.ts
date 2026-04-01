@@ -19,7 +19,7 @@ import { validateElement, logElementChange } from "./elementValidation";
 import { computeProjectScores } from "./scoring";
 import { publishElementValidated, publishEligibilityUpdated, publishScoreUpdated } from "../lib/sse";
 import { preflightCached } from "./dbPreflight";
-import { SOLOMON_TOOLS, executeSolomonTool } from "./solomonTools";
+import { SOLOMON_TOOLS, executeSolomonTool, type ToolContext } from "./solomonTools";
 import { upsertElementDefinition } from "./elementDefinitionService";
 import { getFileBuffer } from "./storage";
 
@@ -1349,11 +1349,23 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
   // Resolve sessionId for tool context (folderId serves as session)
   const projectForTools = await db.query.projects.findFirst({
     where: and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)),
-    columns: { folderId: true },
+    columns: { folderId: true, name: true, companyId: true },
   });
-  const toolContext = {
+  let companyName = "";
+  if (projectForTools?.companyId) {
+    const comp = await db.query.companies.findFirst({
+      where: eq(companies.id, projectForTools.companyId),
+      columns: { denumire: true },
+    });
+    companyName = comp?.denumire || "";
+  }
+  const toolContext: ToolContext = {
     cabinetId: organizationId,
     sessionId: projectForTools?.folderId || "",
+    projectId,
+    organizationId,
+    projectName: projectForTools?.name || "",
+    companyName,
   };
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {

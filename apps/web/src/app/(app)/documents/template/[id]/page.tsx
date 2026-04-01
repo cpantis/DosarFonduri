@@ -157,7 +157,7 @@ export default function TemplateViewerPage() {
         }
         setMappingData(mapByKey);
         setMappingSummary({ total: mapData.total, mapped: mapData.mapped, unmapped: mapData.unmapped, validated: mapData.validated });
-      } catch {}
+      } catch (e) { console.warn("[template]", (e as Error)?.message || e); }
 
       // Load compose config
       try {
@@ -169,7 +169,7 @@ export default function TemplateViewerPage() {
         if (cfg.composeConfig?.aiModel) {
           setComposeAiModel(cfg.composeConfig.aiModel);
         }
-      } catch {}
+      } catch (e) { console.warn("[template]", (e as Error)?.message || e); }
     } catch (err: any) {
       setError(err.message || "Eroare la încărcare");
     } finally {

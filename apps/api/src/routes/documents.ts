@@ -2176,17 +2176,12 @@ documentRoutes.put("/documents/:id/reclassify", async (c) => {
   });
   if (!doc) return c.json({ error: "Document not found" }, 404);
 
-  const body = await c.req.json();
+  const reclassifySchema = z.object({
+    docType: z.string().min(1).max(100),
+    routingAction: z.enum(["vectorize", "template_fill", "template_compose", "extract_data", "vectorize_and_extract"]),
+  });
+  const body = reclassifySchema.parse(await c.req.json());
   const { docType, routingAction } = body;
-
-  if (!docType || !routingAction) {
-    return c.json({ error: "docType and routingAction are required" }, 400);
-  }
-
-  const validRoutes = ["vectorize", "template_fill", "template_compose", "extract_data", "vectorize_and_extract"];
-  if (!validRoutes.includes(routingAction)) {
-    return c.json({ error: `Invalid routingAction. Must be one of: ${validRoutes.join(", ")}` }, 400);
-  }
 
   // Delete old chapters/briefs if any exist (re-classification)
   await db.delete(documentChapters).where(eq(documentChapters.documentId, id));

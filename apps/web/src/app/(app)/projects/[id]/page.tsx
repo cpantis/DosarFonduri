@@ -7,6 +7,7 @@ import { RuleCard, RuleCardList, RuleCardData, CATEGORY_COLORS as RC_CAT_COLORS,
 import { useToast } from "@/components/shared/Toast";
 import { useSSE } from "@/hooks/useSSE";
 import FormOnDocument from "@/components/documents/FormOnDocument";
+import { SummaryTab, ScoringTab, TablesTab, ChecklistTab } from "@/components/projects/tabs";
 
 const API_URL = "";
 

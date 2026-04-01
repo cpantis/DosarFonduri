@@ -251,7 +251,7 @@ export async function buildComposeContext(
   const templateDoc = await db.query.documents.findFirst({
     where: eq(documents.id, templateDocumentId),
   });
-  const composeConfig = (templateDoc as any)?.composeConfig as any;
+  const composeConfig = templateDoc?.composeConfig;
 
   // Filter reference tables to those specified in composeConfig, or all if not specified
   let relevantRefTables = refTables;
@@ -1069,7 +1069,7 @@ export async function composeDocument(params: ComposeDocParams): Promise<Readabl
         });
         if (!templateDoc) throw new Error("Template not found");
 
-        const composeConfig = (templateDoc as any)?.composeConfig as any;
+        const composeConfig = templateDoc?.composeConfig;
         if (!composeConfig?.sections || composeConfig.sections.length === 0) {
           throw new Error("Template-ul nu are secțiuni COMPOSE configurate. Adăugați secțiuni în composeConfig.");
         }
@@ -1094,7 +1094,7 @@ export async function composeDocument(params: ComposeDocParams): Promise<Readabl
         });
 
         // Step 0: Auto-generate blueprint if missing (cached on template)
-        let templateBlueprint = (templateDoc as any)?.blueprint as DocumentBlueprint | null;
+        let templateBlueprint = (templateDoc?.blueprint ?? null) as DocumentBlueprint | null;
         if (!templateBlueprint && !editedSections) {
           try {
             emit({ type: "status", message: "Se analizează structura template-ului (blueprint)..." });
@@ -1993,7 +1993,7 @@ export async function validateComposeReadiness(
     return { canCompose: false, warnings, errors, stats: { totalElements: 0, filledElements: 0, referenceTables: 0, composeSections: 0, checklistTotal: 0, checklistDone: 0, checklistCompleteness: 100, missingCritical: [], missingWarning: [], missingInfo: [] }, sectionReadiness: [] };
   }
 
-  const composeConfig = (templateDoc as any)?.composeConfig as any;
+  const composeConfig = templateDoc?.composeConfig;
   if (!composeConfig?.sections || composeConfig.sections.length === 0) {
     errors.push("Template-ul nu are secțiuni COMPOSE configurate");
     return { canCompose: false, warnings, errors, stats: { totalElements: 0, filledElements: 0, referenceTables: 0, composeSections: 0, checklistTotal: 0, checklistDone: 0, checklistCompleteness: 100, missingCritical: [], missingWarning: [], missingInfo: [] }, sectionReadiness: [] };
@@ -2070,7 +2070,7 @@ export async function validateComposeReadiness(
     qualityLevel: "full" | "partial" | "minimal";
   }> = [];
 
-  const blueprint = (templateDoc as any)?.blueprint as DocumentBlueprint | null;
+  const blueprint = (templateDoc?.blueprint ?? null) as DocumentBlueprint | null;
   if (blueprint?.sections) {
     // Build a set of element keys that have non-empty values
     // projectElements don't have a direct key — resolve via templateElements

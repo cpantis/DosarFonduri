@@ -5,8 +5,10 @@ import { db } from "../db";
 import {
   companies, companyAssociates, companyAdministrators,
   companyFinancials, companyIfMembers, documentFolders, rules, documents,
-  projects, projectDocuments, companyElements,
+  projects, projectDocuments, companyElements, formaJuridicaEnum,
 } from "../db/schema";
+
+type FormaJuridica = (typeof formaJuridicaEnum.enumValues)[number];
 import { eq, and, sql, inArray, count } from "drizzle-orm";
 import { KNOWN_COMPANY_FIELDS, FIELD_CATEGORIES, resolveFieldKey, getFieldDef } from "@dosarfonduri/shared";
 import { lookupCUI, FORMA_MAP } from "../services/onrc";
@@ -81,7 +83,7 @@ async function insertCompanyFromListaFirme(
   return db.transaction(async (tx) => {
     const [comp] = await tx.insert(companies).values({
       organizationId,
-      formaJuridica: formaCode as any,
+      formaJuridica: formaCode as FormaJuridica,
       denumire: lfData.name,
       cui: lfData.taxCode,
       regCom: lfData.regNo || undefined,
@@ -240,8 +242,8 @@ companyRoutes.get("/:id/processing-status", async (c) => {
   if (!company) return c.json({ error: "Not found" }, 404);
 
   return c.json({
-    processingStatus: (company as any).processingStatus || "idle",
-    processingError: (company as any).processingError || null,
+    processingStatus: company.processingStatus || "idle",
+    processingError: company.processingError || null,
     denumire: company.denumire,
     cui: company.cui,
   });
@@ -277,7 +279,7 @@ companyRoutes.post("/", async (c) => {
     // Create company with placeholder data — will be enriched by background processor
     const [company] = await db.insert(companies).values({
       organizationId: auth.organizationId,
-      formaJuridica: formaJuridica as any,
+      formaJuridica: formaJuridica as FormaJuridica,
       denumire: file.name.replace(/\.[^.]+$/, "").substring(0, 100) || "Se procesează...",
       cui: `PROC-${Date.now()}`,
       certificatFileId: fileId,
@@ -346,7 +348,7 @@ companyRoutes.post("/", async (c) => {
     const company = await db.transaction(async (tx) => {
       const [comp] = await tx.insert(companies).values({
         organizationId: orgId,
-        formaJuridica: formaCode as any,
+        formaJuridica: formaCode as FormaJuridica,
         denumire: onrcData.denumire,
         cui: onrcData.cui,
         regCom: onrcData.regCom,
@@ -481,7 +483,7 @@ companyRoutes.post("/:id/sync-onrc", async (c) => {
     await db.update(companies).set({
       denumire: lfData.name || company.denumire,
       regCom: lfData.regNo || company.regCom,
-      ...(syncFormaCode ? { formaJuridica: syncFormaCode as any } : {}),
+      ...(syncFormaCode ? { formaJuridica: syncFormaCode as FormaJuridica } : {}),
       adresa: lfData.address || company.adresa,
       localitate: lfData.city || company.localitate,
       judet: lfData.county || company.judet,
@@ -601,7 +603,7 @@ companyRoutes.post("/:id/sync-onrc", async (c) => {
     denumire: onrcData.denumire,
     regCom: onrcData.regCom || company.regCom,
     euid: onrcData.euid || company.euid,
-    ...(syncFormaCode ? { formaJuridica: syncFormaCode as any } : {}),
+    ...(syncFormaCode ? { formaJuridica: syncFormaCode as FormaJuridica } : {}),
     adresa: onrcData.adresa,
     localitate: onrcData.localitate,
     judet: onrcData.judet,

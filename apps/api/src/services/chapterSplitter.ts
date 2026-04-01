@@ -198,7 +198,7 @@ export async function generateBrief(
     .map(ch => `## ${ch.title}\n${ch.content.slice(0, 800)}`)
     .join("\n\n---\n\n");
 
-  const response: any = await withAILimit(async () => {
+  const response: Anthropic.Message = await withAILimit(async () => {
     return anthropic.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: 2000,
@@ -219,15 +219,15 @@ Scrie DOAR rezumatul, fără preambul sau explicații.`,
     });
   }, "batch");
 
-  const textBlock = (response as any).content?.find((b: any) => b.type === "text");
+  const textBlock = response.content.find((b): b is Anthropic.TextBlock => b.type === "text");
   const brief = textBlock?.text || "";
 
   await logAIUsage({
     organizationId,
     agent: "solomon",
     model: "claude-sonnet-4-6",
-    tokensInput: (response as any).usage?.input_tokens || 0,
-    tokensOutput: (response as any).usage?.output_tokens || 0,
+    tokensInput: response.usage?.input_tokens || 0,
+    tokensOutput: response.usage?.output_tokens || 0,
     action: "generate_brief",
   });
 

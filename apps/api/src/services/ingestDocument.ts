@@ -96,9 +96,9 @@ export async function ingestDocument(options: IngestOptions): Promise<IngestResu
     let classification: ClassificationResult;
     if (forceClassification) {
       classification = forceClassification;
-    } else if (doc.classification && (doc.classification as any).confidence === 1.0 && !(doc.classification as any).isProcessed) {
+    } else if (doc.classification && doc.classification.confidence === 1.0 && !doc.classification.isProcessed) {
       // Manual reclassification — use what's already on the document
-      classification = doc.classification as any as ClassificationResult;
+      classification = doc.classification as ClassificationResult;
     } else {
       classification = await classifyDocumentForIngestion(fileName, firstPagesText);
     }
@@ -106,7 +106,7 @@ export async function ingestDocument(options: IngestOptions): Promise<IngestResu
     // Save classification on document
     await db
       .update(documents)
-      .set({ classification: classification as any })
+      .set({ classification })
       .where(eq(documents.id, documentId));
 
     // ═══════════════════════════════════════════
@@ -174,7 +174,7 @@ export async function ingestDocument(options: IngestOptions): Promise<IngestResu
       .update(documents)
       .set({
         status: "processed",
-        classification: updatedClassification as any,
+        classification: updatedClassification,
         processedAt: new Date(),
       })
       .where(eq(documents.id, documentId));
@@ -195,14 +195,15 @@ export async function ingestDocument(options: IngestOptions): Promise<IngestResu
       extractedFields: extractedFieldsCount,
       timeMs: elapsed,
     };
-  } catch (error: any) {
-    console.error(`[ingestDocument] Failed for ${documentId}:`, error.message);
+  } catch (error: unknown) {
+    const errMsg = (error as Error).message || String(error);
+    console.error(`[ingestDocument] Failed for ${documentId}:`, errMsg);
 
     await db
       .update(documents)
       .set({
         status: "error",
-        processingError: error.message?.slice(0, 1000),
+        processingError: errMsg.slice(0, 1000),
       })
       .where(eq(documents.id, documentId));
 
@@ -212,7 +213,7 @@ export async function ingestDocument(options: IngestOptions): Promise<IngestResu
       documentId,
       progress: 0,
       status: "failed",
-      message: `Eroare procesare: ${error.message?.slice(0, 200)}`,
+      message: `Eroare procesare: ${errMsg.slice(0, 200)}`,
     }).catch(() => {});
 
     throw error;
@@ -295,8 +296,8 @@ async function routeTemplateFill(
 
   // Set generationMode + processingType on document so processTemplate recognizes it
   await db.update(documents).set({
-    generationMode: "fill" as any,
-    processingType: "template" as any,
+    generationMode: "fill",
+    processingType: "template",
   }).where(eq(documents.id, documentId));
 
   // CRITICAL: Dispatch processTemplate job to create templateElements + composeConfig + placeholder_mapping
@@ -354,8 +355,8 @@ async function routeTemplateCompose(
   // Set generationMode on document
   // Set generationMode + processingType on document so processTemplate recognizes it
   await db.update(documents).set({
-    generationMode: "compose" as any,
-    processingType: "template" as any,
+    generationMode: "compose",
+    processingType: "template",
   }).where(eq(documents.id, documentId));
 
   // CRITICAL: Dispatch processTemplate job to extract COMPOSE: markers, create composeConfig + templateElements

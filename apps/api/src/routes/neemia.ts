@@ -717,9 +717,9 @@ neemiaRoutes.put("/documents/:docId/sections/:marker", async (c) => {
   }).returning();
 
   // Also update the composeContent in projectDocuments to reflect the edit
-  const composeContent = projDoc.composeContent as any;
+  const composeContent = projDoc.composeContent;
   if (composeContent?.sections) {
-    const sectionIdx = composeContent.sections.findIndex((s: any) => s.marker === marker);
+    const sectionIdx = composeContent.sections.findIndex((s) => s.marker === marker);
     if (sectionIdx >= 0) {
       composeContent.sections[sectionIdx].content = content;
       composeContent.sections[sectionIdx].approved = true;
@@ -1158,7 +1158,7 @@ neemiaRoutes.post("/projects/:projectId/compose/generate-section", async (c) => 
   const { sectionId, sectionTitle, additionalContext, previousSectionContent } = body;
 
   // Load compose brief
-  const brief = project.composeBrief as any;
+  const brief = project.composeBrief;
 
   // Load project elements
   const elements = await db.query.projectElements.findMany({

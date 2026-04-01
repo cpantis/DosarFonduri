@@ -15,7 +15,7 @@ interface NeemiaTabProps {
   readOnly: boolean;
   isMountedRef: React.RefObject<boolean>;
   solomonAbortRef: React.MutableRefObject<AbortController | null>;
-  toast: (type: string, msg: string) => void;
+  toast: (type: any, msg: string) => void;
   cabinetBranding: any;
   orgLabels: { solomonLabel: string; neemiaLabel: string };
 }

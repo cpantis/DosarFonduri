@@ -17,7 +17,7 @@ interface RulesTabProps {
   recheckLoading: boolean;
   setRecheckLoading: (v: boolean) => void;
   readOnly: boolean;
-  toast: (type: string, msg: string) => void;
+  toast: (type: any, msg: string) => void;
   onSwitchToElements: (search: string) => void;
   mapEligibilityRules: (flat: any[]) => EligibilityRule[];
   mapGuideRules: (grouped: any[]) => GuideRule[];

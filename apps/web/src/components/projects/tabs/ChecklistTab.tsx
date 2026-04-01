@@ -11,7 +11,7 @@ interface ChecklistTabProps {
   solChecklist: any[];
   classifiedDocs: any[];
   readOnly: boolean;
-  toast: (type: string, msg: string) => void;
+  toast: (type: any, msg: string) => void;
   onSwitchToNeemia: () => void;
 }
 

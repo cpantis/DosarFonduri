@@ -92,7 +92,8 @@ export async function withAILimit<T>(fn: () => Promise<T>, priority: AIPriority 
         // Remove from queue
         const idx = queue.indexOf(entry);
         if (idx !== -1) queue.splice(idx, 1);
-        reject(new Error(`AI queue timeout (${QUEUE_TIMEOUT_MS}ms, priority=${priority}, active=${activeCalls}, highQ=${highQueue.length}, lowQ=${lowQueue.length})`));
+        console.warn(`[anthropic] Queue timeout: ${QUEUE_TIMEOUT_MS}ms, priority=${priority}, active=${activeCalls}, highQ=${highQueue.length}, lowQ=${lowQueue.length}`);
+        reject(new Error("Sistemul AI este ocupat momentan. Reîncearcă peste câteva secunde."));
       }, QUEUE_TIMEOUT_MS);
 
       // Clear timeout when resolved

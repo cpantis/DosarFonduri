@@ -180,7 +180,7 @@ export default function SettingsPage() {
           ...data,
         }));
       }
-    } catch {}
+    } catch (e) { console.warn("[settings]", (e as Error)?.message || e); }
   }, []);
 
   const loadKnowledge = useCallback(async () => {
@@ -668,7 +668,7 @@ export default function SettingsPage() {
                               toast("success", `${uploadEntries.length} sectiuni extrase din "${uploadName}"`);
                             }
                           }
-                        } catch {}
+                        } catch (e) { console.warn("[settings]", (e as Error)?.message || e); }
                       }, 10000);
                     } catch (err: any) {
                       toast("error", err.message || "Eroare la procesare document");

@@ -894,7 +894,7 @@ export async function getReferenceValuesMap(organizationId: string): Promise<Rec
 // RAG v2 — Knowledge Base (cabinet-level documents for Solomon)
 // ═══════════════════════════════════════════
 
-import { chunks } from "../db/schema";
+import { documentChapters, documentBriefs } from "../db/schema";
 import { ingestDocumentQueue, JOB_PRIORITY } from "../lib/queue";
 import { isRedisReady } from "../lib/redis";
 
@@ -911,7 +911,7 @@ configRoutes.get("/knowledge-base", async (c) => {
   // Find documents that have been ingested as knowledge_base
   const kbDocs = await db.execute(
     sql`SELECT d.id, d.name, d.file_type, d.file_size, d.status, d.classification, d.uploaded_at,
-        (SELECT COUNT(*) FROM chunks c WHERE c.document_id = d.id AND c.source_type = 'knowledge_base') as chunks_count
+        (SELECT COUNT(*) FROM document_chapters dc WHERE dc.document_id = d.id) as chapters_count
       FROM documents d
       WHERE d.organization_id = ${auth.organizationId}
         AND d.classification->>'routingAction' = 'vectorize'
@@ -1020,8 +1020,9 @@ configRoutes.delete("/knowledge-base/:docId", async (c) => {
   });
   if (!doc) return c.json({ error: "Document not found" }, 404);
 
-  // Delete chunks first
-  await db.delete(chunks).where(eq(chunks.documentId, docId));
+  // Delete chapters and briefs first (CASCADE would handle this, but explicit is cleaner)
+  await db.delete(documentChapters).where(eq(documentChapters.documentId, docId));
+  await db.delete(documentBriefs).where(eq(documentBriefs.documentId, docId));
 
   // Delete document
   await db.delete(documents).where(eq(documents.id, docId));

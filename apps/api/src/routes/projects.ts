@@ -110,7 +110,7 @@ async function getProjectTemplates(folderId: string, orgId: string) {
     ),
   });
   const sessionTemplates = sessionDocs.filter(d => {
-    const cls = d.classification as any;
+    const cls = d.classification;
     return cls?.routingAction === "template_fill" || cls?.routingAction === "template_compose"
       || d.processingType === "template";
   });
@@ -472,8 +472,8 @@ async function populateChecklistFromRules(projectId: string, folderId: string, _
       where: and(eq(documents.folderId, folder.id), eq(documents.processingType, "ghid")),
     });
     for (const doc of docs) {
-      const pr = doc.processingResult as any;
-      const docReqs = pr?.document_requirements;
+      const pr = doc.processingResult;
+      const docReqs = (pr as Record<string, unknown>)?.document_requirements;
       if (Array.isArray(docReqs)) {
         for (const req of docReqs) {
           const name = (req.name || "").trim();
@@ -630,12 +630,12 @@ projectRoutes.get("/:id", async (c) => {
   }
 
   const company = await db.query.companies.findFirst({
-    where: eq(companies.id, project.companyId),
+    where: and(eq(companies.id, project.companyId), eq(companies.organizationId, auth.organizationId!)),
   });
 
-  const folder = await db.query.documentFolders.findFirst({
-    where: eq(documentFolders.id, project.folderId),
-  });
+  const folder = project.folderId ? await db.query.documentFolders.findFirst({
+    where: and(eq(documentFolders.id, project.folderId), eq(documentFolders.organizationId, auth.organizationId!)),
+  }) : null;
 
   const elements = await db.query.projectElements.findMany({
     where: eq(projectElements.projectId, id),
@@ -881,10 +881,10 @@ projectRoutes.put("/:id/elements/:eid", async (c) => {
       projectElementId: eid,
       oldValue: oldElement.value,
       newValue: body.value,
-      oldValidationStatus: oldElement.validationStatus as any,
+      oldValidationStatus: oldElement.validationStatus,
       newValidationStatus: validation.status,
       changedBy: auth.userId,
-      changeSource: (body.source || oldElement.source) as any,
+      changeSource: body.source || oldElement.source,
     });
   }
 
@@ -1069,7 +1069,7 @@ projectRoutes.get("/:id/eligibility", async (c) => {
 
     // Build linkedElements with actual values
     const links = elemLinksByRule.get(e.ruleId) || [];
-    const condition = rule?.condition as any;
+    const condition = rule?.condition as Record<string, unknown> | null;
     const linkedElements: Array<{
       elementKey: string; displayName: string; category: string | null;
       role: string; value: any; isMissing: boolean;

@@ -11,11 +11,12 @@
  *
  * Called by Solomon via Anthropic native tool_use API.
  */
+import Anthropic from "@anthropic-ai/sdk";
 import { searchChapters, getSessionBriefs } from "./chapterSearch";
 import { hybridSearch } from "./hybridSearch";
 import { db } from "../db";
-import { documents, projectElements, elementDefinitions, solomonEligibility, solomonScoring } from "../db/schema";
-import { eq, and } from "drizzle-orm";
+import { documents, projectElements, elementDefinitions, solomonEligibility, solomonScoring, projects, projectChecklist } from "../db/schema";
+import { eq, and, sql } from "drizzle-orm";
 import { anthropic, withAILimit } from "../lib/anthropic";
 import { logAIUsage } from "./aiUsage";
 
@@ -155,6 +156,54 @@ export const SOLOMON_TOOLS = [
       required: ["section_title" as const, "instructions" as const],
     },
   },
+  {
+    name: "update_phase" as const,
+    description: "Actualizează faza conversației (Q0-Q11). Apelează la FIECARE răspuns.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        phase: { type: "string" as const, description: "Faza: Q0, Q1, ..., Q11" },
+        label: { type: "string" as const, description: "Descriere scurtă a fazei" },
+        progress: { type: "integer" as const, description: "Progres 0-100" },
+        next_action: { type: "string" as const, description: "Ce urmează" },
+        regression_from: { type: "string" as const, description: "Faza anterioară dacă e regresie" },
+        regression_reason: { type: "string" as const, description: "Motivul regresiei" },
+      },
+      required: ["phase" as const, "label" as const, "progress" as const],
+    },
+  },
+  {
+    name: "update_metadata" as const,
+    description: "Salvează metadate proiect (program, măsură, sesiune, nomenclator). Apelează când consultantul confirmă aceste informații.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        program_finantare: { type: "string" as const },
+        cod_masura: { type: "string" as const },
+        cod_sesiune: { type: "string" as const },
+        cod_nomenclator: { type: "string" as const },
+        prefix_documente: { type: "string" as const },
+        cod_mysmis: { type: "string" as const },
+        tip_proiect: { type: "string" as const },
+        structura_dosar: { type: "string" as const },
+      },
+      required: [] as const,
+    },
+  },
+  {
+    name: "update_checklist" as const,
+    description: "Adaugă un document necesar la checklist-ul proiectului.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        document: { type: "string" as const, description: "Numele documentului" },
+        category: { type: "string" as const, enum: ["obligatoriu_depunere", "obligatoriu_contractare", "optional"] },
+        reference: { type: "string" as const, description: "Referință ghid" },
+        notes: { type: "string" as const, description: "Note suplimentare" },
+      },
+      required: ["document" as const],
+    },
+  },
 ];
 
 // ═══════════════════════════════════════════
@@ -190,7 +239,7 @@ async function handleSearchDocuments(
   });
 
   // Also search in legacy chunks table (knowledge base + session chunks)
-  let chunkResults: any[] = [];
+  let chunkResults: Array<{ content: string; metadata?: Record<string, unknown> }> = [];
   try {
     chunkResults = await hybridSearch({
       query: input.query,
@@ -218,7 +267,7 @@ async function handleSearchDocuments(
   }
 
   for (const r of chunkResults) {
-    const meta = (r.metadata || {}) as Record<string, any>;
+    const meta = (r.metadata || {}) as Record<string, unknown>;
     const loc = [
       meta.section && `§ ${meta.section}`,
       meta.page && `pag. ${meta.page}`,
@@ -262,12 +311,22 @@ async function handleSaveElement(
   input: { key: string; value: string; confidence?: number },
   ctx: ToolContext,
 ): Promise<string> {
+  // Input validation
+  if (!input.key || typeof input.key !== "string" || input.key.length > 255) {
+    return "Eroare: cheia elementului lipsește sau e prea lungă (max 255 caractere).";
+  }
+  if (!input.value || typeof input.value !== "string") {
+    return "Eroare: valoarea elementului lipsește.";
+  }
+  const key = input.key.trim().slice(0, 255);
+  const value = input.value.trim().slice(0, 10000);
+  if (!key || !value) return "Eroare: cheia sau valoarea nu poate fi goală.";
   const confidence = Math.min(1, Math.max(0, input.confidence || 0.5));
 
   // Find existing element definition
   const elemDef = await db.query.elementDefinitions.findFirst({
     where: and(
-      eq(elementDefinitions.elementKey, input.key),
+      eq(elementDefinitions.elementKey, key),
       eq(elementDefinitions.organizationId, ctx.organizationId),
     ),
   });
@@ -284,31 +343,42 @@ async function handleSaveElement(
 
   if (existing) {
     await db.update(projectElements).set({
-      value: input.value,
+      value,
       source: "solomon_chat",
       confirmed: false,
       validationStatus: "pending",
     }).where(eq(projectElements.id, existing.id));
-    return `Actualizat: ${elemDef?.displayName || input.key} = ${input.value} (confidence: ${confidence})`;
+    return `Actualizat: ${elemDef?.displayName || key} = ${value} (confidence: ${confidence})`;
+  }
+
+  if (!elemDef) {
+    return `Element necunoscut: "${key}". Verifică dacă cheia e corectă.`;
   }
 
   // Insert new
   await db.insert(projectElements).values({
     projectId: ctx.projectId,
-    elementDefId: elemDef?.id,
-    value: input.value,
+    elementDefId: elemDef.id,
+    value,
     source: "solomon_chat",
     confirmed: false,
     validationStatus: "pending",
   });
 
-  return `Salvat: ${elemDef?.displayName || input.key} = ${input.value} (confidence: ${confidence})`;
+  return `Salvat: ${elemDef.displayName || key} = ${value} (confidence: ${confidence})`;
 }
 
 async function handleCheckEligibility(
   input: { rule: string; status: string; evidence: string; confidence?: number },
   ctx: ToolContext,
 ): Promise<string> {
+  if (!input.rule || typeof input.rule !== "string" || input.rule.length > 500) {
+    return "Eroare: denumirea regulii lipsește sau e prea lungă.";
+  }
+  if (!["pass", "fail", "pending"].includes(input.status)) {
+    return "Eroare: status invalid. Valori acceptate: pass, fail, pending.";
+  }
+  const evidence = (input.evidence || "").slice(0, 2000);
   const confidence = Math.min(1, Math.max(0, input.confidence || 0.8));
 
   // Upsert in solomon_eligibility
@@ -322,15 +392,15 @@ async function handleCheckEligibility(
   if (existing) {
     await db.update(solomonEligibility).set({
       status: input.status,
-      evidence: input.evidence,
+      evidence,
       confidence: confidence.toString(),
     }).where(eq(solomonEligibility.id, existing.id));
   } else {
     await db.insert(solomonEligibility).values({
       projectId: ctx.projectId,
-      ruleName: input.rule,
+      ruleName: input.rule.slice(0, 500),
       status: input.status,
-      evidence: input.evidence,
+      evidence,
       confidence: confidence.toString(),
     });
   }
@@ -343,6 +413,12 @@ async function handleEstimateScore(
   input: { criterion: string; points: number; max_points: number; evidence: string; confidence?: number },
   ctx: ToolContext,
 ): Promise<string> {
+  if (!input.criterion || typeof input.criterion !== "string" || input.criterion.length > 500) {
+    return "Eroare: denumirea criteriului lipsește sau e prea lungă.";
+  }
+  const points = Math.max(0, Math.min(1000, Math.round(input.points || 0)));
+  const maxPoints = Math.max(0, Math.min(1000, Math.round(input.max_points || 0)));
+  const evidence = (input.evidence || "").slice(0, 2000);
   const confidence = Math.min(1, Math.max(0, input.confidence || 0.7));
 
   const existing = await db.query.solomonScoring.findFirst({
@@ -354,34 +430,42 @@ async function handleEstimateScore(
 
   if (existing) {
     await db.update(solomonScoring).set({
-      pointsEstimated: Math.round(input.points),
-      maxPoints: Math.round(input.max_points),
-      evidence: input.evidence,
+      pointsEstimated: points,
+      maxPoints: maxPoints,
+      evidence,
       confidence: confidence.toString(),
     }).where(eq(solomonScoring.id, existing.id));
   } else {
     await db.insert(solomonScoring).values({
       projectId: ctx.projectId,
-      criterionName: input.criterion,
-      pointsEstimated: Math.round(input.points),
-      maxPoints: Math.round(input.max_points),
-      evidence: input.evidence,
+      criterionName: input.criterion.slice(0, 500),
+      pointsEstimated: points,
+      maxPoints: maxPoints,
+      evidence,
       confidence: confidence.toString(),
     });
   }
 
-  return `📊 ${input.criterion}: ${input.points}/${input.max_points} puncte — ${input.evidence}`;
+  return `📊 ${input.criterion}: ${points}/${maxPoints} puncte — ${evidence.slice(0, 100)}`;
 }
 
 async function handleComposeSection(
   input: { section_title: string; instructions: string; max_words?: number },
   ctx: ToolContext,
 ): Promise<string> {
-  const maxWords = input.max_words || 500;
+  if (!input.section_title || typeof input.section_title !== "string") {
+    return "Eroare: titlul secțiunii lipsește.";
+  }
+  if (!input.instructions || typeof input.instructions !== "string") {
+    return "Eroare: instrucțiunile lipsesc.";
+  }
+  const sectionTitle = input.section_title.slice(0, 200);
+  const instructions = input.instructions.slice(0, 5000);
+  const maxWords = Math.min(input.max_words || 500, 2000);
 
   // Get relevant context from chapters
   const context = await searchChapters({
-    query: input.section_title + " " + input.instructions,
+    query: sectionTitle + " " + instructions,
     organizationId: ctx.organizationId,
     folderId: ctx.sessionId || undefined,
     topK: 5,
@@ -389,26 +473,32 @@ async function handleComposeSection(
 
   const contextText = context.map(c => `[${c.documentName}] ${c.content.slice(0, 800)}`).join("\n\n");
 
-  const response: any = await withAILimit(async () => {
-    return anthropic.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: maxWords * 5,
-      system: `Ești un redactor expert pentru dosare de fonduri europene. Scrii texte narative profesionale, formal-tehnice, cu cifre concrete și terminologie oficială. Scrie la persoana a III-a ("Solicitantul", "Societatea"). Fiecare paragraf: o singură idee + date concrete. Folosește conectori logici. Max ${maxWords} cuvinte. DOAR textul secțiunii, fără preambul.`,
-      messages: [{
-        role: "user",
-        content: `Scrie secțiunea "${input.section_title}" pentru proiectul "${ctx.projectName || ""}".
+  let response: Anthropic.Message;
+  try {
+    response = await withAILimit(async () => {
+      return anthropic.messages.create({
+        model: "claude-sonnet-4-6",
+        max_tokens: maxWords * 5,
+        system: `Ești un redactor expert pentru dosare de fonduri europene. Scrii texte narative profesionale, formal-tehnice, cu cifre concrete și terminologie oficială. Scrie la persoana a III-a ("Solicitantul", "Societatea"). Fiecare paragraf: o singură idee + date concrete. Folosește conectori logici. Max ${maxWords} cuvinte. DOAR textul secțiunii, fără preambul.`,
+        messages: [{
+          role: "user",
+          content: `Scrie secțiunea "${sectionTitle}" pentru proiectul "${ctx.projectName || ""}".
 
 Firma: ${ctx.companyName || ""}
 
-Instrucțiuni: ${input.instructions}
+Instrucțiuni: ${instructions}
 
 Context din documente:
 ${contextText.slice(0, 10000)}`,
-      }],
-    });
-  }, "batch");
+        }],
+      });
+    }, "batch");
+  } catch (err) {
+    console.error("[compose_section] AI call failed:", (err as Error).message);
+    return `Eroare la generarea secțiunii "${sectionTitle}": ${(err as Error).message?.slice(0, 100)}. Reîncearcă.`;
+  }
 
-  const textBlock = (response as any).content?.find((b: any) => b.type === "text");
+  const textBlock = response.content.find((b): b is Anthropic.TextBlock => b.type === "text");
   const sectionText = textBlock?.text || "";
 
   await logAIUsage({
@@ -416,12 +506,82 @@ ${contextText.slice(0, 10000)}`,
     projectId: ctx.projectId,
     agent: "neemia",
     model: "claude-sonnet-4-6",
-    tokensInput: (response as any).usage?.input_tokens || 0,
-    tokensOutput: (response as any).usage?.output_tokens || 0,
-    action: `compose_${input.section_title.slice(0, 30)}`,
+    tokensInput: response.usage?.input_tokens || 0,
+    tokensOutput: response.usage?.output_tokens || 0,
+    action: `compose_${sectionTitle.slice(0, 30)}`,
   });
 
   return sectionText;
+}
+
+async function handleUpdatePhase(
+  input: { phase: string; label: string; progress: number; next_action?: string; regression_from?: string; regression_reason?: string },
+  ctx: ToolContext,
+): Promise<string> {
+  const phaseRecord: Record<string, unknown> = {
+    phase: (input.phase || "Q0").slice(0, 10),
+    label: (input.label || "").slice(0, 200),
+    progress: Math.min(100, Math.max(0, input.progress || 0)),
+    nextAction: (input.next_action || "").slice(0, 500),
+    updatedAt: new Date().toISOString(),
+  };
+  if (input.regression_from) {
+    phaseRecord.regression = {
+      from: input.regression_from.slice(0, 10),
+      reason: (input.regression_reason || "").slice(0, 500),
+    };
+  }
+  await db.update(projects)
+    .set({ solomonPhase: phaseRecord as any })
+    .where(and(eq(projects.id, ctx.projectId), eq(projects.organizationId, ctx.organizationId)));
+  return `Faza actualizată: ${phaseRecord.phase} — ${phaseRecord.label} (${phaseRecord.progress}%)`;
+}
+
+async function handleUpdateMetadata(
+  input: Record<string, string>,
+  ctx: ToolContext,
+): Promise<string> {
+  const ALLOWED_KEYS: Record<string, string> = {
+    program_finantare: "programFinantare",
+    cod_masura: "codMasura",
+    cod_sesiune: "codSesiune",
+    cod_nomenclator: "codNomenclator",
+    prefix_documente: "prefixDocumente",
+    cod_mysmis: "codMysmis",
+    tip_proiect: "tipProiect",
+    structura_dosar: "structuraDosar",
+  };
+  const update: Record<string, unknown> = { updatedAt: new Date() };
+  const saved: string[] = [];
+  for (const [inputKey, dbKey] of Object.entries(ALLOWED_KEYS)) {
+    const val = input[inputKey];
+    if (val && typeof val === "string" && val.length <= 500) {
+      update[dbKey] = val;
+      saved.push(`${inputKey}: ${val}`);
+    }
+  }
+  if (saved.length === 0) return "Nicio metadată validă de salvat.";
+  await db.update(projects).set(update).where(and(eq(projects.id, ctx.projectId), eq(projects.organizationId, ctx.organizationId)));
+  return `Metadate proiect actualizate: ${saved.join(", ")}`;
+}
+
+async function handleUpdateChecklist(
+  input: { document: string; category?: string; reference?: string; notes?: string },
+  ctx: ToolContext,
+): Promise<string> {
+  if (!input.document || input.document.length > 500) return "Eroare: numele documentului lipsește sau e prea lung.";
+  const existing = await db.query.projectChecklist.findFirst({
+    where: and(eq(projectChecklist.projectId, ctx.projectId), eq(projectChecklist.name, input.document)),
+  });
+  if (existing) return `Document deja în checklist: ${input.document}`;
+  await db.insert(projectChecklist).values({
+    projectId: ctx.projectId,
+    name: input.document.slice(0, 500),
+    category: input.category || "obligatoriu_depunere",
+    source: "solomon",
+    notes: [input.reference, input.notes].filter(Boolean).join(" · ").slice(0, 1000) || null,
+  });
+  return `✅ Adăugat la checklist: ${input.document} (${input.category || "obligatoriu_depunere"})`;
 }
 
 // ═══════════════════════════════════════════
@@ -447,6 +607,12 @@ export async function executeSolomonTool(
       return handleEstimateScore(toolInput, context);
     case "compose_section":
       return handleComposeSection(toolInput, context);
+    case "update_phase":
+      return handleUpdatePhase(toolInput, context);
+    case "update_metadata":
+      return handleUpdateMetadata(toolInput, context);
+    case "update_checklist":
+      return handleUpdateChecklist(toolInput, context);
     default:
       return `Tool necunoscut: ${toolName}`;
   }

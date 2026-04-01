@@ -1140,24 +1140,6 @@ export const budgetItems = pgTable("budget_items", {
   orgIdx: index("budget_org_idx").on(table.organizationId),
 }));
 
-// === RAG v2 — UNIFIED CHUNKS (text search via tsvector) ===
-export const chunks = pgTable("chunks", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  cabinetId: uuid("cabinet_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
-  sessionId: uuid("session_id"),  // NULL for knowledge_base entries
-  documentId: uuid("document_id").notNull().references(() => documents.id, { onDelete: "cascade" }),
-  sourceType: text("source_type").notNull(), // 'session' | 'knowledge_base'
-  content: text("content").notNull(),
-  // content_tsv — added via raw SQL migration (GENERATED ALWAYS AS column, Romanian stemmer)
-  metadata: jsonb("metadata").notNull().default({}),
-  // metadata shape: { layer, topic, doc_type, page, section, importance }
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
-}, (table) => ({
-  cabinetSourceIdx: index("chunks_cabinet_source_idx").on(table.cabinetId, table.sourceType),
-  sessionIdx: index("chunks_session_idx").on(table.sessionId),
-  documentIdx: index("chunks_document_idx").on(table.documentId),
-}));
-
 // === DOCUMENT CHAPTERS (chapter-based document understanding) ===
 export const documentChapters = pgTable("document_chapters", {
   id: uuid("id").defaultRandom().primaryKey(),

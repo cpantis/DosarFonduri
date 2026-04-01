@@ -43,6 +43,10 @@ export async function extractTextFromPDF(buffer: Buffer): Promise<PDFExtractionR
   }
 
   const pages = await extractPDFPages(buffer);
+  // Free image buffers after OCR — prevents 50MB+ memory accumulation on large PDFs
+  for (const p of pages) {
+    if (p.imageBase64) p.imageBase64 = undefined;
+  }
   const scannedCount = pages.filter(p => p.is_scanned).length;
   const nativeCount = pages.length - scannedCount;
   const totalChars = pages.reduce((sum, p) => sum + p.text.length, 0);

@@ -17,10 +17,31 @@ import {
   composeDocument, validateComposeReadiness, buildComposeContext,
 } from "../services/neemiaCompose";
 import { getFileUrl, getFileBuffer } from "../services/storage";
+import { z } from "zod";
 import {
   templateDocIdSchema, generationModeSchema, composeConfigSchema,
   updateSectionContentSchema, composeGenerateSchema,
 } from "@dosarfonduri/shared";
+
+// Zod schemas for endpoints without shared validation
+const composePreviewSchema = z.object({
+  templateDocumentId: z.string().uuid(),
+  regenerateSectionMarker: z.string().max(255).optional(),
+});
+
+const generateSectionSchema = z.object({
+  sectionId: z.string().min(1).max(255),
+  sectionTitle: z.string().min(1).max(500),
+  additionalContext: z.string().max(5000).optional(),
+  previousSectionContent: z.string().max(5000).optional(),
+});
+
+const coherenceCheckSchema = z.object({
+  sections: z.array(z.object({
+    title: z.string().min(1).max(500),
+    content: z.string().min(1).max(50000),
+  })).min(1).max(50),
+});
 
 export const neemiaRoutes = new Hono<AppEnv>();
 
@@ -59,8 +80,8 @@ async function buildInjectedValues(projectId: string, organizationId: string): P
     });
     if (financials.length > 0) {
       const latest = financials.sort((a: any, b: any) => b.year - a.year)[0];
-      const f10 = (latest as any).f10 as Record<string, any> || {};
-      const f20 = (latest as any).f20 as Record<string, any> || {};
+      const f10 = (latest.f10 ?? {}) as Record<string, unknown>;
+      const f20 = (latest.f20 ?? {}) as Record<string, unknown>;
       for (const [key, value] of Object.entries({ ...f10, ...f20 })) {
         if (value != null && String(value).trim() !== "" && !injected[key]) {
           injected[key] = String(value);
@@ -73,7 +94,7 @@ async function buildInjectedValues(projectId: string, organizationId: string): P
   const org = await db.query.organizations.findFirst({
     where: eq(organizations.id, organizationId),
   });
-  const cabinetStyle = (org as any)?.cabinetDocumentStyle || {};
+  const cabinetStyle = org?.cabinetDocumentStyle || {};
   if (cabinetStyle.footerText) injected["footer_cabinet"] = cabinetStyle.footerText;
 
   return injected;
@@ -185,7 +206,7 @@ neemiaRoutes.get("/projects/:projectId/documents", async (c) => {
     });
 
     const templateDocs2 = sessionTemplates.filter(d => {
-      const cls = d.classification as any;
+      const cls = d.classification;
       return d.processingType === "template" || cls?.routingAction === "template_fill" || cls?.routingAction === "template_compose";
     });
 
@@ -193,14 +214,15 @@ neemiaRoutes.get("/projects/:projectId/documents", async (c) => {
     const existingTemplateIds = new Set(docs.map(d => d.templateDocumentId).filter(Boolean));
     for (const tpl of templateDocs2) {
       if (existingTemplateIds.has(tpl.id)) continue;
+      const resolvedMode = tpl.generationMode || (tpl.classification?.routingAction === "template_compose" ? "compose" : "fill");
       enriched.push({
         id: `available-${tpl.id}`,
         projectId,
         templateDocumentId: tpl.id,
         templateName: tpl.name,
         templateFileType: tpl.fileType || "docx",
-        generationMode: tpl.generationMode || (tpl.classification as any)?.routingAction === "template_compose" ? "compose" : "fill",
-        status: "available",
+        generationMode: resolvedMode,
+        status: "available" as const,
         downloadUrl: null,
         createdAt: tpl.uploadedAt,
       } as any);
@@ -448,17 +470,15 @@ neemiaRoutes.post("/projects/:projectId/compose/preview", async (c) => {
   const project = await verifyProjectOrg(projectId, auth.organizationId!);
   if (!project) return c.json({ error: "Project not found" }, 404);
 
-  const body = await c.req.json();
-  const templateDocumentId = body.templateDocumentId;
-  if (!templateDocumentId) return c.json({ error: "templateDocumentId required" }, 400);
+  const body = composePreviewSchema.parse(await c.req.json());
 
   const stream = await composeDocument({
     projectId,
-    templateDocumentId,
+    templateDocumentId: body.templateDocumentId,
     organizationId: auth.organizationId!,
     userId: auth.userId,
     previewOnly: true,
-    regenerateSectionMarker: body.regenerateSectionMarker || undefined,
+    regenerateSectionMarker: body.regenerateSectionMarker,
   });
 
   return new Response(stream, {
@@ -528,8 +548,8 @@ neemiaRoutes.get("/templates/:docId/compose-config", async (c) => {
     id: doc.id,
     name: doc.name,
     fileType: doc.fileType,
-    generationMode: (doc as any).generationMode || "fill",
-    composeConfig: (doc as any).composeConfig || null,
+    generationMode: doc.generationMode || "fill",
+    composeConfig: doc.composeConfig || null,
   });
 });
 
@@ -546,12 +566,12 @@ neemiaRoutes.put("/templates/:docId/generation-mode", async (c) => {
 
   const [updated] = await db.update(documents).set({
     generationMode: body.mode,
-  } as any).where(eq(documents.id, docId)).returning();
+  }).where(eq(documents.id, docId)).returning();
 
   return c.json({
     id: updated.id,
     name: updated.name,
-    generationMode: (updated as any).generationMode,
+    generationMode: updated.generationMode,
   });
 });
 
@@ -579,8 +599,8 @@ neemiaRoutes.put("/templates/:docId/compose-config", async (c) => {
   return c.json({
     id: updated.id,
     name: updated.name,
-    generationMode: (updated as any).generationMode,
-    composeConfig: (updated as any).composeConfig,
+    generationMode: updated.generationMode,
+    composeConfig: updated.composeConfig,
   });
 });
 
@@ -647,8 +667,8 @@ neemiaRoutes.post("/templates/:docId/detect-compose-markers", async (c) => {
       id: t.id,
       name: t.name,
       tableType: t.tableType,
-      columnCount: (t.schema as any[])?.length || 0,
-      rowCount: (t.data as any[])?.length || 0,
+      columnCount: t.schema?.length || 0,
+      rowCount: t.data?.length || 0,
     })),
     suggestion: composeMarkers.length > 0
       ? "compose"
@@ -697,9 +717,9 @@ neemiaRoutes.put("/documents/:docId/sections/:marker", async (c) => {
   }).returning();
 
   // Also update the composeContent in projectDocuments to reflect the edit
-  const composeContent = projDoc.composeContent as any;
+  const composeContent = projDoc.composeContent;
   if (composeContent?.sections) {
-    const sectionIdx = composeContent.sections.findIndex((s: any) => s.marker === marker);
+    const sectionIdx = composeContent.sections.findIndex((s) => s.marker === marker);
     if (sectionIdx >= 0) {
       composeContent.sections[sectionIdx].content = content;
       composeContent.sections[sectionIdx].approved = true;
@@ -1134,15 +1154,11 @@ neemiaRoutes.post("/projects/:projectId/compose/generate-section", async (c) => 
   });
   if (!project) return c.json({ error: "Project not found" }, 404);
 
-  const body = await c.req.json();
+  const body = generateSectionSchema.parse(await c.req.json());
   const { sectionId, sectionTitle, additionalContext, previousSectionContent } = body;
 
-  if (!sectionId || !sectionTitle) {
-    return c.json({ error: "sectionId and sectionTitle are required" }, 400);
-  }
-
   // Load compose brief
-  const brief = project.composeBrief as any;
+  const brief = project.composeBrief;
 
   // Load project elements
   const elements = await db.query.projectElements.findMany({
@@ -1238,14 +1254,10 @@ neemiaRoutes.post("/projects/:projectId/compose/coherence-check", async (c) => {
   });
   if (!project) return c.json({ error: "Project not found" }, 404);
 
-  const body = await c.req.json();
+  const body = coherenceCheckSchema.parse(await c.req.json());
   const { sections } = body;
 
-  if (!sections || !Array.isArray(sections) || sections.length === 0) {
-    return c.json({ error: "sections array is required" }, 400);
-  }
-
-  const fullText = sections.map((s: any) => `## ${s.title}\n\n${s.content}`).join("\n\n---\n\n");
+  const fullText = sections.map(s => `## ${s.title}\n\n${s.content}`).join("\n\n---\n\n");
 
   const { anthropic, withAILimit } = await import("../lib/anthropic");
 

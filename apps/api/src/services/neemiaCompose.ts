@@ -13,6 +13,7 @@
  *   {{key}}                  → Simple value replacement (same as FILL mode)
  */
 
+import Anthropic from "@anthropic-ai/sdk";
 import { anthropic, withAILimit } from "../lib/anthropic";
 import { db } from "../db";
 import {
@@ -251,7 +252,7 @@ export async function buildComposeContext(
   const templateDoc = await db.query.documents.findFirst({
     where: eq(documents.id, templateDocumentId),
   });
-  const composeConfig = (templateDoc as any)?.composeConfig as any;
+  const composeConfig = templateDoc?.composeConfig;
 
   // Filter reference tables to those specified in composeConfig, or all if not specified
   let relevantRefTables = refTables;
@@ -306,8 +307,8 @@ export async function buildComposeContext(
       name: t.name,
       description: t.description,
       tableType: t.tableType,
-      schema: t.schema as any,
-      data: t.data as any,
+      schema: t.schema,
+      data: t.data,
     })),
     relevantRules: sortedRules.slice(0, 50).map(r => ({
       description: r.description,
@@ -455,7 +456,7 @@ IMPORTANT: Totul în română. Totul SPECIFIC pentru "${programFinantare}". Baze
 
 Răspunde DOAR cu JSON valid.`;
 
-  const response: any = await withAILimit(() => (anthropic.messages.create as any)({
+  const response = await withAILimit(() => anthropic.messages.create({
     model: "claude-sonnet-4-6", // Use Sonnet for speed — WK gen is a one-time operation
     max_tokens: 4096,
     messages: [{ role: "user", content: prompt }],
@@ -471,8 +472,8 @@ Răspunde DOAR cu JSON valid.`;
     action: "writing_kit_generate",
   });
 
-  const textContent = response.content.find((c: any) => c.type === "text");
-  if (!textContent || textContent.type !== "text") throw new Error("WK generation: empty response");
+  const textContent = response.content.find((c): c is Anthropic.TextBlock => c.type === "text");
+  if (!textContent) throw new Error("WK generation: empty response");
 
   let rawText = textContent.text.trim();
   if (rawText.startsWith("```")) {
@@ -506,7 +507,7 @@ async function generateComposeContent(
     });
     // Use a direct query to find project with composeBrief
     const projs = await db.execute(sql`SELECT id, folder_id, compose_brief FROM projects WHERE organization_id = ${organizationId} AND compose_brief IS NOT NULL LIMIT 1`);
-    const projRow = (projs as any).rows?.[0] || (projs as any)[0];
+    const projRow = (projs as { rows?: Array<Record<string, unknown>> }).rows?.[0] || (projs as unknown as Array<Record<string, unknown>>)[0];
     if (projRow?.compose_brief) {
       const brief = typeof projRow.compose_brief === "string" ? JSON.parse(projRow.compose_brief) : projRow.compose_brief;
       composeBriefContext = `\n## BRIEF DE LA CONSULTANT SENIOR (Solomon)
@@ -524,7 +525,7 @@ Argumente strategice: ${(brief.strategicArguments || []).join("; ")}
       const results = await hybridSearch({
         query: sectionLabels,
         cabinetId: organizationId,
-        sessionId: projRow.folder_id || "",
+        sessionId: (projRow.folder_id as string) || "",
         layers: ["narativ", "regula", "punctaj"],
         topK: 5,
       });
@@ -866,19 +867,15 @@ Răspunde DOAR cu JSON-ul, fără markdown code blocks, fără text suplimentar.
   const useExtendedThinking = aiModel.includes("opus");
   const maxOutputTokens = useExtendedThinking ? 16000 : 12000;
 
-  const apiParams: any = {
+  const apiParams: Anthropic.MessageCreateParams = {
     model: aiModel,
     max_tokens: maxOutputTokens,
     system: systemPrompt,
-    messages: [{ role: "user", content: userPrompt }],
+    messages: [{ role: "user" as const, content: userPrompt }],
+    ...(useExtendedThinking ? { thinking: { type: "enabled" as const, budget_tokens: 8000 } } : {}),
   };
 
-  // Enable extended thinking for Opus models (deeper reasoning → better document quality)
-  if (useExtendedThinking) {
-    apiParams.thinking = { type: "enabled", budget_tokens: 8000 };
-  }
-
-  const response: any = await withAILimit(() => (anthropic.messages.create as any)(apiParams));
+  const response = await withAILimit(() => anthropic.messages.create(apiParams));
 
   const tokensInput = response.usage.input_tokens;
   const tokensOutput = response.usage.output_tokens;
@@ -895,8 +892,8 @@ Răspunde DOAR cu JSON-ul, fără markdown code blocks, fără text suplimentar.
   });
 
   // Parse AI response
-  const textContent = response.content.find((c: any) => c.type === "text");
-  if (!textContent || textContent.type !== "text") {
+  const textContent = response.content.find((c): c is Anthropic.TextBlock => c.type === "text");
+  if (!textContent) {
     throw new Error("AI response empty");
   }
 
@@ -1000,7 +997,7 @@ Generează un DocumentBlueprint JSON cu:
 
 Răspunde DOAR cu JSON valid, fără markdown.`;
 
-  const response: any = await withAILimit(() => (anthropic.messages.create as any)({
+  const response = await withAILimit(() => anthropic.messages.create({
     model: aiModel.includes("opus") ? aiModel : "claude-sonnet-4-6",
     max_tokens: 4096,
     messages: [{ role: "user", content: prompt }],
@@ -1016,8 +1013,8 @@ Răspunde DOAR cu JSON valid, fără markdown.`;
     action: "blueprint_generate",
   });
 
-  const textContent = response.content.find((c: any) => c.type === "text");
-  if (!textContent || textContent.type !== "text") throw new Error("Blueprint AI response empty");
+  const textContent = response.content.find((c): c is Anthropic.TextBlock => c.type === "text");
+  if (!textContent) throw new Error("Blueprint AI response empty");
 
   let rawText = textContent.text.trim();
   if (rawText.startsWith("```")) {
@@ -1069,7 +1066,7 @@ export async function composeDocument(params: ComposeDocParams): Promise<Readabl
         });
         if (!templateDoc) throw new Error("Template not found");
 
-        const composeConfig = (templateDoc as any)?.composeConfig as any;
+        const composeConfig = templateDoc?.composeConfig;
         if (!composeConfig?.sections || composeConfig.sections.length === 0) {
           throw new Error("Template-ul nu are secțiuni COMPOSE configurate. Adăugați secțiuni în composeConfig.");
         }
@@ -1094,14 +1091,14 @@ export async function composeDocument(params: ComposeDocParams): Promise<Readabl
         });
 
         // Step 0: Auto-generate blueprint if missing (cached on template)
-        let templateBlueprint = (templateDoc as any)?.blueprint as DocumentBlueprint | null;
+        let templateBlueprint = (templateDoc?.blueprint ?? null) as DocumentBlueprint | null;
         if (!templateBlueprint && !editedSections) {
           try {
             emit({ type: "status", message: "Se analizează structura template-ului (blueprint)..." });
             templateBlueprint = await generateBlueprint(templateDoc, composeConfig, context, aiModel, organizationId, userId);
             // Cache blueprint on template document for future reuse
             await db.update(documents)
-              .set({ blueprint: templateBlueprint as any })
+              .set({ blueprint: templateBlueprint })
               .where(eq(documents.id, templateDocumentId));
             emit({ type: "blueprint_ready", sections: templateBlueprint.sections.length });
           } catch (err) {
@@ -1993,7 +1990,7 @@ export async function validateComposeReadiness(
     return { canCompose: false, warnings, errors, stats: { totalElements: 0, filledElements: 0, referenceTables: 0, composeSections: 0, checklistTotal: 0, checklistDone: 0, checklistCompleteness: 100, missingCritical: [], missingWarning: [], missingInfo: [] }, sectionReadiness: [] };
   }
 
-  const composeConfig = (templateDoc as any)?.composeConfig as any;
+  const composeConfig = templateDoc?.composeConfig;
   if (!composeConfig?.sections || composeConfig.sections.length === 0) {
     errors.push("Template-ul nu are secțiuni COMPOSE configurate");
     return { canCompose: false, warnings, errors, stats: { totalElements: 0, filledElements: 0, referenceTables: 0, composeSections: 0, checklistTotal: 0, checklistDone: 0, checklistCompleteness: 100, missingCritical: [], missingWarning: [], missingInfo: [] }, sectionReadiness: [] };
@@ -2070,7 +2067,7 @@ export async function validateComposeReadiness(
     qualityLevel: "full" | "partial" | "minimal";
   }> = [];
 
-  const blueprint = (templateDoc as any)?.blueprint as DocumentBlueprint | null;
+  const blueprint = (templateDoc?.blueprint ?? null) as DocumentBlueprint | null;
   if (blueprint?.sections) {
     // Build a set of element keys that have non-empty values
     // projectElements don't have a direct key — resolve via templateElements

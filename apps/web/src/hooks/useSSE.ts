@@ -179,6 +179,8 @@ export function useSSE({ projectId, enabled = true, onEvent }: UseSSEOptions = {
       const attempt = reconnectAttemptsRef.current;
       if (attempt >= 5) return;
       const delay = Math.min(1000 * Math.pow(2, attempt), 30000);
+      // Clear previous timer to prevent double-connect
+      if (reconnectTimer) clearTimeout(reconnectTimer);
       reconnectTimer = setTimeout(() => {
         reconnectAttemptsRef.current++;
         startConnection();

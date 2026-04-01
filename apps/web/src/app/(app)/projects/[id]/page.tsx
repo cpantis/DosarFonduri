@@ -449,9 +449,14 @@ export default function ProjectViewPage() {
     return () => window.removeEventListener("df-refine-toggle", handler);
   }, []);
 
+  // Track mounted state — async callbacks check this before setState
+  const isMountedRef = useRef(true);
+
   // Cleanup all streaming resources on unmount
   useEffect(() => {
+    isMountedRef.current = true;
     return () => {
+      isMountedRef.current = false;
       if (solomonAbortRef.current) {
         solomonAbortRef.current.abort();
         solomonAbortRef.current = null;
@@ -1029,7 +1034,7 @@ export default function ProjectViewPage() {
               if (evt.sources && evt.sources.length > 0) {
                 setSolomonSourceTrail(prev => [...prev, { query: evt.query || "", sources: evt.sources }]);
               }
-              setTimeout(() => setSolomonToolUse(null), 5000);
+              setTimeout(() => { if (isMountedRef.current) setSolomonToolUse(null); }, 5000);
             } else if (evt.type === "phase_update" && evt.phase) {
               // RAG v2: Solomon phase update
               setSolomonPhase(evt.phase);
@@ -5940,7 +5945,7 @@ export default function ProjectViewPage() {
                                 setReclassifyDoc(null);
                                 setReclassifyType("");
                                 setReclassifyRoute("");
-                                setTimeout(() => apiGet<any[]>(`/api/documents/folders/${project?.folderId}/classified-documents`).then(docs => setClassifiedDocs(docs || [])).catch(e => console.warn("[project]", e?.message || e)), 2000);
+                                setTimeout(() => { if (isMountedRef.current) apiGet<any[]>(`/api/documents/folders/${project?.folderId}/classified-documents`).then(docs => { if (isMountedRef.current) setClassifiedDocs(docs || []); }).catch(e => console.warn("[project]", e?.message || e)); }, 2000);
                               } catch { toast("error", "Eroare la reclasificare."); }
                             }}
                           >Reclasifică</button>

@@ -32,6 +32,8 @@ export interface ClassificationResult {
   confidence: number;
   description: string;
   detectedProgram?: string;
+  /** True when AI classification failed and fallback was used */
+  isClassificationFallback?: boolean;
 }
 
 const SYSTEM_PROMPT = `Ești un clasificator de documente pentru dosare de fonduri europene românești.
@@ -127,12 +129,13 @@ Clasifică documentul. JSON:
       detectedProgram: parsed.detectedProgram || undefined,
     };
   } catch {
-    console.warn("[documentClassifier] Failed to parse Sonnet response:", cleaned.slice(0, 200));
+    console.warn("[documentClassifier] AI classification failed, using fallback:", cleaned.slice(0, 200));
     return {
       docType: "altul",
       routingAction: "vectorize",
       confidence: 0,
-      description: fileName,
+      description: `${fileName} (clasificare automată eșuată)`,
+      isClassificationFallback: true,
     };
   }
 }

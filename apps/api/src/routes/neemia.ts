@@ -17,10 +17,31 @@ import {
   composeDocument, validateComposeReadiness, buildComposeContext,
 } from "../services/neemiaCompose";
 import { getFileUrl, getFileBuffer } from "../services/storage";
+import { z } from "zod";
 import {
   templateDocIdSchema, generationModeSchema, composeConfigSchema,
   updateSectionContentSchema, composeGenerateSchema,
 } from "@dosarfonduri/shared";
+
+// Zod schemas for endpoints without shared validation
+const composePreviewSchema = z.object({
+  templateDocumentId: z.string().uuid(),
+  regenerateSectionMarker: z.string().max(255).optional(),
+});
+
+const generateSectionSchema = z.object({
+  sectionId: z.string().min(1).max(255),
+  sectionTitle: z.string().min(1).max(500),
+  additionalContext: z.string().max(5000).optional(),
+  previousSectionContent: z.string().max(5000).optional(),
+});
+
+const coherenceCheckSchema = z.object({
+  sections: z.array(z.object({
+    title: z.string().min(1).max(500),
+    content: z.string().min(1).max(50000),
+  })).min(1).max(50),
+});
 
 export const neemiaRoutes = new Hono<AppEnv>();
 
@@ -448,17 +469,15 @@ neemiaRoutes.post("/projects/:projectId/compose/preview", async (c) => {
   const project = await verifyProjectOrg(projectId, auth.organizationId!);
   if (!project) return c.json({ error: "Project not found" }, 404);
 
-  const body = await c.req.json();
-  const templateDocumentId = body.templateDocumentId;
-  if (!templateDocumentId) return c.json({ error: "templateDocumentId required" }, 400);
+  const body = composePreviewSchema.parse(await c.req.json());
 
   const stream = await composeDocument({
     projectId,
-    templateDocumentId,
+    templateDocumentId: body.templateDocumentId,
     organizationId: auth.organizationId!,
     userId: auth.userId,
     previewOnly: true,
-    regenerateSectionMarker: body.regenerateSectionMarker || undefined,
+    regenerateSectionMarker: body.regenerateSectionMarker,
   });
 
   return new Response(stream, {
@@ -1134,12 +1153,8 @@ neemiaRoutes.post("/projects/:projectId/compose/generate-section", async (c) => 
   });
   if (!project) return c.json({ error: "Project not found" }, 404);
 
-  const body = await c.req.json();
+  const body = generateSectionSchema.parse(await c.req.json());
   const { sectionId, sectionTitle, additionalContext, previousSectionContent } = body;
-
-  if (!sectionId || !sectionTitle) {
-    return c.json({ error: "sectionId and sectionTitle are required" }, 400);
-  }
 
   // Load compose brief
   const brief = project.composeBrief as any;
@@ -1238,14 +1253,10 @@ neemiaRoutes.post("/projects/:projectId/compose/coherence-check", async (c) => {
   });
   if (!project) return c.json({ error: "Project not found" }, 404);
 
-  const body = await c.req.json();
+  const body = coherenceCheckSchema.parse(await c.req.json());
   const { sections } = body;
 
-  if (!sections || !Array.isArray(sections) || sections.length === 0) {
-    return c.json({ error: "sections array is required" }, 400);
-  }
-
-  const fullText = sections.map((s: any) => `## ${s.title}\n\n${s.content}`).join("\n\n---\n\n");
+  const fullText = sections.map(s => `## ${s.title}\n\n${s.content}`).join("\n\n---\n\n");
 
   const { anthropic, withAILimit } = await import("../lib/anthropic");
 

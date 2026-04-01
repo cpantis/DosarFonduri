@@ -313,9 +313,16 @@ async function routeTemplateFill(
         jobId: `tpl-ingest-${documentId}`,
       });
       progress("Template trimis la procesare (extragere câmpuri + mapare)...", 60);
+    } else {
+      await db.update(documents).set({
+        processingError: "Redis indisponibil — procesarea template-ului va fi reluată automat.",
+      }).where(eq(documents.id, documentId));
     }
   } catch (err) {
     console.warn(`[ingest] processTemplate dispatch failed for ${documentId}:`, (err as Error).message);
+    await db.update(documents).set({
+      processingError: `Template dispatch failed: ${(err as Error).message?.slice(0, 200)}`,
+    }).where(eq(documents.id, documentId));
   }
 
   // FORM-1: Also extract FormSpec (parallel, non-blocking)
@@ -365,9 +372,16 @@ async function routeTemplateCompose(
         jobId: `tpl-compose-${documentId}`,
       });
       progress("Template compose trimis la procesare (detectare secțiuni + mapare)...", 70);
+    } else {
+      await db.update(documents).set({
+        processingError: "Redis indisponibil — procesarea compose va fi reluată automat.",
+      }).where(eq(documents.id, documentId));
     }
   } catch (err) {
     console.warn(`[ingest] processTemplate dispatch failed for compose ${documentId}:`, (err as Error).message);
+    await db.update(documents).set({
+      processingError: `Compose dispatch failed: ${(err as Error).message?.slice(0, 200)}`,
+    }).where(eq(documents.id, documentId));
   }
 
   progress("Template compose pregătit.", 90);

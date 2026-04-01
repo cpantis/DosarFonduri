@@ -12,13 +12,6 @@ import { anthropic, withAILimit } from "../lib/anthropic";
 import { logAIUsage } from "../services/aiUsage";
 import { repairTruncatedJSON } from "../lib/safeExtract";
 import { publishJobProgress } from "../lib/sse";
-import { embedText } from "../services/embeddings";
-
-/** Embed a knowledge entry and save the vector to DB */
-async function embedKnowledgeEntry(entryId: string, text: string): Promise<void> {
-  const embedding = await embedText(text.slice(0, 8000)); // limit to ~2K tokens
-  await db.update(solomonKnowledge).set({ embedding } as any).where(eq(solomonKnowledge.id, entryId));
-}
 
 export const configRoutes = new Hono<AppEnv>();
 
@@ -386,11 +379,6 @@ configRoutes.post("/knowledge", async (c) => {
     })
     .returning();
 
-  // Embed async (non-blocking)
-  embedKnowledgeEntry(created.id, `${body.title}\n\n${body.content}`).catch(
-    (err) => console.warn(`[knowledge] Embed failed for ${created.id}:`, err.message),
-  );
-
   return c.json(created, 201);
 });
 
@@ -428,15 +416,6 @@ configRoutes.put("/knowledge/:id", async (c) => {
     .set(updates)
     .where(eq(solomonKnowledge.id, id))
     .returning();
-
-  // Re-embed if title or content changed
-  if (body.title || body.content) {
-    const title = updated.title || existing.title;
-    const content = updated.content || existing.content;
-    embedKnowledgeEntry(updated.id, `${title}\n\n${content}`).catch(
-      (err) => console.warn(`[knowledge] Re-embed failed for ${updated.id}:`, err.message),
-    );
-  }
 
   return c.json(updated);
 });
@@ -641,8 +620,6 @@ ${chunks[i]}` }],
                 createdBy: userId,
               }).returning({ id: solomonKnowledge.id });
               savedCount++;
-              // Queue embedding (non-blocking per entry)
-              embedKnowledgeEntry(entry.id, `${entryTitle}\n\n${section.content}`).catch(() => {});
             } catch {}
           }
         }

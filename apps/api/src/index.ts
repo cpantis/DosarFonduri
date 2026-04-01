@@ -261,7 +261,8 @@ app.get("/setup-db", async (c) => {
       org: orgResult,
     });
   } catch (err: any) {
-    return c.json({ error: err.message, stack: err.stack?.substring(0, 500) }, 500);
+    console.error("[setup-db] Error:", err.message);
+    return c.json({ error: err.message }, 500);
   }
 });
 

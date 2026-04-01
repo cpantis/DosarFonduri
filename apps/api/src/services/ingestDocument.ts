@@ -24,10 +24,7 @@ import {
 } from "./ocr";
 import { classifyDocumentForIngestion, type ClassificationResult } from "./documentClassifier";
 import { chunkDocument } from "./ragChunker";
-import { enrichChunksMetadata } from "./metadataEnricher";
 import { extractStructuredData, type ExtractedField } from "./dataExtractor";
-// Voyage embeddings removed — BM25 text search is sufficient
-// import { embedDocumentChunks } from "./voyageEmbeddings";
 import { publishJobProgress } from "../lib/sse";
 
 export interface IngestOptions {
@@ -248,14 +245,13 @@ async function routeVectorize(
   }
 
   progress("Analiză conținut...", 40);
-  let metadata: any[] = [];
-  try {
-    metadata = await enrichChunksMetadata(docChunks, classification.docType, classification.description);
-  } catch (err) {
-    // Non-critical: metadata enrichment uses Sonnet — may fail on rate limits
-    console.warn(`[ingest] Metadata enrichment failed, using defaults:`, (err as Error).message);
-    metadata = docChunks.map(() => ({ layer: "narativ", topic: classification.description, doc_type: classification.docType, importance: "normal" }));
-  }
+  // Assign default metadata per chunk (layer + doc_type for search filtering)
+  const metadata = docChunks.map(() => ({
+    layer: "narativ",
+    topic: classification.description,
+    doc_type: classification.docType,
+    importance: "normal",
+  }));
 
   progress("Salvare chunks...", 70);
 

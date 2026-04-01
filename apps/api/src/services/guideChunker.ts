@@ -7,7 +7,10 @@
  * - Target chunk size: ~500 tokens with ~50 token overlap
  * - Each chunk carries section context (type, title, page range)
  */
-import { estimateTokens } from "./embeddings";
+/** Approximate token count (~3.5 chars per token for Romanian text) */
+function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 3.5);
+}
 import type { GuideMetadata } from "../jobs/guideExtractorV3";
 
 const TARGET_CHUNK_TOKENS = 500;

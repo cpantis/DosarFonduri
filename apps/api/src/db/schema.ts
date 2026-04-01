@@ -1,24 +1,4 @@
-import { pgTable, uuid, varchar, text, integer, bigint, decimal, boolean, timestamp, pgEnum, jsonb, uniqueIndex, index, customType } from "drizzle-orm/pg-core";
-
-/** Custom type for pgvector vector columns — parameterized by dimension */
-function vectorType(dimensions: number) {
-  return customType<{ data: number[]; driverData: string }>({
-    dataType() { return `vector(${dimensions})`; },
-    toDriver(value: number[]): string { return `[${value.join(",")}]`; },
-    fromDriver(value: string): number[] {
-      if (typeof value === "string") {
-        return value.replace(/[\[\]]/g, "").split(",").map(Number);
-      }
-      return value as any;
-    },
-  });
-}
-
-/** OpenAI text-embedding-3-small (1536 dims) — used by guideChunks & solomonKnowledge */
-const vector1536 = vectorType(1536);
-
-/** Voyage voyage-context-3 (1024 dims) — used by RAG v2 chunks */
-const vector1024 = vectorType(1024);
+import { pgTable, uuid, varchar, text, integer, bigint, decimal, boolean, timestamp, pgEnum, jsonb, uniqueIndex, index } from "drizzle-orm/pg-core";
 
 // === ENUMS ===
 export const planEnum = pgEnum("plan", ["starter", "professional", "enterprise"]);
@@ -1016,7 +996,6 @@ export const solomonKnowledge = pgTable("solomon_knowledge", {
   validUntil: timestamp("valid_until"), // when it expires (null = still valid)
   priority: integer("priority").default(0), // higher = shown first
   enabled: boolean("enabled").default(true),
-  embedding: vector1536("embedding"),
   createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull().$onUpdate(() => new Date()),
@@ -1119,7 +1098,6 @@ export const guideChunks = pgTable("guide_chunks", {
   pageEnd: integer("page_end"),
   sectionType: varchar("section_type", { length: 50 }),
   sectionTitle: varchar("section_title", { length: 500 }),
-  embedding: vector1536("embedding"),
   metadata: jsonb("metadata").default({}),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
@@ -1162,7 +1140,7 @@ export const budgetItems = pgTable("budget_items", {
   orgIdx: index("budget_org_idx").on(table.organizationId),
 }));
 
-// === RAG v2 — UNIFIED CHUNKS (Voyage embeddings, 1024 dims) ===
+// === RAG v2 — UNIFIED CHUNKS (text search via tsvector) ===
 export const chunks = pgTable("chunks", {
   id: uuid("id").defaultRandom().primaryKey(),
   cabinetId: uuid("cabinet_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
@@ -1170,8 +1148,7 @@ export const chunks = pgTable("chunks", {
   documentId: uuid("document_id").notNull().references(() => documents.id, { onDelete: "cascade" }),
   sourceType: text("source_type").notNull(), // 'session' | 'knowledge_base'
   content: text("content").notNull(),
-  embedding: vector1024("embedding"),
-  // content_tsv — added via raw SQL migration (GENERATED ALWAYS AS column)
+  // content_tsv — added via raw SQL migration (GENERATED ALWAYS AS column, Romanian stemmer)
   metadata: jsonb("metadata").notNull().default({}),
   // metadata shape: { layer, topic, doc_type, page, section, importance }
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
@@ -1179,4 +1156,40 @@ export const chunks = pgTable("chunks", {
   cabinetSourceIdx: index("chunks_cabinet_source_idx").on(table.cabinetId, table.sourceType),
   sessionIdx: index("chunks_session_idx").on(table.sessionId),
   documentIdx: index("chunks_document_idx").on(table.documentId),
+}));
+
+// === DOCUMENT CHAPTERS (chapter-based document understanding) ===
+export const documentChapters = pgTable("document_chapters", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  documentId: uuid("document_id").notNull().references(() => documents.id, { onDelete: "cascade" }),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  chapterIndex: integer("chapter_index").notNull(),
+  title: varchar("title", { length: 500 }).notNull(),
+  content: text("content").notNull(),
+  pageStart: integer("page_start"),
+  pageEnd: integer("page_end"),
+  tokenCount: integer("token_count").notNull().default(0),
+  // content_tsv — GENERATED ALWAYS AS (to_tsvector('romanian', coalesce(title,'') || ' ' || content)) STORED
+  metadata: jsonb("metadata").default({}),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  docIdx: index("doc_chapters_doc_idx").on(table.documentId),
+  orgIdx: index("doc_chapters_org_idx").on(table.organizationId),
+  docChapterIdx: uniqueIndex("doc_chapters_doc_chapter_idx").on(table.documentId, table.chapterIndex),
+}));
+
+// === DOCUMENT BRIEFS (AI-generated summary per document) ===
+export const documentBriefs = pgTable("document_briefs", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  documentId: uuid("document_id").notNull().references(() => documents.id, { onDelete: "cascade" }).unique(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  brief: text("brief").notNull(), // ~800 word summary
+  chapterCount: integer("chapter_count").notNull().default(0),
+  totalTokens: integer("total_tokens").notNull().default(0),
+  model: varchar("model", { length: 100 }).notNull().default("claude-sonnet-4-6"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull().$onUpdate(() => new Date()),
+}, (table) => ({
+  docIdx: index("doc_briefs_doc_idx").on(table.documentId),
+  orgIdx: index("doc_briefs_org_idx").on(table.organizationId),
 }));

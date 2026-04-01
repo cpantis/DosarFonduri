@@ -15,7 +15,6 @@ import { eq, and, inArray, sql } from "drizzle-orm";
 import { logAIUsage } from "./aiUsage";
 import { getCompanyDataFromElements } from "./companyElements";
 import { validateElement, logElementChange } from "./elementValidation";
-// import { checkEligibility } from "./eligibility"; // RAG v2: disabled, Solomon reasons via tool use
 import { computeProjectScores } from "./scoring";
 import { publishElementValidated, publishEligibilityUpdated, publishScoreUpdated } from "../lib/sse";
 import { preflightCached } from "./dbPreflight";
@@ -371,14 +370,6 @@ Folosește aceste informații ca context. NU repeta ce s-a discutat — continu�
     emptyElements.push(`- ${ed.displayName} (key: ${ed.elementKey}, tip: ${ed.dataType}, categorie: ${ed.category})${valHint}${helpHint}`);
   }
 
-  // RAG v2 FIX 1.1: Old guide injections DISABLED — Solomon uses search_knowledge tool instead
-  // Rollback: uncomment the blocks below to restore old behavior
-  // const refTables = await db.query.guideReferenceTables.findMany({ where: eq(guideReferenceTables.organizationId, organizationId) });
-  // const eligResults = await db.query.projectEligibility.findMany({ where: eq(projectEligibility.projectId, projectId) });
-  // const allRules = await db.query.rules.findMany({ where: eq(rules.organizationId, organizationId) });
-  // const allScoringCriteria = await db.query.scoringCriteria.findMany({ where: eq(scoringCriteria.organizationId, organizationId) });
-  // const checklistItems = await db.query.projectChecklist.findMany({ where: eq(projectChecklist.projectId, projectId) });
-
   // All company elements — dynamic library (includes ALL financial + juridical data)
   let companyAnalysis: any = {};
   try {
@@ -396,14 +387,6 @@ Folosește aceste informații ca context. NU repeta ce s-a discutat — continu�
     orderBy: (l, { desc }) => [desc(l.riskScore)],
     limit: 10,
   });
-
-  // Load knowledge base updates (legislative changes, corrections, best practices)
-  // FIX 1: solomonKnowledge query DISABLED — KB is now accessed via search_knowledge tool (chunks table)
-  // Rollback: uncomment to restore old knowledge injection in system prompt
-  // const now = new Date();
-  // let knowledgeEntries: any[] = [];
-  // try { knowledgeEntries = await db.query.solomonKnowledge.findMany({ ... }); } catch {}
-  // const activeKnowledge = knowledgeEntries.filter(k => { ... });
 
   return `Ești Solomon — consultant senior cu experiență vastă în fonduri europene și nerambursabile, integrat în platforma DosarFonduri. Lucrezi pe dosarul "${project.name}" pentru "${company.denumire}" (CUI: ${company.cui}).
 
@@ -1276,28 +1259,6 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
     }
   }
 
-  // RAG v2: Solomon uses tool_use search_knowledge instead of auto-injection
-  // Previous auto-injection code commented out — rollback by uncommenting
-  // if (content.trim()) {
-  //   try {
-  //     const { retrieveContext, hasRAGContent } = await import("./guideRetrieval");
-  //     const hasContent = await hasRAGContent(organizationId);
-  //     if (hasContent) {
-  //       const ragResult = await retrieveContext(content, organizationId, {
-  //         guideTopK: 8, knowledgeTopK: 5, maxTokens: 4000,
-  //       });
-  //       if (ragResult.context) {
-  //         userContent.push({
-  //           type: "text",
-  //           text: `[CONTEXT RELEVANT]\n${ragResult.context}\n[/CONTEXT RELEVANT]`,
-  //         });
-  //       }
-  //     }
-  //   } catch (ragErr) {
-  //     console.warn(`[solomon] RAG retrieval failed (non-critical):`, (ragErr as Error).message);
-  //   }
-  // }
-
   // Text message
   if (content.trim()) {
     userContent.push({ type: "text", text: content });
@@ -1948,76 +1909,79 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
           }
         }
 
-        // RAG v2 Sprint 5: Extract and save structured eligibility/scoring/checklist
+        // Extract and save structured eligibility/scoring/checklist (batched — no N+1)
         let currentPhaseStr = "";
         if (phaseMatch) { try { currentPhaseStr = JSON.parse(phaseMatch[1])?.phase || ""; } catch {} }
 
-        // ELIGIBILITY_JSON
+        // ELIGIBILITY_JSON — batch upsert
         const eligJsonStr = extractBalancedJSON(fullResponse, "<!--ELIGIBILITY_JSON", "ELIGIBILITY_JSON-->");
         if (eligJsonStr) {
           try {
             const eligEntries = JSON.parse(eligJsonStr);
             if (Array.isArray(eligEntries)) {
-              for (const entry of eligEntries.slice(0, 50)) {
-                if (!entry.rule || !entry.status) continue;
+              const validEntries = eligEntries.slice(0, 50).filter((e: any) => e.rule && e.status);
+              if (validEntries.length > 0) {
+                // Build batch VALUES for single INSERT ... ON CONFLICT
+                const valuesSql = validEntries.map((entry: any) =>
+                  sql`(gen_random_uuid(), ${projectId}, ${String(entry.rule).slice(0, 500)}, ${entry.category || "eligibilitate"}, ${entry.status}, ${entry.evidence?.slice(0, 2000) || null}, ${Math.min(1, Math.max(0, entry.confidence || 0.5))}, ${currentPhaseStr}, NOW(), NOW())`
+                );
                 await db.execute(sql`
-                  INSERT INTO solomon_eligibility (project_id, rule_name, rule_category, status, evidence, confidence, source_phase, updated_at)
-                  VALUES (${projectId}, ${entry.rule}, ${entry.category || "eligibilitate"}, ${entry.status}, ${entry.evidence || null}, ${Math.min(1, Math.max(0, entry.confidence || 0.5))}, ${currentPhaseStr}, NOW())
+                  INSERT INTO solomon_eligibility (id, project_id, rule_name, rule_category, status, evidence, confidence, source_phase, updated_at, created_at)
+                  VALUES ${sql.join(valuesSql, sql`, `)}
                   ON CONFLICT (project_id, rule_name) DO UPDATE SET
                     status = EXCLUDED.status, evidence = EXCLUDED.evidence, confidence = EXCLUDED.confidence,
                     source_phase = EXCLUDED.source_phase, updated_at = NOW()
                 `);
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "eligibility_update", entries: validEntries })}\n\n`));
               }
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "eligibility_update", entries: eligEntries })}\n\n`));
             }
           } catch (e) { console.warn("[solomon] ELIGIBILITY_JSON parse failed:", (e as Error).message); }
         }
 
-        // SCORING_JSON
+        // SCORING_JSON — batch upsert
         const scoreJsonStr = extractBalancedJSON(fullResponse, "<!--SCORING_JSON", "SCORING_JSON-->");
         if (scoreJsonStr) {
           try {
             const scoreEntries = JSON.parse(scoreJsonStr);
             if (Array.isArray(scoreEntries)) {
-              for (const entry of scoreEntries.slice(0, 50)) {
-                if (!entry.criterion) continue;
+              const validEntries = scoreEntries.slice(0, 50).filter((e: any) => e.criterion);
+              if (validEntries.length > 0) {
+                const valuesSql = validEntries.map((entry: any) =>
+                  sql`(gen_random_uuid(), ${projectId}, ${String(entry.criterion).slice(0, 500)}, ${entry.category || null}, ${entry.points || 0}, ${entry.maxPoints || 0}, ${entry.evidence?.slice(0, 2000) || null}, ${Math.min(1, Math.max(0, entry.confidence || 0.5))}, ${currentPhaseStr}, NOW(), NOW())`
+                );
                 await db.execute(sql`
-                  INSERT INTO solomon_scoring (project_id, criterion_name, criterion_category, points_estimated, max_points, evidence, confidence, source_phase, updated_at)
-                  VALUES (${projectId}, ${entry.criterion}, ${entry.category || null}, ${entry.points || 0}, ${entry.maxPoints || 0}, ${entry.evidence || null}, ${Math.min(1, Math.max(0, entry.confidence || 0.5))}, ${currentPhaseStr}, NOW())
+                  INSERT INTO solomon_scoring (id, project_id, criterion_name, criterion_category, points_estimated, max_points, evidence, confidence, source_phase, updated_at, created_at)
+                  VALUES ${sql.join(valuesSql, sql`, `)}
                   ON CONFLICT (project_id, criterion_name) DO UPDATE SET
                     points_estimated = EXCLUDED.points_estimated, max_points = EXCLUDED.max_points,
                     evidence = EXCLUDED.evidence, confidence = EXCLUDED.confidence,
                     source_phase = EXCLUDED.source_phase, updated_at = NOW()
                 `);
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "scoring_update", entries: validEntries })}\n\n`));
               }
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "scoring_update", entries: scoreEntries })}\n\n`));
             }
           } catch (e) { console.warn("[solomon] SCORING_JSON parse failed:", (e as Error).message); }
         }
 
-        // CHECKLIST_JSON
+        // CHECKLIST_JSON — batch insert (skip existing via ON CONFLICT DO NOTHING)
         const checkJsonStr = extractBalancedJSON(fullResponse, "<!--CHECKLIST_JSON", "CHECKLIST_JSON-->");
         if (checkJsonStr) {
           try {
             const checkEntries = JSON.parse(checkJsonStr);
             if (Array.isArray(checkEntries)) {
-              for (const entry of checkEntries.slice(0, 50)) {
-                if (!entry.document) continue;
-                // Check if item already exists
-                const existing = await db.query.projectChecklist.findFirst({
-                  where: and(eq(projectChecklist.projectId, projectId), eq(projectChecklist.name, entry.document)),
-                });
-                if (!existing) {
-                  await db.insert(projectChecklist).values({
-                    projectId,
-                    name: entry.document,
-                    category: entry.category || "obligatoriu_depunere",
-                    source: "solomon",
-                    notes: [entry.reference, entry.notes].filter(Boolean).join(" · "),
-                  });
-                }
+              const validEntries = checkEntries.slice(0, 50).filter((e: any) => e.document);
+              if (validEntries.length > 0) {
+                // Use INSERT ... ON CONFLICT DO NOTHING to skip duplicates in one query
+                const valuesSql = validEntries.map((entry: any) =>
+                  sql`(gen_random_uuid(), ${projectId}, ${String(entry.document).slice(0, 500)}, ${entry.category || "obligatoriu_depunere"}, ${"solomon"}, ${[entry.reference, entry.notes].filter(Boolean).join(" · ").slice(0, 1000) || null}, NOW())`
+                );
+                await db.execute(sql`
+                  INSERT INTO project_checklist (id, project_id, name, category, source, notes, created_at)
+                  VALUES ${sql.join(valuesSql, sql`, `)}
+                  ON CONFLICT (project_id, name) DO NOTHING
+                `);
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "checklist_update", entries: validEntries })}\n\n`));
               }
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "checklist_update", entries: checkEntries })}\n\n`));
             }
           } catch (e) { console.warn("[solomon] CHECKLIST_JSON parse failed:", (e as Error).message); }
         }

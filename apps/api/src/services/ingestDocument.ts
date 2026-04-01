@@ -1,19 +1,17 @@
 /**
- * RAG v2 — Unified document ingestion pipeline.
+ * Unified document ingestion pipeline.
  *
  * Single entry point: classify → route → process.
  * 5 routing paths:
- *   vectorize          → chunk + embed → chunks table
- *   template_fill      → mark for Neemia fill (no vectorization)
+ *   vectorize          → split into chapters → document_chapters table
+ *   template_fill      → mark for Neemia fill
  *   template_compose   → extract section structure for Neemia compose
  *   extract_data       → OCR + extract structured fields
- *   vectorize_and_extract → chunk + embed + extract fields
- *
- * Coexists with existing processGuide, processTemplate, processClientDoc.
+ *   vectorize_and_extract → chapters + extract fields
  */
 import { db } from "../db";
-import { documents, chunks } from "../db/schema";
-import { eq, sql } from "drizzle-orm";
+import { documents, documentChapters } from "../db/schema";
+import { eq } from "drizzle-orm";
 import { getFileBuffer } from "./storage";
 import {
   extractTextFromPDF,
@@ -23,7 +21,7 @@ import {
   extractTextFromDOC,
 } from "./ocr";
 import { classifyDocumentForIngestion, type ClassificationResult } from "./documentClassifier";
-import { chunkDocument } from "./ragChunker";
+import { splitIntoChapters, generateBrief, type Chapter } from "./chapterSplitter";
 import { extractStructuredData, type ExtractedField } from "./dataExtractor";
 import { publishJobProgress } from "../lib/sse";
 
@@ -118,9 +116,11 @@ export async function ingestDocument(options: IngestOptions): Promise<IngestResu
     let chunksCount: number | undefined;
     let extractedFieldsCount: number | undefined;
 
+    const docName = doc.name || fileName;
+
     switch (classification.routingAction) {
       case "vectorize": {
-        const result = await routeVectorize(documentId, cabinetId, sessionId, fullText, classification, progress);
+        const result = await routeVectorize(documentId, cabinetId, sessionId, fullText, classification, progress, organizationId, docName);
         chunksCount = result.chunksCount;
         break;
       }
@@ -143,7 +143,7 @@ export async function ingestDocument(options: IngestOptions): Promise<IngestResu
 
       case "vectorize_and_extract": {
         const [vecResult, extResult] = await Promise.all([
-          routeVectorize(documentId, cabinetId, sessionId, fullText, classification, progress),
+          routeVectorize(documentId, cabinetId, sessionId, fullText, classification, progress, organizationId, docName),
           routeExtractData(documentId, fullText, fileName, classification, (msg, pct) => progress(msg, Math.min(pct, 85))),
         ]);
         chunksCount = vecResult.chunksCount;
@@ -153,7 +153,7 @@ export async function ingestDocument(options: IngestOptions): Promise<IngestResu
 
       default:
         console.warn(`[ingestDocument] Unknown routing action: ${classification.routingAction}, defaulting to vectorize`);
-        const result = await routeVectorize(documentId, cabinetId, sessionId, fullText, classification, progress);
+        const result = await routeVectorize(documentId, cabinetId, sessionId, fullText, classification, progress, organizationId, docName);
         chunksCount = result.chunksCount;
     }
 
@@ -226,60 +226,57 @@ export async function ingestDocument(options: IngestOptions): Promise<IngestResu
 type ProgressFn = (message: string, percent: number) => void;
 
 /**
- * VECTORIZE route: chunk → enrich metadata → embed → store in chunks table.
+ * VECTORIZE route: split into chapters → store in document_chapters → generate brief.
  * Used for: ghid, fisa_evaluare, anexa
  */
 async function routeVectorize(
   documentId: string,
-  cabinetId: string,
-  sessionId: string,
+  _cabinetId: string,
+  _sessionId: string,
   fullText: string,
   classification: ClassificationResult,
   progress: ProgressFn,
+  organizationId: string,
+  documentName: string,
 ): Promise<{ chunksCount: number }> {
-  progress("Segmentare text...", 25);
-  const docChunks = chunkDocument(fullText);
+  progress("Segmentare pe capitole...", 25);
+  const chapters = splitIntoChapters(fullText);
 
-  if (docChunks.length === 0) {
+  if (chapters.length === 0) {
     return { chunksCount: 0 };
   }
 
-  progress("Analiză conținut...", 40);
-  // Assign default metadata per chunk (layer + doc_type for search filtering)
-  const metadata = docChunks.map(() => ({
-    layer: "narativ",
-    topic: classification.description,
-    doc_type: classification.docType,
-    importance: "normal",
-  }));
+  progress("Salvare capitole...", 50);
 
-  progress("Salvare chunks...", 70);
+  // Delete old chapters for this document (re-upload scenario)
+  await db.delete(documentChapters).where(eq(documentChapters.documentId, documentId));
 
-  // Delete old chunks for this document (re-upload scenario)
-  await db.delete(chunks).where(eq(chunks.documentId, documentId));
-
-  // Save chunks WITHOUT embeddings — BM25 text search works via tsvector GENERATED column
-  // Embeddings are optional (Voyage AI) — Solomon searches with keyword matching
-  const records = docChunks.map((chunk, i) => ({
-    cabinetId,
-    sessionId,
+  // Insert chapters in batches
+  const rows = chapters.map(ch => ({
     documentId,
-    sourceType: "session" as const,
-    content: chunk.content,
-    // embedding: null — saved without vector, BM25 search still works
-    metadata: {
-      ...(metadata[i] || {}),
-      page: chunk.pageStart,
-    },
+    organizationId,
+    chapterIndex: ch.chapterIndex,
+    title: ch.title,
+    content: ch.content,
+    pageStart: ch.pageStart,
+    pageEnd: ch.pageEnd,
+    tokenCount: ch.tokenCount,
+    metadata: { doc_type: classification.docType },
   }));
 
-  // Insert in batches of 100 to avoid query size limits
-  for (let i = 0; i < records.length; i += 100) {
-    const batch = records.slice(i, i + 100);
-    await db.insert(chunks).values(batch);
+  for (let i = 0; i < rows.length; i += 50) {
+    await db.insert(documentChapters).values(rows.slice(i, i + 50));
   }
 
-  return { chunksCount: docChunks.length };
+  // Generate brief (non-blocking — don't fail the pipeline)
+  progress("Generare rezumat document...", 75);
+  try {
+    await generateBrief(documentName, chapters, organizationId);
+  } catch (err) {
+    console.warn(`[ingest] Brief generation failed for ${documentId}:`, (err as Error).message);
+  }
+
+  return { chunksCount: chapters.length };
 }
 
 /**

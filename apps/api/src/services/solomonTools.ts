@@ -262,12 +262,22 @@ async function handleSaveElement(
   input: { key: string; value: string; confidence?: number },
   ctx: ToolContext,
 ): Promise<string> {
+  // Input validation
+  if (!input.key || typeof input.key !== "string" || input.key.length > 255) {
+    return "Eroare: cheia elementului lipsește sau e prea lungă (max 255 caractere).";
+  }
+  if (!input.value || typeof input.value !== "string") {
+    return "Eroare: valoarea elementului lipsește.";
+  }
+  const key = input.key.trim().slice(0, 255);
+  const value = input.value.trim().slice(0, 10000);
+  if (!key || !value) return "Eroare: cheia sau valoarea nu poate fi goală.";
   const confidence = Math.min(1, Math.max(0, input.confidence || 0.5));
 
   // Find existing element definition
   const elemDef = await db.query.elementDefinitions.findFirst({
     where: and(
-      eq(elementDefinitions.elementKey, input.key),
+      eq(elementDefinitions.elementKey, key),
       eq(elementDefinitions.organizationId, ctx.organizationId),
     ),
   });
@@ -284,31 +294,42 @@ async function handleSaveElement(
 
   if (existing) {
     await db.update(projectElements).set({
-      value: input.value,
+      value,
       source: "solomon_chat",
       confirmed: false,
       validationStatus: "pending",
     }).where(eq(projectElements.id, existing.id));
-    return `Actualizat: ${elemDef?.displayName || input.key} = ${input.value} (confidence: ${confidence})`;
+    return `Actualizat: ${elemDef?.displayName || key} = ${value} (confidence: ${confidence})`;
+  }
+
+  if (!elemDef) {
+    return `Element necunoscut: "${key}". Verifică dacă cheia e corectă.`;
   }
 
   // Insert new
   await db.insert(projectElements).values({
     projectId: ctx.projectId,
-    elementDefId: elemDef?.id,
-    value: input.value,
+    elementDefId: elemDef.id,
+    value,
     source: "solomon_chat",
     confirmed: false,
     validationStatus: "pending",
   });
 
-  return `Salvat: ${elemDef?.displayName || input.key} = ${input.value} (confidence: ${confidence})`;
+  return `Salvat: ${elemDef.displayName || key} = ${value} (confidence: ${confidence})`;
 }
 
 async function handleCheckEligibility(
   input: { rule: string; status: string; evidence: string; confidence?: number },
   ctx: ToolContext,
 ): Promise<string> {
+  if (!input.rule || typeof input.rule !== "string" || input.rule.length > 500) {
+    return "Eroare: denumirea regulii lipsește sau e prea lungă.";
+  }
+  if (!["pass", "fail", "pending"].includes(input.status)) {
+    return "Eroare: status invalid. Valori acceptate: pass, fail, pending.";
+  }
+  const evidence = (input.evidence || "").slice(0, 2000);
   const confidence = Math.min(1, Math.max(0, input.confidence || 0.8));
 
   // Upsert in solomon_eligibility
@@ -322,15 +343,15 @@ async function handleCheckEligibility(
   if (existing) {
     await db.update(solomonEligibility).set({
       status: input.status,
-      evidence: input.evidence,
+      evidence,
       confidence: confidence.toString(),
     }).where(eq(solomonEligibility.id, existing.id));
   } else {
     await db.insert(solomonEligibility).values({
       projectId: ctx.projectId,
-      ruleName: input.rule,
+      ruleName: input.rule.slice(0, 500),
       status: input.status,
-      evidence: input.evidence,
+      evidence,
       confidence: confidence.toString(),
     });
   }
@@ -343,6 +364,12 @@ async function handleEstimateScore(
   input: { criterion: string; points: number; max_points: number; evidence: string; confidence?: number },
   ctx: ToolContext,
 ): Promise<string> {
+  if (!input.criterion || typeof input.criterion !== "string" || input.criterion.length > 500) {
+    return "Eroare: denumirea criteriului lipsește sau e prea lungă.";
+  }
+  const points = Math.max(0, Math.min(1000, Math.round(input.points || 0)));
+  const maxPoints = Math.max(0, Math.min(1000, Math.round(input.max_points || 0)));
+  const evidence = (input.evidence || "").slice(0, 2000);
   const confidence = Math.min(1, Math.max(0, input.confidence || 0.7));
 
   const existing = await db.query.solomonScoring.findFirst({
@@ -354,34 +381,42 @@ async function handleEstimateScore(
 
   if (existing) {
     await db.update(solomonScoring).set({
-      pointsEstimated: Math.round(input.points),
-      maxPoints: Math.round(input.max_points),
-      evidence: input.evidence,
+      pointsEstimated: points,
+      maxPoints: maxPoints,
+      evidence,
       confidence: confidence.toString(),
     }).where(eq(solomonScoring.id, existing.id));
   } else {
     await db.insert(solomonScoring).values({
       projectId: ctx.projectId,
-      criterionName: input.criterion,
-      pointsEstimated: Math.round(input.points),
-      maxPoints: Math.round(input.max_points),
-      evidence: input.evidence,
+      criterionName: input.criterion.slice(0, 500),
+      pointsEstimated: points,
+      maxPoints: maxPoints,
+      evidence,
       confidence: confidence.toString(),
     });
   }
 
-  return `📊 ${input.criterion}: ${input.points}/${input.max_points} puncte — ${input.evidence}`;
+  return `📊 ${input.criterion}: ${points}/${maxPoints} puncte — ${evidence.slice(0, 100)}`;
 }
 
 async function handleComposeSection(
   input: { section_title: string; instructions: string; max_words?: number },
   ctx: ToolContext,
 ): Promise<string> {
-  const maxWords = input.max_words || 500;
+  if (!input.section_title || typeof input.section_title !== "string") {
+    return "Eroare: titlul secțiunii lipsește.";
+  }
+  if (!input.instructions || typeof input.instructions !== "string") {
+    return "Eroare: instrucțiunile lipsesc.";
+  }
+  const sectionTitle = input.section_title.slice(0, 200);
+  const instructions = input.instructions.slice(0, 5000);
+  const maxWords = Math.min(input.max_words || 500, 2000);
 
   // Get relevant context from chapters
   const context = await searchChapters({
-    query: input.section_title + " " + input.instructions,
+    query: sectionTitle + " " + instructions,
     organizationId: ctx.organizationId,
     folderId: ctx.sessionId || undefined,
     topK: 5,
@@ -396,11 +431,11 @@ async function handleComposeSection(
       system: `Ești un redactor expert pentru dosare de fonduri europene. Scrii texte narative profesionale, formal-tehnice, cu cifre concrete și terminologie oficială. Scrie la persoana a III-a ("Solicitantul", "Societatea"). Fiecare paragraf: o singură idee + date concrete. Folosește conectori logici. Max ${maxWords} cuvinte. DOAR textul secțiunii, fără preambul.`,
       messages: [{
         role: "user",
-        content: `Scrie secțiunea "${input.section_title}" pentru proiectul "${ctx.projectName || ""}".
+        content: `Scrie secțiunea "${sectionTitle}" pentru proiectul "${ctx.projectName || ""}".
 
 Firma: ${ctx.companyName || ""}
 
-Instrucțiuni: ${input.instructions}
+Instrucțiuni: ${instructions}
 
 Context din documente:
 ${contextText.slice(0, 10000)}`,
@@ -418,7 +453,7 @@ ${contextText.slice(0, 10000)}`,
     model: "claude-sonnet-4-6",
     tokensInput: (response as any).usage?.input_tokens || 0,
     tokensOutput: (response as any).usage?.output_tokens || 0,
-    action: `compose_${input.section_title.slice(0, 30)}`,
+    action: `compose_${sectionTitle.slice(0, 30)}`,
   });
 
   return sectionText;

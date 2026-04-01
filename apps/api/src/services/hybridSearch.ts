@@ -1,8 +1,11 @@
 /**
- * BM25 Keyword Search on chunks table (PostgreSQL tsvector).
+ * Full-text search on document_chapters using PostgreSQL tsvector.
  *
- * No vector embeddings needed — uses full-text search with Romanian dictionary.
- * Solomon searches by keywords, the DB ranks by relevance.
+ * Romanian stemmer for natural language queries.
+ * No vector embeddings — pure keyword matching with BM25 ranking.
+ *
+ * Also searches legacy guideChunks table (for backward compatibility with
+ * guides processed before the chapter system).
  */
 import { sql } from "drizzle-orm";
 import { db } from "../db";
@@ -12,8 +15,8 @@ export interface HybridSearchOptions {
   cabinetId: string;
   sessionId?: string;
   sourceType?: "session" | "knowledge_base";
-  layers?: string[];           // filter on metadata->>'layer'
-  topK?: number;               // default 5
+  layers?: string[];
+  topK?: number;
 }
 
 export interface HybridSearchResult {
@@ -21,45 +24,57 @@ export interface HybridSearchResult {
   content: string;
   metadata: Record<string, unknown>;
   score: number;
-  matchType: "vector" | "keyword" | "both";
+  matchType: "keyword";
 }
 
-const RRF_K = 60; // Reciprocal Rank Fusion constant
-const CANDIDATE_POOL = 20; // candidates per search leg
-
 export async function hybridSearch(options: HybridSearchOptions): Promise<HybridSearchResult[]> {
-  const { query, cabinetId, sessionId, sourceType, layers, topK = 5 } = options;
+  const { query, cabinetId, sessionId, topK = 5 } = options;
 
-  // Build dynamic WHERE filters
-  let filterSql = sql`cabinet_id = ${cabinetId}`;
-  if (sourceType) {
-    filterSql = sql`${filterSql} AND source_type = ${sourceType}`;
+  if (!query.trim()) return [];
+
+  // Search document_chapters (primary table)
+  let results: any[] = [];
+  try {
+    const chapterResults = await db.execute(sql`
+      SELECT dc.id, dc.content, dc.metadata,
+        ts_rank(dc.content_tsv, plainto_tsquery('romanian', ${query})) as rank_score
+      FROM document_chapters dc
+      WHERE dc.organization_id = ${cabinetId}
+        AND dc.content_tsv @@ plainto_tsquery('romanian', ${query})
+      ORDER BY rank_score DESC
+      LIMIT ${topK}
+    `);
+    results = (chapterResults as any).rows || chapterResults as any[];
+  } catch (err) {
+    // document_chapters table may not exist yet (migration pending)
+    console.warn("[hybridSearch] document_chapters search failed:", (err as Error).message?.slice(0, 100));
   }
-  if (sessionId) {
-    filterSql = sql`${filterSql} AND session_id = ${sessionId}`;
+
+  // Fallback: also search guideChunks (legacy guides, no vector needed)
+  if (results.length < topK) {
+    try {
+      const guideResults = await db.execute(sql`
+        SELECT id, content, metadata,
+          ts_rank(to_tsvector('romanian', content), plainto_tsquery('romanian', ${query})) as rank_score
+        FROM guide_chunks
+        WHERE organization_id = ${cabinetId}
+          AND to_tsvector('romanian', content) @@ plainto_tsquery('romanian', ${query})
+        ORDER BY rank_score DESC
+        LIMIT ${topK - results.length}
+      `);
+      const guideRows = (guideResults as any).rows || guideResults as any[];
+      results = [...results, ...guideRows];
+    } catch {
+      // guide_chunks table may not exist or have different schema
+    }
   }
-  if (layers && layers.length > 0) {
-    filterSql = sql`${filterSql} AND metadata->>'layer' = ANY(${layers}::text[])`;
-  }
 
-  // BM25 keyword search using PostgreSQL tsvector (GENERATED column on chunks)
-  // No vector embeddings needed — Solomon searches by keywords in Romanian
-  const results = await db.execute(sql`
-    SELECT id, content, metadata,
-      ts_rank(content_tsv, plainto_tsquery('romanian', ${query})) as rank_score
-    FROM chunks
-    WHERE ${filterSql}
-      AND content_tsv @@ plainto_tsquery('romanian', ${query})
-    ORDER BY rank_score DESC
-    LIMIT ${topK}
-  `);
-
-  const rows = (results as any).rows || results;
-
-  return (rows as any[]).map(row => ({
+  return results.map((row: any) => ({
     id: row.id,
     content: row.content,
-    metadata: typeof row.metadata === "string" ? (() => { try { return JSON.parse(row.metadata); } catch { return {}; } })() : (row.metadata || {}),
+    metadata: typeof row.metadata === "string"
+      ? (() => { try { return JSON.parse(row.metadata); } catch { return {}; } })()
+      : (row.metadata || {}),
     score: parseFloat(row.rank_score || "0"),
     matchType: "keyword" as const,
   }));

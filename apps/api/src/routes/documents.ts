@@ -4,7 +4,7 @@ import { z } from "zod";
 import { createHash } from "crypto";
 import { updateDocElementSchema, validatePageSchema, createDocElementSchema } from "@dosarfonduri/shared";
 import { db } from "../db";
-import { documentFolders, documents, files, templateElements, rules, scoringCriteria, elementDefinitions, templatePlaceholderMapping, users, guideReferenceTables, elementRuleLinks, ruleReferenceLinks, sessionChecklist, projects, projectDocuments, projectElements, projectEligibility, organizations, chunks } from "../db/schema";
+import { documentFolders, documents, files, templateElements, rules, scoringCriteria, elementDefinitions, templatePlaceholderMapping, users, guideReferenceTables, elementRuleLinks, ruleReferenceLinks, sessionChecklist, projects, projectDocuments, projectElements, projectEligibility, organizations, documentChapters, documentBriefs } from "../db/schema";
 import { eq, and, isNull, sql, inArray, or, lt } from "drizzle-orm";
 import { uploadFile, getFileUrl, deleteFile, createPresignedUploadUrl, verifyFileUploaded, isLocalStorage } from "../services/storage";
 import { AuthContext } from "../middleware/auth";
@@ -2188,8 +2188,9 @@ documentRoutes.put("/documents/:id/reclassify", async (c) => {
     return c.json({ error: `Invalid routingAction. Must be one of: ${validRoutes.join(", ")}` }, 400);
   }
 
-  // Delete old chunks if any exist
-  await db.delete(chunks).where(eq(chunks.documentId, id));
+  // Delete old chapters/briefs if any exist (re-classification)
+  await db.delete(documentChapters).where(eq(documentChapters.documentId, id));
+  await db.delete(documentBriefs).where(eq(documentBriefs.documentId, id));
 
   // Update classification with manual override
   const newClassification = {

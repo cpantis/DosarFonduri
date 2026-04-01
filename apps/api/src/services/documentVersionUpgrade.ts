@@ -11,7 +11,7 @@
  * 7. Emit SSE event
  */
 import { db } from "../db";
-import { documents, chunks, projects, formSpecs } from "../db/schema";
+import { documents, documentChapters, documentBriefs, projects, formSpecs } from "../db/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { generateVersionDiff, type VersionDiffResult } from "./versionDiff";
 import { getFileBuffer } from "./storage";
@@ -81,8 +81,9 @@ export async function executeVersionUpgrade(
     versionDiff: report.diff as any,
   }).where(eq(documents.id, newDocId));
 
-  // 3. Delete old chunks
-  const deleted = await db.delete(chunks).where(eq(chunks.documentId, oldDocId)).returning();
+  // 3. Delete old chapters and briefs
+  const deleted = await db.delete(documentChapters).where(eq(documentChapters.documentId, oldDocId)).returning();
+  await db.delete(documentBriefs).where(eq(documentBriefs.documentId, oldDocId));
   report.chunksDeleted = deleted.length;
 
   // 4. Trigger re-ingestion of new document

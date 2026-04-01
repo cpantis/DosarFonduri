@@ -630,12 +630,12 @@ projectRoutes.get("/:id", async (c) => {
   }
 
   const company = await db.query.companies.findFirst({
-    where: eq(companies.id, project.companyId),
+    where: and(eq(companies.id, project.companyId), eq(companies.organizationId, auth.organizationId!)),
   });
 
-  const folder = await db.query.documentFolders.findFirst({
-    where: eq(documentFolders.id, project.folderId),
-  });
+  const folder = project.folderId ? await db.query.documentFolders.findFirst({
+    where: and(eq(documentFolders.id, project.folderId), eq(documentFolders.organizationId, auth.organizationId!)),
+  }) : null;
 
   const elements = await db.query.projectElements.findMany({
     where: eq(projectElements.projectId, id),

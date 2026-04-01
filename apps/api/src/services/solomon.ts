@@ -7,7 +7,7 @@ import {
   companies, companyLinkedCompanies,
   solomonConversations, solomonMessages, solomonCaseMemory,
   solomonEligibility, solomonScoring,
-  orgConfig, solomonKnowledge,
+  orgConfig,
   elementRuleLinks, elementDefinitions, guideReferenceTables,
   projectChecklist, scoringCriteria,
 } from "../db/schema";
@@ -21,63 +21,6 @@ import { preflightCached } from "./dbPreflight";
 import { SOLOMON_TOOLS, executeSolomonTool, type ToolContext } from "./solomonTools";
 import { upsertElementDefinition } from "./elementDefinitionService";
 import { getFileBuffer } from "./storage";
-
-/**
- * Extract balanced JSON (array or object) between markers in text.
- * Handles values containing ] or } characters safely using bracket counting.
- * Returns the JSON string (including outer brackets) or null if not found.
- */
-function extractBalancedJSON(text: string, startMarker: string, endMarker: string): string | null {
-  const startIdx = text.indexOf(startMarker);
-  if (startIdx === -1) return null;
-
-  const searchFrom = startIdx + startMarker.length;
-  // Find the first [ or { after the start marker
-  let jsonStart = -1;
-  let openChar = "";
-  let closeChar = "";
-  for (let i = searchFrom; i < text.length; i++) {
-    if (text[i] === "[") { jsonStart = i; openChar = "["; closeChar = "]"; break; }
-    if (text[i] === "{") { jsonStart = i; openChar = "{"; closeChar = "}"; break; }
-    // Skip whitespace between marker and JSON
-    if (!/\s/.test(text[i])) break;
-  }
-  if (jsonStart === -1) return null;
-
-  let depth = 0;
-  let inString = false;
-  let escaped = false;
-
-  for (let i = jsonStart; i < text.length; i++) {
-    const ch = text[i];
-
-    if (escaped) { escaped = false; continue; }
-    if (ch === "\\" && inString) { escaped = true; continue; }
-    if (ch === '"' && !escaped) { inString = !inString; continue; }
-
-    if (!inString) {
-      if (ch === openChar) depth++;
-      if (ch === closeChar) {
-        depth--;
-        if (depth === 0) {
-          const jsonStr = text.slice(jsonStart, i + 1);
-          // Verify the end marker follows (allow whitespace between)
-          const afterJson = text.slice(i + 1, i + 1 + endMarker.length + 10).trim();
-          if (afterJson.startsWith(endMarker) || !endMarker) {
-            return jsonStr;
-          }
-          // End marker not found right after — might be a false start, try to parse anyway
-          return jsonStr;
-        }
-      }
-    }
-  }
-
-  // Unbalanced — try the original regex as fallback
-  const pattern = new RegExp(startMarker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "([\\s\\S]*?)" + endMarker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-  const match = text.match(pattern);
-  return match ? match[1] : null;
-}
 
 // Sanitize user-controlled data embedded in system prompts to prevent prompt injection.
 // Wraps content in delimiters and escapes sequences that could break out.

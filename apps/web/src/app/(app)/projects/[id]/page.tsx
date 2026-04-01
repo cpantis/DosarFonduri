@@ -448,6 +448,20 @@ export default function ProjectViewPage() {
     window.addEventListener("df-refine-toggle", handler);
     return () => window.removeEventListener("df-refine-toggle", handler);
   }, []);
+
+  // Cleanup all streaming resources on unmount
+  useEffect(() => {
+    return () => {
+      if (solomonAbortRef.current) {
+        solomonAbortRef.current.abort();
+        solomonAbortRef.current = null;
+      }
+      if (solomonTimeoutRef.current) {
+        clearTimeout(solomonTimeoutRef.current);
+        solomonTimeoutRef.current = null;
+      }
+    };
+  }, []);
   const chatRef = useRef<HTMLDivElement>(null);
   const chatBottomRef = useRef<HTMLDivElement>(null);
   const [solomonAutoScroll, setSolomonAutoScroll] = useState(true);
@@ -1374,10 +1388,13 @@ export default function ProjectViewPage() {
   const handleRefineSubmit = async () => {
     if (readOnly || !refineInput.trim() || !refinePopup || !solomonConvId) return;
     setSolomonStreaming(true);
+    const abortCtrl = new AbortController();
+    solomonAbortRef.current = abortCtrl;
     try {
       const token = typeof window !== "undefined" ? localStorage.getItem("df-token") : null;
       const res = await fetch(`${API_URL}/api/solomon/conversations/${solomonConvId}/refine`, {
         method: "POST",
+        signal: abortCtrl.signal,
         headers: {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -1424,6 +1441,7 @@ export default function ProjectViewPage() {
     } catch (err) {
       console.error("Refine SSE error:", err);
     } finally {
+      solomonAbortRef.current = null;
       setSolomonStreaming(false);
       setRefinePopup(null);
       setRefineInput("");
@@ -1875,8 +1893,11 @@ export default function ProjectViewPage() {
       setNeemiaGenStatus("Se generează documentul...");
       setNeemiaGenProgress(25);
       const neeToken = typeof window !== "undefined" ? localStorage.getItem("df-token") : null;
+      const neeAbort = new AbortController();
+      solomonAbortRef.current = neeAbort;
       const res = await fetch(`${API_URL}/api/neemia/projects/${projectId}/generate`, {
         method: "POST",
+        signal: neeAbort.signal,
         headers: {
           "Content-Type": "application/json",
           ...(neeToken ? { Authorization: `Bearer ${neeToken}` } : {}),
@@ -1917,9 +1938,12 @@ export default function ProjectViewPage() {
         }
       }
     } catch (err) {
-      setNeemiaGenStatus(`Eroare: ${(err as Error).message}`);
-      setNeemiaGenProgress(0);
+      if ((err as Error).name !== "AbortError") {
+        setNeemiaGenStatus(`Eroare: ${(err as Error).message}`);
+        setNeemiaGenProgress(0);
+      }
     } finally {
+      solomonAbortRef.current = null;
       setNeemiaGenerating(false);
     }
   };
@@ -1931,8 +1955,11 @@ export default function ProjectViewPage() {
     setNeemiaGenStatus("Se pregătește generarea dosarului complet...");
     try {
       const bulkToken = typeof window !== "undefined" ? localStorage.getItem("df-token") : null;
+      const bulkAbort = new AbortController();
+      solomonAbortRef.current = bulkAbort;
       const res = await fetch(`${API_URL}/api/neemia/projects/${projectId}/generate-all`, {
         method: "POST",
+        signal: bulkAbort.signal,
         headers: {
           "Content-Type": "application/json",
           ...(bulkToken ? { Authorization: `Bearer ${bulkToken}` } : {}),
@@ -1964,8 +1991,11 @@ export default function ProjectViewPage() {
         }
       }
     } catch (err) {
-      setNeemiaGenStatus(`Eroare: ${(err as Error).message}`);
+      if ((err as Error).name !== "AbortError") {
+        setNeemiaGenStatus(`Eroare: ${(err as Error).message}`);
+      }
     } finally {
+      solomonAbortRef.current = null;
       setNeemiaBulkGenerating(false);
     }
   };
@@ -1988,8 +2018,11 @@ export default function ProjectViewPage() {
       }
       setNeemiaGenStatus("Se generează previzualizare COMPOSE...");
       const token = typeof window !== "undefined" ? localStorage.getItem("df-token") : null;
+      const compAbort = new AbortController();
+      solomonAbortRef.current = compAbort;
       const res = await fetch(`${API_URL}/api/neemia/projects/${projectId}/compose/preview`, {
         method: "POST",
+        signal: compAbort.signal,
         headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({ templateDocumentId }),
       });
@@ -2017,8 +2050,11 @@ export default function ProjectViewPage() {
         }
       }
     } catch (err) {
-      setNeemiaGenStatus(`Eroare: ${(err as Error).message}`);
+      if ((err as Error).name !== "AbortError") {
+        setNeemiaGenStatus(`Eroare: ${(err as Error).message}`);
+      }
     } finally {
+      solomonAbortRef.current = null;
       setComposePreviewing(false);
     }
   };
@@ -2028,10 +2064,13 @@ export default function ProjectViewPage() {
     if (readOnly || neemiaGenerating) return;
     setNeemiaGenerating(true);
     setNeemiaGenStatus("Se generează documentul COMPOSE...");
+    const genAbort = new AbortController();
+    solomonAbortRef.current = genAbort;
     try {
       const token = typeof window !== "undefined" ? localStorage.getItem("df-token") : null;
       const res = await fetch(`${API_URL}/api/neemia/projects/${projectId}/compose/generate`, {
         method: "POST",
+        signal: genAbort.signal,
         headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({
           templateDocumentId,
@@ -2063,6 +2102,7 @@ export default function ProjectViewPage() {
     } catch (err) {
       setNeemiaGenStatus(`Eroare: ${(err as Error).message}`);
     } finally {
+      solomonAbortRef.current = null;
       setNeemiaGenerating(false);
     }
   };

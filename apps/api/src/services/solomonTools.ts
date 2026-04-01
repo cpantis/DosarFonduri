@@ -472,14 +472,16 @@ async function handleComposeSection(
 
   const contextText = context.map(c => `[${c.documentName}] ${c.content.slice(0, 800)}`).join("\n\n");
 
-  const response: any = await withAILimit(async () => {
-    return anthropic.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: maxWords * 5,
-      system: `Ești un redactor expert pentru dosare de fonduri europene. Scrii texte narative profesionale, formal-tehnice, cu cifre concrete și terminologie oficială. Scrie la persoana a III-a ("Solicitantul", "Societatea"). Fiecare paragraf: o singură idee + date concrete. Folosește conectori logici. Max ${maxWords} cuvinte. DOAR textul secțiunii, fără preambul.`,
-      messages: [{
-        role: "user",
-        content: `Scrie secțiunea "${sectionTitle}" pentru proiectul "${ctx.projectName || ""}".
+  let response: any;
+  try {
+    response = await withAILimit(async () => {
+      return anthropic.messages.create({
+        model: "claude-sonnet-4-6",
+        max_tokens: maxWords * 5,
+        system: `Ești un redactor expert pentru dosare de fonduri europene. Scrii texte narative profesionale, formal-tehnice, cu cifre concrete și terminologie oficială. Scrie la persoana a III-a ("Solicitantul", "Societatea"). Fiecare paragraf: o singură idee + date concrete. Folosește conectori logici. Max ${maxWords} cuvinte. DOAR textul secțiunii, fără preambul.`,
+        messages: [{
+          role: "user",
+          content: `Scrie secțiunea "${sectionTitle}" pentru proiectul "${ctx.projectName || ""}".
 
 Firma: ${ctx.companyName || ""}
 
@@ -487,9 +489,13 @@ Instrucțiuni: ${instructions}
 
 Context din documente:
 ${contextText.slice(0, 10000)}`,
-      }],
-    });
-  }, "batch");
+        }],
+      });
+    }, "batch");
+  } catch (err) {
+    console.error("[compose_section] AI call failed:", (err as Error).message);
+    return `Eroare la generarea secțiunii "${sectionTitle}": ${(err as Error).message?.slice(0, 100)}. Reîncearcă.`;
+  }
 
   const textBlock = (response as any).content?.find((b: any) => b.type === "text");
   const sectionText = textBlock?.text || "";

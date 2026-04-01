@@ -128,7 +128,7 @@ async function detectProgramContext(projectId: string, organizationId: string, p
   // ─── Layer 1: Sonnet AI (primary — semantic analysis of all signals) ───
   try {
     const contextText = signals.join("\n");
-    const response: any = await withAILimit(() => (anthropic.messages.create as any)({
+    const response = await withAILimit(() => anthropic.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: 300,
       system: `Ești Solomon — consultant senior fonduri europene cu 15+ ani experiență. Analizezi semnalele unui proiect pentru a identifica programul de finanțare.
@@ -153,8 +153,8 @@ Returnează DOAR un JSON valid (fără backticks):
       }],
     }));
 
-    const textBlock = response.content.find((b: any) => b.type === "text");
-    const responseText = textBlock ? (textBlock as any).text : "{}";
+    const textBlock = response.content.find((b): b is Anthropic.TextBlock => b.type === "text");
+    const responseText = textBlock ? textBlock.text : "{}";
     const cleaned = responseText.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
     const result = JSON.parse(cleaned);
 
@@ -678,7 +678,7 @@ Când generezi texte narative pentru dosar (descrieri, justificări, obiective, 
 **Structuri standard per secțiune:**
 
 CONTEXT ȘI JUSTIFICARE: Situația actuală → problema identificată → nevoia de investiție → alinierea la obiectivele programului
-→ "Societatea ${sanitizeForPrompt(company.denumire)}, înregistrată la ONRC sub nr. ${sanitizeForPrompt((company as any).registrationNumber)}, cu sediul în ${sanitizeForPrompt(company.judet)}, își desfășoară activitatea principală sub codul CAEN ${sanitizeForPrompt(company.caen)}. În prezent, [SITUAȚIE ACTUALĂ]. Prin implementarea proiectului, solicitantul vizează [SOLUȚIE], fapt ce va conduce la [REZULTAT CUANTIFICAT]."
+→ "Societatea ${sanitizeForPrompt(company.denumire)}, înregistrată la ONRC sub nr. ${sanitizeForPrompt(company.regCom)}, cu sediul în ${sanitizeForPrompt(company.judet)}, își desfășoară activitatea principală sub codul CAEN ${sanitizeForPrompt(company.caen)}. În prezent, [SITUAȚIE ACTUALĂ]. Prin implementarea proiectului, solicitantul vizează [SOLUȚIE], fapt ce va conduce la [REZULTAT CUANTIFICAT]."
 
 OBIECTIVE: Formulare SMART — verb infinitiv + indicator + valoare + termen
 → "Obiectivul general: Creșterea competitivității SC ${sanitizeForPrompt(company.denumire)} prin [VERB]. Obiectiv specific 1: [ACȚIUNE] în vederea [INDICATOR] cu [VALOARE]% în primii [N] ani de la finalizare."
@@ -805,18 +805,15 @@ export async function processInlineRefine(params: {
     async start(controller) {
       try {
         for await (const event of stream) {
-          if (event.type === "content_block_delta") {
-            const delta = event.delta as any;
-            if (delta.type === "text_delta") {
-              fullResponse += delta.text;
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "text", text: delta.text })}\n\n`));
-            }
+          if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+            fullResponse += event.delta.text;
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "text", text: event.delta.text })}\n\n`));
           }
           if (event.type === "message_delta") {
-            tokensOut = (event as any).usage?.output_tokens || 0;
+            tokensOut = event.usage?.output_tokens || 0;
           }
           if (event.type === "message_start") {
-            tokensIn = (event as any).message?.usage?.input_tokens || 0;
+            tokensIn = event.message?.usage?.input_tokens || 0;
           }
         }
 
@@ -1208,20 +1205,20 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
   };
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-    let roundResponse: any;
+    let roundResponse: Anthropic.Message;
     try {
       roundResponse = await anthropic.messages.create({
         ...baseRequestParams,
         messages,
       });
-    } catch (toolRoundErr: any) {
-      console.error(`[solomon] Tool round ${round} API call failed:`, toolRoundErr.message);
+    } catch (toolRoundErr: unknown) {
+      console.error(`[solomon] Tool round ${round} API call failed:`, (toolRoundErr as Error).message);
       // If first round fails, skip tool use entirely and go straight to streaming
       break;
     }
 
     // Check if response has tool_use blocks
-    const toolUseBlocks = (roundResponse.content || []).filter((b: any) => b.type === "tool_use");
+    const toolUseBlocks = roundResponse.content.filter((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
 
     if (toolUseBlocks.length === 0 || roundResponse.stop_reason !== "tool_use") {
       // No tool use — this is the final response
@@ -1230,16 +1227,15 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
     }
 
     // Execute tool calls and add results to conversation
-    messages.push({ role: "assistant", content: roundResponse.content as any });
+    messages.push({ role: "assistant", content: roundResponse.content as Anthropic.MessageParam["content"] });
 
-    const toolResults: any[] = [];
+    const toolResults: Anthropic.ToolResultBlockParam[] = [];
     for (const toolBlock of toolUseBlocks) {
-      const tb = toolBlock as any;
-      const result = await executeSolomonTool(tb.name, tb.input, toolContext);
+      const result = await executeSolomonTool(toolBlock.name, toolBlock.input, toolContext);
 
       // Parse source references from search results for source trail
       const sources: Array<{ section?: string; page?: string; docType?: string; layer?: string }> = [];
-      if (tb.name === "search_knowledge") {
+      if (toolBlock.name === "search_knowledge") {
         const sourcePattern = /\[(\d+)\]\s*(.*)/g;
         let match;
         while ((match = sourcePattern.exec(result)) !== null) {
@@ -1253,10 +1249,11 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
         }
       }
 
-      toolUseEvents.push({ toolName: tb.name, query: tb.input?.query, sources });
+      const toolInput = toolBlock.input as Record<string, unknown> | undefined;
+      toolUseEvents.push({ toolName: toolBlock.name, query: toolInput?.query as string | undefined, sources });
       toolResults.push({
         type: "tool_result",
-        tool_use_id: tb.id,
+        tool_use_id: toolBlock.id,
         content: result,
       });
     }
@@ -1271,15 +1268,15 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
       .join("; ");
     await db.insert(solomonMessages).values({
       conversationId,
-      role: "assistant" as any,
+      role: "assistant",
       content: `[Căutare automată: ${toolSummary}]`,
     });
   }
 
   // Final streaming response (after all tool rounds)
-  let stream: any;
+  let stream: ReturnType<typeof anthropic.messages.stream>;
   try {
-    stream = (anthropic.messages.stream as any)({
+    stream = anthropic.messages.stream({
       ...baseRequestParams,
       messages,
       stream: true,
@@ -1303,18 +1300,15 @@ Fiecare câmp trebuie extras — sunt OBLIGATORII pentru dosarul de finanțare.`
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "tool_use", toolName: tue.toolName, query: tue.query, sources: tue.sources || [] })}\n\n`));
         }
         for await (const event of stream) {
-          if (event.type === "content_block_delta") {
-            const delta = event.delta as any;
-            if (delta.type === "text_delta") {
-              fullResponse += delta.text;
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "text", text: delta.text })}\n\n`));
-            }
+          if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+            fullResponse += event.delta.text;
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "text", text: event.delta.text })}\n\n`));
           }
           if (event.type === "message_delta") {
-            tokensOut = (event as any).usage?.output_tokens || 0;
+            tokensOut = event.usage?.output_tokens || 0;
           }
           if (event.type === "message_start") {
-            tokensIn = (event as any).message?.usage?.input_tokens || 0;
+            tokensIn = event.message?.usage?.input_tokens || 0;
           }
         }
 

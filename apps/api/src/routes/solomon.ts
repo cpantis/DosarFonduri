@@ -159,7 +159,8 @@ solomonRoutes.post("/conversations/:convId/upload", async (c) => {
     }
   }
 
-  const MIME_TO_TYPE: Record<string, string> = {
+  type DocFileType = "pdf" | "docx" | "xlsx" | "doc" | "png" | "jpg";
+  const MIME_TO_TYPE: Record<string, DocFileType> = {
     "application/pdf": "pdf",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
@@ -167,7 +168,7 @@ solomonRoutes.post("/conversations/:convId/upload", async (c) => {
     "image/png": "png",
     "image/jpeg": "jpg",
   };
-  const EXT_TO_TYPE: Record<string, string> = { pdf: "pdf", docx: "docx", xlsx: "xlsx", doc: "doc", png: "png", jpg: "jpg", jpeg: "jpg" };
+  const EXT_TO_TYPE: Record<string, DocFileType> = { pdf: "pdf", docx: "docx", xlsx: "xlsx", doc: "doc", png: "png", jpg: "jpg", jpeg: "jpg" };
 
   const attachments: Array<{ fileId: string; fileName: string; mimeType: string; extractedText?: string; documentId?: string }> = [];
 
@@ -214,7 +215,7 @@ solomonRoutes.post("/conversations/:convId/upload", async (c) => {
           folderId: targetFolderId,
           organizationId: auth.organizationId!,
           name: safeName,
-          fileType: fileType as any,
+          fileType: fileType,
           mimeType: file.type || `application/${ext}`,
           fileId,
           fileSize: buffer.length,
@@ -400,7 +401,7 @@ solomonRoutes.post("/projects/:projectId/compose-brief", async (c) => {
 
   // Generate brief using Anthropic (Opus, short call)
   const { anthropic, withAILimit } = await import("../lib/anthropic");
-  const phase = project.solomonPhase as any;
+  const phase = project.solomonPhase;
 
   const briefResponse = await withAILimit(async () => {
     return anthropic.messages.create({

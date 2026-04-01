@@ -5,6 +5,7 @@
  * Each chapter gets a title and content, stored in document_chapters table.
  * A brief (~800 words) summarizes the whole document.
  */
+import Anthropic from "@anthropic-ai/sdk";
 import { db } from "../db";
 import { documentChapters, documentBriefs } from "../db/schema";
 import { eq } from "drizzle-orm";

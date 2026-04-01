@@ -11,6 +11,7 @@
  *
  * Called by Solomon via Anthropic native tool_use API.
  */
+import Anthropic from "@anthropic-ai/sdk";
 import { searchChapters, getSessionBriefs } from "./chapterSearch";
 import { hybridSearch } from "./hybridSearch";
 import { db } from "../db";
@@ -238,7 +239,7 @@ async function handleSearchDocuments(
   });
 
   // Also search in legacy chunks table (knowledge base + session chunks)
-  let chunkResults: any[] = [];
+  let chunkResults: Array<{ content: string; metadata?: Record<string, unknown> }> = [];
   try {
     chunkResults = await hybridSearch({
       query: input.query,
@@ -266,7 +267,7 @@ async function handleSearchDocuments(
   }
 
   for (const r of chunkResults) {
-    const meta = (r.metadata || {}) as Record<string, any>;
+    const meta = (r.metadata || {}) as Record<string, unknown>;
     const loc = [
       meta.section && `§ ${meta.section}`,
       meta.page && `pag. ${meta.page}`,
@@ -472,7 +473,7 @@ async function handleComposeSection(
 
   const contextText = context.map(c => `[${c.documentName}] ${c.content.slice(0, 800)}`).join("\n\n");
 
-  let response: any;
+  let response: Anthropic.Message;
   try {
     response = await withAILimit(async () => {
       return anthropic.messages.create({
@@ -497,7 +498,7 @@ ${contextText.slice(0, 10000)}`,
     return `Eroare la generarea secțiunii "${sectionTitle}": ${(err as Error).message?.slice(0, 100)}. Reîncearcă.`;
   }
 
-  const textBlock = (response as any).content?.find((b: any) => b.type === "text");
+  const textBlock = response.content.find((b): b is Anthropic.TextBlock => b.type === "text");
   const sectionText = textBlock?.text || "";
 
   await logAIUsage({
@@ -505,8 +506,8 @@ ${contextText.slice(0, 10000)}`,
     projectId: ctx.projectId,
     agent: "neemia",
     model: "claude-sonnet-4-6",
-    tokensInput: (response as any).usage?.input_tokens || 0,
-    tokensOutput: (response as any).usage?.output_tokens || 0,
+    tokensInput: response.usage?.input_tokens || 0,
+    tokensOutput: response.usage?.output_tokens || 0,
     action: `compose_${sectionTitle.slice(0, 30)}`,
   });
 
@@ -517,7 +518,7 @@ async function handleUpdatePhase(
   input: { phase: string; label: string; progress: number; next_action?: string; regression_from?: string; regression_reason?: string },
   ctx: ToolContext,
 ): Promise<string> {
-  const phaseRecord: any = {
+  const phaseRecord: Record<string, unknown> = {
     phase: (input.phase || "Q0").slice(0, 10),
     label: (input.label || "").slice(0, 200),
     progress: Math.min(100, Math.max(0, input.progress || 0)),
@@ -531,7 +532,7 @@ async function handleUpdatePhase(
     };
   }
   await db.update(projects)
-    .set({ solomonPhase: phaseRecord })
+    .set({ solomonPhase: phaseRecord as any })
     .where(and(eq(projects.id, ctx.projectId), eq(projects.organizationId, ctx.organizationId)));
   return `Faza actualizată: ${phaseRecord.phase} — ${phaseRecord.label} (${phaseRecord.progress}%)`;
 }
@@ -550,7 +551,7 @@ async function handleUpdateMetadata(
     tip_proiect: "tipProiect",
     structura_dosar: "structuraDosar",
   };
-  const update: any = { updatedAt: new Date() };
+  const update: Record<string, unknown> = { updatedAt: new Date() };
   const saved: string[] = [];
   for (const [inputKey, dbKey] of Object.entries(ALLOWED_KEYS)) {
     const val = input[inputKey];

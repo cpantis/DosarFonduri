@@ -80,8 +80,8 @@ async function buildInjectedValues(projectId: string, organizationId: string): P
     });
     if (financials.length > 0) {
       const latest = financials.sort((a: any, b: any) => b.year - a.year)[0];
-      const f10 = (latest as any).f10 as Record<string, any> || {};
-      const f20 = (latest as any).f20 as Record<string, any> || {};
+      const f10 = (latest.f10 ?? {}) as Record<string, unknown>;
+      const f20 = (latest.f20 ?? {}) as Record<string, unknown>;
       for (const [key, value] of Object.entries({ ...f10, ...f20 })) {
         if (value != null && String(value).trim() !== "" && !injected[key]) {
           injected[key] = String(value);
@@ -94,7 +94,7 @@ async function buildInjectedValues(projectId: string, organizationId: string): P
   const org = await db.query.organizations.findFirst({
     where: eq(organizations.id, organizationId),
   });
-  const cabinetStyle = (org as any)?.cabinetDocumentStyle || {};
+  const cabinetStyle = org?.cabinetDocumentStyle || {};
   if (cabinetStyle.footerText) injected["footer_cabinet"] = cabinetStyle.footerText;
 
   return injected;
@@ -206,7 +206,7 @@ neemiaRoutes.get("/projects/:projectId/documents", async (c) => {
     });
 
     const templateDocs2 = sessionTemplates.filter(d => {
-      const cls = d.classification as any;
+      const cls = d.classification;
       return d.processingType === "template" || cls?.routingAction === "template_fill" || cls?.routingAction === "template_compose";
     });
 
@@ -214,14 +214,15 @@ neemiaRoutes.get("/projects/:projectId/documents", async (c) => {
     const existingTemplateIds = new Set(docs.map(d => d.templateDocumentId).filter(Boolean));
     for (const tpl of templateDocs2) {
       if (existingTemplateIds.has(tpl.id)) continue;
+      const resolvedMode = tpl.generationMode || (tpl.classification?.routingAction === "template_compose" ? "compose" : "fill");
       enriched.push({
         id: `available-${tpl.id}`,
         projectId,
         templateDocumentId: tpl.id,
         templateName: tpl.name,
         templateFileType: tpl.fileType || "docx",
-        generationMode: tpl.generationMode || (tpl.classification as any)?.routingAction === "template_compose" ? "compose" : "fill",
-        status: "available",
+        generationMode: resolvedMode,
+        status: "available" as const,
         downloadUrl: null,
         createdAt: tpl.uploadedAt,
       } as any);
@@ -547,8 +548,8 @@ neemiaRoutes.get("/templates/:docId/compose-config", async (c) => {
     id: doc.id,
     name: doc.name,
     fileType: doc.fileType,
-    generationMode: (doc as any).generationMode || "fill",
-    composeConfig: (doc as any).composeConfig || null,
+    generationMode: doc.generationMode || "fill",
+    composeConfig: doc.composeConfig || null,
   });
 });
 
@@ -565,12 +566,12 @@ neemiaRoutes.put("/templates/:docId/generation-mode", async (c) => {
 
   const [updated] = await db.update(documents).set({
     generationMode: body.mode,
-  } as any).where(eq(documents.id, docId)).returning();
+  }).where(eq(documents.id, docId)).returning();
 
   return c.json({
     id: updated.id,
     name: updated.name,
-    generationMode: (updated as any).generationMode,
+    generationMode: updated.generationMode,
   });
 });
 
@@ -598,8 +599,8 @@ neemiaRoutes.put("/templates/:docId/compose-config", async (c) => {
   return c.json({
     id: updated.id,
     name: updated.name,
-    generationMode: (updated as any).generationMode,
-    composeConfig: (updated as any).composeConfig,
+    generationMode: updated.generationMode,
+    composeConfig: updated.composeConfig,
   });
 });
 
@@ -666,8 +667,8 @@ neemiaRoutes.post("/templates/:docId/detect-compose-markers", async (c) => {
       id: t.id,
       name: t.name,
       tableType: t.tableType,
-      columnCount: (t.schema as any[])?.length || 0,
-      rowCount: (t.data as any[])?.length || 0,
+      columnCount: t.schema?.length || 0,
+      rowCount: t.data?.length || 0,
     })),
     suggestion: composeMarkers.length > 0
       ? "compose"

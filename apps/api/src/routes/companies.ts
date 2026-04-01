@@ -360,7 +360,7 @@ companyRoutes.post("/", async (c) => {
         telefon: onrcData.telefon,
         email: onrcData.email,
         website: onrcData.website,
-        stare: onrcData.stare.includes("radia") ? "radiata" : "functiune" as any,
+        stare: onrcData.stare.includes("radia") ? "radiata" as const : "functiune" as const,
         durata: onrcData.durata,
         anInfiintare: onrcData.anInfiintare,
         capitalSocial: onrcData.capitalSocial?.toString(),

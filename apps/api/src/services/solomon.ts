@@ -314,7 +314,7 @@ Folosește aceste informații ca context. NU repeta ce s-a discutat — continu�
   }
 
   // All company elements — dynamic library (includes ALL financial + juridical data)
-  let companyAnalysis: any = {};
+  let companyAnalysis: Record<string, unknown> = {};
   try {
     companyAnalysis = await getCompanyDataFromElements(company.id);
   } catch (err) {
@@ -784,7 +784,7 @@ export async function processInlineRefine(params: {
   });
   const model = config?.solomonModel || "claude-opus-4-6";
 
-  const requestParams: any = {
+  const requestParams: Anthropic.MessageCreateParamsStreaming = {
     model,
     max_tokens: 2000,
     system: "Ești Solomon, expert în pregătirea și conformitatea proiectelor cu finanțare europeană, cu cunoștințe integrate de achiziții, eligibilitate cheltuieli, specificații tehnice și cerințe documentare. Rescrie fragmentul selectat conform instrucțiunii utilizatorului. Folosește terminologia oficială din fonduri europene, ton formal și profesional. Returnează DOAR textul rescris, fără explicații suplimentare.",
@@ -910,7 +910,7 @@ export async function generateSolomonGreeting(params: {
 
   // Save detected program context to project (preliminary, before consultant confirmation)
   if (ctx.programDetected && ctx.confidence !== "low") {
-    const metaUpdate: any = { updatedAt: new Date() };
+    const metaUpdate: Partial<{ updatedAt: Date; programFinantare: string; codMasura: string; codSesiune: string }> = { updatedAt: new Date() };
     if (ctx.programDetected) metaUpdate.programFinantare = ctx.programDetected;
     if (ctx.masura) metaUpdate.codMasura = ctx.masura;
     if (ctx.sesiune) metaUpdate.codSesiune = ctx.sesiune;

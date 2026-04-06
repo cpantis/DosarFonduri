@@ -6,7 +6,7 @@ interface ScoringTabProps {
   solScoring: any[];
   projectScores: { scores: any[]; totalPoints: number; maxTotalPoints: number; percentage: number } | null;
   setProjectScores: (v: any) => void;
-  toast: (type: string, msg: string) => void;
+  toast: (type: any, msg: string) => void;
 }
 
 export default function ScoringTab({ projectId, solScoring, projectScores, setProjectScores, toast }: ScoringTabProps) {

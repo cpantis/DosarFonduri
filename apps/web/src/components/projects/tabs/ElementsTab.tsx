@@ -100,7 +100,7 @@ interface ElementsTabProps {
   elements: ElementItem[];
   setElements: (fn: (prev: ElementItem[]) => ElementItem[]) => void;
   readOnly: boolean;
-  toast: (type: string, msg: string) => void;
+  toast: (type: any, msg: string) => void;
   onAskSolomonAbout: (key: string) => void;
 }
 

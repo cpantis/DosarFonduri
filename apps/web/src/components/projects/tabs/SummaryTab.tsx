@@ -13,7 +13,7 @@ interface SummaryTabProps {
   budgetValidation: any;
   learnings: any;
   orgLabels: { solomonLabel: string; neemiaLabel: string };
-  onSwitchTab: (tab: string) => void;
+  onSwitchTab: (tab: any) => void;
 }
 
 export default function SummaryTab({

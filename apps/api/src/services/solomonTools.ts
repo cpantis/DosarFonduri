@@ -15,7 +15,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { searchChapters, getSessionBriefs } from "./chapterSearch";
 import { hybridSearch } from "./hybridSearch";
 import { db } from "../db";
-import { documents, projectElements, elementDefinitions, solomonEligibility, solomonScoring, projects, projectChecklist } from "../db/schema";
+import { documents, projectElements, elementDefinitions, solomonEligibility, solomonScoring, projects, projectChecklist, companies, rules, guideReferenceTables, budgetItems } from "../db/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { anthropic, withAILimit } from "../lib/anthropic";
 import { logAIUsage } from "./aiUsage";
@@ -135,25 +135,51 @@ export const SOLOMON_TOOLS = [
     },
   },
   {
-    name: "compose_section" as const,
-    description: "Generează text pentru o secțiune de document (memoriu, plan afaceri, etc.). Folosește când consultantul cere redactarea unei părți din dosar.",
+    name: "compose_chapter" as const,
+    description: "Generează textul unui capitol dintr-un document de proiect (memoriu, plan afaceri, cerere finanțare). Returnează textul capitolului care va fi afișat consultantului în chat pentru revizie. Folosește când consultantul cere redactarea unui capitol specific.",
     input_schema: {
       type: "object" as const,
       properties: {
-        section_title: {
+        document_type: {
           type: "string" as const,
-          description: "Titlul secțiunii (ex: 'Context și justificare', 'Obiective', 'Metodologie')",
+          description: "Tipul documentului (ex: 'memoriu_justificativ', 'plan_afaceri', 'cerere_finantare', 'studiu_fezabilitate', 'deviz_hg907')",
+        },
+        chapter_title: {
+          type: "string" as const,
+          description: "Titlul capitolului (ex: 'Context și justificare', 'Obiective SMART', 'Metodologie', 'Sustenabilitate')",
+        },
+        chapter_index: {
+          type: "integer" as const,
+          description: "Numărul capitolului în document (1, 2, 3...)",
         },
         instructions: {
           type: "string" as const,
-          description: "Instrucțiuni specifice pentru redactare",
+          description: "Instrucțiuni specifice de la consultant pentru acest capitol",
         },
         max_words: {
           type: "integer" as const,
           description: "Număr maxim de cuvinte (default 500)",
         },
+        previous_chapter_summary: {
+          type: "string" as const,
+          description: "Rezumat scurt al capitolului anterior (pentru coerență narativă)",
+        },
       },
-      required: ["section_title" as const, "instructions" as const],
+      required: ["document_type" as const, "chapter_title" as const],
+    },
+  },
+  {
+    name: "list_document_structure" as const,
+    description: "Prezintă structura unui document de proiect pe capitole. Folosește când consultantul cere să genereze un document — arată mai întâi ce capitole va conține.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        document_type: {
+          type: "string" as const,
+          description: "Tipul documentului (memoriu_justificativ, plan_afaceri, cerere_finantare, studiu_fezabilitate, deviz_hg907)",
+        },
+      },
+      required: ["document_type" as const],
     },
   },
   {
@@ -449,29 +475,192 @@ async function handleEstimateScore(
   return `📊 ${input.criterion}: ${points}/${maxPoints} puncte — ${evidence.slice(0, 100)}`;
 }
 
-async function handleComposeSection(
-  input: { section_title: string; instructions: string; max_words?: number },
+// ═══════════════════════════════════════════
+// COMPOSE: Chapter-based document generation
+// Solomon generates chapters in chat, consultant reviews/edits inline
+// ═══════════════════════════════════════════
+
+/** Standard document structures by type */
+const DOCUMENT_STRUCTURES: Record<string, Array<{ index: number; title: string; description: string; isCalculation?: boolean }>> = {
+  memoriu_justificativ: [
+    { index: 1, title: "Date generale ale solicitantului", description: "Denumire, CUI, CAEN, sediu, forma juridică, reprezentant legal" },
+    { index: 2, title: "Descrierea activității curente", description: "Obiect activitate, istoric, resurse existente, piața" },
+    { index: 3, title: "Context și justificarea investiției", description: "Problema identificată, nevoia de investiție, aliniere cu obiectivele programului" },
+    { index: 4, title: "Obiectivele proiectului", description: "Obiectiv general + obiective specifice SMART" },
+    { index: 5, title: "Descrierea investiției", description: "Ce se achiziționează/construiește, specificații tehnice, dimensionare" },
+    { index: 6, title: "Fundamentarea bugetului", description: "Justificare cheltuieli, metodologie stabilire prețuri, oferte comparative" },
+    { index: 7, title: "Metodologie și calendar", description: "Etape implementare, activități, termene, responsabilități" },
+    { index: 8, title: "Capacitatea financiară", description: "Surse finanțare, cofinanțare, cash-flow, proiecții financiare" },
+    { index: 9, title: "Sustenabilitatea proiectului", description: "Menținere investiție, locuri de muncă, indicatori post-implementare" },
+    { index: 10, title: "Impact și rezultate așteptate", description: "Indicatori realizare/rezultat, impact economic, social, de mediu" },
+  ],
+  plan_afaceri: [
+    { index: 1, title: "Rezumat executiv", description: "Sinteza proiectului (max 2 pagini)" },
+    { index: 2, title: "Descrierea afacerii", description: "Istoric, experiență, piața, competiție" },
+    { index: 3, title: "Produse/Servicii", description: "Ce oferă, diferențiatori, avantaje competitive" },
+    { index: 4, title: "Analiza pieței", description: "Piața țintă, segmente, tendințe, concurență" },
+    { index: 5, title: "Strategia de marketing", description: "Produs, preț, distribuție, promovare" },
+    { index: 6, title: "Planul operațional", description: "Procese, resurse, tehnologii, flux producție" },
+    { index: 7, title: "Managementul și organizarea", description: "Echipa, organigrama, responsabilități" },
+    { index: 8, title: "Proiecții financiare", description: "Venituri, cheltuieli, profit, cash-flow pe 3-5 ani" },
+    { index: 9, title: "Analiza riscurilor", description: "Riscuri identificate, măsuri de mitigare" },
+    { index: 10, title: "Concluzii", description: "Viabilitatea investiției, impact așteptat" },
+  ],
+  cerere_finantare: [
+    { index: 1, title: "Date solicitant", description: "Identificare firmă, reprezentant legal, date contact" },
+    { index: 2, title: "Date proiect", description: "Titlu, localizare, durată, valoare, intensitate sprijin" },
+    { index: 3, title: "Descrierea proiectului", description: "Obiective, activități, rezultate așteptate" },
+    { index: 4, title: "Bugetul proiectului", description: "Categorii cheltuieli, valori, eligibilitate", isCalculation: true },
+    { index: 5, title: "Surse de finanțare", description: "Grant, cofinanțare, credit", isCalculation: true },
+    { index: 6, title: "Indicatori", description: "Indicatori de realizare și de rezultat" },
+  ],
+  studiu_fezabilitate: [
+    { index: 1, title: "Informații generale", description: "Solicitant, amplasament, tema proiect" },
+    { index: 2, title: "Descrierea investiției", description: "Situația existentă, necesitatea investiției" },
+    { index: 3, title: "Date tehnice ale investiției", description: "Zona, suprafețe, capacități, utilități" },
+    { index: 4, title: "Durata de realizare și etapele", description: "Calendar execuție, grafic Gantt" },
+    { index: 5, title: "Costurile estimative", description: "Deviz general, pe obiecte, surse finanțare", isCalculation: true },
+    { index: 6, title: "Analiza cost-beneficiu", description: "VAN, RIR, termen recuperare", isCalculation: true },
+    { index: 7, title: "Sursele de finanțare", description: "Fonduri proprii, credit, grant" },
+  ],
+  deviz_hg907: [
+    { index: 1, title: "Deviz general", description: "Capitolele 1-6 conform HG 907/2016", isCalculation: true },
+    { index: 2, title: "Deviz pe obiecte", description: "Detaliere pe categorii de lucrări", isCalculation: true },
+    { index: 3, title: "Lista de cantități", description: "Articole, cantități, prețuri unitare", isCalculation: true },
+    { index: 4, title: "Grafic de realizare a investiției", description: "Timeline pe luni" },
+  ],
+};
+
+async function handleComposeChapter(
+  input: {
+    document_type: string; chapter_title: string; chapter_index?: number;
+    instructions?: string; max_words?: number; previous_chapter_summary?: string;
+  },
   ctx: ToolContext,
 ): Promise<string> {
-  if (!input.section_title || typeof input.section_title !== "string") {
-    return "Eroare: titlul secțiunii lipsește.";
+  if (!input.document_type || !input.chapter_title) {
+    return "Eroare: tipul documentului și titlul capitolului sunt obligatorii.";
   }
-  if (!input.instructions || typeof input.instructions !== "string") {
-    return "Eroare: instrucțiunile lipsesc.";
-  }
-  const sectionTitle = input.section_title.slice(0, 200);
-  const instructions = input.instructions.slice(0, 5000);
-  const maxWords = Math.min(input.max_words || 500, 2000);
+  const docType = input.document_type.slice(0, 100);
+  const chapterTitle = input.chapter_title.slice(0, 300);
+  const instructions = (input.instructions || "").slice(0, 5000);
+  const maxWords = Math.min(input.max_words || 600, 2000);
+  const prevSummary = (input.previous_chapter_summary || "").slice(0, 1000);
 
-  // Get relevant context from chapters
-  const context = await searchChapters({
-    query: sectionTitle + " " + instructions,
+  // Check if this is a calculation chapter (deterministic, not AI)
+  const structure = DOCUMENT_STRUCTURES[docType];
+  const chapterDef = structure?.find(ch => ch.title === chapterTitle || ch.index === input.chapter_index);
+  if (chapterDef?.isCalculation) {
+    // For budget/calculation chapters, build a deterministic table from budget items
+    const items = await db.query.budgetItems.findMany({
+      where: eq(budgetItems.projectId, ctx.projectId),
+    });
+    if (items.length > 0) {
+      const total = items.reduce((s, i) => s + parseFloat(String(i.totalCost || 0)), 0);
+      const eligible = items.filter(i => i.eligible).reduce((s, i) => s + parseFloat(String(i.totalCost || 0)), 0);
+      let table = `## ${chapterTitle}\n\n`;
+      table += `| Nr. | Categorie | Descriere | Cant. | Preț unitar | Total |\n`;
+      table += `|-----|-----------|-----------|-------|-------------|-------|\n`;
+      items.forEach((item, idx) => {
+        table += `| ${idx + 1} | ${item.category} | ${item.description} | ${item.quantity} | ${Number(item.unitCost).toLocaleString("ro-RO")} | ${Number(item.totalCost).toLocaleString("ro-RO")} |\n`;
+      });
+      table += `\n**Total investiție:** ${total.toLocaleString("ro-RO")} ${items[0]?.currency || "EUR"}\n`;
+      table += `**Total eligibil:** ${eligible.toLocaleString("ro-RO")} ${items[0]?.currency || "EUR"}\n`;
+      if (items.some(i => i.exceedsCeiling)) {
+        table += `\n⚠️ **Atenție:** Unele articole depășesc plafonul din ghid.\n`;
+      }
+      return table;
+    }
+    return `⚙️ **${chapterTitle}** — Capitol cu calcule deterministe.\n\nNu există linii de buget definite pentru acest proiect. Adăugați liniile de buget (categorie, descriere, cantitate, preț unitar) pentru a genera tabelul automat.\n\nFolosiți save_element pentru: valoare_totala_investitie, cota_tva, intensitate_sprijin, contributie_proprie.`;
+  }
+
+  // ═══════════════════════════════════════════
+  // GATHER FULL PROJECT CONTEXT
+  // ═══════════════════════════════════════════
+
+  // 1. Company data
+  const project = await db.query.projects.findFirst({
+    where: and(eq(projects.id, ctx.projectId), eq(projects.organizationId, ctx.organizationId)),
+  });
+  let companyData = "";
+  if (project?.companyId) {
+    const company = await db.query.companies.findFirst({ where: eq(companies.id, project.companyId) });
+    if (company) {
+      companyData = `FIRMA: ${company.denumire} (CUI: ${company.cui})
+Forma juridică: ${company.formaJuridica || "-"} | CAEN: ${company.caen || "-"}
+Adresă: ${company.adresa || "-"}, Jud. ${company.judet || "-"}
+An înființare: ${company.anInfiintare || "-"} | Status: ${company.stare || "-"}
+Capital social: ${company.capitalSocial || "-"} RON`;
+    }
+  }
+
+  // 2. Project elements (with keys and labels)
+  const projectEls = await db.query.projectElements.findMany({
+    where: eq(projectElements.projectId, ctx.projectId),
+  });
+  const elemDefs = await db.query.elementDefinitions.findMany({
+    where: eq(elementDefinitions.organizationId, ctx.organizationId),
+  });
+  const defMap = new Map(elemDefs.map(d => [d.id, d]));
+
+  const elementLines = projectEls
+    .filter(e => e.value && e.value.trim() !== "")
+    .map(e => {
+      const def = e.elementDefId ? defMap.get(e.elementDefId) : null;
+      const label = def?.displayName || def?.elementKey || "element";
+      return `- **${label}**: ${e.value} ${e.confirmed ? "[confirmat]" : "[propus]"}`;
+    })
+    .slice(0, 60);
+
+  // 3. Guide rules relevant to this chapter
+  const guideRules = await db.query.rules.findMany({
+    where: eq(rules.organizationId, ctx.organizationId),
+    limit: 30,
+  });
+  const relevantRules = guideRules
+    .filter(r => {
+      const desc = (r.description || "").toLowerCase();
+      const titleLower = chapterTitle.toLowerCase();
+      return desc.includes(titleLower.slice(0, 15)) || titleLower.includes((r.category || "").toLowerCase());
+    })
+    .slice(0, 10);
+  const rulesText = relevantRules.length > 0
+    ? relevantRules.map(r => `- [${r.type}] ${r.description?.slice(0, 200)}`).join("\n")
+    : "";
+
+  // 4. Eligibility conclusions (from Solomon analysis)
+  const eligConclusions = await db.query.solomonEligibility.findMany({
+    where: eq(solomonEligibility.projectId, ctx.projectId),
+  });
+  const eligText = eligConclusions.length > 0
+    ? eligConclusions.map(e => `${e.status === "pass" ? "✅" : e.status === "fail" ? "❌" : "⏳"} ${e.ruleName}: ${e.evidence || ""}`).join("\n")
+    : "";
+
+  // 5. Document context from guide chapters
+  const guideContext = await searchChapters({
+    query: chapterTitle + " " + docType.replace(/_/g, " "),
     organizationId: ctx.organizationId,
     folderId: ctx.sessionId || undefined,
-    topK: 5,
+    topK: 10,
   });
+  const contextText = guideContext
+    .map(c => `[${c.documentName}, §${c.title}, pag.${c.pageStart || "?"}]\n${c.content.slice(0, 1500)}`)
+    .join("\n\n---\n\n");
 
-  const contextText = context.map(c => `[${c.documentName}] ${c.content.slice(0, 800)}`).join("\n\n");
+  // 6. Budget items (for financial chapters)
+  let budgetContext = "";
+  const budgetItemsList = await db.query.budgetItems.findMany({
+    where: eq(budgetItems.projectId, ctx.projectId),
+  });
+  if (budgetItemsList.length > 0) {
+    const total = budgetItemsList.reduce((s, i) => s + parseFloat(String(i.totalCost || 0)), 0);
+    budgetContext = `BUGET PROIECT (${budgetItemsList.length} linii, total: ${total.toLocaleString("ro-RO")} ${budgetItemsList[0]?.currency || "EUR"}):\n` +
+      budgetItemsList.slice(0, 20).map(i => `- ${i.category}: ${i.description} — ${Number(i.totalCost).toLocaleString("ro-RO")} ${i.currency}`).join("\n");
+  }
+
+  // ═══════════════════════════════════════════
+  // AI GENERATION WITH FULL CONTEXT
+  // ═══════════════════════════════════════════
 
   let response: Anthropic.Message;
   try {
@@ -479,39 +668,87 @@ async function handleComposeSection(
       return anthropic.messages.create({
         model: "claude-sonnet-4-6",
         max_tokens: maxWords * 5,
-        system: `Ești un redactor expert pentru dosare de fonduri europene. Scrii texte narative profesionale, formal-tehnice, cu cifre concrete și terminologie oficială. Scrie la persoana a III-a ("Solicitantul", "Societatea"). Fiecare paragraf: o singură idee + date concrete. Folosește conectori logici. Max ${maxWords} cuvinte. DOAR textul secțiunii, fără preambul.`,
+        system: `Ești un consultant senior cu 15+ ani experiență în fonduri europene. Scrii capitole pentru dosare de finanțare.
+
+IDENTITATE: Scrii ca un consultant care a câștigat sute de dosare. Evaluatorii detectează textele superficiale.
+
+REGULI NON-NEGOCIABILE:
+- Persoana a III-a: "Solicitantul", "SC ${ctx.companyName || "..."}", "Societatea"
+- Voce activă: "Societatea va achiziționa" NU "Vor fi achiziționate"
+- Fraze 25-45 cuvinte: CONTEXT → ACȚIUNE → REZULTAT CUANTIFICAT
+- Fiecare paragraf = O idee + date concrete din dosarul proiectului
+- Conectori: "astfel", "în consecință", "prin urmare", "totodată", "de asemenea"
+- INTERZIS: superlative goale ("cel mai bun"), formulări vagi ("va îmbunătăți semnificativ")
+- OBLIGATORIU: cifre concrete, procente, referințe la ghid, terminologie oficială
+- Terminologie: "implementare" (nu "realizare"), "solicitant/beneficiar" (nu "firma"), "valoare eligibilă" (nu "cost"), "contribuție proprie" (nu "bani proprii"), "achiziție" (nu "cumpărare")
+- Referință la ghid: "Conform Ghidului solicitantului, secțiunea X..."
+- Cuantificare: "creștere cu 40% față de ${new Date().getFullYear() - 1}" NU "creștere semnificativă"
+- Dacă nu ai date pentru o valoare, pune [DE COMPLETAT: ...] — NU inventa cifre
+
+RETURNEAZĂ DOAR textul capitolului. Fără preambul, fără explicații, fără "Iată capitolul:".`,
         messages: [{
           role: "user",
-          content: `Scrie secțiunea "${sectionTitle}" pentru proiectul "${ctx.projectName || ""}".
+          content: `Scrie capitolul "${chapterTitle}" (${chapterDef?.description || ""}) din documentul ${docType.replace(/_/g, " ")} pentru proiectul "${ctx.projectName || ""}".
 
-Firma: ${ctx.companyName || ""}
+═══ DATE FIRMĂ ═══
+${companyData || "Date firmă indisponibile"}
 
-Instrucțiuni: ${instructions}
+═══ ELEMENTE PROIECT (${elementLines.length} completate) ═══
+${elementLines.join("\n") || "Niciun element completat"}
 
-Context din documente:
-${contextText.slice(0, 10000)}`,
+═══ REGULI RELEVANTE DIN GHID ═══
+${rulesText || "Nu au fost extrase reguli specifice din ghid pentru acest capitol"}
+
+═══ CONCLUZII ELIGIBILITATE ═══
+${eligText || "Eligibilitatea nu a fost verificată încă"}
+
+${budgetContext ? `═══ BUGET PROIECT ═══\n${budgetContext}\n` : ""}═══ CONTEXT DIN DOCUMENTE SESIUNE ═══
+${contextText.slice(0, 20000) || "Nu există documente procesate în sesiune"}
+
+${instructions ? `═══ INSTRUCȚIUNI CONSULTANT ═══\n${instructions}\n` : ""}${prevSummary ? `═══ CAPITOLUL ANTERIOR (REZUMAT) ═══\n${prevSummary}\n` : ""}
+Scrie max ${maxWords} cuvinte. Folosește DATELE REALE ale proiectului, nu exemple generice.`,
         }],
       });
     }, "batch");
   } catch (err) {
-    console.error("[compose_section] AI call failed:", (err as Error).message);
-    return `Eroare la generarea secțiunii "${sectionTitle}": ${(err as Error).message?.slice(0, 100)}. Reîncearcă.`;
+    console.error("[compose_chapter] AI call failed:", (err as Error).message);
+    return `Eroare la generarea capitolului "${chapterTitle}": ${(err as Error).message?.slice(0, 100)}`;
   }
 
   const textBlock = response.content.find((b): b is Anthropic.TextBlock => b.type === "text");
-  const sectionText = textBlock?.text || "";
+  const chapterText = textBlock?.text || "";
 
   await logAIUsage({
     organizationId: ctx.organizationId,
     projectId: ctx.projectId,
-    agent: "neemia",
+    agent: "solomon",
     model: "claude-sonnet-4-6",
     tokensInput: response.usage?.input_tokens || 0,
     tokensOutput: response.usage?.output_tokens || 0,
-    action: `compose_${sectionTitle.slice(0, 30)}`,
+    action: `compose_${chapterTitle.slice(0, 30)}`,
   });
 
-  return sectionText;
+  return chapterText;
+}
+
+async function handleListDocumentStructure(
+  input: { document_type: string },
+  _ctx: ToolContext,
+): Promise<string> {
+  const docType = (input.document_type || "").trim();
+  const structure = DOCUMENT_STRUCTURES[docType];
+
+  if (!structure) {
+    const available = Object.keys(DOCUMENT_STRUCTURES).map(k => `- ${k.replace(/_/g, " ")}`).join("\n");
+    return `Tip document necunoscut: "${docType}".\n\nDocumente disponibile:\n${available}`;
+  }
+
+  const lines = structure.map(ch => {
+    const calcTag = ch.isCalculation ? " ⚙️ [CALCUL DETERMINIST]" : "";
+    return `**${ch.index}. ${ch.title}**${calcTag}\n   ${ch.description}`;
+  });
+
+  return `📋 **Structura: ${docType.replace(/_/g, " ").toUpperCase()}**\n\n${lines.join("\n\n")}\n\n---\nPentru a genera un capitol, spuneți-mi care capitol doriți (ex: "Generează capitolul 3").`;
 }
 
 async function handleUpdatePhase(
@@ -605,8 +842,11 @@ export async function executeSolomonTool(
       return handleCheckEligibility(toolInput, context);
     case "estimate_score":
       return handleEstimateScore(toolInput, context);
-    case "compose_section":
-      return handleComposeSection(toolInput, context);
+    case "compose_chapter":
+    case "compose_section": // backward compat
+      return handleComposeChapter(toolInput, context);
+    case "list_document_structure":
+      return handleListDocumentStructure(toolInput, context);
     case "update_phase":
       return handleUpdatePhase(toolInput, context);
     case "update_metadata":

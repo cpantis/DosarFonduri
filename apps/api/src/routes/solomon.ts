@@ -453,8 +453,51 @@ Generează brief JSON:
 });
 
 // ═══════════════════════════════════════════
+// Document assembly — collect chapters from chat, generate DOCX
+// ═══════════════════════════════════════════
+
+/**
+ * POST /api/solomon/projects/:projectId/assemble-document
+ * Collects chapter texts from conversation history and assembles a DOCX.
+ * Body: { documentType: string, chapters: Array<{ title: string, content: string }> }
+ */
+solomonRoutes.post("/projects/:projectId/assemble-document", async (c) => {
+  const auth = c.get("auth") as AuthContext;
+  const projectId = c.req.param("projectId");
+
+  const project = await verifyProjectOrg(projectId, auth.organizationId!);
+  if (!project) return c.json({ error: "Project not found" }, 404);
+
+  const body = await c.req.json();
+  const { documentType, chapters } = body;
+
+  if (!documentType || !Array.isArray(chapters) || chapters.length === 0) {
+    return c.json({ error: "documentType and chapters array required" }, 400);
+  }
+
+  // Build full document content from chapters
+  const fullContent = chapters
+    .map((ch: { title: string; content: string }, idx: number) => `# ${idx + 1}. ${ch.title}\n\n${ch.content}`)
+    .join("\n\n---\n\n");
+
+  // For now, return the assembled content as downloadable text
+  // TODO: Use Neemia's fillDocxTemplate for proper DOCX formatting
+  const fileName = `${documentType.replace(/_/g, "-")}_${project.name?.replace(/[^a-zA-Z0-9]/g, "_").slice(0, 30)}.md`;
+
+  return c.json({
+    ok: true,
+    fileName,
+    content: fullContent,
+    chapterCount: chapters.length,
+    wordCount: fullContent.split(/\s+/).length,
+    message: `Document "${documentType}" asamblat cu ${chapters.length} capitole.`,
+  });
+});
+
+// ═══════════════════════════════════════════
 // Sprint 5 — Structured output endpoints
 // ═══════════════════════════════════════════
+
 
 /**
  * GET /api/solomon/projects/:projectId/eligibility

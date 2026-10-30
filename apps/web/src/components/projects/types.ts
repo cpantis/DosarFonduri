@@ -158,6 +158,11 @@ export type ProjectData = {
   composeBrief?: any;
 };
 
+export type SolomonPhase = {
+  phase: string; label: string; progress: number; nextAction: string;
+  regression?: { from: string; reason: string; affectedConclusions?: string[] };
+};
+
 export type LeafType = "sumar" | "solomon" | "elemente" | "reguli" | "scor" | "tabele" | "checklist" | "neemia";
 
 export const STATUS_MAP: Record<string, { label: string; color: string; bg: string }> = {

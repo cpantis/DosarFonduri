@@ -7,8 +7,27 @@
  * Also searches legacy guideChunks table (for backward compatibility with
  * guides processed before the chapter system).
  */
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import { db } from "../db";
+
+/**
+ * SQL predicate restricting `<docAlias>.folder_id` to the folders a project session may read:
+ * the session folder and all its descendants (e.g. "ghiduri", "templateuri" subfolders),
+ * plus the cabinet knowledge base ("referinte" folders and their descendants).
+ * Guides from other programs/sessions of the same cabinet are excluded.
+ */
+export function sessionScopeFilter(docFolderColumn: SQL, sessionFolderId: string, organizationId: string): SQL {
+  return sql`${docFolderColumn} IN (
+    WITH RECURSIVE scope(id) AS (
+      SELECT id FROM document_folders
+      WHERE organization_id = ${organizationId}
+        AND (id = ${sessionFolderId} OR type = 'referinte')
+      UNION
+      SELECT f.id FROM document_folders f JOIN scope s ON f.parent_id = s.id
+    )
+    SELECT id FROM scope
+  )`;
+}
 
 export interface HybridSearchOptions {
   query: string;
@@ -32,6 +51,9 @@ export async function hybridSearch(options: HybridSearchOptions): Promise<Hybrid
 
   if (!query.trim()) return [];
 
+  // Without a session, search the whole cabinet (knowledge-base style lookups)
+  const scope = sessionId ? sessionScopeFilter(sql`d.folder_id`, sessionId, cabinetId) : sql`TRUE`;
+
   // Search document_chapters (primary table)
   let results: any[] = [];
   try {
@@ -39,7 +61,9 @@ export async function hybridSearch(options: HybridSearchOptions): Promise<Hybrid
       SELECT dc.id, dc.content, dc.metadata,
         ts_rank(dc.content_tsv, plainto_tsquery('romanian', ${query})) as rank_score
       FROM document_chapters dc
+      JOIN documents d ON d.id = dc.document_id
       WHERE dc.organization_id = ${cabinetId}
+        AND ${scope}
         AND dc.content_tsv @@ plainto_tsquery('romanian', ${query})
       ORDER BY rank_score DESC
       LIMIT ${topK}
@@ -54,11 +78,13 @@ export async function hybridSearch(options: HybridSearchOptions): Promise<Hybrid
   if (results.length < topK) {
     try {
       const guideResults = await db.execute(sql`
-        SELECT id, content, metadata,
-          ts_rank(to_tsvector('romanian', content), plainto_tsquery('romanian', ${query})) as rank_score
-        FROM guide_chunks
-        WHERE organization_id = ${cabinetId}
-          AND to_tsvector('romanian', content) @@ plainto_tsquery('romanian', ${query})
+        SELECT gc.id, gc.content, gc.metadata,
+          ts_rank(to_tsvector('romanian', gc.content), plainto_tsquery('romanian', ${query})) as rank_score
+        FROM guide_chunks gc
+        JOIN documents d ON d.id = gc.document_id
+        WHERE gc.organization_id = ${cabinetId}
+          AND ${scope}
+          AND to_tsvector('romanian', gc.content) @@ plainto_tsquery('romanian', ${query})
         ORDER BY rank_score DESC
         LIMIT ${topK - results.length}
       `);

@@ -849,7 +849,7 @@ projectRoutes.put("/:id/elements/:eid", async (c) => {
 
   // Snapshot old state for audit log
   const oldElement = await db.query.projectElements.findFirst({
-    where: eq(projectElements.id, eid),
+    where: and(eq(projectElements.id, eid), eq(projectElements.projectId, id)),
   });
 
   // Only update fields that are explicitly provided — avoid overwriting with undefined

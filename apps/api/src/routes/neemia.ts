@@ -346,7 +346,7 @@ neemiaRoutes.get("/projects/:projectId/template-pages/:templateDocId", async (c)
   const templateDocId = c.req.param("templateDocId");
 
   const templateDoc = await db.query.documents.findFirst({
-    where: eq(documents.id, templateDocId),
+    where: and(eq(documents.id, templateDocId), eq(documents.organizationId, auth.organizationId!)),
   });
   if (!templateDoc) return c.json({ error: "Template not found" }, 404);
 
@@ -838,7 +838,7 @@ neemiaRoutes.get("/projects/:projectId/fill-preview/:templateDocId", async (c) =
   const templateDocId = c.req.param("templateDocId");
 
   const templateDoc = await db.query.documents.findFirst({
-    where: eq(documents.id, templateDocId),
+    where: and(eq(documents.id, templateDocId), eq(documents.organizationId, auth.organizationId!)),
   });
   if (!templateDoc) return c.json({ error: "Template not found" }, 404);
 
@@ -953,7 +953,7 @@ neemiaRoutes.get("/projects/:projectId/template-render/:templateDocId", async (c
   const templateDocId = c.req.param("templateDocId");
 
   const templateDoc = await db.query.documents.findFirst({
-    where: eq(documents.id, templateDocId),
+    where: and(eq(documents.id, templateDocId), eq(documents.organizationId, auth.organizationId!)),
   });
   if (!templateDoc) return c.json({ error: "Template not found" }, 404);
 

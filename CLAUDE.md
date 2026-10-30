@@ -184,7 +184,11 @@ Fiecare fază are un **CHECKLIST** la final — bifează fiecare item implementa
 
 ### 6. PROJECTVIEW — STRUCTURA DEFINITIVĂ
 
-**ProjectView folosește SIDEBAR ARBORE (tree nav), NU tab-uri orizontale.**
+> **Stare reală (2026-10-30):** implementarea curentă folosește **tab-uri orizontale** (`pv-tabs`: Sumar, Solomon, Elemente, Reguli, Scor, Tabele, Checklist doc), nu sidebar arbore. Neemia a fost unificat în Solomon (compose pe capitole). Fișiere:
+> `app/(app)/projects/[id]/page.tsx` (shell + chat Solomon) · `components/projects/tabs/*` · `components/projects/{types,mappers,projectViewStyles}.ts` · `hooks/useProjectLock.ts`.
+> Ramurile Implementare / Monitorizare din prototip NU există încă în UI.
+
+**Prototipul definește SIDEBAR ARBORE (tree nav), NU tab-uri orizontale.**
 
 Structura din `05b_ProjectView.jsx`:
 ```
@@ -239,7 +243,7 @@ Fișierul `docs/specs/REVIEW_Prototipuri_vs_Specs.md` documentează procesul de 
 
 | Componentă | Status | Detalii |
 |------------|--------|---------|
-| DB Schema + Migrations | ✅ Complet | `schema.ts` (30 tabele) + 42 migrations (0000–0115) |
+| DB Schema + Migrations | ✅ Complet | `schema.ts` (50 tabele) + 63 migrations (0000–0136) |
 | Auth (login/signup/me) | ✅ Complet | JWT tokens, cabinet codes, provider auth, password reset |
 | Companies CRUD | ✅ Complet | Auto (CUI/ListaFirme) + Manual (ONRC PDF upload) |
 | OCR + Extractors | ✅ Complet | 12+ specialized extractors (ONRC, bilanț, facturi, etc.) |
@@ -324,6 +328,8 @@ apiDelete<T>(path)                 // DELETE
 - ✅ L3: Reference table delete verifică referințe active (409 + `?force=true`)
 
 ### 11c. ARCHITECTURE AUDIT (2026-03-23) — PROBLEME DESCOPERITE
+
+> **Actualizare 2026-10-30:** C1 (org filter pe DELETE), C3 (secret pe `/health/*`), M15 (rate limit Solomon/Neemia/eligibility) sunt **rezolvate** în cod. C4: `page.tsx` redus la ~2.100 linii (vezi §13). L8: există 4 fișiere vitest în `apps/api/src/__tests__/` (3 teste `contractExtractor` sunt neactualizate și pică). M10 rezolvat (`components/shared/` duplicate șterse — folosește `components/ui/`).
 
 **Rezumat**: 125+ API endpoints, 16 pagini frontend, 30+ componente, 38+ servicii, 7 job procesoare, 0 teste.
 
@@ -426,7 +432,7 @@ cd apps/web && npx next build
 
 - Tabel `chunks` creat (vector 1024 + tsvector GENERATED + JSONB metadata) — `schema.ts` + `0128_rag_v2_chunks.sql`
 - Voyage AI SDK instalat (`voyageai`), serviciu `voyageEmbeddings.ts` funcțional (embedQuery, embedDocumentChunks, embedTexts)
-- Hybrid search (vector cosine + BM25 keyword + RRF K=60) în `hybridSearch.ts`
+- ~~Hybrid search (vector cosine + BM25 keyword + RRF K=60)~~ — **înlocuit**: `hybridSearch.ts` face acum doar full-text (tsvector romanian) pe `document_chapters` + fallback `guide_chunks`; Voyage nu mai e apelat nicăieri
 - `vectorType()` helper factorizat din `vector1536` — reutilizabil pentru orice dimensiune
 - Tabelele vechi (`guideChunks`, `solomonKnowledge`) și `embeddings.ts` (OpenAI) — INTACTE
 - Următorul sprint: SPRINT_2 — Single Entry Point (clasificare + routing pipeline)
@@ -540,3 +546,22 @@ cd apps/web && npx next build
 - [x] Neemia documents endpoint: returnează și template-uri disponibile (status="available") pe lângă cele generate
 - [x] processingType setat pe document ("template") la routing — processTemplate recunoaște documentul
 - [x] Build check: tsc + next build PASS
+
+## 13. REVIEW & CLEAN — Faza 0 (2026-10-30)
+
+Făcut:
+- `projects/[id]/page.tsx` 3.653 → ~2.100 linii: tipuri din `components/projects/types.ts`, mappers în `mappers.ts`, CSS în `projectViewStyles.ts`, lock în `hooks/useProjectLock.ts`, ~60 state-uri/handlere moarte șterse
+- Componente/hook-uri moarte șterse (shared/ duplicate, SolomonTab, NeemiaTab, SlideOver, useApi, useSWRApi, useOptimistic); API: `guideExtractors.ts`, `documentExtractor.ts`, `lib/env.ts`
+- ~170 importuri/variabile nefolosite eliminate (web + api, verificat cu `tsc --noUnusedLocals`)
+- Fix: `neemiaCompose` încărca `compose_brief` din ORICE proiect al cabinetului (`LIMIT 1`) — acum filtrează pe `projectId`
+- Lockfile unic: `package-lock.json` (npm ci în Dockerfile); `yarn.lock` + `bun.lock` șterse
+- Rapoarte vechi mutate în `docs/archive/`; CI GitHub Actions în `.github/workflows/ci.yml`
+
+Deschis (de decis/fixat):
+- **`hybridSearch` ignoră `sessionId`** → Solomon caută în ghidurile TUTUROR sesiunilor din cabinet (risc de răspunsuri din alt program)
+- **`docs_example/` conține documente personale reale** (CI, diplomă, certificat constatator, bilanț) — GDPR; ștergerea necesită și rescrierea istoricului git
+- Promptul Solomon (`services/solomon.ts`) încă cere `METADATA_JSON`, dar metadatele se salvează acum prin tool-ul `update_metadata`
+- `ElementsTab.handleBulkConfirm` există dar nu are buton; click pe element din panoul Solomon nu mai deschide detaliul (doar comută tab-ul)
+- 3 teste `contractExtractor` neactualizate după generalizarea la `contract_*`
+- Chat-ul Solomon (~1.000 linii JSX + handlere) e încă în `page.tsx` → următorul candidat de extras (`SolomonPanel`)
+- `middleware/validate.ts` (zod) și `middleware/ownership.ts` există dar nu sunt folosite — de adoptat pentru IDOR/M14

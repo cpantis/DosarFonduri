@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { db } from "../db";
 import { users, organizations, projects, aiUsageLog, auditLog } from "../db/schema";
-import { eq, and, not, sql, desc, count, sum, gte, lte, ilike, inArray } from "drizzle-orm";
+import { eq, and, not, sql, desc, count, sum, gte, lte, inArray } from "drizzle-orm";
 import type { AuthContext } from "../middleware/auth";
 import { sendEmail } from "../services/email";
 

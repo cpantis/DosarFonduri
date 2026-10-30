@@ -775,7 +775,7 @@ documentRoutes.put("/local-upload/:fileId", async (c) => {
   const buffer = Buffer.from(await c.req.arrayBuffer());
 
   // Write to local filesystem at the storage key path
-  const { existsSync, mkdirSync, writeFileSync } = await import("fs");
+  const { mkdirSync, writeFileSync } = await import("fs");
   const { join, dirname } = await import("path");
   const fullPath = join(process.cwd(), "uploads", fileRecord.storageKey);
   mkdirSync(dirname(fullPath), { recursive: true });
@@ -1566,7 +1566,6 @@ documentRoutes.get("/session/:folderId/library", async (c) => {
 
   const guideDocIds = guideDocs.map(d => d.id);
   const templateDocIds = templateDocs.map(d => d.id);
-  const allDocIds = [...guideDocIds, ...templateDocIds];
 
   // === 1. RULES ===
   const allRules = guideDocIds.length > 0

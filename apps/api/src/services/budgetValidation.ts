@@ -1,9 +1,5 @@
 import { db } from "../db";
-import {
-  projects, projectElements, templateElements, rules,
-  companyFinancials, companies, documentFolders, documents,
-  guideReferenceTables, ruleReferenceLinks,
-} from "../db/schema";
+import { projects, projectElements, templateElements, rules, companyFinancials, documentFolders, documents, guideReferenceTables } from "../db/schema";
 import { eq, and } from "drizzle-orm";
 
 /**
@@ -58,9 +54,6 @@ export async function validateBudget(projectId: string): Promise<{
   });
   if (!project) throw new Error("Project not found");
 
-  const company = await db.query.companies.findFirst({
-    where: eq(companies.id, project.companyId),
-  });
 
   // Get all project elements with their template element metadata
   const elements = await db.query.projectElements.findMany({
@@ -140,7 +133,6 @@ export async function validateBudget(projectId: string): Promise<{
   const eligibleEl = budgetRows.find(r => r.key.match(/eligibil|cheltuieli.*eligibil/i));
   const grantEl = budgetRows.find(r => r.key.match(/grant|finantare.*nerambursabil|ajutor/i));
   const cofinancingEl = budgetRows.find(r => r.key.match(/cofinant|contributie.*proprie/i));
-  const tvaEl = budgetRows.find(r => r.key.match(/tva|taxa.*valoare/i));
 
   const totalBudget = totalBudgetEl?.value || 0;
   const eligibleAmount = eligibleEl?.value || totalBudget;

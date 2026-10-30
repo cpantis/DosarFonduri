@@ -1,8 +1,7 @@
 import { db } from "../db";
 import {
-  projects, projectElements, projectDocuments,
-  templateElements, documents, orgConfig, companies,
-  organizations, templatePlaceholderMapping, elementDefinitions,
+  projects, projectElements, projectDocuments, templateElements, documents,
+  companies, organizations, templatePlaceholderMapping, elementDefinitions,
   projectChecklist,
 } from "../db/schema";
 import { eq, and, inArray } from "drizzle-orm";

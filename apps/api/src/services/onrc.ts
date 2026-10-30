@@ -89,12 +89,6 @@ const FORMA_MAP: Record<string, string> = {
   "Regie Autonomă": "RA",
 };
 
-function deduceForma(regCom: string): string {
-  if (regCom.startsWith("J")) return "SRL";
-  if (regCom.startsWith("F")) return "PFA";
-  return "SRL";
-}
-
 export { FORMA_MAP };
 
 export async function lookupCUI(
@@ -156,8 +150,6 @@ export async function lookupCUI(
 
 function transformONRCData(raw: any): ONRCCompanyData {
   const formaText = raw.forma_organizare || raw.forma_juridica || "";
-  const formaCode = FORMA_MAP[formaText] || deduceForma(raw.nr_registrul_comertului || "");
-
   return {
     denumire: raw.denumire || raw.name || "",
     cui: raw.cui || raw.cif || "",

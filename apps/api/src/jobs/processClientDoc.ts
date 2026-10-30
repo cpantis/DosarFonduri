@@ -1,24 +1,32 @@
 import { Worker, Job } from "bullmq";
 import { db } from "../db";
 import {
-  documents, projects, projectElements, templateElements,
-  documentFolders, elementAuditLog, projectEligibility,
-  extractionCache, elementDefinitions, projectChecklist,
+  documents, projects, projectElements, templateElements, documentFolders,
+  projectEligibility, extractionCache, projectChecklist,
 } from "../db/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { createHash } from "crypto";
 import { encrypt } from "../lib/crypto";
 import { getFileBuffer } from "../services/storage";
-import { extractTextFromPDF, extractTextFromDOCX, extractTextFromXLSX, extractTextFromImage, extractTextFromDOC, classifyDocument, shouldPreStructure, preStructureClientText } from "../services/ocr";
+import {
+  extractTextFromPDF, extractTextFromDOCX, extractTextFromXLSX,
+  extractTextFromImage, extractTextFromDOC, classifyDocument,
+  shouldPreStructure, preStructureClientText,
+} from "../services/ocr";
 import { logAIUsage } from "../services/aiUsage";
 import { anthropic, withAILimit } from "../lib/anthropic";
-import { publishEvent, publishEligibilityUpdated, publishScoreUpdated, publishFieldExtracted, publishExtractionStarted, publishChecklistUpdated } from "../lib/sse";
+import {
+  publishEvent, publishEligibilityUpdated, publishScoreUpdated,
+  publishFieldExtracted, publishExtractionStarted, publishChecklistUpdated,
+} from "../lib/sse";
 import { redis } from "../lib/redis";
 import { validateElement, logElementChange } from "../services/elementValidation";
 import { checkEligibility } from "../services/eligibility";
 import { computeProjectScores } from "../services/scoring";
 import type { ExtractionResult } from "../services/extractionTypes";
-import { resolveFieldKeys, getExtractorVocabulary, upsertElementDefinition } from "../services/elementDefinitionService";
+import {
+  resolveFieldKeys, getExtractorVocabulary, upsertElementDefinition,
+} from "../services/elementDefinitionService";
 
 // Extractors
 import { extractCompanyFromDocument } from "../services/companyExtractor";

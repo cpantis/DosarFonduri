@@ -84,19 +84,6 @@ TEXT BILANȚ:
 ${pdfText}`;
 
 /**
- * Try to extract valid JSON from a raw AI response text.
- */
-function tryParseJSON(raw: string): any | null {
-  let cleaned = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-  try { return JSON.parse(cleaned); } catch { /* continue */ }
-  const match = cleaned.match(/\{[\s\S]*\}/);
-  if (match) {
-    try { return JSON.parse(match[0]); } catch { /* continue */ }
-  }
-  return null;
-}
-
-/**
  * Quick regex pre-extraction for XFA bilanțe (tag-based format).
  * XFA bilanțe have predictable tags like "CifraDeAfaceriNeta" or "rd_010".
  * This doesn't replace AI extraction but provides a validation reference.

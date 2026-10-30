@@ -1,6 +1,6 @@
 import { db } from "../db";
 import { elementDefinitions, templatePlaceholderMapping, templateElements } from "../db/schema";
-import { eq, and, ilike } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { anthropic, withAILimit } from "../lib/anthropic";
 import { logAIUsage } from "./aiUsage";
 import { z } from "zod";

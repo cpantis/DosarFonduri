@@ -906,7 +906,6 @@ configRoutes.get("/knowledge-base", async (c) => {
   const auth = c.get("auth") as AuthContext;
   if (!auth.organizationId) return c.json({ error: "No organization" }, 403);
 
-  const { documents } = await import("../db/schema");
 
   // Find documents that have been ingested as knowledge_base
   const kbDocs = await db.execute(
@@ -932,7 +931,7 @@ configRoutes.post("/knowledge-base/upload", async (c) => {
   const auth = c.get("auth") as AuthContext;
   if (!auth.organizationId) return c.json({ error: "No organization" }, 403);
 
-  const { documents, documentFolders, files } = await import("../db/schema");
+  const { documents, documentFolders } = await import("../db/schema");
   const { uploadFile } = await import("../services/storage");
 
   const formData = await c.req.formData();

@@ -21,8 +21,8 @@ import {
   extractTextFromDOC,
 } from "./ocr";
 import { classifyDocumentForIngestion, type ClassificationResult } from "./documentClassifier";
-import { splitIntoChapters, generateBrief, type Chapter } from "./chapterSplitter";
-import { extractStructuredData, type ExtractedField } from "./dataExtractor";
+import { splitIntoChapters, generateBrief } from "./chapterSplitter";
+import { extractStructuredData } from "./dataExtractor";
 import { publishJobProgress } from "../lib/sse";
 
 export interface IngestOptions {

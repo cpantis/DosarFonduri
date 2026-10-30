@@ -2,24 +2,15 @@ import Anthropic from "@anthropic-ai/sdk";
 import { anthropic, withAILimit, acquireAISlot } from "../lib/anthropic";
 import { db } from "../db";
 import {
-  projects, projectElements, templateElements,
-  projectEligibility, rules, documents, documentFolders,
-  companies, companyLinkedCompanies,
-  solomonConversations, solomonMessages, solomonCaseMemory,
-  solomonEligibility, solomonScoring,
-  orgConfig,
-  elementRuleLinks, elementDefinitions, guideReferenceTables,
-  projectChecklist, scoringCriteria,
+  projects, projectElements, templateElements, rules, documents,
+  documentFolders, companies, companyLinkedCompanies, solomonConversations,
+  solomonMessages, orgConfig, elementDefinitions,
 } from "../db/schema";
-import { eq, and, inArray, sql } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { logAIUsage } from "./aiUsage";
 import { getCompanyDataFromElements } from "./companyElements";
-import { validateElement, logElementChange } from "./elementValidation";
-import { computeProjectScores } from "./scoring";
-import { publishElementValidated, publishEligibilityUpdated, publishScoreUpdated } from "../lib/sse";
 import { preflightCached } from "./dbPreflight";
 import { SOLOMON_TOOLS, executeSolomonTool, type ToolContext } from "./solomonTools";
-import { upsertElementDefinition } from "./elementDefinitionService";
 import { getFileBuffer } from "./storage";
 
 // Sanitize user-controlled data embedded in system prompts to prevent prompt injection.
@@ -31,13 +22,6 @@ function sanitizeForPrompt(value: string | null | undefined): string {
     .replace(/═{3,}/g, "---") // prevent mimicking section delimiters
     .slice(0, 2000); // cap length
 }
-
-// Allowed metadata fields that Solomon can update on projects
-const ALLOWED_METADATA_KEYS = new Set([
-  "programFinantare", "codMasura", "codSesiune",
-  "codNomenclator", "prefixDocumente", "codMysmis", "structuraDosar", "tipProiect",
-]);
-const MAX_METADATA_VALUE_LENGTH = 500;
 
 
 const MODEL_COSTS: Record<string, { input: number; output: number }> = {
@@ -267,7 +251,6 @@ Folosește aceste informații ca context. NU repeta ce s-a discutat — continu�
     orderBy: (ed, { asc }) => [asc(ed.collectionOrder)],
   });
   const elemDefMap = new Map(elemDefs.map(ed => [ed.id, ed]));
-  const elemDefByKey = new Map(elemDefs.map(ed => [ed.elementKey, ed]));
 
   // Fallback: template elements (backward compat for projects without element_definitions)
   const tmplElements = await db.query.templateElements.findMany({

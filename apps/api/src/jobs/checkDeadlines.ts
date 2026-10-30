@@ -8,7 +8,7 @@
  */
 
 import { db } from "../db";
-import { projects, organizations } from "../db/schema";
+import { projects } from "../db/schema";
 import { and, gte, lte, isNotNull, eq } from "drizzle-orm";
 import { notifyDeadlineApproaching } from "../services/email";
 

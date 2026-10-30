@@ -1,5 +1,4 @@
 import { redis, isRedisReady } from "./redis";
-import type Redis from "ioredis";
 
 /**
  * Publish an SSE event via Redis pub/sub.

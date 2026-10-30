@@ -1,7 +1,11 @@
 import type { AppEnv } from "../types/hono";
 import { Hono } from "hono";
 import { db } from "../db";
-import { projectDocuments, documents, templateElements, projectElements, guideReferenceTables, projects, composeSectionVersions, templatePlaceholderMapping, companies, companyFinancials, organizations } from "../db/schema";
+import {
+  projectDocuments, documents, templateElements, projectElements,
+  guideReferenceTables, projects, composeSectionVersions,
+  templatePlaceholderMapping, companies, companyFinancials, organizations,
+} from "../db/schema";
 import { eq, and, desc, inArray, sql } from "drizzle-orm";
 import { AuthContext } from "../middleware/auth";
 import {
@@ -9,10 +13,7 @@ import {
   checkCrossDocumentConsistency, computeCalculatedFields,
   generateAllDocuments,
 } from "../services/neemia";
-import {
-  renderDocument, getPageImage, cleanupRenderOutput,
-  type KnownKey,
-} from "../services/documentRenderer";
+import { renderDocument, getPageImage, cleanupRenderOutput } from "../services/documentRenderer";
 import {
   composeDocument, validateComposeReadiness, buildComposeContext,
 } from "../services/neemiaCompose";

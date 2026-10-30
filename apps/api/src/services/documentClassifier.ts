@@ -98,8 +98,6 @@ Clasifică documentul. JSON:
   "detectedProgram": "AFIR/PNRR/POR/null"
 }`;
 
-  const startTime = Date.now();
-
   const response = await withAILimit(
     () =>
       anthropic.messages.create({
@@ -111,7 +109,6 @@ Clasifică documentul. JSON:
     "batch",
   );
 
-  const elapsed = Date.now() - startTime;
   const text =
     response.content?.[0]?.type === "text" ? response.content[0].text : "{}";
   const cleaned = text

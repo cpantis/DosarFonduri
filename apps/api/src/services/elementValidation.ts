@@ -3,7 +3,7 @@ import {
   projectElements, templateElements, elementRuleLinks, ruleReferenceLinks,
   guideReferenceTables, rules, elementAuditLog,
 } from "../db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 // --- Types ---
 

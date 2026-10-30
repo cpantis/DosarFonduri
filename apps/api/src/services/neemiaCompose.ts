@@ -17,11 +17,10 @@ import Anthropic from "@anthropic-ai/sdk";
 import { anthropic, withAILimit } from "../lib/anthropic";
 import { db } from "../db";
 import {
-  projects, projectElements, projectDocuments,
-  templateElements, documents, orgConfig, companies,
-  guideReferenceTables, rules, ruleReferenceLinks, elementRuleLinks,
-  organizations, solomonKnowledge, composeSectionVersions,
-  projectChecklist, elementDefinitions,
+  projects, projectElements, projectDocuments, templateElements, documents,
+  orgConfig, companies, guideReferenceTables, rules, elementRuleLinks,
+  organizations, solomonKnowledge, composeSectionVersions, projectChecklist,
+  elementDefinitions,
 } from "../db/schema";
 import { eq, and, inArray, isNull, or, like, not, sql } from "drizzle-orm";
 import { getFileBuffer, uploadFile } from "./storage";
@@ -490,6 +489,7 @@ async function generateComposeContent(
   context: ComposeContext,
   sections: SectionSpec[],
   aiModel: string,
+  projectId: string,
   organizationId: string,
   userId: string,
   blueprint?: DocumentBlueprint | null,
@@ -500,13 +500,7 @@ async function generateComposeContent(
   let composeBriefContext = "";
   let ragContext = "";
   try {
-    // Find project by matching elements to get projectId
-    const projElements = await db.query.projectElements.findMany({
-      where: eq(projectElements.projectId, projectElements.projectId),
-      limit: 1,
-    });
-    // Use a direct query to find project with composeBrief
-    const projs = await db.execute(sql`SELECT id, folder_id, compose_brief FROM projects WHERE organization_id = ${organizationId} AND compose_brief IS NOT NULL LIMIT 1`);
+    const projs = await db.execute(sql`SELECT id, folder_id, compose_brief FROM projects WHERE id = ${projectId} AND organization_id = ${organizationId} AND compose_brief IS NOT NULL LIMIT 1`);
     const projRow = (projs as { rows?: Array<Record<string, unknown>> }).rows?.[0] || (projs as unknown as Array<Record<string, unknown>>)[0];
     if (projRow?.compose_brief) {
       const brief = typeof projRow.compose_brief === "string" ? JSON.parse(projRow.compose_brief) : projRow.compose_brief;
@@ -1150,6 +1144,7 @@ export async function composeDocument(params: ComposeDocParams): Promise<Readabl
               context,
               chunk,
               aiModel,
+              projectId,
               organizationId,
               userId,
               templateBlueprint,

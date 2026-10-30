@@ -62,6 +62,8 @@ export default function ProjectViewPage() {
   });
 
   const [activeLeaf, setActiveLeaf] = useState<LeafType>("sumar");
+  const [pendingElementId, setPendingElementId] = useState<string | null>(null);
+  const clearPendingElement = useCallback(() => setPendingElementId(null), []);
   const [referenceTables, setReferenceTables] = useState<any[]>([]);
 
   const [solomonModel, setSolomonModel] = useState<"sonnet" | "opus">("sonnet");
@@ -1210,7 +1212,7 @@ export default function ProjectViewPage() {
 
             {/* ELEMENTE */}
             {/* ELEMENTE — extracted to component */}
-            {activeLeaf === "elemente" && <ElementsTab projectId={projectId} elements={elements} setElements={setElements} readOnly={readOnly} toast={toast} onAskSolomonAbout={(key) => { setActiveLeaf("solomon"); setSolomonInput(`Completează elementul ${key}`); }} />}
+            {activeLeaf === "elemente" && <ElementsTab projectId={projectId} elements={elements} setElements={setElements} readOnly={readOnly} toast={toast} openElementId={pendingElementId} onElementOpened={clearPendingElement} onAskSolomonAbout={(key) => { setActiveLeaf("solomon"); setSolomonInput(`Completează elementul ${key}`); }} />}
 
             {/* CHECKLIST */}
             {/* CHECKLIST — extracted to component */}
@@ -1847,7 +1849,8 @@ export default function ProjectViewPage() {
                           {group.items.map(el => (
                             <div key={el.id} className={`sep-row ${el.status} clickable`} onClick={() => {
                               if (el.value) {
-                                // Navigate to Elemente tab
+                                // Navigate to Elemente tab and open the element's detail panel
+                                setPendingElementId(el.id);
                                 setActiveLeaf("elemente");
                               } else {
                                 // Send directly — include key so Solomon can emit ELEMENTS_JSON

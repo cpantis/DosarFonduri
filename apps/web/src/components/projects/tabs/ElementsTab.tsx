@@ -3,23 +3,9 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { apiGet, apiPost, apiPut } from "@/lib/api";
 import type { ElementItem } from "../types";
+import { mapElements, SOURCE_MAP } from "../mappers";
 
 /* ── Local constants ── */
-
-const SOURCE_MAP: Record<string, string> = {
-  onrc: "ONRC",
-  onrc_auto: "ONRC",
-  anaf_auto: "ANAF",
-  manual: "Manual",
-  consultant_manual: "Manual",
-  solomon: "Solomon",
-  solomon_chat: "Solomon",
-  document: "OCR",
-  document_extracted: "OCR",
-  calculated: "Sistem",
-  derived: "Sistem",
-  ghid: "Ghid",
-};
 
 const CAT_CONFIG: Record<string, { label: string; icon: string; color: string }> = {
   beneficiary: { label: "Solicitant", icon: "\uD83D\uDC64", color: "#2563eb" },
@@ -33,59 +19,6 @@ const CAT_CONFIG: Record<string, { label: string; icon: string; color: string }>
 };
 
 const pct = (a: number, b: number) => b > 0 ? Math.round((a / b) * 100) : 0;
-
-function mapElements(elements: any[]): ElementItem[] {
-  return elements.map(el => {
-    const confirmed = el.confirmed;
-    const hasValue = !!el.value;
-    const isConflict = el.validationStatus === "invalid" && el.validationDetails?.conflict;
-    let status: "confirmat" | "propus_ai" | "gol" | "conflict" = "gol";
-    if (isConflict) status = "conflict";
-    else if (confirmed) status = "confirmat";
-    else if (hasValue) status = "propus_ai";
-
-    const elemDef = el.elementDefinition;
-    const tmplEl = el.templateElement;
-    const key = elemDef?.elementKey || tmplEl?.key || el.elementDefId || el.templateElementId || el.id;
-    const label = elemDef?.displayName || tmplEl?.label || key;
-
-    let displayValue = el.value;
-    if (displayValue && typeof displayValue === "string") {
-      try {
-        const parsed = JSON.parse(displayValue);
-        if (Array.isArray(parsed)) {
-          displayValue = parsed.map((item: any) =>
-            typeof item === "object" ? Object.values(item).filter(Boolean).join(", ") : String(item)
-          ).join("; ");
-        } else if (typeof parsed === "object" && parsed !== null) {
-          displayValue = Object.entries(parsed)
-            .filter(([, v]) => v != null)
-            .map(([k, v]) => `${k}: ${typeof v === "number" ? new Intl.NumberFormat("ro-RO").format(v) : v}`)
-            .join(" \u00B7 ");
-        }
-      } catch {
-        // Not JSON — keep as is
-      }
-    }
-
-    return {
-      id: el.id,
-      key,
-      label,
-      value: displayValue,
-      status,
-      confidence: confirmed ? 100 : hasValue ? 85 : 0,
-      source: el.source,
-      sourceLabel: SOURCE_MAP[el.source] || el.source || null,
-      sourceDocName: el.sourceDocument?.name || null,
-      templates: [],
-      category: elemDef?.category || tmplEl?.category || "other",
-      required: elemDef?.required ?? false,
-      validationStatus: el.validationStatus || null,
-      validationDetails: el.validationDetails || null,
-    };
-  });
-}
 
 function getSourceLabel(source: string | null | undefined): string {
   if (!source) return "";
@@ -101,13 +34,15 @@ interface ElementsTabProps {
   readOnly: boolean;
   toast: (type: any, msg: string) => void;
   onAskSolomonAbout: (key: string) => void;
+  /** Element whose detail panel should open on mount/change (e.g. clicked in the Solomon panel). */
+  openElementId?: string | null;
+  onElementOpened?: () => void;
 }
 
 /* ── Component ── */
 
-export default function ElementsTab({ projectId, elements, setElements, readOnly, toast, onAskSolomonAbout }: ElementsTabProps) {
+export default function ElementsTab({ projectId, elements, setElements, readOnly, toast, onAskSolomonAbout, openElementId, onElementOpened }: ElementsTabProps) {
   /* ── State ── */
-  const [elemFilter, setElemFilter] = useState("all");
   const [elemSearch, setElemSearch] = useState("");
   const [editingElementId, setEditingElementId] = useState<string | null>(null);
   const [editingElementValue, setEditingElementValue] = useState("");
@@ -137,13 +72,6 @@ export default function ElementsTab({ projectId, elements, setElements, readOnly
     if (elemStatusFilter === "empty" && e.status !== "gol") return false;
     if (elemStatusFilter === "proposed" && e.status !== "propus_ai") return false;
     if (elemStatusFilter === "conflict" && e.status !== "conflict") return false;
-    if (elemFilter === "gol" && e.status !== "gol") return false;
-    if (elemFilter === "propus_ai" && e.status !== "propus_ai") return false;
-    if (elemFilter === "confirmat" && e.status !== "confirmat") return false;
-    if (elemFilter === "de_confirmat" && (e.status !== "propus_ai")) return false;
-    if (elemFilter === "src_solomon" && !(e.status === "propus_ai" && (e.source === "solomon" || e.source === "solomon_chat"))) return false;
-    if (elemFilter === "src_calculated" && !(e.status === "propus_ai" && e.source === "calculated")) return false;
-    if (elemFilter === "src_manual" && !(e.status === "propus_ai" && e.source !== "solomon" && e.source !== "solomon_chat" && e.source !== "calculated")) return false;
     if (elemSearch) {
       const q = elemSearch.toLowerCase();
       return e.label.toLowerCase().includes(q) || e.key.toLowerCase().includes(q) || (e.value || "").toLowerCase().includes(q);
@@ -270,19 +198,28 @@ export default function ElementsTab({ projectId, elements, setElements, readOnly
     } catch { /* ignore */ }
   }, [projectId]);
 
+  useEffect(() => {
+    if (!openElementId) return;
+    openDetailPanel(openElementId);
+    onElementOpened?.();
+  }, [openElementId, openDetailPanel, onElementOpened]);
+
   const handleBulkConfirm = async () => {
     if (readOnly || bulkConfirming) return;
-    const toConfirm = filteredElements.filter(e => e.status === "propus_ai");
+    const toConfirm = elements.filter(e => e.status === "propus_ai");
     if (toConfirm.length === 0) return;
+    if (!confirm(`Confirmi ${toConfirm.length} elemente propuse de AI?`)) return;
     setBulkConfirming(true);
     try {
       await apiPut(`/api/projects/${projectId}/elements-bulk/confirm`, {
         elementIds: toConfirm.map(e => e.id),
       });
+      toast("success", `${toConfirm.length} elemente confirmate`);
       const proj = await apiGet<any>(`/api/projects/${projectId}`);
       setElements(() => mapElements(proj.elements || []));
     } catch (err) {
       console.error("Bulk confirm failed:", err);
+      toast("error", "Eroare la confirmare");
     } finally {
       setBulkConfirming(false);
     }
@@ -300,9 +237,9 @@ export default function ElementsTab({ projectId, elements, setElements, readOnly
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 200, color: "#8892a8", padding: 24 }}>
         <div style={{ fontSize: 32, marginBottom: 8 }}>&#128202;</div>
         <div style={{ fontSize: 14, fontWeight: 600 }}>Niciun element extras</div>
-        <div style={{ fontSize: 12, marginTop: 4 }}>Upload\u0103 documente client sau folose\u0219te Solomon pentru a extrage date</div>
+        <div style={{ fontSize: 12, marginTop: 4 }}>Uploadă documente client sau folosește Solomon pentru a extrage date</div>
         {!readOnly && (
-          <button onClick={() => setAddingElement(true)} className="el-btn el-btn-pri" style={{ marginTop: 12 }}>+ Adaug\u0103 element manual</button>
+          <button onClick={() => setAddingElement(true)} className="el-btn el-btn-pri" style={{ marginTop: 12 }}>+ Adaugă element manual</button>
         )}
       </div>
     );
@@ -316,12 +253,12 @@ export default function ElementsTab({ projectId, elements, setElements, readOnly
           <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8, color: "#0f172a" }}>Element nou</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
             <input placeholder="Cheie (ex: nr_angajati)" value={newElementKey} onChange={e => setNewElementKey(e.target.value)} className="el-input" />
-            <input placeholder="Etichet\u0103 (ex: Num\u0103r angaja\u021Bi)" value={newElementLabel} onChange={e => setNewElementLabel(e.target.value)} className="el-input" />
+            <input placeholder="Etichetă (ex: Număr angajați)" value={newElementLabel} onChange={e => setNewElementLabel(e.target.value)} className="el-input" />
           </div>
-          <input placeholder="Valoare (op\u021Bional)" value={newElementValue} onChange={e => setNewElementValue(e.target.value)} onKeyDown={e => { if (e.key === "Enter") handleAddElement(); if (e.key === "Escape") setAddingElement(false); }} className="el-input" style={{ width: "100%", marginBottom: 8 }} />
+          <input placeholder="Valoare (opțional)" value={newElementValue} onChange={e => setNewElementValue(e.target.value)} onKeyDown={e => { if (e.key === "Enter") handleAddElement(); if (e.key === "Escape") setAddingElement(false); }} className="el-input" style={{ width: "100%", marginBottom: 8 }} />
           <div style={{ display: "flex", gap: 6 }}>
-            <button onClick={handleAddElement} className="el-btn el-btn-pri">Salveaz\u0103</button>
-            <button onClick={() => { setAddingElement(false); setNewElementKey(""); setNewElementLabel(""); setNewElementValue(""); }} className="el-btn el-btn-sec">Anuleaz\u0103</button>
+            <button onClick={handleAddElement} className="el-btn el-btn-pri">Salvează</button>
+            <button onClick={() => { setAddingElement(false); setNewElementKey(""); setNewElementLabel(""); setNewElementValue(""); }} className="el-btn el-btn-sec">Anulează</button>
           </div>
         </div>
       </div>
@@ -346,17 +283,8 @@ export default function ElementsTab({ projectId, elements, setElements, readOnly
           <div style={{ display: "flex", gap: 8 }}>
             <button className="el-btn el-btn-sec" onClick={handleExportCSV}>{"\u2193"} Export CSV</button>
             {elemStats.proposed > 0 && (
-              <button className="el-btn el-btn-ok" onClick={async () => {
-                const proposed = elements.filter(e => e.status === "propus_ai");
-                if (!confirm(`Confirmi ${proposed.length} elemente propuse de AI?`)) return;
-                try {
-                  await apiPut(`/api/projects/${projectId}/elements-bulk/confirm`, { elementIds: proposed.map(e => e.id) });
-                  toast("success", `${proposed.length} elemente confirmate`);
-                  const proj = await apiGet<any>(`/api/projects/${projectId}`);
-                  setElements(() => mapElements(proj.elements || []));
-                } catch { toast("error", "Eroare la confirmare"); }
-              }} disabled={readOnly}>
-                {"\u2713"} Confirm\u0103 toate propuse ({elemStats.proposed})
+              <button className="el-btn el-btn-ok" onClick={handleBulkConfirm} disabled={readOnly || bulkConfirming}>
+                {"\u2713"} Confirmă toate propuse ({elemStats.proposed})
               </button>
             )}
           </div>
@@ -370,7 +298,7 @@ export default function ElementsTab({ projectId, elements, setElements, readOnly
           </div>
           <div className="el-progress-labels">
             <span>{elemStats.confirmed + elemStats.proposed + elemStats.manual} / {elemStats.total} completate ({pct(elemStats.confirmed + elemStats.proposed + elemStats.manual, elemStats.total)}%)</span>
-            <span>{elemStats.empty} r\u0103mase</span>
+            <span>{elemStats.empty} rămase</span>
           </div>
         </div>
       </div>
@@ -379,7 +307,7 @@ export default function ElementsTab({ projectId, elements, setElements, readOnly
       <div className="el-toolbar">
         <div className="el-search-box">
           <span className="el-search-icon">{"\uD83D\uDD0D"}</span>
-          <input type="text" placeholder="Caut\u0103 element..." value={elemSearch} onChange={e => setElemSearch(e.target.value)} />
+          <input type="text" placeholder="Caută element..." value={elemSearch} onChange={e => setElemSearch(e.target.value)} />
         </div>
         <div className="el-sep" />
         <div className={`el-pill ${elemCatFilter === "all" ? "active" : ""}`} onClick={() => setElemCatFilter("all")}>Toate <span className="el-pill-count">{elements.length}</span></div>
@@ -403,7 +331,7 @@ export default function ElementsTab({ projectId, elements, setElements, readOnly
         {!readOnly && (
           <>
             <div className="el-sep" />
-            <button className="el-btn el-btn-pri el-btn-sm" onClick={() => setAddingElement(true)}>+ Adaug\u0103</button>
+            <button className="el-btn el-btn-pri el-btn-sm" onClick={() => setAddingElement(true)}>+ Adaugă</button>
           </>
         )}
       </div>
@@ -414,12 +342,12 @@ export default function ElementsTab({ projectId, elements, setElements, readOnly
           <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8, color: "#0f172a" }}>Element nou</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
             <input placeholder="Cheie (ex: nr_angajati)" value={newElementKey} onChange={e => setNewElementKey(e.target.value)} className="el-input" />
-            <input placeholder="Etichet\u0103 (ex: Num\u0103r angaja\u021Bi)" value={newElementLabel} onChange={e => setNewElementLabel(e.target.value)} className="el-input" />
+            <input placeholder="Etichetă (ex: Număr angajați)" value={newElementLabel} onChange={e => setNewElementLabel(e.target.value)} className="el-input" />
           </div>
-          <input placeholder="Valoare (op\u021Bional)" value={newElementValue} onChange={e => setNewElementValue(e.target.value)} onKeyDown={e => { if (e.key === "Enter") handleAddElement(); if (e.key === "Escape") setAddingElement(false); }} className="el-input" style={{ width: "100%", marginBottom: 8 }} />
+          <input placeholder="Valoare (opțional)" value={newElementValue} onChange={e => setNewElementValue(e.target.value)} onKeyDown={e => { if (e.key === "Enter") handleAddElement(); if (e.key === "Escape") setAddingElement(false); }} className="el-input" style={{ width: "100%", marginBottom: 8 }} />
           <div style={{ display: "flex", gap: 6 }}>
-            <button onClick={handleAddElement} className="el-btn el-btn-pri">Salveaz\u0103</button>
-            <button onClick={() => { setAddingElement(false); setNewElementKey(""); setNewElementLabel(""); setNewElementValue(""); }} className="el-btn el-btn-sec">Anuleaz\u0103</button>
+            <button onClick={handleAddElement} className="el-btn el-btn-pri">Salvează</button>
+            <button onClick={() => { setAddingElement(false); setNewElementKey(""); setNewElementLabel(""); setNewElementValue(""); }} className="el-btn el-btn-sec">Anulează</button>
           </div>
         </div>
       )}
@@ -486,7 +414,7 @@ export default function ElementsTab({ projectId, elements, setElements, readOnly
                           <button className="el-btn el-btn-ghost el-btn-sm" onClick={(ev) => { ev.stopPropagation(); setEditingElementId(el.id); setEditingElementValue(el.value || ""); }}>{"\u270E"}</button>
                         )}
                         <button className="el-btn el-btn-ghost el-btn-sm" onClick={(ev) => { ev.stopPropagation(); openDetailPanel(el.id); }}>{"\u22EF"}</button>
-                        <button className="el-btn el-btn-ghost el-btn-sm" title="\u00CEntreab\u0103 Solomon" onClick={(ev) => { ev.stopPropagation(); askSolomonAbout(el); }}>{"\uD83D\uDCAC"}</button>
+                        <button className="el-btn el-btn-ghost el-btn-sm" title="Întreabă Solomon" onClick={(ev) => { ev.stopPropagation(); askSolomonAbout(el); }}>{"\uD83D\uDCAC"}</button>
                       </div>
                     </div>
                   ))}
@@ -510,14 +438,14 @@ export default function ElementsTab({ projectId, elements, setElements, readOnly
                 <button className="dp-close" onClick={() => setDetailPanelId(null)}>{"\u2715"}</button>
               </div>
               <div className="dp-body">
-                <div className="dp-field"><div className="dp-field-label">Cheie tehnic\u0103</div><div className="dp-field-value dp-mono">{el.key}</div></div>
-                <div className="dp-field"><div className="dp-field-label">Valoare curent\u0103</div><div className="dp-field-value dp-mono">{el.value || "\u2014 necompletat \u2014"}</div></div>
+                <div className="dp-field"><div className="dp-field-label">Cheie tehnică</div><div className="dp-field-value dp-mono">{el.key}</div></div>
+                <div className="dp-field"><div className="dp-field-label">Valoare curentă</div><div className="dp-field-value dp-mono">{el.value || "\u2014 necompletat \u2014"}</div></div>
                 <div className="dp-field"><div className="dp-field-label">Status</div><div className="dp-field-value">
                   <span className={`el-status-badge ${el.status}`}>
                     {el.status === "confirmat" ? "Confirmat" : el.status === "propus_ai" ? "Propus AI" : el.status === "conflict" ? "Conflict" : "Gol"}
                   </span>
                 </div></div>
-                <div className="dp-field"><div className="dp-field-label">Surs\u0103</div><div className="dp-field-value">
+                <div className="dp-field"><div className="dp-field-label">Sursă</div><div className="dp-field-value">
                   {el.sourceLabel ? (
                     <span className={`el-src-badge ${el.source === "document_extracted" ? "ocr" : el.source === "solomon" || el.source === "solomon_chat" ? "solomon" : el.source === "manual" || el.source === "consultant_manual" ? "manual" : el.source === "anaf_auto" ? "anaf" : "system"}`}>
                       {getSourceLabel(el.source)}
@@ -540,7 +468,7 @@ export default function ElementsTab({ projectId, elements, setElements, readOnly
                 {/* Constraints from rules & reference tables */}
                 {elementConstraints.length > 0 && (
                   <div className="dp-field">
-                    <div className="dp-field-label">Constr\u00E2ngeri ({elementConstraints.length})</div>
+                    <div className="dp-field-label">Constrângeri ({elementConstraints.length})</div>
                     {elementConstraints.map((c: any, ci: number) => (
                       <div key={ci} style={{ fontSize: 12, color: "#475569", padding: "4px 0", borderBottom: ci < elementConstraints.length - 1 ? "1px solid #f1f5f9" : undefined }}>
                         <span style={{ fontSize: 10, fontWeight: 600, padding: "1px 5px", borderRadius: 3, background: c.role === "input" ? "#dbeafe" : c.role === "output" ? "#d1fae5" : "#f1f5f9", color: c.role === "input" ? "#1e40af" : c.role === "output" ? "#065f46" : "#475569", marginRight: 6 }}>
@@ -554,8 +482,8 @@ export default function ElementsTab({ projectId, elements, setElements, readOnly
                 {/* Edit actions */}
                 {!readOnly && el.status === "propus_ai" && editingElementId !== el.id && (
                   <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
-                    <button className="el-btn el-btn-ok" onClick={() => handleConfirmElementApi(el.id)}>{"\u2713"} Confirm\u0103</button>
-                    <button className="el-btn el-btn-sec" onClick={() => { setEditingElementId(el.id); setEditingElementValue(el.value || ""); }}>{"\u270E"} Editeaz\u0103</button>
+                    <button className="el-btn el-btn-ok" onClick={() => handleConfirmElementApi(el.id)}>{"\u2713"} Confirmă</button>
+                    <button className="el-btn el-btn-sec" onClick={() => { setEditingElementId(el.id); setEditingElementValue(el.value || ""); }}>{"\u270E"} Editează</button>
                   </div>
                 )}
                 {editingElementId === el.id && (
@@ -564,28 +492,28 @@ export default function ElementsTab({ projectId, elements, setElements, readOnly
                       onKeyDown={e => { if (e.key === "Enter") handleSaveElementEdit(el.id); if (e.key === "Escape") { setEditingElementId(null); setEditingElementValue(""); } }}
                       autoFocus style={{ width: "100%" }} />
                     <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                      <button className="el-btn el-btn-pri" onClick={() => handleSaveElementEdit(el.id)}>{"\u2713"} Salveaz\u0103</button>
-                      <button className="el-btn el-btn-sec" onClick={() => { setEditingElementId(null); setEditingElementValue(""); }}>{"\u2715"} Anuleaz\u0103</button>
+                      <button className="el-btn el-btn-pri" onClick={() => handleSaveElementEdit(el.id)}>{"\u2713"} Salvează</button>
+                      <button className="el-btn el-btn-sec" onClick={() => { setEditingElementId(null); setEditingElementValue(""); }}>{"\u2715"} Anulează</button>
                     </div>
                   </div>
                 )}
                 {/* Ask Solomon */}
                 <div style={{ marginTop: 12 }}>
-                  <button className="el-btn el-btn-sec" onClick={() => { setDetailPanelId(null); askSolomonAbout(el); }}>{"\uD83D\uDCAC"} \u00CEntreab\u0103 Solomon</button>
+                  <button className="el-btn el-btn-sec" onClick={() => { setDetailPanelId(null); askSolomonAbout(el); }}>{"\uD83D\uDCAC"} Întreabă Solomon</button>
                 </div>
                 {/* History */}
                 <div className="dp-history">
-                  <div className="dp-history-title">Istoric modific\u0103ri</div>
+                  <div className="dp-history-title">Istoric modificări</div>
                   {detailHistory.length > 0 ? detailHistory.map((h: any, hi: number) => (
                     <div className="dp-history-item" key={hi}>
                       <span className="dp-history-time">{h.changedAt ? new Date(h.changedAt).toLocaleString("ro-RO", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : ""}</span>
                       <span>
                         {h.oldValue && h.newValue ? `${h.oldValue.slice(0, 40)} \u2192 ${h.newValue.slice(0, 40)}` : h.newValue ? `Setat: "${h.newValue.slice(0, 60)}"` : "Modificare"}
-                        {h.changeSource && <em> \u2014 {getSourceLabel(h.changeSource)}</em>}
+                        {h.changeSource && <em> — {getSourceLabel(h.changeSource)}</em>}
                       </span>
                     </div>
                   )) : (
-                    <div style={{ fontSize: 13, color: "#94a3b8" }}>Nicio modificare \u00EEnregistrat\u0103</div>
+                    <div style={{ fontSize: 13, color: "#94a3b8" }}>Nicio modificare înregistrată</div>
                   )}
                 </div>
               </div>

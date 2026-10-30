@@ -378,7 +378,7 @@ export default function FormOnDocument({
                         {savingField ? "..." : "\u2713"}
                       </button>
                       <button className="fod-cancel-btn" onClick={() => { setEditingField(null); setEditValue(""); }}>
-                        \u2715
+                        ✕
                       </button>
                     </div>
                   </div>

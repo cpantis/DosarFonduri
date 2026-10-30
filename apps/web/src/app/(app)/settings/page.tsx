@@ -1,8 +1,8 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { apiGet, apiPut, apiPost, apiDelete } from "@/lib/api";
-import { getToken, removeToken } from "@/lib/auth";
+import { apiGet, apiPut, apiPost, apiDelete, apiDownload } from "@/lib/api";
+import { removeToken } from "@/lib/auth";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { BtnPrimary, BtnOutline, BtnSecondary, BtnDanger, IconSave, IconRefresh, IconZap, IconPlus, IconEdit, IconTrash } from "@/components/ui/Buttons";
 import { useToast } from "@/components/shared/Toast";
@@ -70,6 +70,9 @@ const KNOWLEDGE_CATEGORIES = [
   { value: "referinta_cadru_legal", label: "Referință — Cadru legal" },
   { value: "referinta_definitii", label: "Referință — Definiții" },
   { value: "referinta_statistici", label: "Referință — Statistici" },
+  { value: "referinta_prioritati", label: "Referință — Priorități" },
+  { value: "referinta_calendar", label: "Referință — Calendar" },
+  { value: "referinta_general", label: "Referință — General" },
 ];
 
 const TYPE_ICONS: Record<string, string> = { ListaFirme: "🔍", ONRC: "🏛", ANAF: "📊", Email: "📧", SMS: "📱", Storage: "☁️", Custom: "🔗" };
@@ -183,6 +186,18 @@ export default function SettingsPage() {
     } catch (e) { console.warn("[settings]", (e as Error)?.message || e); }
   }, []);
 
+  // Knowledge-base documents (ingest pipeline: /api/config/knowledge-base)
+  const [kbDocs, setKbDocs] = useState<Array<{ id: string; name: string; status: string; chapters_count: string | number }>>([]);
+  const kbPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const loadKbDocs = useCallback(async () => {
+    try {
+      const rows = await apiGet<any[]>("/api/config/knowledge-base");
+      setKbDocs(rows || []);
+      return rows || [];
+    } catch { return []; }
+  }, []);
+  useEffect(() => () => { if (kbPollRef.current) clearInterval(kbPollRef.current); }, []);
+
   const loadKnowledge = useCallback(async () => {
     setKnowledgeLoading(true);
     try {
@@ -207,8 +222,19 @@ export default function SettingsPage() {
     loadApis();
     loadBranding();
     loadKnowledge();
+    loadKbDocs();
     loadRefValues();
-  }, [loadConfig, loadApis, loadBranding, loadKnowledge, loadRefValues]);
+  }, [loadConfig, loadApis, loadBranding, loadKnowledge, loadKbDocs, loadRefValues]);
+
+  const saveRefValue = async (key: string, value: string) => {
+    try {
+      await apiPut("/api/config/reference-values", { key, value });
+      setEditingRefKey(null);
+      loadRefValues();
+    } catch (err: any) {
+      toast("error", err.message || "Valoarea nu a fost salvată.");
+    }
+  };
 
   const updateConfig = async (updates: Partial<OrgConfig>) => {
     if (!config) return;
@@ -217,8 +243,9 @@ export default function SettingsPage() {
     setConfig(newConfig);
     try {
       await apiPut("/api/config", updates);
-    } catch {
+    } catch (err: any) {
       setConfig(previous);
+      toast("error", err.message || "Setarea nu a fost salvată.");
     }
   };
 
@@ -281,20 +308,9 @@ export default function SettingsPage() {
 
   const handleExport = async (path: string, filename: string) => {
     try {
-      const token = getToken();
-      const res = await fetch(`${path}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (!res.ok) throw new Error("Export failed");
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(url);
+      await apiDownload(path, filename);
     } catch (err: any) {
-      toast("error", err.message || "Eroare la salvarea setărilor.");
+      toast("error", err.message || "Eroare la export.");
     }
   };
 
@@ -587,12 +603,16 @@ export default function SettingsPage() {
                     type="number"
                     min={50}
                     max={99}
-                    value={Math.round(Number(config.reviewThreshold) * 100)}
-                    onChange={(e) => {
+                    key={config.reviewThreshold}
+                    defaultValue={Math.round(Number(config.reviewThreshold) * 100)}
+                    onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+                    onBlur={(e) => {
                       const val = parseInt(e.target.value);
-                      if (!isNaN(val) && val >= 50 && val <= 99) {
-                        updateConfig({ reviewThreshold: (val / 100).toFixed(2) });
-                      }
+                      const current = Math.round(Number(config.reviewThreshold) * 100);
+                      if (isNaN(val)) { e.target.value = String(current); return; }
+                      const clamped = Math.min(99, Math.max(50, val));
+                      e.target.value = String(clamped);
+                      if (clamped !== current) updateConfig({ reviewThreshold: (clamped / 100).toFixed(2) });
                     }}
                     className="cfg-input cfg-input-mono"
                     style={{ width: 70, textAlign: "center" }}
@@ -653,22 +673,22 @@ export default function SettingsPage() {
                       const result = await res.json();
                       toast("info", (result as any).message || `Procesare in curs — ${file.name}`);
 
-                      // Poll for completion — reload knowledge entries every 10s until we see new entries
-                      const uploadName = file.name;
+                      // Poll the ingest status of this document until it is processed (or fails), max ~5 min
+                      const docId = (result as any).document?.id;
+                      await loadKbDocs();
+                      if (kbPollRef.current) clearInterval(kbPollRef.current);
                       let polls = 0;
-                      const pollInterval = setInterval(async () => {
+                      kbPollRef.current = setInterval(async () => {
                         polls++;
-                        try {
-                          const data = await apiGet("/api/config/knowledge");
-                          const uploadEntries = data.filter((e: any) => e.sourceReference === `upload:${uploadName}`);
-                          if (uploadEntries.length > 0 || polls >= 30) {
-                            clearInterval(pollInterval);
-                            setKnowledgeEntries(data);
-                            if (uploadEntries.length > 0) {
-                              toast("success", `${uploadEntries.length} sectiuni extrase din "${uploadName}"`);
-                            }
-                          }
-                        } catch (e) { console.warn("[settings]", (e as Error)?.message || e); }
+                        const rows = await loadKbDocs();
+                        const doc = rows.find((d: any) => d.id === docId);
+                        const done = doc && ["processed", "error", "failed"].includes(doc.status);
+                        if (done || polls >= 30) {
+                          if (kbPollRef.current) clearInterval(kbPollRef.current);
+                          kbPollRef.current = null;
+                          if (doc?.status === "processed") toast("success", `"${file.name}" a fost indexat (${doc.chapters_count} capitole)`);
+                          else if (done) toast("error", `Procesarea "${file.name}" a eșuat`);
+                        }
                       }, 10000);
                     } catch (err: any) {
                       toast("error", err.message || "Eroare la procesare document");
@@ -684,7 +704,44 @@ export default function SettingsPage() {
                 </label>
               </div>
 
-              {/* ─── Uploaded Documents List ─── */}
+              {/* ─── Knowledge-base documents (ingest pipeline) ─── */}
+              {kbDocs.length > 0 && (
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".5px", color: "#94a3b8", marginBottom: 8 }}>Documente în baza de cunoștințe</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {kbDocs.map(d => (
+                      <div key={d.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 10, border: "1px solid #e2e8f0", background: "#fff" }}>
+                        <span style={{ fontSize: 16 }}>&#x1F4D7;</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.name}</div>
+                          <div style={{ fontSize: 11, color: d.status === "error" || d.status === "failed" ? "#dc2626" : "#64748b" }}>
+                            {d.status === "processed" ? `${Number(d.chapters_count) || 0} capitole indexate`
+                              : d.status === "error" || d.status === "failed" ? "Eroare la procesare"
+                              : "Se procesează..."}
+                          </div>
+                        </div>
+                        <button
+                          style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid #fca5a5", background: "transparent", color: "#dc2626", fontSize: 11, fontWeight: 600, cursor: "pointer" }}
+                          onClick={async () => {
+                            if (!confirm(`Ștergi "${d.name}" din baza de cunoștințe?`)) return;
+                            try {
+                              await apiDelete(`/api/config/knowledge-base/${d.id}`);
+                              setKbDocs(prev => prev.filter(x => x.id !== d.id));
+                              toast("success", `"${d.name}" a fost șters`);
+                            } catch (err: any) {
+                              toast("error", err.message);
+                            }
+                          }}
+                        >
+                          &#x1F5D1; Sterge
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ─── Uploaded Documents List (legacy /knowledge/upload sections) ─── */}
               {knowledgeEntries.filter((e: any) => e.sourceReference?.startsWith("upload:")).length > 0 && (
                 <div style={{ marginBottom: 20 }}>
                   <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".5px", color: "#94a3b8", marginBottom: 8 }}>Documente procesate</div>
@@ -820,8 +877,10 @@ export default function SettingsPage() {
                             }}>Editează</button>
                             <button className="text-xs text-slate-400 hover:text-red-500" onClick={async () => {
                               if (!confirm("Ștergi această intrare?")) return;
-                              await apiDelete(`/api/config/knowledge/${entry.id}`);
-                              loadKnowledge();
+                              try {
+                                await apiDelete(`/api/config/knowledge/${entry.id}`);
+                                loadKnowledge();
+                              } catch (err: any) { toast("error", err.message || "Ștergerea nu a reușit."); }
                             }}>&#10005;</button>
                           </div>
                         </div>
@@ -887,11 +946,7 @@ export default function SettingsPage() {
                                     value={editingRefValue}
                                     onChange={e => setEditingRefValue(e.target.value)}
                                     onKeyDown={async e => {
-                                      if (e.key === "Enter") {
-                                        await apiPut("/api/config/reference-values", { key: v.key, value: editingRefValue });
-                                        setEditingRefKey(null);
-                                        loadRefValues();
-                                      }
+                                      if (e.key === "Enter") await saveRefValue(v.key, editingRefValue);
                                       if (e.key === "Escape") setEditingRefKey(null);
                                     }}
                                     className="w-24 px-2 py-1 text-sm border rounded"
@@ -899,11 +954,7 @@ export default function SettingsPage() {
                                   />
                                   <button
                                     className="text-xs px-2 py-1 bg-blue-600 text-white rounded font-semibold"
-                                    onClick={async () => {
-                                      await apiPut("/api/config/reference-values", { key: v.key, value: editingRefValue });
-                                      setEditingRefKey(null);
-                                      loadRefValues();
-                                    }}
+                                    onClick={() => saveRefValue(v.key, editingRefValue)}
                                   >OK</button>
                                 </div>
                               ) : (
@@ -923,8 +974,10 @@ export default function SettingsPage() {
                                   className="text-[11px] text-slate-400 hover:text-red-500 transition-colors"
                                   title="Revert la valoarea implicita"
                                   onClick={async () => {
-                                    await apiDelete(`/api/config/reference-values/${v.key}`);
-                                    loadRefValues();
+                                    try {
+                                      await apiDelete(`/api/config/reference-values/${encodeURIComponent(v.key)}`);
+                                      loadRefValues();
+                                    } catch (err: any) { toast("error", err.message || "Resetarea nu a reușit."); }
                                   }}
                                 >&#x21A9; Reset</button>
                               )}
@@ -1367,8 +1420,10 @@ export default function SettingsPage() {
                   <input
                     className="cfg-input cfg-input-mono"
                     style={{ width: 260 }}
-                    value={config.emailFrom || ""}
-                    onChange={(e) => updateConfig({ emailFrom: e.target.value })}
+                    key={config.emailFrom || ""}
+                    defaultValue={config.emailFrom || ""}
+                    onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+                    onBlur={(e) => { if (e.target.value !== (config.emailFrom || "")) updateConfig({ emailFrom: e.target.value }); }}
                   />
                 </div>
               </div>

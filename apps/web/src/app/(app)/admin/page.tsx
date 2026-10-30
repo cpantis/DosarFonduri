@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/hooks/useAuth";
-import { apiGet, apiPost, apiPut } from "@/lib/api";
+import { apiGet, apiPost, apiPut, apiDownload } from "@/lib/api";
 import { getInitials } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -603,20 +603,20 @@ export default function AdminPage() {
             <div className="text-lg font-semibold mb-4 text-slate-900">Export date</div>
             <div className="grid grid-cols-2 gap-3">
               {[
-                { label: "Proiecte JSON", desc: "Export complet al tuturor proiectelor cu elemente", href: "/api/export/projects" },
-                { label: "Proiecte CSV", desc: "Export tabelar al proiectelor pentru Excel", href: "/api/export/projects-csv" },
-                { label: "Configurație", desc: "Export setări organizație (modele AI, praguri)", href: "/api/export/config" },
-                { label: "Activitate CSV", desc: "Jurnal complet de activitate", href: "/api/export/activity" },
+                { label: "Proiecte JSON", desc: "Export complet al tuturor proiectelor cu elemente", href: "/api/export/projects", file: "proiecte.json" },
+                { label: "Proiecte CSV", desc: "Export tabelar al proiectelor pentru Excel", href: "/api/export/projects-csv", file: "proiecte.csv" },
+                { label: "Configurație", desc: "Export setări organizație (modele AI, praguri)", href: "/api/export/config", file: "configuratie.json" },
+                { label: "Activitate CSV", desc: "Jurnal complet de activitate", href: "/api/export/activity", file: "activitate.csv" },
               ].map(item => (
-                <a
+                <button
                   key={item.href}
-                  href={item.href}
-                  download
-                  className="p-4 rounded-[12px] border border-slate-200/70 bg-white hover:border-slate-300 transition-all cursor-pointer group"
+                  type="button"
+                  onClick={() => apiDownload(item.href, `dosarfonduri_${item.file.replace(".", `_${new Date().toISOString().slice(0, 10)}.`)}`).catch((err: any) => toast("error", err.message || "Eroare la export"))}
+                  className="p-4 text-left rounded-[12px] border border-slate-200/70 bg-white hover:border-slate-300 transition-all cursor-pointer group"
                 >
                   <div className="text-sm font-semibold text-slate-800 group-hover:text-blue-600 transition-colors">{"\u{1F4E5}"} {item.label}</div>
                   <div className="text-xs text-slate-400 mt-1">{item.desc}</div>
-                </a>
+                </button>
               ))}
             </div>
           </>

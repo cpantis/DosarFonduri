@@ -29,7 +29,7 @@ IMPORTANT:
   "durata": "5 ani",
   "parti": [
     {
-      "rol": "arendator" | "arenda" | "vanzator" | "cumparator" | "prestator" | "beneficiar" | "comodant" | "comodatar" | "locator" | "locatar",
+      "rol": "arendator" | "arendas" | "vanzator" | "cumparator" | "prestator" | "beneficiar" | "comodant" | "comodatar" | "locator" | "locatar",
       "nume": "Nume complet",
       "tip": "pf" | "pj",
       "cui_cnp": "1234567",
@@ -156,7 +156,8 @@ function buildContractResult(data: any, pdfText: string, timeMs: number): Extrac
   });
 
   // Backwards compat: extract arendas/arendator names for old-style fields
-  const arendas = parti.find((p: any) => /arenda[sș]|arendatar/i.test(p.rol || ""));
+  // Exact match: a substring test on "arenda" would also hit "arendator" (the landowner)
+  const arendas = parti.find((p: any) => /^(arenda[sș]?|arendatar)$/i.test((p.rol || "").trim()));
   if (arendas) {
     fields.push({ field_key: "arendas_nume", field_value: arendas.nume, confidence: 0.85, source_page: null, extraction_method: m });
     if (arendas.cui_cnp) fields.push({ field_key: "arendas_cui", field_value: arendas.cui_cnp, confidence: 0.85, source_page: null, extraction_method: m });

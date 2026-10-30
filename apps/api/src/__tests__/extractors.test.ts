@@ -62,44 +62,62 @@ function getFieldConfidence(result: ExtractionResult, key: string) {
 describe("contractExtractor", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("extracts parcels with UAT, suprafață, durată", async () => {
+  it("extracts parties, parcels and aggregate surface from a lease", async () => {
     setMockResponse({
+      tip_contract: "arenda",
       nr_contract: "456/2024",
       data_contract: "2024-03-15",
-      arendas_nume: "AGRO TEST SRL",
-      arendas_cui: "12345678",
-      parcele: [
-        { UAT: "Timișoara", suprafata_ha: 25.5, durata_contract: "5 ani", data_start: "2024-01-01", data_sfarsit: "2029-01-01", arendator_nume: "Ion Popescu", arendator_cui: "9876543" },
-        { UAT: "Giroc", suprafata_ha: 10.0, durata_contract: "5 ani", data_start: "2024-01-01", data_sfarsit: "2029-01-01", arendator_nume: "Maria Ionescu", arendator_cui: null },
+      durata: "5 ani",
+      parti: [
+        { rol: "arenda", nume: "AGRO TEST SRL", tip: "pj", cui_cnp: "12345678" },
+        { rol: "arendator", nume: "Ion Popescu", tip: "pf", cui_cnp: null },
+      ],
+      bunuri: [
+        { descriere: "Teren agricol", locatie: "Timișoara", suprafata_ha: 25.5, nr_cadastral: "111" },
+        { descriere: "Teren agricol", locatie: "Giroc", suprafata_ha: 10.0 },
       ],
     });
 
     const result = await extractContract("mock pdf text");
 
     expect(result.document_type).toBe("contract_arenda");
+    expect(getFieldValue(result, "tip_contract")).toBe("arenda");
     expect(getFieldValue(result, "nr_contract")).toBe("456/2024");
+    expect(getFieldValue(result, "durata_contract")).toBe("5 ani");
+    // Tenant resolved from the prompt's "arenda" role, not the landowner ("arendator")
     expect(getFieldValue(result, "arendas_nume")).toBe("AGRO TEST SRL");
+    expect(getFieldValue(result, "arendas_cui")).toBe("12345678");
+    expect(getFieldValue(result, "parte_contract_1_rol")).toBe("arendator");
+    expect(getField(result, "parte_contract_1_cui_cnp")).toBeUndefined();
+    // Parcels (new + backwards-compatible keys)
+    expect(getFieldValue(result, "bun_contract_0_locatie")).toBe("Timișoara");
     expect(getFieldValue(result, "parcela_0_UAT")).toBe("Timișoara");
     expect(getFieldValue(result, "parcela_0_suprafata_ha")).toBe(25.5);
     expect(getFieldValue(result, "parcela_1_UAT")).toBe("Giroc");
     expect(getFieldValue(result, "parcela_1_suprafata_ha")).toBe(10.0);
-    // Aggregate surface
+    // Aggregates
     expect(getFieldValue(result, "suprafata_contracte")).toBe(35.5);
     expect(getFieldValue(result, "numar_parcele")).toBe(2);
-    // Null field gets confidence 0
-    expect(getFieldValue(result, "parcela_1_arendator_cui")).toBeNull();
-    expect(getFieldConfidence(result, "parcela_1_arendator_cui")).toBe(0);
   });
 
-  it("returns null with confidence 0 when fields missing", async () => {
-    setMockResponse({ parcele: [] });
+  it("does not take the landowner as tenant", async () => {
+    setMockResponse({ tip_contract: "arenda", parti: [{ rol: "arendator", nume: "Ion Popescu" }], bunuri: [] });
 
     const result = await extractContract("mock text");
 
-    expect(getFieldValue(result, "nr_contract")).toBeNull();
-    expect(getFieldConfidence(result, "nr_contract")).toBe(0);
-    expect(getFieldValue(result, "arendas_nume")).toBeNull();
-    expect(getFieldConfidence(result, "arendas_nume")).toBe(0);
+    expect(getField(result, "arendas_nume")).toBeUndefined();
+  });
+
+  it("omits missing fields and defaults the contract type", async () => {
+    setMockResponse({ bunuri: [] });
+
+    const result = await extractContract("mock text");
+
+    expect(result.document_type).toBe("contract_altul");
+    expect(getFieldValue(result, "tip_contract")).toBe("altul");
+    expect(getField(result, "nr_contract")).toBeUndefined();
+    expect(getField(result, "arendas_nume")).toBeUndefined();
+    expect(getFieldValue(result, "numar_parcele")).toBe(0);
   });
 
   it("handles JSON parse failure gracefully", async () => {
@@ -107,7 +125,7 @@ describe("contractExtractor", () => {
 
     const result = await extractContract("mock text");
 
-    expect(result.document_type).toBe("contract_arenda");
+    expect(result.document_type).toBe("contract");
     expect(result.extracted_fields).toHaveLength(0);
     expect(result.processing_time_ms).toBeGreaterThanOrEqual(0);
   });

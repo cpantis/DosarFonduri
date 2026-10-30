@@ -56,18 +56,6 @@ const AVATAR_BG: Record<string, string> = {
   viewer: "#34d399",
 };
 
-const AUDIT_ICONS: Record<string, string> = {
-  create: "+",
-  upload: "^",
-  sync: "~",
-  template: "T",
-  user: "U",
-  check: "V",
-  billing: "$",
-  config: "*",
-  submit: ">",
-};
-
 const TAB_ITEMS = [
   { key: "users", icon: "\u{1F465}", label: "Utilizatori" },
   { key: "costs", icon: "\u{1F4B0}", label: "Audit AI / Costuri" },

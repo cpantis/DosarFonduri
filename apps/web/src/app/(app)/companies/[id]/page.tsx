@@ -4,7 +4,6 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { isSOC, isPF, FORME_JURIDICE, getCompanyTabs, getFieldLabel } from "@/hooks/useFormaJuridica";
-import { useAuth } from "@/hooks/useAuth";
 import { apiGet, apiPost, apiPut, apiDelete, api } from "@/lib/api";
 import { getCaenDescription } from "@/lib/caen";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -13,23 +12,12 @@ import { SectionTitle } from "@/components/ui/SectionTitle";
 import { BtnPrimary, BtnSecondary, BtnDanger, IconRefresh, IconUpload, IconTrash } from "@/components/ui/Buttons";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PageHeader } from "@/components/ui/PageHeader";
-import {
-  formatConditionText as rcFormatConditionText,
-  formatFieldName as rcFormatFieldName,
-  formatConditionValue as rcFormatConditionValue,
-  OPERATOR_LABELS as RC_OP_LABELS,
-} from "@/components/shared/RuleCard";
 
 /* === HELPERS === */
 const fmt = (v: string | number | null | undefined) => {
   if (v == null) return "\u2014";
   const n = parseInt(String(v).replace(/[^0-9-]/g, ""));
   return isNaN(n) ? String(v) : n.toLocaleString("ro-RO") + " RON";
-};
-const fmtNum = (v: number | string | null | undefined) => {
-  if (v == null) return "\u2014";
-  const n = typeof v === "number" ? v : parseInt(String(v).replace(/[^0-9-]/g, ""));
-  return isNaN(n) ? String(v) : n.toLocaleString("ro-RO");
 };
 const fmtLei = (v: number | string | null | undefined) => {
   if (v == null) return "\u2014";
@@ -92,7 +80,6 @@ const mapDetail = (d: any) => {
 export default function CompanyDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const { user, organization } = useAuth();
   const id = params.id as string;
 
   const [detail, setDetail] = useState<any | null>(null);

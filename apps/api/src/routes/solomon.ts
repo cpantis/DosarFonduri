@@ -2,15 +2,18 @@ import type { AppEnv } from "../types/hono";
 import { Hono } from "hono";
 import { createHash } from "crypto";
 import { db } from "../db";
-import { solomonConversations, solomonMessages, projects, documents, documentFolders, solomonEligibility, solomonScoring, projectChecklist, solomonCaseMemory } from "../db/schema";
-import { eq, and, sql, desc } from "drizzle-orm";
+import {
+  solomonConversations, solomonMessages, projects, documents,
+  documentFolders, solomonEligibility, solomonScoring, projectChecklist,
+  solomonCaseMemory,
+} from "../db/schema";
+import { eq, and } from "drizzle-orm";
 import { AuthContext } from "../middleware/auth";
 import { processSolomonMessage, processInlineRefine, generateSolomonGreeting } from "../services/solomon";
 import { uploadFile } from "../services/storage";
 import { extractTextFromPDF, extractTextFromDOCX, extractTextFromXLSX, extractTextFromImage } from "../services/ocr";
 import { processClientDocQueue, JOB_PRIORITY } from "../lib/queue";
 import { publishUploadEvent } from "../lib/sse";
-import { orgConfig } from "../db/schema";
 import { sendMessageSchema, refineSchema, updateModelSchema } from "@dosarfonduri/shared";
 
 export const solomonRoutes = new Hono<AppEnv>();

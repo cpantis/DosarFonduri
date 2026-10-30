@@ -1,5 +1,5 @@
 import type { Context, Next } from "hono";
-import { z, type ZodSchema } from "zod";
+import { type ZodSchema } from "zod";
 
 /**
  * Hono middleware that validates request JSON body against a Zod schema.

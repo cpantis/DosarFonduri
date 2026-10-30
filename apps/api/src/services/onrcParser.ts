@@ -16,15 +16,6 @@ function clean(s: string): string {
   return s.replace(/\s+/g, " ").trim();
 }
 
-/** Extract value after a label like "Denumire: VALUE" or "Denumire VALUE" */
-function extractAfterLabel(text: string, label: RegExp): string | undefined {
-  const m = text.match(label);
-  if (!m) return undefined;
-  const rest = text.slice(m.index! + m[0].length);
-  const line = rest.split("\n")[0]?.trim();
-  return line || undefined;
-}
-
 /**
  * Parse a Romanian decimal number: "1.234.567,89" → 1234567.89
  * BUT "33.333333" (no thousands) → 33.333333 (preserves decimal)

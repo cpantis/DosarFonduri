@@ -1,5 +1,3 @@
-import type { AuthUser, Organization } from "@dosarfonduri/shared";
-
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
   return localStorage.getItem("df-token");

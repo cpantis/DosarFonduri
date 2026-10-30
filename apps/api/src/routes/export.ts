@@ -2,7 +2,7 @@ import type { AppEnv } from "../types/hono";
 import { Hono } from "hono";
 import { db } from "../db";
 import { projects, projectElements, templateElements, orgConfig, auditLog, companies } from "../db/schema";
-import { eq, inArray, sql, and } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import type { AuthContext } from "../middleware/auth";
 
 export const exportRoutes = new Hono<AppEnv>();

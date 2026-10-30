@@ -71,7 +71,6 @@ async function extractPlaceholders(buffer: Buffer, fileName: string): Promise<Ar
   lineNum: number;
   context: string;
 }>> {
-  const { execSync } = await import("child_process");
   const fs = await import("fs");
   const os = await import("os");
   const path = await import("path");
@@ -236,7 +235,6 @@ async function detectComposeSections(buffer: Buffer, fileName: string): Promise<
   type: "narrative" | "table" | "calculation";
   label: string;
 }>> {
-  const { execSync } = await import("child_process");
   const fs = await import("fs");
   const os = await import("os");
   const path = await import("path");
@@ -338,7 +336,6 @@ print(json.dumps(unique))
  * Returns null if LibreOffice is not available.
  */
 async function convertDocxToPdf(buffer: Buffer): Promise<Buffer | null> {
-  const { execSync } = await import("child_process");
   const fs = await import("fs");
   const os = await import("os");
   const path = await import("path");

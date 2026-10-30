@@ -12,7 +12,7 @@
  */
 import { db } from "../db";
 import { documents, documentChapters, documentBriefs, projects, formSpecs } from "../db/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { generateVersionDiff, type VersionDiffResult } from "./versionDiff";
 import { getFileBuffer } from "./storage";
 import { extractTextFromPDF, extractTextFromDOCX } from "./ocr";

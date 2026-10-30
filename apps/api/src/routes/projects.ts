@@ -5,12 +5,12 @@ import { z } from "zod";
 import { db } from "../db";
 import {
   projects, projectElements, projectEligibility, projectDocuments,
-  projectChecklist, templateElements, elementDefinitions, rules, companies, companyFinancials,
-  documentFolders, documents, auditLog, orgConfig, users, elementAuditLog, scoringCriteria,
-  templatePlaceholderMapping, companyAssociates, companyAdministrators,
-  elementRuleLinks, companyElements,
+  projectChecklist, templateElements, elementDefinitions, rules, companies,
+  companyFinancials, documentFolders, documents, users, elementAuditLog,
+  scoringCriteria, templatePlaceholderMapping, elementRuleLinks,
+  companyElements,
 } from "../db/schema";
-import { eq, and, count, asc, desc, sql, inArray, sum } from "drizzle-orm";
+import { eq, and, count, desc, sql, inArray } from "drizzle-orm";
 import { AuthContext } from "../middleware/auth";
 import {
   updateProjectSchema,

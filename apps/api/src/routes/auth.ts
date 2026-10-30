@@ -3,7 +3,7 @@ import { sign, verify } from "hono/jwt";
 import { z } from "zod";
 import { db } from "../db";
 import { users, organizations, cabinetCodes, passwordResetTokens } from "../db/schema";
-import { eq, and, sql, lt } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import type { AppEnv } from "../types/hono";

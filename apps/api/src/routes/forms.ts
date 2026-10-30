@@ -7,10 +7,10 @@ import type { AppEnv } from "../types/hono";
 import { Hono } from "hono";
 import { db } from "../db";
 import { formSpecs, documents, formData, projects, projectElements } from "../db/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import type { AuthContext } from "../middleware/auth";
 import { getFileBuffer } from "../services/storage";
-import { extractAndSaveFormSpec, detectFormFormat, extractFormSpecFromBuffer } from "../services/formSpecExtractor";
+import { extractAndSaveFormSpec } from "../services/formSpecExtractor";
 
 export const formRoutes = new Hono<AppEnv>();
 

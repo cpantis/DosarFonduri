@@ -15,8 +15,11 @@ import Anthropic from "@anthropic-ai/sdk";
 import { searchChapters, getSessionBriefs } from "./chapterSearch";
 import { hybridSearch } from "./hybridSearch";
 import { db } from "../db";
-import { documents, projectElements, elementDefinitions, solomonEligibility, solomonScoring, projects, projectChecklist, companies, rules, guideReferenceTables, budgetItems } from "../db/schema";
-import { eq, and, sql } from "drizzle-orm";
+import {
+  documents, projectElements, elementDefinitions, solomonEligibility,
+  solomonScoring, projects, projectChecklist, companies, rules, budgetItems,
+} from "../db/schema";
+import { eq, and } from "drizzle-orm";
 import { anthropic, withAILimit } from "../lib/anthropic";
 import { logAIUsage } from "./aiUsage";
 

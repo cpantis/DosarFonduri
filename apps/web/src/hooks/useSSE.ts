@@ -28,11 +28,9 @@ interface UseSSEOptions {
  */
 export function useSSE({ projectId, enabled = true, onEvent }: UseSSEOptions = {}) {
   const { toast } = useToast();
-  const eventSourceRef = useRef<EventSource | null>(null);
   const [connected, setConnected] = useState(false);
   const [jobProgress, setJobProgress] = useState<Map<string, { progress: number; message: string; status: string; steps?: Array<{ id: string; label: string; status: string; detail?: string }> }>>(new Map());
   const [extractionProgress, setExtractionProgress] = useState<Map<string, ExtractionProgress>>(new Map());
-  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectAttemptsRef = useRef(0);
   // Use refs to avoid stale closures in long-lived SSE connection
   const onEventRef = useRef(onEvent);

@@ -286,6 +286,8 @@ function SignupWizard({ onGo, invitedEmail }: { onGo: () => void; invitedEmail?:
   const [cabinetCode, setCabinetCode] = useState("");
   const [codeLoad, setCodeLoad] = useState(false);
   const [codeRes, setCodeRes] = useState<any>(null);
+  // A code tied to a CUI only activates for that company (backend: auth.ts checkCabinetCode)
+  const cuiMismatch = !!(codeRes && codeRes !== "error" && codeRes.cui && cui.replace(/\D/g, "") !== codeRes.cui);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [isInvited, setIsInvited] = useState(false);
@@ -739,10 +741,12 @@ function SignupWizard({ onGo, invitedEmail }: { onGo: () => void; invitedEmail?:
                   {codeRes.cui && <span className="font-mono text-xs ml-1.5 text-slate-400">CUI {codeRes.cui}</span>}
                 </div>
               )}
-              {codeRes.cui && cui && cui.replace(/\D/g, "") !== codeRes.cui && (
+              {cuiMismatch && (
                 <div className="cui-err" style={{ marginTop: 8 }}>
-                  CUI-ul introdus la pasul 2 ({cui}) nu se potriveste cu firma destinatara a codului (CUI {codeRes.cui}).
-                  Intoarce-te la pasul 2 si corecteaza.
+                  {cui
+                    ? <>CUI-ul introdus la pasul 2 ({cui}) nu se potriveste cu firma destinatara a codului (CUI {codeRes.cui}).</>
+                    : <>Codul este destinat firmei cu CUI {codeRes.cui}, dar nu ai introdus o firma.</>}
+                  {" "}Intoarce-te si completeaza CUI-ul firmei.
                 </div>
               )}
             </div>
@@ -763,7 +767,7 @@ function SignupWizard({ onGo, invitedEmail }: { onGo: () => void; invitedEmail?:
             </button>
             <button
               className="btn-p"
-              disabled={busy || !codeRes || codeRes === "error"}
+              disabled={busy || !codeRes || codeRes === "error" || cuiMismatch}
               onClick={finalize}
             >
               {busy ? <Spinner light /> : "Activeaza contul"}

@@ -194,10 +194,22 @@ export function publishFolderStructureLock(
 export function createSSEStream(channels: string[]): ReadableStream {
   let subscriber: ReturnType<typeof redis.duplicate> | null = null;
   let keepaliveTimer: ReturnType<typeof setInterval> | null = null;
+  let closed = false;
   const encoder = new TextEncoder();
 
   return new ReadableStream({
     start(controller) {
+      // The client can disconnect at any time (tab closed); enqueue on a cancelled stream throws,
+      // and from an async callback that would be an unhandled rejection that kills the process.
+      const send = (chunk: string) => {
+        if (closed) return;
+        try {
+          controller.enqueue(encoder.encode(chunk));
+        } catch {
+          closed = true;
+        }
+      };
+
       if (!isRedisReady()) {
         controller.enqueue(encoder.encode(`: no redis connection\n\n`));
         controller.close();
@@ -209,29 +221,24 @@ export function createSSEStream(channels: string[]): ReadableStream {
       subscriber.on("message", (_channel: string, message: string) => {
         try {
           const parsed = JSON.parse(message);
-          const sseData = `event: ${parsed.event}\ndata: ${JSON.stringify(parsed.data)}\n\n`;
-          controller.enqueue(encoder.encode(sseData));
+          send(`event: ${parsed.event}\ndata: ${JSON.stringify(parsed.data)}\n\n`);
         } catch {
           // Skip malformed messages
         }
       });
 
-      subscriber.subscribe(...channels).catch(() => {
-        controller.enqueue(encoder.encode(`: subscribe failed\n\n`));
-      });
+      subscriber.subscribe(...channels).catch(() => send(`: subscribe failed\n\n`));
 
       // Keepalive every 30s
       keepaliveTimer = setInterval(() => {
-        try {
-          controller.enqueue(encoder.encode(`: keepalive\n\n`));
-        } catch {
-          if (keepaliveTimer) clearInterval(keepaliveTimer);
-        }
+        send(`: keepalive\n\n`);
+        if (closed && keepaliveTimer) clearInterval(keepaliveTimer);
       }, 30000);
 
-      controller.enqueue(encoder.encode(`event: connected\ndata: ${JSON.stringify({ channels })}\n\n`));
+      send(`event: connected\ndata: ${JSON.stringify({ channels })}\n\n`);
     },
     cancel() {
+      closed = true;
       if (keepaliveTimer) clearInterval(keepaliveTimer);
       if (subscriber) {
         subscriber.unsubscribe().catch((e: any) => console.warn("[sse] redis unsubscribe:", e.message));

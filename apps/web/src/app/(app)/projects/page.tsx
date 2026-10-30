@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { apiGet, apiPost, apiDelete } from "@/lib/api";
+import { apiGet, apiGetAll, apiPost, apiDelete } from "@/lib/api";
 
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -79,16 +79,15 @@ export default function ProjectsPage() {
 
   useEffect(() => {
     setLoading(true);
-    apiGet("/api/projects")
-      .then((data: any) => { setProjects(Array.isArray(data) ? data : data.data || data.projects || []); })
+    apiGetAll("/api/projects")
+      .then((list: any[]) => { setProjects(list); })
       .catch((err) => { console.warn("[projects] load failed:", err.message); setProjects([]); })
       .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
     if (!showCreate) return;
-    apiGet("/api/companies").then((data: any) => {
-      const list = Array.isArray(data) ? data : data.data || data.companies || [];
+    apiGetAll("/api/companies").then((list: any[]) => {
       setCompanies(list.map((c: any) => ({ id: c.id, name: c.denumire || c.name })));
     }).catch((err) => { console.warn("[projects] companies load:", err.message); setCompanies([]); });
     apiGet("/api/documents/folders").then((data: any) => {

@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
-import { apiPost, apiDelete, apiPut } from "@/lib/api";
+import { apiGet, apiPost, apiDelete, apiPut } from "@/lib/api";
+import { mapChecklist } from "../mappers";
 import type { ChecklistItem, NeemiaTemplate } from "../types";
 
 interface ChecklistTabProps {
@@ -35,7 +36,8 @@ export default function ChecklistTab({
   const checkTotal = checklistItems.length;
   const checkCategories = [...new Set(checklistItems.map(i => i.category))].sort();
   const checkMappedTemplateIds = new Set(checklistItems.filter(i => i.templateId).map(i => i.templateId));
-  const checkUnmappedTemplates = neemiaTemplates.filter(t => !checkMappedTemplateIds.has(t.id));
+  // checklist.templateId references documents.id, i.e. the template's templateDocumentId (not the list row id)
+  const checkUnmappedTemplates = neemiaTemplates.filter(t => !checkMappedTemplateIds.has(t.templateDocumentId));
 
   const handleChecklistToggle = async (id: string, done: boolean) => {
     try {
@@ -67,7 +69,7 @@ export default function ChecklistTab({
     try {
       await apiPut(`/api/projects/${projectId}/checklist/${checkId}`, { templateId });
       setChecklistItems(prev => prev.map(i => i.id === checkId ? {
-        ...i, templateId, templateName: templateId ? neemiaTemplates.find(t => t.id === templateId)?.name || null : null,
+        ...i, templateId, templateName: templateId ? neemiaTemplates.find(t => t.templateDocumentId === templateId)?.name || null : null,
       } : i));
       setCheckMapOpen(null); setCheckActionId(null);
     } catch { toast("error", "Eroare la mapare"); }
@@ -83,8 +85,9 @@ export default function ChecklistTab({
 
   const handleChecklistRefresh = async () => {
     try {
-      const items = await apiPost<ChecklistItem[]>(`/api/projects/${projectId}/checklist/refresh`, {});
-      setChecklistItems(() => items);
+      await apiPost(`/api/projects/${projectId}/checklist/refresh`, {});
+      const data = await apiGet<{ items: any[] }>(`/api/projects/${projectId}/checklist`);
+      setChecklistItems(() => mapChecklist(data.items || []));
       toast("success", "Checklist actualizat din ghid");
     } catch { toast("error", "Eroare la refresh"); }
   };
@@ -240,10 +243,10 @@ export default function ChecklistTab({
                               </button>
                             )}
                             {neemiaTemplates.map(t => (
-                              <button key={t.id} className={`check-template-option ${item.templateId === t.id ? "mapped" : ""}`} onClick={() => handleChecklistMapTemplate(item.id, t.id)}>
+                              <button key={t.id} className={`check-template-option ${item.templateId === t.templateDocumentId ? "mapped" : ""}`} onClick={() => handleChecklistMapTemplate(item.id, t.templateDocumentId)}>
                                 <span className="check-template-badge">{t.type}</span>
                                 {t.name}
-                                {item.templateId === t.id && " \u2713"}
+                                {item.templateId === t.templateDocumentId && " \u2713"}
                               </button>
                             ))}
                             {neemiaTemplates.length === 0 && (

@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { isSOC, isPF, FORME_JURIDICE, getCompanyTabs, getFieldLabel } from "@/hooks/useFormaJuridica";
-import { apiGet, apiPost, apiPut, apiDelete, api } from "@/lib/api";
+import { apiGet, apiPost, apiPut, apiPatch, apiDelete, api } from "@/lib/api";
 import { getCaenDescription } from "@/lib/caen";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { TypeBadge } from "@/components/ui/TypeBadge";
@@ -14,17 +14,24 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { PageHeader } from "@/components/ui/PageHeader";
 
 /* === HELPERS === */
-const fmt = (v: string | number | null | undefined) => {
-  if (v == null) return "\u2014";
-  const n = parseInt(String(v).replace(/[^0-9-]/g, ""));
-  return isNaN(n) ? String(v) : n.toLocaleString("ro-RO") + " RON";
+/**
+ * Parse an amount that may come as a number, a Postgres decimal string ("200.00")
+ * or Romanian-formatted text ("2.500.000", "1.234,56 RON").
+ */
+const parseAmount = (v: string | number): number => {
+  if (typeof v === "number") return v;
+  const t = String(v).replace(/[^0-9.,-]/g, "");
+  if (/^-?\d+(\.\d+)?$/.test(t) && !/^-?\d{1,3}(\.\d{3})+$/.test(t)) return parseFloat(t);
+  if (t.includes(",")) return parseFloat(t.replace(/\./g, "").replace(",", "."));
+  return parseFloat(t.replace(/\./g, ""));
 };
-const fmtLei = (v: number | string | null | undefined) => {
-  if (v == null) return "\u2014";
-  const n = typeof v === "number" ? v : parseInt(String(v).replace(/[^0-9-]/g, ""));
-  if (isNaN(n)) return String(v);
-  return n.toLocaleString("ro-RO") + " LEI";
+const fmtAmount = (v: string | number | null | undefined, unit: string) => {
+  if (v == null || v === "") return "\u2014";
+  const n = parseAmount(v);
+  return isNaN(n) ? String(v) : n.toLocaleString("ro-RO", { maximumFractionDigits: 2 }) + " " + unit;
 };
+const fmt = (v: string | number | null | undefined) => fmtAmount(v, "RON");
+const fmtLei = (v: number | string | null | undefined) => fmtAmount(v, "LEI");
 
 /** Map API company detail to the shapes expected by JSX */
 const mapDetail = (d: any) => {
@@ -173,6 +180,9 @@ export default function CompanyDetailPage() {
     }
   };
 
+  const closeBilantUpload = () => { setShowBilantUpload(false); setBilantFileName(null); if (bilantFileRef.current) bilantFileRef.current.value = ""; };
+  const closeOnrcUpload = () => { setShowOnrcUpload(false); setOnrcFileName(null); if (onrcFileRef.current) onrcFileRef.current.value = ""; };
+
   const handleBilantUpload = async () => {
     if (!bilantFileRef.current?.files?.[0]) return;
     setBilantUploading(true);
@@ -186,8 +196,7 @@ export default function CompanyDetailPage() {
         timeout: 120_000,
       });
       await fetchDetail();
-      setShowBilantUpload(false);
-      bilantFileRef.current.value = "";
+      closeBilantUpload();
     } catch (err: any) {
       alert("Eroare la upload bilant: " + (err.message || "Eroare necunoscuta"));
     } finally {
@@ -207,7 +216,7 @@ export default function CompanyDetailPage() {
         timeout: 120_000,
       });
       await fetchDetail();
-      setShowOnrcUpload(false);
+      closeOnrcUpload();
     } catch (err: any) {
       alert("Eroare la upload ONRC: " + (err.message || "Eroare necunoscuta"));
     } finally {
@@ -233,16 +242,17 @@ export default function CompanyDetailPage() {
   // Pre-eligibility removed — now handled by Solomon Q2 in project context
 
   // Element CRUD handlers
-  const handleSaveElement = async (key: string, value: string, source: string = "manual") => {
+  const handleSaveElement = async (key: string, value: string, source: string = "manual", label?: string): Promise<boolean> => {
     try {
-      await apiPut(`/api/companies/${id}/elements`, { elementKey: key, value: value || null, source });
+      await apiPut(`/api/companies/${id}/elements`, { elementKey: key, value: value || null, source, ...(label ? { label } : {}) });
       await fetchElements();
-    } catch (err: any) { alert(err.message || "Eroare la salvare"); }
+      return true;
+    } catch (err: any) { alert(err.message || "Eroare la salvare"); return false; }
   };
 
   const handleAddElement = async () => {
     if (!newElKey.trim()) return;
-    await handleSaveElement(newElKey.trim(), newElValue.trim());
+    if (!await handleSaveElement(newElKey.trim(), newElValue.trim(), "manual", newElLabel.trim() || undefined)) return;
     setNewElKey(""); setNewElLabel(""); setNewElValue(""); setShowAddElement(false);
   };
 
@@ -258,7 +268,7 @@ export default function CompanyDetailPage() {
   const filteredElements = (elementsData?.elements || []).filter((el: any) => {
     if (elementsCategory !== "Toate" && (elementsData?.fieldCategories?.[el.category]?.label || "Custom") !== elementsCategory) return false;
     if (elementsFilter === "empty" && el.value) return false;
-    if (elementsFilter === "proposed" && el.autoPopulated) return false;
+    if (elementsFilter === "proposed" && (!el.value || el.source === "manual" || el.source === "consultant_manual")) return false;
     if (elementsSearch) {
       const q = elementsSearch.toLowerCase();
       return el.elementKey.toLowerCase().includes(q) || (el.label || "").toLowerCase().includes(q) || (el.value || "").toLowerCase().includes(q);
@@ -1276,7 +1286,7 @@ export default function CompanyDetailPage() {
                 style={{ padding: "10px 20px", borderRadius: 8, background: "#2563eb", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", border: "none", opacity: linkedAnalyzing ? 0.5 : 1 }}
                 disabled={linkedAnalyzing}
                 onClick={async () => {
-                  if (!confirm(`Verificarea va interoga ListaFirme.ro pentru fiecare asociat/administrator. Cost estimat: ~${(detail?.associates?.length || 3) + 1} credite API. Continuati?`)) return;
+                  if (!confirm(`Verificarea va interoga ListaFirme.ro pentru fiecare asociat/administrator. Cost estimat: ~${(sel.asociatiPF.length + sel.asociatiPJ.length + sel.administratori.length) || 3} credite API. Continuati?`)) return;
                   setLinkedAnalyzing(true);
                   try {
                     const result = await apiPost(`/api/companies/${sel.id}/linked-companies/analyze`, {});
@@ -1410,8 +1420,10 @@ export default function CompanyDetailPage() {
                               style={{ padding: "3px 8px", borderRadius: 4, border: "1px solid #059669", background: "transparent", color: "#059669", fontSize: 10, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}
                               title="Confirmă — aceeași persoană"
                               onClick={async () => {
-                                await (api as any)(`/api/companies/${sel.id}/linked-companies/${lc.id}`, { method: "PATCH", body: JSON.stringify({ confirmed: true }) }).catch(() => {});
-                                setLinkedCompanies(prev => prev.map(x => x.id === lc.id ? { ...x, confirmed: true, dismissed: false } : x));
+                                try {
+                                  await apiPatch(`/api/companies/${sel.id}/linked-companies/${lc.id}`, { confirmed: true });
+                                  setLinkedCompanies(prev => prev.map(x => x.id === lc.id ? { ...x, confirmed: true, dismissed: false } : x));
+                                } catch (err: any) { alert(err.message || "Eroare la salvare"); }
                               }}
                             >
                               &#x2713;
@@ -1420,8 +1432,10 @@ export default function CompanyDetailPage() {
                               style={{ padding: "3px 8px", borderRadius: 4, border: "1px solid #94a3b8", background: "transparent", color: "#94a3b8", fontSize: 10, cursor: "pointer", whiteSpace: "nowrap" }}
                               title="Nu e aceeași persoană"
                               onClick={async () => {
-                                await (api as any)(`/api/companies/${sel.id}/linked-companies/${lc.id}`, { method: "PATCH", body: JSON.stringify({ dismissed: true }) }).catch(() => {});
-                                setLinkedCompanies(prev => prev.map(x => x.id === lc.id ? { ...x, dismissed: true, confirmed: false } : x));
+                                try {
+                                  await apiPatch(`/api/companies/${sel.id}/linked-companies/${lc.id}`, { dismissed: true });
+                                  setLinkedCompanies(prev => prev.map(x => x.id === lc.id ? { ...x, dismissed: true, confirmed: false } : x));
+                                } catch (err: any) { alert(err.message || "Eroare la salvare"); }
                               }}
                             >
                               &#x2715;
@@ -1452,13 +1466,13 @@ export default function CompanyDetailPage() {
       {showOnrcUpload && (
         <div
           className="cd-modal-overlay"
-          onClick={e => { if (e.target === e.currentTarget) setShowOnrcUpload(false); }}
+          onClick={e => { if (e.target === e.currentTarget) closeOnrcUpload(); }}
         >
           <div className="cd-modal">
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
               <h2 style={{ fontSize: 18, fontWeight: 700, color: "#0f172a" }}>Upload Certificat Constatator</h2>
               <button
-                onClick={() => setShowOnrcUpload(false)}
+                onClick={() => closeOnrcUpload()}
                 style={{ width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 8, border: "none", background: "transparent", cursor: "pointer", color: "#94a3b8", transition: "all .15s" }}
               >
                 <svg style={{ width: 16, height: 16 }} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
@@ -1467,7 +1481,7 @@ export default function CompanyDetailPage() {
             <p style={{ fontSize: 13, marginBottom: 20, lineHeight: 1.6, color: "#64748b" }}>
               Incarca un certificat constatator ONRC (PDF). Datele firmei se vor actualiza automat cu informatiile extrase.
             </p>
-            <input type="file" ref={onrcFileRef} accept=".pdf" className="hidden" onChange={() => {}} />
+            <input type="file" ref={onrcFileRef} accept=".pdf" className="hidden" onChange={() => { setOnrcFileName(onrcFileRef.current?.files?.[0]?.name || null); }} />
             <div
               className="cd-drop-zone"
               onClick={() => onrcFileRef.current?.click()}
@@ -1489,7 +1503,7 @@ export default function CompanyDetailPage() {
               <div style={{ fontSize: 12, marginTop: 4, color: "#94a3b8" }}>Trage fisierul aici sau click pentru a selecta</div>
             </div>
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-              <BtnSecondary onClick={() => setShowOnrcUpload(false)}>Anuleaza</BtnSecondary>
+              <BtnSecondary onClick={() => closeOnrcUpload()}>Anuleaza</BtnSecondary>
               <BtnPrimary icon={<IconUpload />} disabled={onrcUploading} onClick={handleOnrcUpload}>
                 {onrcUploading ? "Se procesează..." : "Actualizează datele"}
               </BtnPrimary>
@@ -1502,13 +1516,13 @@ export default function CompanyDetailPage() {
       {showBilantUpload && (
         <div
           className="cd-modal-overlay"
-          onClick={e => { if (e.target === e.currentTarget) setShowBilantUpload(false); }}
+          onClick={e => { if (e.target === e.currentTarget) closeBilantUpload(); }}
         >
           <div className="cd-modal">
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
               <h2 style={{ fontSize: 18, fontWeight: 700, color: "#0f172a" }}>Upload bilant ANAF</h2>
               <button
-                onClick={() => setShowBilantUpload(false)}
+                onClick={() => closeBilantUpload()}
                 style={{ width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 8, border: "none", background: "transparent", cursor: "pointer", color: "#94a3b8", transition: "all .15s" }}
               >
                 <svg style={{ width: 16, height: 16 }} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
@@ -1544,7 +1558,7 @@ export default function CompanyDetailPage() {
               <div style={{ fontSize: 12, marginTop: 4, color: "#94a3b8" }}>Trage fisierul aici sau click pentru a selecta</div>
             </div>
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-              <BtnSecondary onClick={() => setShowBilantUpload(false)}>Anuleaza</BtnSecondary>
+              <BtnSecondary onClick={() => closeBilantUpload()}>Anuleaza</BtnSecondary>
               <BtnPrimary icon={<IconUpload />} disabled={bilantUploading} onClick={handleBilantUpload}>
                 {bilantUploading ? "Se procesează..." : "Extrage date financiare"}
               </BtnPrimary>

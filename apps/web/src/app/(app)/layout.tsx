@@ -6,7 +6,8 @@ import { useAuthState } from "@/hooks/useAuth";
 import { AuthContext } from "@/hooks/useAuth";
 import { useSidebarState, SidebarContext } from "@/hooks/useSidebar";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { apiPost } from "@/lib/api";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ToastProvider } from "@/components/shared/Toast";
 import { useSSE } from "@/hooks/useSSE";
@@ -33,10 +34,11 @@ function AppShell({ children }: { children: React.ReactNode }) {
   const sidebarState = useSidebarState();
 
   useEffect(() => {
-    if (!auth.loading && !auth.user) {
+    // A connection error (API down, timeout) keeps the session: show a retry screen instead
+    if (!auth.loading && !auth.user && !auth.error) {
       router.replace("/login");
     }
-  }, [auth.loading, auth.user, router]);
+  }, [auth.loading, auth.user, auth.error, router]);
 
   // Keyboard shortcut: Ctrl+B / Cmd+B to toggle sidebar
   useEffect(() => {
@@ -72,14 +74,21 @@ function AppShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!auth.user) return null;
+  if (!auth.user) {
+    if (!auth.error) return null;
+    return (
+      <div className="flex h-screen items-center justify-center bg-slate-50">
+        <div className="text-center max-w-sm px-6">
+          <div className="text-[15px] font-semibold text-slate-800 mb-2">Serverul nu răspunde</div>
+          <div className="text-[13px] text-slate-500 mb-5">{auth.error}</div>
+          <button onClick={() => auth.refresh()} className="px-4 py-2 rounded-lg bg-blue-600 text-white text-[13px] font-semibold">Reîncearcă</button>
+        </div>
+      </div>
+    );
+  }
 
   if (auth.user.status === "pending_cabinet") {
-    return (
-      <AuthContext.Provider value={auth}>
-        <PendingCabinetScreen />
-      </AuthContext.Provider>
-    );
+    return <PendingCabinetScreen onActivated={auth.refresh} onLogout={() => { auth.logout(); router.replace("/login"); }} />;
   }
 
   return (
@@ -175,7 +184,26 @@ function SSEProvider() {
   );
 }
 
-function PendingCabinetScreen() {
+function PendingCabinetScreen({ onActivated, onLogout }: { onActivated: () => void; onLogout: () => void }) {
+  const [code, setCode] = useState("");
+  const [cui, setCui] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const activate = async () => {
+    if (!code.trim() || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await apiPost("/api/auth/activate-cabinet", { code: code.trim(), cui: cui.trim() || undefined });
+      onActivated();
+    } catch (err: any) {
+      setError(err.message || "Cod invalid");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="flex h-screen items-center justify-center bg-slate-50">
       <div className="text-center max-w-md px-6 animate-[fadeUp_.5s_ease-out]">
@@ -194,12 +222,30 @@ function PendingCabinetScreen() {
           <div className="text-[10px] font-semibold uppercase mb-2 tracking-wider text-slate-400">
             Ai un cod de cabinet?
           </div>
-          <p className="text-[13px] text-slate-500 leading-relaxed">
-            Dacă ai primit un cod de cabinet de la furnizorul DosarFonduri,
-            te rugăm să te deconectezi și să te înregistrezi din nou folosind
-            codul.
-          </p>
+          <input
+            value={code}
+            onChange={e => setCode(e.target.value)}
+            placeholder="Cod cabinet"
+            className="w-full mb-2 px-3 py-2 text-[13px] rounded-lg border border-slate-200 uppercase"
+          />
+          <input
+            value={cui}
+            onChange={e => setCui(e.target.value)}
+            placeholder="CUI firmă (dacă codul e legat de o firmă)"
+            className="w-full mb-3 px-3 py-2 text-[13px] rounded-lg border border-slate-200"
+          />
+          {error && <div className="text-[12px] text-red-500 mb-2">{error}</div>}
+          <button
+            onClick={activate}
+            disabled={!code.trim() || busy}
+            className="w-full px-4 py-2 rounded-lg bg-blue-600 text-white text-[13px] font-semibold disabled:opacity-50"
+          >
+            {busy ? "Se activează..." : "Activează contul"}
+          </button>
         </div>
+        <button onClick={onLogout} className="mt-5 text-[13px] text-slate-500 hover:text-slate-700 underline">
+          Deconectare
+        </button>
       </div>
     </div>
   );

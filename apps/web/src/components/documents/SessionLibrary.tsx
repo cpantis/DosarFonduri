@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import { Tabs } from "@/components/ui/Tabs";
+import { useToast } from "@/components/shared/Toast";
 import { RuleCard, RuleCardList, RuleCardData, CATEGORY_COLORS as RC_COLORS, CATEGORY_LABELS as RC_LABELS } from "@/components/shared/RuleCard";
 
 /* ══════════════════════════════════════════
@@ -269,7 +270,7 @@ function RulesTab({ rules }: { rules: LibraryData["rules"] }) {
         ))}
       </RuleCardList>
 
-      {displayRules.length === 0 && <EmptyTab icon="\uD83D\uDEE1" message="Nicio regulă extrasă încă" />}
+      {displayRules.length === 0 && <EmptyTab icon="🛡" message="Nicio regulă extrasă încă" />}
     </div>
   );
 }
@@ -279,7 +280,7 @@ function RulesTab({ rules }: { rules: LibraryData["rules"] }) {
    ══════════════════════════════════════════ */
 
 function ScoringTab({ scoring }: { scoring: LibraryData["scoring"] }) {
-  if (scoring.items.length === 0) return <EmptyTab icon="\uD83C\uDFAF" message="Niciun criteriu de scoring extras" />;
+  if (scoring.items.length === 0) return <EmptyTab icon="🎯" message="Niciun criteriu de scoring extras" />;
 
   const totalMax = scoring.items.reduce((s, c) => s + parseFloat(c.maxPoints), 0);
 
@@ -349,7 +350,7 @@ function ElementsTab({ elements }: { elements: LibraryData["elements"] }) {
   const categories = [...grouped.keys()].sort();
   const displayItems = catFilter ? (grouped.get(catFilter) || []) : elements.items;
 
-  if (elements.items.length === 0) return <EmptyTab icon="\uD83E\uDDE9" message="Nicio definitie de element inca" />;
+  if (elements.items.length === 0) return <EmptyTab icon="🧩" message="Nicio definitie de element inca" />;
 
   return (
     <div className="flex flex-col gap-3">
@@ -430,7 +431,7 @@ function ElementsTab({ elements }: { elements: LibraryData["elements"] }) {
 function TablesTab({ tables }: { tables: LibraryData["tables"] }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
-  if (tables.items.length === 0) return <EmptyTab icon="\uD83D\uDCCA" message="Niciun tabel de referinta extras" />;
+  if (tables.items.length === 0) return <EmptyTab icon="📊" message="Niciun tabel de referinta extras" />;
 
   const toggle = (id: string) => {
     setExpanded(prev => {
@@ -505,6 +506,8 @@ function TablesTab({ tables }: { tables: LibraryData["tables"] }) {
    ══════════════════════════════════════════ */
 
 function ChecklistTab({ checklist, folderId, onRefresh }: { checklist: LibraryData["checklist"]; folderId: string; onRefresh: () => void }) {
+  const { toast } = useToast();
+  const fail = (msg: string) => (err: any) => toast("error", err?.message || msg);
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
   const [newCategory, setNewCategory] = useState("General");
@@ -519,14 +522,14 @@ function ChecklistTab({ checklist, folderId, onRefresh }: { checklist: LibraryDa
       setNewName("");
       setAdding(false);
       onRefresh();
-    } catch { /* ignore */ }
+    } catch (err) { fail("Documentul nu a fost adăugat")(err); }
   };
 
   const handleDelete = async (itemId: string) => {
     try {
       await apiDelete(`/api/documents/session/${folderId}/checklist/${itemId}`);
       onRefresh();
-    } catch { /* ignore */ }
+    } catch (err) { fail("Ștergerea nu a reușit")(err); }
   };
 
   const handleAutoPopulate = async () => {
@@ -534,7 +537,7 @@ function ChecklistTab({ checklist, folderId, onRefresh }: { checklist: LibraryDa
     try {
       await apiPost(`/api/documents/session/${folderId}/checklist/auto-populate`, {});
       onRefresh();
-    } catch { /* ignore */ }
+    } catch (err) { fail("Popularea automată nu a reușit")(err); }
     setPopulating(false);
   };
 
@@ -587,7 +590,7 @@ function ChecklistTab({ checklist, folderId, onRefresh }: { checklist: LibraryDa
       )}
 
       {/* Grouped items */}
-      {categories.length === 0 && !adding && <EmptyTab icon="\u2705" message="Niciun item in checklist" sub="Adauga manual sau auto-populeaza din regulile ghidului" />}
+      {categories.length === 0 && !adding && <EmptyTab icon="✅" message="Niciun item in checklist" sub="Adauga manual sau auto-populeaza din regulile ghidului" />}
 
       {categories.map(([cat, count]) => (
         <div key={cat}>

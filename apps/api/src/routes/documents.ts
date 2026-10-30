@@ -1564,6 +1564,16 @@ documentRoutes.get("/session/:folderId/library", async (c) => {
       })
     : [];
 
+  // Single-entry uploads (RAG v2) land directly in the session folder — classify them by routing/processing type
+  const sessionDocs = await db.query.documents.findMany({
+    where: and(eq(documents.folderId, folderId), eq(documents.organizationId, auth.organizationId)),
+  });
+  for (const d of sessionDocs) {
+    const route = (d.classification as any)?.routingAction as string | undefined;
+    if (d.processingType === "template" || route === "template_fill" || route === "template_compose") templateDocs.push(d);
+    else if (d.processingType === "ghid" || route === "vectorize") guideDocs.push(d);
+  }
+
   const guideDocIds = guideDocs.map(d => d.id);
   const templateDocIds = templateDocs.map(d => d.id);
 

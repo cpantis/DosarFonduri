@@ -101,6 +101,8 @@ export type ElementItem = {
   key: string;
   label: string;
   value: string | null;
+  /** Value as stored (JSON for structured elements); `value` is the display text. Use this for editing. */
+  rawValue: string | null;
   status: "confirmat" | "propus_ai" | "gol" | "conflict";
   confidence: number;
   source: string | null;
@@ -156,6 +158,11 @@ export type ProjectData = {
   folderId?: string;
   solomonPhase?: { phase: string; label: string; progress: number; nextAction: string } | null;
   composeBrief?: any;
+};
+
+export type SolomonPhase = {
+  phase: string; label: string; progress: number; nextAction: string;
+  regression?: { from: string; reason: string; affectedConclusions?: string[] };
 };
 
 export type LeafType = "sumar" | "solomon" | "elemente" | "reguli" | "scor" | "tabele" | "checklist" | "neemia";

@@ -26,7 +26,7 @@ import { deleteFile, getFileUrl } from "../services/storage";
 import { validateElement, logElementChange } from "../services/elementValidation";
 import { computeProjectScores } from "../services/scoring";
 import { publishElementValidated, publishEligibilityUpdated, publishScoreUpdated } from "../lib/sse";
-import { decrypt } from "../lib/crypto";
+import { encrypt, decrypt } from "../lib/crypto";
 import { agenticPrefillFromCompany } from "../services/agenticPrefill";
 
 // GDPR: PII fields stored encrypted — must decrypt before sending to frontend
@@ -53,6 +53,19 @@ async function requireLock(projectId: string, userId: string, organizationId?: s
   if (!project.lockedBy || isLockExpired(project.lockedAt)) return "Proiectul nu este blocat de tine";
   if (project.lockedBy !== userId) return "Proiectul este blocat de alt utilizator";
   return null; // ok
+}
+
+/** Element key of a project element (element definition first, legacy template element as fallback). */
+async function resolveElementKey(el: { elementDefId: string | null; templateElementId: string | null }): Promise<string> {
+  if (el.elementDefId) {
+    const def = await db.query.elementDefinitions.findFirst({ where: eq(elementDefinitions.id, el.elementDefId) });
+    if (def) return def.elementKey;
+  }
+  if (el.templateElementId) {
+    const te = await db.query.templateElements.findFirst({ where: eq(templateElements.id, el.templateElementId) });
+    if (te) return te.key;
+  }
+  return "";
 }
 
 /** Verify that a project belongs to the authenticated user's organization */
@@ -849,12 +862,22 @@ projectRoutes.put("/:id/elements/:eid", async (c) => {
 
   // Snapshot old state for audit log
   const oldElement = await db.query.projectElements.findFirst({
-    where: eq(projectElements.id, eid),
+    where: and(eq(projectElements.id, eid), eq(projectElements.projectId, id)),
   });
+
+  if (!oldElement) return c.json({ error: "Element not found" }, 404);
 
   // Only update fields that are explicitly provided — avoid overwriting with undefined
   const updateData: Record<string, any> = { updatedAt: new Date() };
-  if (body.value !== undefined) updateData.value = body.value;
+  if (body.value !== undefined) {
+    const elementKey = await resolveElementKey(oldElement);
+    if (SENSITIVE_ELEMENT_KEYS.has(elementKey) && body.value) {
+      // GET returns sensitive values masked ("123*****45"); never store the mask over the real value
+      if (!body.value.includes("*")) updateData.value = encrypt(body.value);
+    } else {
+      updateData.value = body.value;
+    }
+  }
   if (body.source !== undefined) updateData.source = body.source;
   if (body.confirmed !== undefined) {
     updateData.confirmed = body.confirmed;
@@ -1435,6 +1458,7 @@ projectRoutes.delete("/:id/lock", async (c) => {
   if (!project) return c.json({ error: "Not found" }, 404);
 
   // Only lock owner or admin can release
+  if (!project.lockedBy) return c.json({ ok: true }); // already released (e.g. by the unload beacon)
   if (project.lockedBy !== auth.userId && auth.role !== "admin") {
     return c.json({ error: "Nu poți debloca proiectul altui utilizator" }, 403);
   }
@@ -1514,6 +1538,8 @@ projectRoutes.post("/:id/lock/release", async (c) => {
   });
   if (!project) return c.json({ error: "Not found" }, 404);
 
+  // Unmount releases twice (sendBeacon + DELETE): an already-free lock is a successful release
+  if (!project.lockedBy) return c.json({ ok: true });
   if (project.lockedBy !== userId) {
     return c.json({ error: "Lock not owned by you" }, 403);
   }
@@ -1602,6 +1628,7 @@ projectRoutes.put("/:id", async (c) => {
   if (body.codMysmis !== undefined) updateData.codMysmis = body.codMysmis;
   if (body.structuraDosar !== undefined) updateData.structuraDosar = body.structuraDosar;
   if (body.tipProiect !== undefined) updateData.tipProiect = body.tipProiect;
+  if (body.deadline !== undefined) updateData.deadline = body.deadline ? new Date(body.deadline) : null;
 
   const [updated] = await db.update(projects).set(updateData).where(
     and(eq(projects.id, id), eq(projects.organizationId, auth.organizationId!))

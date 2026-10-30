@@ -11,7 +11,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { execFileSync } from "child_process";
 
-const DOCS_DIR = path.resolve(__dirname, "../docs_example");
+const DOCS_DIR = process.env.DOCS_EXAMPLE_DIR || path.resolve(__dirname, "../docs_example");
 const API_SRC = path.resolve(__dirname, "../apps/api/src");
 
 // ═══════════════════════════════════════════════════════

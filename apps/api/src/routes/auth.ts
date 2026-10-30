@@ -28,6 +28,39 @@ const signupSchema = z.object({
   cabinetCode: z.string().optional(),
 });
 
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/** Validate a cabinet activation code (unused, active, and matching the CUI it is tied to). */
+async function checkCabinetCode(rawCode: string, cui?: string): Promise<{ code: typeof cabinetCodes.$inferSelect } | { error: string }> {
+  const code = await db.query.cabinetCodes.findFirst({
+    where: eq(cabinetCodes.code, rawCode.toUpperCase()),
+  });
+  if (!code || code.organizationId) return { error: "Cod invalid sau deja folosit" };
+  if (!code.isActive) return { error: "Cod dezactivat" };
+  // CUI handshake: if the code is tied to a CUI, the signup CUI must match
+  if (code.cui && (cui?.replace(/\D/g, "") || "") !== code.cui) {
+    return { error: `Codul este destinat firmei cu CUI ${code.cui}${code.companyName ? ` (${code.companyName})` : ""}. Introdu CUI-ul corect la pasul 2.` };
+  }
+  return { code };
+}
+
+/** Create the cabinet for an activation code and mark the code as used (inside a transaction). */
+async function createOrgFromCode(tx: Tx, code: typeof cabinetCodes.$inferSelect, fallbackName: string) {
+  const [org] = await tx.insert(organizations).values({
+    name: code.companyName || fallbackName,
+    code: code.code,
+    plan: code.plan,
+    maxUsers: code.maxUsers,
+    trialEndsAt: new Date(Date.now() + code.trialDays * 86400000),
+    status: (code.trialDays > 0 ? "trial" : "active") as "trial" | "active",
+  }).returning();
+  await tx.update(cabinetCodes).set({
+    organizationId: org.id,
+    activatedAt: new Date(),
+  }).where(eq(cabinetCodes.id, code.id));
+  return org;
+}
+
 authRoutes.post("/signup", async (c) => {
   const body = signupSchema.parse(await c.req.json());
 
@@ -57,36 +90,12 @@ authRoutes.post("/signup", async (c) => {
 
   if (body.cabinetCode) {
     // Flow: first user activates cabinet
-    const code = await db.query.cabinetCodes.findFirst({
-      where: eq(cabinetCodes.code, body.cabinetCode.toUpperCase()),
-    });
-    if (!code || code.organizationId) return c.json({ error: "Cod invalid sau deja folosit" }, 400);
-    if (!code.isActive) return c.json({ error: "Cod dezactivat" }, 400);
-
-    // CUI handshake: if the code is tied to a CUI, the signup CUI must match
-    if (code.cui) {
-      const signupCUI = body.cui?.replace(/\D/g, "") || "";
-      if (signupCUI !== code.cui) {
-        return c.json({
-          error: `Codul este destinat firmei cu CUI ${code.cui}${code.companyName ? ` (${code.companyName})` : ""}. Introdu CUI-ul corect la pasul 2.`,
-        }, 400);
-      }
-    }
-
-    // Create organization + user + mark code as used — all in a single transaction
-    const orgName = code.companyName || body.companyName || (body.name + " Cabinet");
+    const checked = await checkCabinetCode(body.cabinetCode, body.cui);
+    if ("error" in checked) return c.json({ error: checked.error }, 400);
 
     try {
       const result = await db.transaction(async (tx) => {
-        const [org] = await tx.insert(organizations).values({
-          name: orgName,
-          code: code.code,
-          plan: code.plan,
-          maxUsers: code.maxUsers,
-          trialEndsAt: new Date(Date.now() + code.trialDays * 86400000),
-          status: (code.trialDays > 0 ? "trial" : "active") as "trial" | "active",
-        }).returning();
-
+        const org = await createOrgFromCode(tx, checked.code, body.companyName || (body.name + " Cabinet"));
         const [user] = await tx.insert(users).values({
           email: body.email,
           name: body.name,
@@ -95,12 +104,6 @@ authRoutes.post("/signup", async (c) => {
           role: "admin",
           status: "active",
         }).returning();
-
-        await tx.update(cabinetCodes).set({
-          organizationId: org.id,
-          activatedAt: new Date(),
-        }).where(eq(cabinetCodes.id, code.id));
-
         return { org, user };
       });
 
@@ -151,6 +154,36 @@ authRoutes.post("/login", async (c) => {
   }
 });
 
+// --- ACTIVATE CABINET (existing account waiting for a cabinet) ---
+authRoutes.post("/activate-cabinet", async (c) => {
+  const token = c.req.header("Authorization")?.replace("Bearer ", "");
+  if (!token) return c.json({ error: "Unauthorized" }, 401);
+  let userId: string;
+  try {
+    userId = (await verify(token, process.env.JWT_SECRET!, "HS256")).sub as string;
+  } catch {
+    return c.json({ error: "Invalid token" }, 401);
+  }
+  const body = z.object({ code: z.string().min(1).max(50), cui: z.string().optional() }).parse(await c.req.json());
+
+  const user = await db.query.users.findFirst({ where: eq(users.id, userId) });
+  if (!user) return c.json({ error: "Unauthorized" }, 401);
+  if (user.status !== "pending_cabinet") return c.json({ error: "Contul este deja asociat unui cabinet" }, 400);
+
+  const checked = await checkCabinetCode(body.code, body.cui);
+  if ("error" in checked) return c.json({ error: checked.error }, 400);
+
+  const result = await db.transaction(async (tx) => {
+    const org = await createOrgFromCode(tx, checked.code, user.name + " Cabinet");
+    const [updated] = await tx.update(users)
+      .set({ organizationId: org.id, role: "admin", status: "active" })
+      .where(eq(users.id, user.id))
+      .returning();
+    return { org, user: updated };
+  });
+  return c.json({ user: sanitizeUser(result.user), organization: result.org });
+});
+
 // --- ME ---
 authRoutes.get("/me", async (c) => {
   const token = c.req.header("Authorization")?.replace("Bearer ", "");
@@ -161,7 +194,7 @@ authRoutes.get("/me", async (c) => {
     const user = await db.query.users.findFirst({
       where: eq(users.id, payload.sub as string),
     });
-    if (!user) return c.json({ error: "User not found" }, 404);
+    if (!user || user.status === "disabled") return c.json({ error: "Unauthorized" }, 401);
 
     let org = null;
     if (user.organizationId) {
@@ -387,9 +420,9 @@ authRoutes.post("/reset-password", async (c) => {
     return c.json({ error: "Link-ul a expirat. Solicita un nou link de resetare." }, 400);
   }
 
-  // Update password + reactivate if disabled (user proved email ownership)
+  // Update password only — a disabled account stays disabled (only an admin/provider can re-enable it)
   const newPasswordHash = await bcrypt.hash(password, 12);
-  await db.execute(sql`UPDATE users SET password_hash = ${newPasswordHash}, status = CASE WHEN status = 'disabled' THEN 'active' ELSE status END WHERE id = ${resetToken.user_id}::uuid`);
+  await db.execute(sql`UPDATE users SET password_hash = ${newPasswordHash} WHERE id = ${resetToken.user_id}::uuid`);
 
   // Mark token as used
   await db.execute(sql`UPDATE password_reset_tokens SET used_at = NOW() WHERE id = ${resetToken.id}::uuid`);

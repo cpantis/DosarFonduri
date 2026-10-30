@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback, createContext, useContext } from "react";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { getToken, setToken, removeToken } from "@/lib/auth";
 import type { AuthUser, Organization } from "@dosarfonduri/shared";
 
@@ -50,9 +50,14 @@ export function useAuthState(): AuthContextType {
         loading: false,
         error: null,
       });
-    } catch {
-      removeToken();
-      setState({ user: null, organization: null, loading: false, error: null });
+    } catch (err) {
+      // Only an invalid/expired session logs the user out; a timeout or 5xx keeps the token
+      if (err instanceof ApiError && (err.status === 401 || err.status === 404)) {
+        removeToken();
+        setState({ user: null, organization: null, loading: false, error: null });
+      } else {
+        setState({ user: null, organization: null, loading: false, error: (err as Error)?.message || "Eroare de conexiune" });
+      }
     }
   }, []);
 

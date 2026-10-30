@@ -557,11 +557,25 @@ Făcut:
 - Lockfile unic: `package-lock.json` (npm ci în Dockerfile); `yarn.lock` + `bun.lock` șterse
 - Rapoarte vechi mutate în `docs/archive/`; CI GitHub Actions în `.github/workflows/ci.yml`
 
-Deschis (de decis/fixat):
-- **`hybridSearch` ignoră `sessionId`** → Solomon caută în ghidurile TUTUROR sesiunilor din cabinet (risc de răspunsuri din alt program)
-- **`docs_example/` conține documente personale reale** (CI, diplomă, certificat constatator, bilanț) — GDPR; ștergerea necesită și rescrierea istoricului git
-- Promptul Solomon (`services/solomon.ts`) încă cere `METADATA_JSON`, dar metadatele se salvează acum prin tool-ul `update_metadata`
-- `ElementsTab.handleBulkConfirm` există dar nu are buton; click pe element din panoul Solomon nu mai deschide detaliul (doar comută tab-ul)
-- 3 teste `contractExtractor` neactualizate după generalizarea la `contract_*`
-- Chat-ul Solomon (~1.000 linii JSX + handlere) e încă în `page.tsx` → următorul candidat de extras (`SolomonPanel`)
-- `middleware/validate.ts` (zod) și `middleware/ownership.ts` există dar nu sunt folosite — de adoptat pentru IDOR/M14
+Rezolvate în runda 2 (2026-10-30):
+- ✅ `hybridSearch` + `searchChapters` limitate la sesiunea proiectului (`sessionScopeFilter`: folder sesiune + descendenți + KB `referinte`)
+- ✅ `docs_example/` scos din tracking + `.gitignore` (scripturile e2e citesc `DOCS_EXAMPLE_DIR`) — **fișierele rămân în istoricul git** până la un `git filter-repo` coordonat
+- ✅ Prompt Solomon: metadatele se salvează prin tool-ul `update_metadata` (nu `METADATA_JSON`)
+- ✅ Click pe element în panoul Solomon deschide detaliul; confirmare în masă unificată; texte `\uXXXX` afișate literal în JSX reparate
+- ✅ `contractExtractor`: rolul arendașului (`arenda`) era ignorat → `arendas_nume` lipsea; teste actualizate (52/52)
+- ✅ Chat Solomon extras: `hooks/useSolomonChat.ts` (state, rămâne în pagină → stream-ul supraviețuiește schimbării de tab) + `components/projects/SolomonPanel.tsx`; `page.tsx` = 386 linii
+- ✅ IDOR: `forms.ts` (6 rute fără verificare de cabinet) + `neemia.ts` (3 rute citeau template-ul fără org) — audit pe toate rutele cu id din URL
+
+Runda 3 — verificare pe pagini (2026-10-30), testat pe Postgres 16 + Redis + API local + Chromium:
+- ✅ API: crash la deconectare SSE (proces oprit) · CNP mascat scris peste valoarea criptată / CNP nou în clar · cont dezactivat reactivat prin reset parolă · `/companies/search-cui` și `/field-definitions` umbrite de `/:id` · beacon lock release 401 · audit heartbeat-uri · filtre audit · ultimul admin retrogradabil · termene dashboard inventate · validare knowledge (date/categorii) · composeConfig pierdea câmpuri
+- ✅ Web: sesiune (401 global, retry la erori rețea, ecran pending cu cod + logout) · Firme (sume ×100, limită 50, erori) · Setări (upload KB, prag, email, erori) · Admin export fără token · Solomon nu actualiza UI după tool-uri · confirmare element · checklist refresh crash + mapare template · ghid viewer rută greșită · lock pierdut după remount (423) · SSE chunk split · documente sesiune (refresh, race) · template viewer inaccesibil
+- Unelte locale: `seed-demo.ts` folosește cabinetul adminului existent
+
+Deschis:
+- Câmp UI pentru termenul proiectului (API `PUT /projects/:id { deadline }` există; dashboard + email-uri îl folosesc)
+- Provider „Accesează” suprascrie `df-token` în același browser (tab-urile org deschise devin adminul cabinetului accesat)
+- Template viewer: badge-urile de scoring cer `scoring-summary` pe documentul template (criteriile sunt pe ghid) → mereu goale
+- Carduri „extracții de confirmat” în Solomon: `elementsExtracted` nu mai e scris de backend → secțiunea nu se mai populează (elementele se salvează direct prin `save_element`)
+- Setări Neemia: toggle-urile „Completare progresivă” / „Validare automată” sunt decorative
+- Purjarea `docs_example/` din istoricul git (necesită force-push + re-clone la toți colaboratorii)
+- Panoul „Constrângeri” din detaliul elementului: frontend trimite `project_elements.id`, ruta `/reference/elements/:id/rule-links` așteaptă `template_elements.id`; în plus `element_rule_links` e populat doar de `processGuide` (dezactivat) → secțiunea e mereu goală

@@ -17,6 +17,7 @@ const lastActiveCache = new Map<string, number>();
 
 // Paths that skip authentication (public routes mounted before this middleware)
 const PUBLIC_PREFIXES = ["/api/auth", "/api/provider", "/api/health"];
+const BEACON_PATH = /lock\/release$/; // /projects/:id/lock/release, /documents/structure-lock/release
 
 export const authMiddleware = async (c: Context, next: Next) => {
   const path = c.req.path;
@@ -24,7 +25,11 @@ export const authMiddleware = async (c: Context, next: Next) => {
     return next();
   }
 
-  const token = c.req.header("Authorization")?.replace("Bearer ", "");
+  let token = c.req.header("Authorization")?.replace("Bearer ", "");
+  // navigator.sendBeacon (page unload) can't set headers: lock-release endpoints accept { token } in the body
+  if (!token && BEACON_PATH.test(path)) {
+    token = await c.req.json().then((b: any) => (typeof b?.token === "string" ? b.token : undefined)).catch(() => undefined);
+  }
   if (!token) return c.json({ error: "Unauthorized" }, 401);
 
   try {

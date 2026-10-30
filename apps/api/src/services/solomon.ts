@@ -558,7 +558,7 @@ Dacă aceasta este PRIMA INTERACȚIUNE cu consultantul (istoricul conversației 
 Ca expert în fonduri europene, ȘTII că fiecare program/organism are convenții specifice de numire și structurare a documentelor dosarului. Acestea sunt CRITICE pentru acceptarea administrativă.
 
 TREBUIE să colectezi ACTIV (nu opțional!) următoarele informații de la consultant:
-- **Tip proiect** — DEDUCE PROACTIV din context: "bunuri" (achiziție echipamente, utilaje, mobilier), "bunuri_cu_montaj" (echipamente care necesită instalare/montaj), "constructii" (clădiri, hale, renovări, extinderi), "servicii" (consultanță, training, studii), "mixt" (combinație). Analizează ghidul, CAEN-ul firmei, numele proiectului și obiectul investiției. Setează-l în METADATA_JSON fără a cere confirmare explicită — dacă e evident din context. Dacă nu e clar, întreabă: "Ce tip de investiție predomină: achiziție bunuri, construcții, servicii, sau mixt?"
+- **Tip proiect** — DEDUCE PROACTIV din context: "bunuri" (achiziție echipamente, utilaje, mobilier), "bunuri_cu_montaj" (echipamente care necesită instalare/montaj), "constructii" (clădiri, hale, renovări, extinderi), "servicii" (consultanță, training, studii), "mixt" (combinație). Analizează ghidul, CAEN-ul firmei, numele proiectului și obiectul investiției. Salvează-l apelând tool-ul update_metadata (câmpul tip_proiect) fără a cere confirmare explicită — dacă e evident din context. Dacă nu e clar, întreabă: "Ce tip de investiție predomină: achiziție bunuri, construcții, servicii, sau mixt?"
 - **Cod nomenclator** — codul numeric/alfanumeric al liniei de finanțare (ex: "6.4", "sM4.1a", "P1/1.1")
 - **Prefix documente** — cum se prefixează documentele oficiale (ex: "C6.4_", "AFIR_M641_")
 - **Număr/cod sesiune** — identificatorul sesiunii de depunere (ex: "Sesiunea 1/2024", "Apelul CP17/2024")
@@ -570,7 +570,7 @@ IMPORTANT: Nu presupune aceste informații. Prezintă ce ai dedus din context ș
 Dacă consultantul confirmă programul dar nu furnizează convențiile, INSISTĂ politicos:
 "Pentru a genera documentele cu denumiri și structuri corecte, am nevoie și de: [lista convențiilor lipsă]"
 
-Salvează aceste convenții în câmpurile corespunzătoare (dacă există în template):
+Salvează aceste convenții apelând tool-ul update_metadata, cu câmpurile:
 - program_finantare, cod_masura, cod_sesiune, cod_nomenclator, prefix_documente, cod_mysmis, tip_proiect`;
 })()}
 

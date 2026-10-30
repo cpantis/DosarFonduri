@@ -213,7 +213,7 @@ export const SOLOMON_TOOLS = [
         cod_nomenclator: { type: "string" as const },
         prefix_documente: { type: "string" as const },
         cod_mysmis: { type: "string" as const },
-        tip_proiect: { type: "string" as const },
+        tip_proiect: { type: "string" as const, enum: ["bunuri", "bunuri_cu_montaj", "constructii", "servicii", "mixt"] },
         structura_dosar: { type: "string" as const },
       },
       required: [] as const,

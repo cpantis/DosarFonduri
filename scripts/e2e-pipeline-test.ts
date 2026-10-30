@@ -883,7 +883,7 @@ async function main() {
     await cleanup();
 
     const report = generateReport();
-    fs.writeFileSync(path.join(process.cwd(), "docs_example", "TEST_RESULTS.md"), report);
+    fs.writeFileSync(path.join(process.env.DOCS_EXAMPLE_DIR || path.join(process.cwd(), "docs_example"), "TEST_RESULTS.md"), report);
     console.log("\n📄 Report written to docs_example/TEST_RESULTS.md");
 
     // Print summary

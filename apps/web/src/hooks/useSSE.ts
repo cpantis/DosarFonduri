@@ -208,28 +208,31 @@ export function useSSE({ projectId, enabled = true, onEvent }: UseSSEOptions = {
           const { done, value } = await reader.read();
           if (done) break;
 
+          // Parse only complete events (blank-line terminated) so an event split across chunks isn't lost
           buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n");
-          buffer = lines.pop() || "";
+          const blocks = buffer.split("\n\n");
+          buffer = blocks.pop() || "";
 
-          let currentEvent = "";
-          let currentData = "";
-
-          for (const line of lines) {
-            if (line.startsWith("event: ")) {
-              currentEvent = line.slice(7).trim();
-            } else if (line.startsWith("data: ")) {
-              currentData = line.slice(6).trim();
-            } else if (line === "" && currentEvent && currentData) {
-              try {
-                const data = JSON.parse(currentData);
-                handleEvent(currentEvent, data);
-                onEventRef.current?.({ event: currentEvent, data });
-              } catch {}
-              currentEvent = "";
-              currentData = "";
+          for (const block of blocks) {
+            let currentEvent = "";
+            let currentData = "";
+            for (const line of block.split("\n")) {
+              if (line.startsWith("event: ")) currentEvent = line.slice(7).trim();
+              else if (line.startsWith("data: ")) currentData = line.slice(6).trim();
             }
+            if (!currentEvent || !currentData) continue;
+            try {
+              const data = JSON.parse(currentData);
+              handleEvent(currentEvent, data);
+              onEventRef.current?.({ event: currentEvent, data });
+            } catch {}
           }
+        }
+
+        // Server closed the stream (redeploy, no Redis): reconnect unless we unmounted
+        if (!controller.signal.aborted) {
+          setConnected(false);
+          scheduleReconnect();
         }
       }).catch((err) => {
         if (err.name === "AbortError") return;

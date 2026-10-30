@@ -47,6 +47,12 @@ if (!process.env.REDIS_URL) {
   console.warn("⚠️  REDIS_URL not set — using redis://localhost:6379");
 }
 
+// A stray rejected promise in a background callback (SSE, Redis, fire-and-forget writes) must not take
+// down the whole API for every user — log it instead of letting Node exit.
+process.on("unhandledRejection", (reason) => {
+  console.error("[process] Unhandled rejection:", reason);
+});
+
 const app = new Hono();
 
 // Health check FIRST — must respond before any middleware or route import fails.

@@ -104,6 +104,8 @@ export default function ProviderDashboardPage() {
   const [genCuiLoad, setGenCuiLoad] = useState(false);
   const [genCuiRes, setGenCuiRes] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
 
   // Edit plan modal state
   const [editModal, setEditModal] = useState<{ id: string; plan: string; maxUsers: number } | null>(null);
@@ -128,9 +130,12 @@ export default function ProviderDashboardPage() {
       setCodes(unusedCodes);
       setRevenue(rev);
       setPlatformUsers(usrs);
+      setLoadError(null);
     } catch (err: any) {
       if (err.message.includes("Unauthorized") || err.message.includes("Invalid token")) {
         router.push("/provider/login");
+      } else {
+        setLoadError(err.message || "Eroare la încărcarea datelor");
       }
     } finally {
       setLoading(false);
@@ -162,6 +167,8 @@ export default function ProviderDashboardPage() {
   };
 
   const handleGenerateCode = async () => {
+    if (generating) return;
+    setGenerating(true);
     try {
       const created = await providerPost("/api/provider/codes", {
         plan: genPlan,
@@ -174,6 +181,8 @@ export default function ProviderDashboardPage() {
       setCodes((prev) => [...prev, created]);
     } catch (err: any) {
       alert(err.message);
+    } finally {
+      setGenerating(false);
     }
   };
 
@@ -200,6 +209,7 @@ export default function ProviderDashboardPage() {
       });
       setCabinets((prev) => prev.map((c) => c.id === editModal.id ? { ...c, plan: updated.plan, maxUsers: updated.maxUsers } : c));
       setEditModal(null);
+      loadData(); // revenue / stats depend on plan
     } catch (err: any) {
       alert(err.message);
     }
@@ -211,19 +221,23 @@ export default function ProviderDashboardPage() {
       await providerPost(`/api/provider/cabinets/${id}/deactivate`, {});
       setCabinets((prev) => prev.map((c) => c.id === id ? { ...c, status: "inactive" } : c));
       setSelectedCabinet(null);
+      loadData(); // revenue / stats depend on cabinet status
     } catch (err: any) {
       alert(err.message);
     }
   };
 
   const handleAccessCabinet = async (id: string) => {
+    // Open the tab synchronously (inside the click) so popup blockers allow it, then navigate it
+    const tab = window.open("", "_blank");
     try {
       const data = await providerPost(`/api/provider/cabinets/${id}/access`, {});
       // Store the user-level token so the app works normally
       localStorage.setItem("df-token", data.token);
-      // Open in new tab so provider dashboard stays open
-      window.open("/dashboard", "_blank");
+      if (tab) tab.location.href = "/dashboard";
+      else window.open("/dashboard", "_blank");
     } catch (err: any) {
+      tab?.close();
       alert(err.message);
     }
   };
@@ -405,6 +419,12 @@ export default function ProviderDashboardPage() {
 
           {/* Content */}
           <div className="flex-1 overflow-y-auto p-5">
+            {loadError && (
+              <div className="mb-4 px-4 py-3 rounded-lg border border-red-200 bg-red-50 text-[13px] text-red-700 flex items-center justify-between">
+                <span>Datele nu au putut fi încărcate: {loadError}</span>
+                <button className="font-semibold underline" onClick={() => loadData()}>Reîncearcă</button>
+              </div>
+            )}
 
             {/* ═══ CABINETE ═══ */}
             {activeTab === "cabinets" && (
@@ -876,7 +896,7 @@ export default function ProviderDashboardPage() {
 
                   <div className="flex gap-2.5 justify-end">
                     <button className="px-6 py-2.5 text-sm font-semibold cursor-pointer rounded-[10px] border border-slate-200/60 bg-transparent text-slate-500 font-sans min-w-[100px]" onClick={() => setShowGenerate(false)}>Anuleaza</button>
-                    <button className="px-6 py-2.5 text-sm font-bold text-white cursor-pointer rounded-[10px] border-none bg-violet-500 font-sans min-w-[100px] shadow-sm shadow-violet-500/20" onClick={handleGenerateCode}>🔑 Genereaza cod</button>
+                    <button className="px-6 py-2.5 text-sm font-bold text-white cursor-pointer rounded-[10px] border-none bg-violet-500 font-sans min-w-[100px] shadow-sm shadow-violet-500/20" onClick={handleGenerateCode} disabled={generating}>{generating ? "Se generează..." : "🔑 Genereaza cod"}</button>
                   </div>
                 </>
               ) : (

@@ -53,7 +53,7 @@ export function mapGuideRules(grouped: any[]): GuideRule[] {
   return rules;
 }
 
-const SOURCE_MAP: Record<string, string> = {
+export const SOURCE_MAP: Record<string, string> = {
   onrc: "ONRC",
   onrc_auto: "ONRC",
   anaf_auto: "ANAF",
@@ -110,6 +110,7 @@ export function mapElements(elements: any[]): ElementItem[] {
       key,
       label,
       value: displayValue,
+      rawValue: el.value ?? null,
       status,
       confidence: confirmed ? 100 : hasValue ? 85 : 0,
       source: el.source,

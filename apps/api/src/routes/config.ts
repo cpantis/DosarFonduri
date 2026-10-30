@@ -57,6 +57,7 @@ const configUpdateSchema = z.object({
 configRoutes.put("/", async (c) => {
   const auth = c.get("auth") as AuthContext;
   if (!auth.organizationId) return c.json({ error: "No organization" }, 400);
+  if (auth.role === "viewer") return c.json({ error: "Forbidden" }, 403);
 
   const body = configUpdateSchema.parse(await c.req.json());
 
@@ -122,6 +123,8 @@ const apiIntegrationSchema = z.object({
 configRoutes.post("/api-integrations", async (c) => {
   const auth = c.get("auth") as AuthContext;
   if (!auth.organizationId) return c.json({ error: "No organization" }, 400);
+  // Integrations hold API keys — admin only
+  if (auth.role !== "admin") return c.json({ error: "Admin only" }, 403);
 
   const body = apiIntegrationSchema.parse(await c.req.json());
 
@@ -153,6 +156,8 @@ configRoutes.post("/api-integrations", async (c) => {
 configRoutes.put("/api-integrations/:id", async (c) => {
   const auth = c.get("auth") as AuthContext;
   if (!auth.organizationId) return c.json({ error: "No organization" }, 400);
+  // Integrations hold API keys — admin only
+  if (auth.role !== "admin") return c.json({ error: "Admin only" }, 403);
 
   const id = c.req.param("id");
   const body = apiIntegrationSchema.partial().parse(await c.req.json());
@@ -196,6 +201,8 @@ configRoutes.put("/api-integrations/:id", async (c) => {
 configRoutes.delete("/api-integrations/:id", async (c) => {
   const auth = c.get("auth") as AuthContext;
   if (!auth.organizationId) return c.json({ error: "No organization" }, 400);
+  // Integrations hold API keys — admin only
+  if (auth.role !== "admin") return c.json({ error: "Admin only" }, 403);
 
   const id = c.req.param("id");
 
@@ -343,14 +350,28 @@ configRoutes.get("/knowledge", async (c) => {
 });
 
 // ─── POST /knowledge ───
+// Date fields come from <input type="date"> ("2026-01-01") or are cleared (""); both are valid
+const optionalDate = z.string()
+  .refine(v => v === "" || !isNaN(Date.parse(v)), "Dată invalidă")
+  .optional()
+  .nullable();
+
+// Base categories + "referinta_*" categories produced by reference-document upload (see /knowledge/upload)
+const KNOWLEDGE_CATEGORIES = [
+  "legislatie", "praguri", "proceduri", "ghid_specific", "bune_practici", "corectii",
+  "referinta_obiective", "referinta_target_cifre", "referinta_masuri_politici",
+  "referinta_cadru_legal", "referinta_definitii", "referinta_statistici",
+  "referinta_prioritati", "referinta_calendar", "referinta_general",
+] as const;
+
 const knowledgeCreateSchema = z.object({
-  category: z.enum(["legislatie", "praguri", "proceduri", "ghid_specific", "bune_practici", "corectii"]),
+  category: z.enum(KNOWLEDGE_CATEGORIES),
   title: z.string().min(1).max(500),
   content: z.string().min(1),
-  sourceUrl: z.string().url().optional(),
+  sourceUrl: z.union([z.literal(""), z.string().url()]).optional(),
   sourceReference: z.string().max(500).optional(),
-  validFrom: z.string().datetime().optional(),
-  validUntil: z.string().datetime().optional(),
+  validFrom: optionalDate,
+  validUntil: optionalDate,
   priority: z.number().int().min(0).max(100).optional(),
 });
 
@@ -913,7 +934,6 @@ configRoutes.get("/knowledge-base", async (c) => {
         (SELECT COUNT(*) FROM document_chapters dc WHERE dc.document_id = d.id) as chapters_count
       FROM documents d
       WHERE d.organization_id = ${auth.organizationId}
-        AND d.classification->>'routingAction' = 'vectorize'
         AND (d.classification->>'sourceType' = 'knowledge_base' OR d.processing_type = 'referinta_strategica')
       ORDER BY d.uploaded_at DESC`
   );

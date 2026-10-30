@@ -15,6 +15,7 @@ import { lookupCUI, FORMA_MAP } from "../services/onrc";
 import { lookupCUI_ListaFirme, searchCompany_ListaFirme, type ListaFirmeCompany } from "../services/listafirme";
 import { uploadFile, deleteFile } from "../services/storage";
 import { AuthContext } from "../middleware/auth";
+import { verifyCompanyOwnership } from "../middleware/ownership";
 import { processCompanyQueue, JOB_PRIORITY } from "../lib/queue";
 import { populateCompanyElements } from "../services/companyElements";
 import { checkPreEligibility } from "../services/preEligibility";
@@ -192,7 +193,8 @@ companyRoutes.get("/", async (c) => {
 });
 
 // --- COMPANY DETAILS ---
-companyRoutes.get("/:id", async (c) => {
+// UUID-only so static GET routes registered later (/search-cui, /field-definitions) aren't shadowed
+companyRoutes.get("/:id{[0-9a-fA-F-]{36}}", async (c) => {
   const auth = c.get("auth") as AuthContext;
   const id = c.req.param("id");
 
@@ -1303,6 +1305,8 @@ companyRoutes.post("/:id/linked-companies/manual", async (c) => {
     notes: z.string().optional(),
   }).parse(await c.req.json());
 
+  if (!await verifyCompanyOwnership(id, auth.organizationId)) return c.json({ error: "Firma nu a fost gasita" }, 404);
+
   const { companyLinkedCompanies } = await import("../db/schema");
   const [created] = await db.insert(companyLinkedCompanies).values({
     companyId: id,
@@ -1324,6 +1328,7 @@ companyRoutes.patch("/:id/linked-companies/:linkId", async (c) => {
   const auth = c.get("auth") as AuthContext;
   if (!auth.organizationId) return c.json({ error: "No organization" }, 403);
 
+  const id = c.req.param("id");
   const linkId = c.req.param("linkId");
   const body = z.object({
     confirmed: z.boolean().optional(),
@@ -1345,7 +1350,11 @@ companyRoutes.patch("/:id/linked-companies/:linkId", async (c) => {
 
   await db.update(companyLinkedCompanies)
     .set(updates)
-    .where(and(eq(companyLinkedCompanies.id, linkId), eq(companyLinkedCompanies.organizationId, auth.organizationId)));
+    .where(and(
+      eq(companyLinkedCompanies.id, linkId),
+      eq(companyLinkedCompanies.companyId, id),
+      eq(companyLinkedCompanies.organizationId, auth.organizationId),
+    ));
 
   return c.json({ ok: true });
 });

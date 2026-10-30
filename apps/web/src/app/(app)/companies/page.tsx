@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { isPF, FORME_JURIDICE } from "@/hooks/useFormaJuridica";
-import { apiGet, apiPost, api } from "@/lib/api";
+import { isPF, isSOC, FORME_JURIDICE } from "@/hooks/useFormaJuridica";
+import { apiGet, apiGetAll, apiPost, api } from "@/lib/api";
 import { getCaenDescription } from "@/lib/caen";
 
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -24,6 +24,7 @@ export default function CompaniesPage() {
   const [cui, setCui] = useState("");
   const [cuiLoad, setCuiLoad] = useState(false);
   const [cuiRes, setCuiRes] = useState<{ denumire: string; adresa: string; caen: string; stare: string } | "error" | null>(null);
+  const [cuiErr, setCuiErr] = useState<string | null>(null);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadLoading, setUploadLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -34,8 +35,7 @@ export default function CompaniesPage() {
   const fetchCompanies = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await apiGet<any>("/api/companies");
-      setCompanies(Array.isArray(data) ? data : data.data || []);
+      setCompanies(await apiGetAll<any>("/api/companies"));
       setError(null);
     } catch (err: any) {
       setError(err.message || "Eroare la încărcarea firmelor");
@@ -50,7 +50,7 @@ export default function CompaniesPage() {
     const forma = f.formaJuridica || "";
     if (filter === "activ" && f.stare === "radiata") return false;
     if (filter === "radiat" && f.stare !== "radiata") return false;
-    if (filter === "soc" && !["SRL", "SA", "SNC", "SCS", "SCA"].includes(forma)) return false;
+    if (filter === "soc" && !isSOC(forma)) return false;
     if (filter === "pf" && !isPF(forma)) return false;
     if (search) {
       const q = search.toLowerCase();
@@ -61,15 +61,17 @@ export default function CompaniesPage() {
 
   const checkCui = async () => {
     const cleanCui = cui.replace(/\D/g, "");
-    if (cleanCui.length < 6) return;
+    if (cleanCui.length < 4 || cleanCui.length > 10) { setCuiErr("CUI-ul trebuie să aibă între 4 și 10 cifre."); setCuiRes("error"); return; }
     setCuiLoad(true);
     setCuiRes(null);
+    setCuiErr(null);
     try {
       const result = await apiPost<any>("/api/companies", { cui: cleanCui, mode: "auto" });
       setCuiRes({ denumire: result.denumire || result.name || "Firma adaugata", adresa: result.adresa || "—", caen: result.caen || "—", stare: result.stare || "ACTIV" });
       await fetchCompanies();
       if (result.id) router.push(`/companies/${result.id}`);
-    } catch {
+    } catch (err: any) {
+      setCuiErr(err?.message || null);
       setCuiRes("error");
     } finally {
       setCuiLoad(false);
@@ -103,7 +105,7 @@ export default function CompaniesPage() {
         setCuiRes({ denumire: result.denumire || "Firma adaugata", adresa: result.adresa || "—", caen: result.caen || "—", stare: result.stare || "ACTIV" });
         await fetchCompanies();
         if (result.id) router.push(`/companies/${result.id}`);
-      } catch { setCuiRes("error"); }
+      } catch (err: any) { setCuiErr(err?.message || null); setCuiRes("error"); }
     } finally { setCuiLoad(false); }
   };
 
@@ -127,7 +129,7 @@ export default function CompaniesPage() {
   const handleFileDrop = (e: React.DragEvent) => { e.preventDefault(); const file = e.dataTransfer.files?.[0]; if (file && file.type === "application/pdf") setUploadFile(file); };
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (file) setUploadFile(file); };
 
-  const openAdd = () => { setShowAdd(true); setCui(""); setCuiRes(null); setAddMode("auto"); setAddForma("SRL"); setUploadFile(null); setCuiSearchResults([]); };
+  const openAdd = () => { setShowAdd(true); setCui(""); setCuiRes(null); setCuiErr(null); setAddMode("auto"); setAddForma("SRL"); setUploadFile(null); setCuiSearchResults([]); };
 
   return (
     <div className="co-page">
@@ -219,7 +221,7 @@ export default function CompaniesPage() {
                 {[
                   { key: "all", label: "Toate", count: companies.length },
                   { key: "activ", label: "Active", count: companies.filter(c => c.stare !== "radiata").length },
-                  { key: "soc", label: "Societăți", count: companies.filter(c => ["SRL", "SA", "SNC", "SCS", "SCA"].includes(c.formaJuridica || "")).length },
+                  { key: "soc", label: "Societăți", count: companies.filter(c => isSOC(c.formaJuridica || "")).length },
                   { key: "pf", label: "PF/II/IF", count: companies.filter(c => isPF(c.formaJuridica || "")).length },
                 ].map(f => (
                   <button
@@ -472,7 +474,7 @@ export default function CompaniesPage() {
               {/* Error result */}
               {cuiRes === "error" && (
                 <div className="co-result err" style={{ fontSize: 13, color: "#dc2626", display: "flex", alignItems: "center", gap: 8 }}>
-                  <span>⚠️</span> CUI-ul nu a fost găsit sau a apărut o eroare.
+                  <span>⚠️</span> {cuiErr || "CUI-ul nu a fost găsit sau a apărut o eroare."}
                 </div>
               )}
 

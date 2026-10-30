@@ -6,13 +6,25 @@
 import type { AppEnv } from "../types/hono";
 import { Hono } from "hono";
 import { db } from "../db";
-import { formSpecs, documents, formData, projects, projectElements } from "../db/schema";
+import { formSpecs, documents, formData, projectElements } from "../db/schema";
 import { eq, and } from "drizzle-orm";
 import type { AuthContext } from "../middleware/auth";
 import { getFileBuffer } from "../services/storage";
 import { extractAndSaveFormSpec } from "../services/formSpecExtractor";
+import { verifyProjectOwnership } from "../middleware/ownership";
 
 export const formRoutes = new Hono<AppEnv>();
+
+/** Both the project and the FormSpec must belong to the caller's cabinet. */
+async function ownsProjectForm(projectId: string, formSpecId: string, organizationId: string): Promise<boolean> {
+  const [project, spec] = await Promise.all([
+    verifyProjectOwnership(projectId, organizationId),
+    db.query.formSpecs.findFirst({
+      where: and(eq(formSpecs.id, formSpecId), eq(formSpecs.organizationId, organizationId)),
+    }),
+  ]);
+  return !!project && !!spec;
+}
 
 /**
  * POST /api/forms/extract
@@ -116,11 +128,7 @@ formRoutes.get("/projects/:projectId/form-data/:formSpecId", async (c) => {
   const projectId = c.req.param("projectId");
   const formSpecId = c.req.param("formSpecId");
 
-  // Verify project ownership
-  const project = await db.query.projects.findFirst({
-    where: and(eq(projects.id, projectId), eq(projects.organizationId, auth.organizationId)),
-  });
-  if (!project) return c.json({ error: "Project not found" }, 404);
+  if (!await ownsProjectForm(projectId, formSpecId, auth.organizationId)) return c.json({ error: "Not found" }, 404);
 
   // Get or create form data
   let fd = await db.query.formData.findFirst({
@@ -151,6 +159,7 @@ formRoutes.put("/projects/:projectId/form-data/:formSpecId/field", async (c) => 
 
   const projectId = c.req.param("projectId");
   const formSpecId = c.req.param("formSpecId");
+  if (!await ownsProjectForm(projectId, formSpecId, auth.organizationId)) return c.json({ error: "Not found" }, 404);
   const body = await c.req.json();
   const { fieldId, value } = body;
 
@@ -202,6 +211,7 @@ formRoutes.post("/projects/:projectId/form-data/:formSpecId/approve-page", async
 
   const projectId = c.req.param("projectId");
   const formSpecId = c.req.param("formSpecId");
+  if (!await ownsProjectForm(projectId, formSpecId, auth.organizationId)) return c.json({ error: "Not found" }, 404);
   const { pageNum } = await c.req.json();
 
   if (pageNum == null) return c.json({ error: "pageNum is required" }, 400);
@@ -237,6 +247,7 @@ formRoutes.post("/projects/:projectId/form-data/:formSpecId/unapprove-page", asy
 
   const projectId = c.req.param("projectId");
   const formSpecId = c.req.param("formSpecId");
+  if (!await ownsProjectForm(projectId, formSpecId, auth.organizationId)) return c.json({ error: "Not found" }, 404);
   const { pageNum } = await c.req.json();
 
   const existing = await db.query.formData.findFirst({
@@ -267,6 +278,7 @@ formRoutes.post("/projects/:projectId/form-data/:formSpecId/auto-populate", asyn
 
   const projectId = c.req.param("projectId");
   const formSpecId = c.req.param("formSpecId");
+  if (!await ownsProjectForm(projectId, formSpecId, auth.organizationId)) return c.json({ error: "Not found" }, 404);
 
   // Load FormSpec
   const spec = await db.query.formSpecs.findFirst({ where: eq(formSpecs.id, formSpecId) });
@@ -342,6 +354,7 @@ formRoutes.get("/projects/:projectId/form-data/:formSpecId/overview", async (c) 
 
   const projectId = c.req.param("projectId");
   const formSpecId = c.req.param("formSpecId");
+  if (!await ownsProjectForm(projectId, formSpecId, auth.organizationId)) return c.json({ error: "Not found" }, 404);
 
   const spec = await db.query.formSpecs.findFirst({ where: eq(formSpecs.id, formSpecId) });
   if (!spec) return c.json({ error: "FormSpec not found" }, 404);
@@ -389,6 +402,7 @@ formRoutes.post("/projects/:projectId/form-data/:formSpecId/export", async (c) =
 
   const projectId = c.req.param("projectId");
   const formSpecId = c.req.param("formSpecId");
+  if (!await ownsProjectForm(projectId, formSpecId, auth.organizationId)) return c.json({ error: "Not found" }, 404);
 
   const fd = await db.query.formData.findFirst({
     where: and(eq(formData.projectId, projectId), eq(formData.formSpecId, formSpecId)),

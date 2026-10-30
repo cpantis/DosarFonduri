@@ -6,6 +6,7 @@
  */
 import { sql } from "drizzle-orm";
 import { db } from "../db";
+import { sessionScopeFilter } from "./hybridSearch";
 
 export interface ChapterSearchOptions {
   query: string;
@@ -41,7 +42,7 @@ export async function searchChapters(options: ChapterSearchOptions): Promise<Cha
     filterSql = sql`${filterSql} AND dc.document_id = ${documentId}`;
   }
   if (folderId) {
-    filterSql = sql`${filterSql} AND d.folder_id = ${folderId}`;
+    filterSql = sql`${filterSql} AND ${sessionScopeFilter(sql`d.folder_id`, folderId, organizationId)}`;
   }
 
   const results = await db.execute(sql`

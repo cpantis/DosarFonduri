@@ -24,7 +24,7 @@ set -euo pipefail
 # ── Config ──────────────────────────────────────────────
 BASE_URL="${BASE_URL:-http://localhost:8080}"
 DB_URL="${DB_URL:-postgresql://postgres:postgres@localhost:5432/dosarfonduri}"
-DOCS_DIR="$(cd "$(dirname "$0")/../docs_example" && pwd)"
+DOCS_DIR="${DOCS_EXAMPLE_DIR:-$(cd "$(dirname "$0")/../docs_example" && pwd)}"
 RESULTS_FILE="/tmp/e2e_results.json"
 
 # Colors

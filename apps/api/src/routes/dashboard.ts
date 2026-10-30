@@ -5,7 +5,7 @@ import {
   projects, companies, documents, projectElements, projectEligibility,
   projectDocuments, projectChecklist, auditLog, documentFolders, users,
 } from "../db/schema";
-import { eq, count, desc, and, ne, sql, inArray } from "drizzle-orm";
+import { eq, count, desc, and, ne, sql, inArray, notLike, gte, lte } from "drizzle-orm";
 import type { AuthContext } from "../middleware/auth";
 
 export const dashboardRoutes = new Hono<AppEnv>();
@@ -147,26 +147,13 @@ dashboardRoutes.get("/", async (c) => {
     })
     .from(auditLog)
     .leftJoin(users, eq(auditLog.userId, users.id))
-    .where(eq(auditLog.organizationId, orgId))
+    .where(and(eq(auditLog.organizationId, orgId), notLike(auditLog.action, "%/lock/heartbeat")))
     .orderBy(desc(auditLog.createdAt))
     .limit(15);
 
-  // Deadlines: sessions (folders of type 'sesiune') that have projects, within 30 days
-  // We'll look at projects linked to session folders and use folder metadata
+  // Deadlines: open projects whose submission deadline (projects.deadline) falls in the next 30 days
   const now = new Date();
   const thirtyDays = new Date(now.getTime() + 30 * 86400000);
-
-  // Get session folders for this org
-  const sessionFolders = await db.query.documentFolders.findMany({
-    where: and(
-      eq(documentFolders.organizationId, orgId),
-      eq(documentFolders.type, "sesiune"),
-    ),
-  });
-
-  // Build deadlines — batch query for projects in all session folders at once
-  const sessionFolderIds = sessionFolders.map(sf => sf.id);
-  const sessionFolderMap = new Map(sessionFolders.map(sf => [sf.id, sf]));
 
   const deadlines: Array<{
     date: string;
@@ -176,31 +163,24 @@ dashboardRoutes.get("/", async (c) => {
     daysLeft: number;
   }> = [];
 
-  if (sessionFolderIds.length > 0) {
-    const projectsInSessions = await db.query.projects.findMany({
-      where: and(
-        eq(projects.organizationId, orgId),
-        inArray(projects.folderId, sessionFolderIds),
-        ne(projects.status, "approved"),
-        ne(projects.status, "rejected"),
-      ),
+  const projectsWithDeadline = await db.query.projects.findMany({
+    where: and(
+      eq(projects.organizationId, orgId),
+      ne(projects.status, "approved"),
+      ne(projects.status, "rejected"),
+      gte(projects.deadline, now),
+      lte(projects.deadline, thirtyDays),
+    ),
+  });
+  for (const proj of projectsWithDeadline) {
+    const daysLeft = Math.ceil((proj.deadline!.getTime() - now.getTime()) / 86400000);
+    deadlines.push({
+      date: proj.deadline!.toISOString().slice(0, 10),
+      project: proj.name,
+      event: "Termen depunere",
+      urgent: daysLeft <= 7,
+      daysLeft,
     });
-
-    for (const proj of projectsInSessions) {
-      const sf = sessionFolderMap.get(proj.folderId!);
-      if (!sf) continue;
-      const estimatedDeadline = new Date(sf.createdAt.getTime() + 60 * 86400000);
-      if (estimatedDeadline <= thirtyDays && estimatedDeadline >= now) {
-        const daysLeft = Math.ceil((estimatedDeadline.getTime() - now.getTime()) / 86400000);
-        deadlines.push({
-          date: estimatedDeadline.toISOString().slice(0, 10),
-          project: proj.name,
-          event: `Termen ${sf.name}`,
-          urgent: daysLeft <= 7,
-          daysLeft,
-        });
-      }
-    }
   }
 
   deadlines.sort((a, b) => a.daysLeft - b.daysLeft);

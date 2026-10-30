@@ -487,9 +487,9 @@ providerRoutes.post("/cabinets/:id/access", providerAuth, async (c) => {
   });
   if (!org) return c.json({ error: "Cabinet negăsit" }, 404);
 
-  // Find the admin user for this cabinet
+  // Find an active admin user for this cabinet (a disabled one would get a token every request rejects)
   let adminUser = await db.query.users.findFirst({
-    where: and(eq(users.organizationId, orgId), eq(users.role, "admin")),
+    where: and(eq(users.organizationId, orgId), eq(users.role, "admin"), eq(users.status, "active")),
   });
 
   // If no admin exists, create a provider-managed admin user
@@ -498,9 +498,10 @@ providerRoutes.post("/cabinets/:id/access", providerAuth, async (c) => {
       where: eq(providerUsers.id, c.get("providerId") as string),
     });
 
+    // users.email is unique, so the provider's own email can only be used once — derive one per cabinet
     const passwordHash = await bcrypt.hash("provider-managed-" + Date.now(), 12);
     const [newUser] = await db.insert(users).values({
-      email: providerUser?.email || `provider-admin@${org.code.toLowerCase()}.local`,
+      email: `provider-admin@${org.code.toLowerCase()}.local`,
       name: providerUser?.name || "Provider Admin",
       passwordHash,
       organizationId: orgId,

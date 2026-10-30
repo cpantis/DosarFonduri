@@ -25,7 +25,7 @@ interface DashboardData {
   deadlines: Array<{
     date: string; project: string; event: string; urgent: boolean; daysLeft: number;
   }>;
-  alerts?: Array<{ message: string }>;
+  alerts?: Array<{ message: string; type: "warning" | "error" | "info" }>;
 }
 
 function formatRelativeTime(dateStr: string): string {
@@ -202,6 +202,22 @@ export default function DashboardPage() {
           </div>
         )}
 
+        {/* ─── ALERTS (urgent deadlines, low eligibility, processing errors) ─── */}
+        {!!data?.alerts?.length && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
+            {data.alerts.map((a, i) => (
+              <div key={i} style={{
+                padding: "10px 16px", borderRadius: 10, fontSize: 13, fontWeight: 500,
+                border: `1px solid ${a.type === "error" ? "rgba(239,68,68,.3)" : "rgba(245,158,11,.35)"}`,
+                background: a.type === "error" ? "rgba(239,68,68,.05)" : "rgba(245,158,11,.06)",
+                color: a.type === "error" ? "#dc2626" : "#b45309",
+              }}>
+                {a.type === "error" ? "⛔" : "⚠️"} {a.message}
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* ─── STAT CARDS ─── */}
         {loading ? (
           <div className="db-stats">
@@ -341,7 +357,7 @@ export default function DashboardPage() {
               {/* Activity */}
               <div className="db-section-title" style={{ marginTop: 24 }}>Activitate recentă</div>
               <div className="db-card">
-                {(!data?.activity || data.activity.length === 0) ? (
+                {!data?.activity?.some(a => isSignificantAction(a.action)) ? (
                   <div className="db-empty" style={{ padding: "28px 16px" }}>
                     <div className="db-empty-icon">{"\u{1F4AC}"}</div>
                     <div className="db-empty-text">Nicio activitate</div>

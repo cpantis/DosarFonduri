@@ -350,10 +350,7 @@ export default function DocumentsPage() {
   const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
   const [docRules, setDocRules] = useState<Record<string, any[]>>({});
   const [docRulesLoading, setDocRulesLoading] = useState<Record<string, boolean>>({});
-  const [docCriteria, setDocCriteria] = useState<Record<string, any[]>>({});
-  const [docElements, setDocElements] = useState<Record<string, any[]>>({});
   const [tplElements, setTplElements] = useState<Record<string, { elements: any[]; total: number; mapped: number; unmapped: number } | null>>({});
-  const [expandedTab, setExpandedTab] = useState<Record<string, string>>({});
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
   const [pdfPreviewName, setPdfPreviewName] = useState<string>("");
   const [deleteConfirm, setDeleteConfirm] = useState<{ doc: DocItem } | null>(null);
@@ -731,19 +728,13 @@ export default function DocumentsPage() {
   const toggleExpandCard = useCallback(async (docId: string) => {
     const wasExpanded = expandedCards[docId];
     setExpandedCards(prev => ({ ...prev, [docId]: !prev[docId] }));
-    // Fetch rules, criteria, elements on first expand
+    // Fetch rules on first expand
     if (!wasExpanded && !docRules[docId] && !docRulesLoading[docId]) {
       setDocRulesLoading(prev => ({ ...prev, [docId]: true }));
       const doc = docs.find(d => d.id === docId);
       try {
-        const [rules, criteria, elements] = await Promise.all([
-          apiGet<any[]>(`/api/rules/documents/${docId}/rules`).catch(() => []),
-          apiGet<any[]>(`/api/documents/documents/${docId}/scoring-summary`).catch(() => []),
-          apiGet<any[]>(`/api/documents/documents/${docId}/elements-summary`).catch(() => []),
-        ]);
+        const rules = await apiGet<any[]>(`/api/rules/documents/${docId}/rules`).catch(() => []);
         setDocRules(prev => ({ ...prev, [docId]: rules }));
-        setDocCriteria(prev => ({ ...prev, [docId]: criteria }));
-        setDocElements(prev => ({ ...prev, [docId]: elements }));
         // Fetch template elements for template docs
         if (doc?.processingType === "template") {
           apiGet<{ elements: any[]; total: number; mapped: number; unmapped: number }>(`/api/documents/documents/${docId}/template-elements`)
@@ -753,8 +744,6 @@ export default function DocumentsPage() {
       } catch (err) {
         console.error("Failed to fetch document details:", err);
         setDocRules(prev => ({ ...prev, [docId]: [] }));
-        setDocCriteria(prev => ({ ...prev, [docId]: [] }));
-        setDocElements(prev => ({ ...prev, [docId]: [] }));
       } finally {
         setDocRulesLoading(prev => ({ ...prev, [docId]: false }));
       }

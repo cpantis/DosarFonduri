@@ -160,7 +160,7 @@ function SectionLabel({ children, collapsed }: { children: React.ReactNode; coll
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { organization, user, logout } = useAuth();
+  const { user, logout } = useAuth();
   const { isCollapsed, toggle } = useSidebar();
   const { enabled: refineEnabled, toggle: toggleRefine } = useRefineToggle();
   const [mobileOpen, setMobileOpen] = useState(false);

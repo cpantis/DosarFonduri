@@ -179,7 +179,6 @@ export default function FormOnDocument({
   const totalCount = positionedFields.length;
   const confirmedCount = positionedFields.filter(f => f.confirmed).length;
   const fuzzyFields = page.fields.filter(f => f.matchQuality === "fuzzy");
-  const unmatchedOnPage = page.fields.filter(f => f.matchQuality === "unmatched");
 
   // Match quality color indicator
   const matchColor = (quality: string | undefined) => {

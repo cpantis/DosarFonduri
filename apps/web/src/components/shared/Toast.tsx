@@ -22,13 +22,6 @@ const borderColors: Record<ToastType, string> = {
   info: "#2563eb",
 };
 
-const bgColors: Record<ToastType, string> = {
-  success: "#ecfdf5",
-  error: "#fef2f2",
-  warning: "#fffbeb",
-  info: "#eff6ff",
-};
-
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());

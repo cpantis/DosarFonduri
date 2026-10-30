@@ -3,7 +3,6 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { apiGet, apiPost, apiPut } from "@/lib/api";
 import type { ElementItem } from "../types";
-import { SOURCE_LABELS } from "../types";
 
 /* ── Local constants ── */
 

@@ -109,16 +109,6 @@ export default function RulesTab({
     achizitii: "#ea580c", documente: "#d97706", selectie: "#dc2626", intensitate: "#0891b2",
     eligibilitate_complexa: "#2563eb", documentare: "#d97706", ajutor_stat: "#7c3aed",
   };
-  const semanticTagLabels: Record<string, string> = {
-    THRESHOLD: "Prag", SCORING: "Punctaj", TEMPORAL: "Temporal",
-    DOCUMENT_BASED: "Document", DEPENDENCY: "Dependență", EXCLUSION: "Excludere",
-    EXCEPTION: "Excepție", PROPORTIONAL: "Proporțional", CLASSIFICATION: "Clasificare",
-  };
-  const semanticTagIcons: Record<string, string> = {
-    THRESHOLD: "●", SCORING: "★", TEMPORAL: "◷",
-    DOCUMENT_BASED: "◩", DEPENDENCY: "⇄", EXCLUSION: "⊘",
-    EXCEPTION: "⚑", PROPORTIONAL: "%", CLASSIFICATION: "◈",
-  };
   const categories = [...new Set(guideRules.map(r => r.category))].filter(Boolean);
   const catFiltered = ghidCategoryFilter === "all" ? guideRules : guideRules.filter(r => r.category === ghidCategoryFilter);
   const typeFiltered = ghidTypeFilter === "fixed" ? catFiltered.filter(r => r.type === "fixed")
@@ -149,11 +139,9 @@ export default function RulesTab({
   for (const er of eligibilityRules) {
     eligStatusById[er.id] = { status: er.status, overrideResult: (er as any).overrideResult ?? null, notes: (er as any).notes ?? null };
   }
-  const preEligRules = eligibilityRules.filter(r => r.isPreEligibility);
   const eligPassCount = eligibilityRules.filter(r => r.status === "pass").length;
   const eligFailCount = eligibilityRules.filter(r => r.status === "fail").length;
   const eligPendingCount = eligibilityRules.filter(r => r.status === "pending").length;
-  const eligStatusIcons: Record<string, string> = { pass: "\u2713", fail: "\u2715", pending: "?" };
 
   if (guideRules.length === 0 && eligibilityRules.length === 0 && solEligibility.length === 0) {
     return (

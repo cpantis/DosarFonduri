@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api";
+import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import { Tabs } from "@/components/ui/Tabs";
-import { RuleCard, RuleCardList, RuleCardData, CATEGORY_COLORS as RC_COLORS, CATEGORY_LABELS as RC_LABELS, OPERATOR_LABELS as RC_OP_LABELS } from "@/components/shared/RuleCard";
+import { RuleCard, RuleCardList, RuleCardData, CATEGORY_COLORS as RC_COLORS, CATEGORY_LABELS as RC_LABELS } from "@/components/shared/RuleCard";
 
 /* ══════════════════════════════════════════
    TYPES (matching GET /api/documents/session/:folderId/library)
@@ -623,94 +623,6 @@ function ChecklistTab({ checklist, folderId, onRefresh }: { checklist: LibraryDa
 }
 
 /* ══════════════════════════════════════════
-   SEMANTIC TAG HELPERS
-   ══════════════════════════════════════════ */
-
-// Re-export shared OPERATOR_LABELS for local legacy helpers
-const OPERATOR_LABELS = RC_OP_LABELS;
-
-function formatFieldName(field: string): string {
-  return field
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, c => c.toUpperCase());
-}
-
-function formatConditionValue(val: any): string {
-  if (val === null || val === undefined) return "—";
-  if (typeof val === "boolean") return val ? "DA" : "NU";
-  if (typeof val === "number") return val.toLocaleString("ro-RO");
-  if (Array.isArray(val)) return val.join(", ");
-  return String(val);
-}
-
-/** Convert a condition JSONB object into a human-readable description */
-function formatCondition(condition: any): { text: string; field?: string; operator?: string; value?: string; value2?: string } | null {
-  if (!condition || typeof condition !== "object") return null;
-
-  const { field, operator, value, value2, semantic_tags, ...rest } = condition;
-  if (!field && !operator) return null;
-
-  const fieldLabel = field ? formatFieldName(field) : "";
-  const opLabel = operator ? (OPERATOR_LABELS[operator] || operator) : "";
-  const valLabel = formatConditionValue(value);
-  const val2Label = value2 !== undefined ? formatConditionValue(value2) : "";
-
-  let text: string;
-  if (operator === "between" && value !== undefined && value2 !== undefined) {
-    text = `${fieldLabel} între ${valLabel} și ${val2Label}`;
-  } else if (operator === "in" || operator === "not_in") {
-    const listStr = Array.isArray(value) ? value.join(", ") : valLabel;
-    text = operator === "in"
-      ? `${fieldLabel} este unul din: ${listStr}`
-      : `${fieldLabel} nu este în: ${listStr}`;
-  } else if (operator === "exists" || operator === "not_exists") {
-    text = operator === "exists" ? `${fieldLabel} trebuie să existe` : `${fieldLabel} nu trebuie să existe`;
-  } else if (operator === "is_true" || operator === "is_false") {
-    text = `${fieldLabel} = ${operator === "is_true" ? "DA" : "NU"}`;
-  } else if (field && operator && value !== undefined) {
-    text = `${fieldLabel} ${opLabel} ${valLabel}`;
-  } else if (field && value !== undefined) {
-    text = `${fieldLabel}: ${valLabel}`;
-  } else {
-    return null;
-  }
-
-  return { text, field: fieldLabel, operator: opLabel, value: valLabel, value2: val2Label || undefined };
-}
-
-const SEM_TAG_MAP: Record<string, { label: string; color: string; bg: string; border: string }> = {
-  THRESHOLD:      { label: "Prag",         color: "#0369a1", bg: "rgba(14,165,233,.1)",  border: "rgba(14,165,233,.25)" },
-  SCORING:        { label: "Punctaj",      color: "#7c3aed", bg: "rgba(167,139,250,.1)", border: "rgba(167,139,250,.25)" },
-  TEMPORAL:       { label: "Temporal",     color: "#0891b2", bg: "rgba(6,182,212,.1)",   border: "rgba(6,182,212,.25)" },
-  DOCUMENT_BASED: { label: "Document",     color: "#b45309", bg: "rgba(245,158,11,.1)",  border: "rgba(245,158,11,.25)" },
-  DEPENDENCY:     { label: "Dependență",   color: "#6d28d9", bg: "rgba(139,92,246,.1)",  border: "rgba(139,92,246,.25)" },
-  EXCLUSION:      { label: "Excludere",    color: "#dc2626", bg: "rgba(239,68,68,.1)",   border: "rgba(239,68,68,.2)" },
-  EXCEPTION:      { label: "Excepție",     color: "#ea580c", bg: "rgba(249,115,22,.1)",  border: "rgba(249,115,22,.2)" },
-  PROPORTIONAL:   { label: "Proporțional", color: "#059669", bg: "rgba(16,185,129,.1)",  border: "rgba(16,185,129,.25)" },
-  CLASSIFICATION: { label: "Clasificare",  color: "#2563eb", bg: "rgba(37,99,235,.1)",   border: "rgba(37,99,235,.2)" },
-};
-
-function semanticTagLabel(tag: string): string {
-  return SEM_TAG_MAP[tag]?.label || tag;
-}
-
-function semanticTagStyle(tag: string): React.CSSProperties {
-  const m = SEM_TAG_MAP[tag];
-  if (!m) return { color: "#64748b", background: "#f1f5f9", border: "1px solid #e2e8f0" };
-  return { color: m.color, background: m.bg, border: `1px solid ${m.border}` };
-}
-
-const SEM_TAG_ICONS: Record<string, string> = {
-  THRESHOLD: "●", SCORING: "★", TEMPORAL: "◷",
-  DOCUMENT_BASED: "◩", DEPENDENCY: "⇄", EXCLUSION: "⊘",
-  EXCEPTION: "⚑", PROPORTIONAL: "%", CLASSIFICATION: "◈",
-};
-
-function semanticTagIcon(tag: string): string {
-  return SEM_TAG_ICONS[tag] || "●";
-}
-
-/* ══════════════════════════════════════════
    SHARED SMALL COMPONENTS
    ══════════════════════════════════════════ */
 
@@ -733,48 +645,11 @@ function Pill({ active, onClick, label, count, color }: { active: boolean; onCli
   );
 }
 
-function TypeBadge({ type }: { type: "fixed" | "interpreted" }) {
-  const isFixed = type === "fixed";
-  return (
-    <span style={{
-      fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".5px",
-      padding: "2px 10px", borderRadius: 4, display: "inline-flex", flexShrink: 0, whiteSpace: "nowrap",
-      color: isFixed ? "#059669" : "#d97706",
-      background: isFixed ? "rgba(52,211,153,.15)" : "rgba(251,191,36,.15)",
-      border: isFixed ? "1px solid #a7f3d0" : "1px solid #fed7aa",
-    }}>
-      {isFixed ? "FIXĂ" : "INTERPRETATĂ"}
-    </span>
-  );
-}
-
-function ConfidenceBar({ value }: { value: number }) {
-  const pct = Math.round(value * 100);
-  const color = pct >= 80 ? "#34d399" : pct >= 50 ? "#fbbf24" : "#f87171";
-  return (
-    <div className="flex items-center gap-1.5">
-      <div className="w-12 h-1.5 rounded-full bg-slate-100 overflow-hidden">
-        <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: color }} />
-      </div>
-      <span className="text-[10px] font-mono text-slate-400">{pct}%</span>
-    </div>
-  );
-}
-
 function StatChip({ label, value, color }: { label: string; value: number; color?: string }) {
   return (
     <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 12px", borderRadius: 8, background: "#f8fafc", border: "1px solid #f1f5f9" }}>
       <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 500 }}>{label}</span>
       <span style={{ fontSize: 13, fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, color: color || "#0f172a" }}>{value}</span>
-    </div>
-  );
-}
-
-function DetailCell({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
-  return (
-    <div className="bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">
-      <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-0.5">{label}</div>
-      <div className={`text-[12px] text-slate-700 leading-relaxed ${mono ? "font-mono text-[11px] whitespace-pre-wrap break-all" : ""}`}>{value}</div>
     </div>
   );
 }

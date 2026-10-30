@@ -2,7 +2,6 @@
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Breadcrumbs } from "@/components/layout/Breadcrumbs";
 import { ThemeProvider } from "@/components/layout/ThemeProvider";
-import { AuthProvider } from "@/components/layout/AuthProvider";
 import { useAuthState } from "@/hooks/useAuth";
 import { AuthContext } from "@/hooks/useAuth";
 import { useSidebarState, SidebarContext } from "@/hooks/useSidebar";

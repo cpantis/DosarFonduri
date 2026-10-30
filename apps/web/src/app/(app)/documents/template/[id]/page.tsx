@@ -255,8 +255,6 @@ export default function TemplateViewerPage() {
     groupedByPage[pg].push(e);
   });
 
-  const selElement = allElements.find(e => e.id === selectedEl) || null;
-
   // ─── ACTIONS ───
   const handleValidate = async (id: string) => {
     const el = allElements.find(e => e.id === id);

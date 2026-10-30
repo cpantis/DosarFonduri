@@ -5,8 +5,7 @@ import { apiGet, apiPost, apiDelete } from "@/lib/api";
 
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { BtnPrimary, BtnOutline, BtnSecondary, IconPlus, IconArrowLeft, IconArrowRight, IconCheck } from "@/components/ui/Buttons";
-import { SkeletonCard } from "@/components/ui/Skeleton";
+import { BtnPrimary, BtnSecondary, IconPlus, IconArrowLeft, IconArrowRight, IconCheck } from "@/components/ui/Buttons";
 import { useToast } from "@/components/shared/Toast";
 
 const pct = (a: number, b: number) => b > 0 ? Math.round((a / b) * 100) : 0;
@@ -72,7 +71,6 @@ export default function ProjectsPage() {
   const [searchFilter, setSearchFilter] = useState("");
   const [sortBy, setSortBy] = useState<"date" | "name" | "value">("date");
   const [folderTree, setFolderTree] = useState<ProgramTree[]>([]);
-  const [rawFolders, setRawFolders] = useState<FolderNode[]>([]);
   const [guideWarning, setGuideWarning] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string; status: string } | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
@@ -95,9 +93,8 @@ export default function ProjectsPage() {
     }).catch((err) => { console.warn("[projects] companies load:", err.message); setCompanies([]); });
     apiGet("/api/documents/folders").then((data: any) => {
       const folders = Array.isArray(data) ? data : data.folders || [];
-      setRawFolders(folders);
       setFolderTree(buildProgramTree(folders));
-    }).catch((err) => { console.warn("[projects] folders load:", err.message); setRawFolders([]); setFolderTree([]); });
+    }).catch((err) => { console.warn("[projects] folders load:", err.message); setFolderTree([]); });
   }, [showCreate]);
 
   // Check if selected session has a processed guide (guides live in a "ghiduri" child folder of the session)

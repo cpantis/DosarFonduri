@@ -566,6 +566,16 @@ Rezolvate în runda 2 (2026-10-30):
 - ✅ Chat Solomon extras: `hooks/useSolomonChat.ts` (state, rămâne în pagină → stream-ul supraviețuiește schimbării de tab) + `components/projects/SolomonPanel.tsx`; `page.tsx` = 386 linii
 - ✅ IDOR: `forms.ts` (6 rute fără verificare de cabinet) + `neemia.ts` (3 rute citeau template-ul fără org) — audit pe toate rutele cu id din URL
 
+Runda 3 — verificare pe pagini (2026-10-30), testat pe Postgres 16 + Redis + API local + Chromium:
+- ✅ API: crash la deconectare SSE (proces oprit) · CNP mascat scris peste valoarea criptată / CNP nou în clar · cont dezactivat reactivat prin reset parolă · `/companies/search-cui` și `/field-definitions` umbrite de `/:id` · beacon lock release 401 · audit heartbeat-uri · filtre audit · ultimul admin retrogradabil · termene dashboard inventate · validare knowledge (date/categorii) · composeConfig pierdea câmpuri
+- ✅ Web: sesiune (401 global, retry la erori rețea, ecran pending cu cod + logout) · Firme (sume ×100, limită 50, erori) · Setări (upload KB, prag, email, erori) · Admin export fără token · Solomon nu actualiza UI după tool-uri · confirmare element · checklist refresh crash + mapare template · ghid viewer rută greșită · lock pierdut după remount (423) · SSE chunk split · documente sesiune (refresh, race) · template viewer inaccesibil
+- Unelte locale: `seed-demo.ts` folosește cabinetul adminului existent
+
 Deschis:
+- Câmp UI pentru termenul proiectului (API `PUT /projects/:id { deadline }` există; dashboard + email-uri îl folosesc)
+- Provider „Accesează” suprascrie `df-token` în același browser (tab-urile org deschise devin adminul cabinetului accesat)
+- Template viewer: badge-urile de scoring cer `scoring-summary` pe documentul template (criteriile sunt pe ghid) → mereu goale
+- Carduri „extracții de confirmat” în Solomon: `elementsExtracted` nu mai e scris de backend → secțiunea nu se mai populează (elementele se salvează direct prin `save_element`)
+- Setări Neemia: toggle-urile „Completare progresivă” / „Validare automată” sunt decorative
 - Purjarea `docs_example/` din istoricul git (necesită force-push + re-clone la toți colaboratorii)
 - Panoul „Constrângeri” din detaliul elementului: frontend trimite `project_elements.id`, ruta `/reference/elements/:id/rule-links` așteaptă `template_elements.id`; în plus `element_rule_links` e populat doar de `processGuide` (dezactivat) → secțiunea e mereu goală

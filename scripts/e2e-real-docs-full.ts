@@ -27,7 +27,7 @@ import * as http from "http";
 // ── Config ──────────────────────────────────────────
 const DATABASE_URL = process.env.DATABASE_URL || "postgresql://postgres:postgres@localhost:5432/dosarfonduri";
 const BASE_URL = process.env.BASE_URL || "http://localhost:8080";
-const DOCS_DIR = path.resolve(__dirname, "../docs_example");
+const DOCS_DIR = process.env.DOCS_EXAMPLE_DIR || path.resolve(__dirname, "../docs_example");
 const HAS_AI_KEY = !!(process.env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_API_KEY !== "placeholder");
 
 const client = postgres(DATABASE_URL, { max: 5, connect_timeout: 10 });

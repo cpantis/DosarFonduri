@@ -101,6 +101,8 @@ export type ElementItem = {
   key: string;
   label: string;
   value: string | null;
+  /** Value as stored (JSON for structured elements); `value` is the display text. Use this for editing. */
+  rawValue: string | null;
   status: "confirmat" | "propus_ai" | "gol" | "conflict";
   confidence: number;
   source: string | null;

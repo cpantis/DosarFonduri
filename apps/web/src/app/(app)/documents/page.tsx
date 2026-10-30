@@ -409,8 +409,9 @@ export default function DocumentsPage() {
   useEffect(() => {
     if (!canEditStructure) return;
     const release = () => {
+      // sendBeacon can't send the Authorization header — the token goes in the body
       navigator.sendBeacon("/api/documents/structure-lock/release",
-        new Blob([JSON.stringify({})], { type: "application/json" }));
+        new Blob([JSON.stringify({ token: localStorage.getItem("df-token") || "" })], { type: "application/json" }));
     };
     window.addEventListener("beforeunload", release);
     return () => window.removeEventListener("beforeunload", release);
@@ -464,6 +465,8 @@ export default function DocumentsPage() {
     try {
       setDocsLoading(true);
       const data = await apiGet<ApiDocument[]>(`/api/documents/folders/${folderId}/documents`);
+      // Drop a late response for a folder the user already left
+      if (selectedFolderRef.current !== folderId) return;
       setDocs(data.map(mapApiDocToLocal));
     } catch (err) {
       console.error("Failed to fetch documents:", err);
@@ -471,6 +474,16 @@ export default function DocumentsPage() {
     } finally {
       setDocsLoading(false);
     }
+  }, []);
+
+  const selectedFolderRef = useRef(selectedFolder);
+  selectedFolderRef.current = selectedFolder;
+
+  /** Load a session's classified documents, ignoring the response if the user switched folders meanwhile. */
+  const loadClassifiedDocs = useCallback((folderId: string) => {
+    apiGet<any[]>(`/api/documents/folders/${folderId}/classified-documents`)
+      .then(d => { if (selectedFolderRef.current === folderId) setClassifiedDocs(d || []); })
+      .catch(() => { if (selectedFolderRef.current === folderId) setClassifiedDocs([]); });
   }, []);
 
   useEffect(() => {
@@ -483,7 +496,7 @@ export default function DocumentsPage() {
       }
       // RAG v2: Load classified docs for session folders
       if (node?.type === "sesiune") {
-        apiGet<any[]>(`/api/documents/folders/${selectedFolder}/classified-documents`).then(d => setClassifiedDocs(d || [])).catch(() => setClassifiedDocs([]));
+        loadClassifiedDocs(selectedFolder);
       } else {
         setClassifiedDocs([]);
       }
@@ -491,7 +504,16 @@ export default function DocumentsPage() {
       setDocs([]);
       setClassifiedDocs([]);
     }
-  }, [selectedFolder, fetchDocs, tree]);
+  }, [selectedFolder, fetchDocs, tree, loadClassifiedDocs]);
+
+  // Ingest (OCR + classification) takes minutes and publishes no document_processed event: poll while any is pending
+  useEffect(() => {
+    const pending = classifiedDocs.some((d: any) => d.status === "processing" || d.status === "uploaded");
+    if (!pending || !selectedFolder) return;
+    const folderId = selectedFolder;
+    const interval = setInterval(() => loadClassifiedDocs(folderId), 5000);
+    return () => clearInterval(interval);
+  }, [classifiedDocs, selectedFolder, loadClassifiedDocs]);
 
   // Close context menu on click outside
   useEffect(() => {
@@ -510,8 +532,6 @@ export default function DocumentsPage() {
   }, [docs, selectedFolder, fetchDocs]);
 
   // SSE: instant refetch when a document finishes processing + real-time progress
-  const selectedFolderRef = useRef(selectedFolder);
-  selectedFolderRef.current = selectedFolder;
   const { jobProgress: sseJobProgress } = useSSE({
     enabled: true,
     onEvent: useCallback((ev: { event: string; data: any }) => {
@@ -634,18 +654,21 @@ export default function DocumentsPage() {
   const handleDelete = useCallback(async (nodeId: string) => {
     try {
       await apiDelete(`/api/documents/folders/${nodeId}`);
-      if (selectedFolder === nodeId) setSelectedFolder(null);
+      // Clear the selection if it was this folder or anything inside it
+      const deleted = findNodeById(tree, nodeId);
+      if (selectedFolder && (selectedFolder === nodeId || (deleted && findNodeById([deleted], selectedFolder)))) setSelectedFolder(null);
       setTree(prev => removeNodeFromTree(prev, nodeId));
     } catch (err: any) {
       toast("error", `Eroare la ștergerea folderului: ${err.message || "necunoscută"}`);
     }
     setCtxMenu(null);
-  }, [selectedFolder, toast]);
+  }, [selectedFolder, tree, toast]);
 
   const handleContextMenu = useCallback((e: React.MouseEvent, nodeId: string) => {
     e.preventDefault();
     e.stopPropagation();
     if (!canEditStructure) return; // Structure is locked — no context menu
+    if (nodeId.startsWith("biblioteca_")) return; // virtual node (session library), not a real folder
     setCtxMenu({ x: e.clientX, y: e.clientY, nodeId });
   }, [canEditStructure]);
 
@@ -1101,16 +1124,10 @@ export default function DocumentsPage() {
                 }
 
                 // Refresh — small delay to let DB writes complete, then poll for classification
-                if (selectedFolder) {
-                  const refreshDocs = () => {
-                    apiGet<any[]>(`/api/documents/folders/${selectedFolder}/classified-documents`).then(setClassifiedDocs).catch(() => {});
-                    fetchDocs(selectedFolder);
-                  };
-                  // Immediate refresh
-                  refreshDocs();
-                  // Poll again after 3s and 8s for classification results
-                  setTimeout(refreshDocs, 3000);
-                  setTimeout(refreshDocs, 8000);
+                // Refresh now; the pending-documents poll above keeps it current until classification finishes
+                if (selectedFolder && selectedFolderRef.current === selectedFolder) {
+                  loadClassifiedDocs(selectedFolder);
+                  fetchDocs(selectedFolder);
                 }
               };
 
@@ -1176,6 +1193,13 @@ export default function DocumentsPage() {
                         </div>
                       )}
                     </div>
+                    {["template_fill", "template_compose"].includes(c?.routingAction) && doc.status === "processed" && (
+                      <a
+                        href={`/documents/template/${doc.id}`}
+                        title="Deschide template-ul (elemente, mapări, configurare compose)"
+                        style={{ flexShrink: 0, padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "#2563eb", border: "1px solid #bfdbfe", borderRadius: 6, marginTop: 2, textDecoration: "none" }}
+                      >Deschide</a>
+                    )}
                     <button
                       style={{ flexShrink: 0, padding: "4px 8px", fontSize: 11, color: "#94a3b8", background: "none", border: "1px solid #e2e8f0", borderRadius: 6, cursor: "pointer", marginTop: 2 }}
                       title="Șterge document"

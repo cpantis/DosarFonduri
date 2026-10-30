@@ -52,8 +52,9 @@ export default function ProjectViewPage() {
       }
       if (evt.event === "checklist_updated") {
         // Re-fetch checklist when backend auto-matches an item
-        apiGet<any>(`/api/projects/${projectId}`).then(proj => {
-          setChecklistItems(mapChecklist(proj.checklist || []));
+        // /checklist (not /:id) includes the mapped template names
+        apiGet<any>(`/api/projects/${projectId}/checklist`).then(data => {
+          setChecklistItems(mapChecklist(data.items || []));
         }).catch(e => console.warn("[project]", e?.message || e));
       }
     }, [projectId]),

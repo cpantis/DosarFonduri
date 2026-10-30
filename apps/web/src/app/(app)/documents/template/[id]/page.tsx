@@ -134,13 +134,16 @@ export default function TemplateViewerPage() {
   const elRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   // ─── LOAD DATA ───
-  const loadTemplate = useCallback(async () => {
+  // initial: full-screen loader + compose config. Later reloads (after element/page edits) keep the
+  // screen and any unsaved compose edits.
+  const loadTemplate = useCallback(async (initial = false) => {
     try {
-      setLoading(true);
+      if (initial) setLoading(true);
       const data = await apiGet<TemplateData>(`/api/documents/documents/${docId}/elements`);
       setTemplate(data);
+      // Pages are built from elements, so page numbers can start above 1 (e.g. a cover page has no fields)
       setCurrentPageNum(prev => {
-        if (data.pages.length > 0 && prev > data.pages.length) {
+        if (data.pages.length > 0 && !data.pages.some(p => p.num === prev)) {
           return data.pages[0].num;
         }
         return prev;
@@ -159,8 +162,8 @@ export default function TemplateViewerPage() {
         setMappingSummary({ total: mapData.total, mapped: mapData.mapped, unmapped: mapData.unmapped, validated: mapData.validated });
       } catch (e) { console.warn("[template]", (e as Error)?.message || e); }
 
-      // Load compose config
-      try {
+      // Load compose config (initial load only — reloads must not discard unsaved compose edits)
+      if (initial) try {
         const cfg = await apiGet<any>(`/api/neemia/templates/${docId}/compose-config`);
         setGenMode(cfg.generationMode || "fill");
         if (cfg.composeConfig?.sections) {
@@ -173,11 +176,11 @@ export default function TemplateViewerPage() {
     } catch (err: any) {
       setError(err.message || "Eroare la încărcare");
     } finally {
-      setLoading(false);
+      if (initial) setLoading(false);
     }
   }, [docId]);
 
-  useEffect(() => { loadTemplate(); }, [loadTemplate]);
+  useEffect(() => { loadTemplate(true); }, [loadTemplate]);
 
   // Load reference tables when compose config panel is shown
   useEffect(() => {

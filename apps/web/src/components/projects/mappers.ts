@@ -110,6 +110,7 @@ export function mapElements(elements: any[]): ElementItem[] {
       key,
       label,
       value: displayValue,
+      rawValue: el.value ?? null,
       status,
       confidence: confirmed ? 100 : hasValue ? 85 : 0,
       source: el.source,

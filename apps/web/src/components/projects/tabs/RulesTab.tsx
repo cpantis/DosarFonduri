@@ -43,7 +43,7 @@ export default function RulesTab({
   useEffect(() => {
     if (ghidTab === "ghid" && !ghidViewerData && project?.folderId) {
       setGhidViewerLoading(true);
-      apiGet<any>(`/api/documents/folders/${project.folderId}/guide-viewer`)
+      apiGet<any>(`/api/projects/${projectId}/ghid-viewer`)
         .then(data => setGhidViewerData(data))
         .catch(e => console.warn("[rules] guide viewer load failed:", e?.message))
         .finally(() => setGhidViewerLoading(false));

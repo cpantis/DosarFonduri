@@ -13,6 +13,15 @@ const API_URL = "";
  * Solomon chat state + handlers for the project view. Lives in the page (not the panel)
  * so a streaming answer survives switching tabs.
  */
+/** Solomon tools that persist data (see apps/api/src/services/solomonTools.ts). */
+const DATA_TOOLS = new Set(["save_element", "check_eligibility", "estimate_score", "update_phase", "update_metadata", "update_checklist"]);
+
+const pickProjectMeta = (p: any) => ({
+  programFinantare: p.programFinantare, codMasura: p.codMasura, codSesiune: p.codSesiune,
+  codNomenclator: p.codNomenclator, prefixDocumente: p.prefixDocumente, codMysmis: p.codMysmis,
+  structuraDosar: p.structuraDosar, tipProiect: p.tipProiect, solomonPhase: p.solomonPhase,
+});
+
 export function useSolomonChat(deps: UseSolomonChatDeps) {
   const {
     projectId, activeLeaf, elements, setElements, setProject, setSolomonPhase, setSolEligibility, setSolScoring, setSolChecklist, readOnly, toast,
@@ -98,6 +107,19 @@ export function useSolomonChat(deps: UseSolomonChatDeps) {
     }
   }, [activeLeaf]);
 
+  /** Reload everything Solomon's tools can change: elements, metadata/phase, eligibility, scoring, checklist. */
+  function refreshProjectData() {
+    const warn = (e: any) => console.warn("[solomon] refresh", e?.message || e);
+    apiGet<any>(`/api/projects/${projectId}`).then(proj => {
+      setElements(mapElements(proj.elements || []));
+      setProject(prev => prev ? { ...prev, ...pickProjectMeta(proj) } : prev);
+      if (proj.solomonPhase) setSolomonPhase(proj.solomonPhase);
+    }).catch(warn);
+    apiGet<any>(`/api/solomon/projects/${projectId}/eligibility`).then(r => setSolEligibility(r?.entries || [])).catch(warn);
+    apiGet<any>(`/api/solomon/projects/${projectId}/scoring`).then(r => setSolScoring(r?.criteria || [])).catch(warn);
+    apiGet<any>(`/api/solomon/projects/${projectId}/document-checklist`).then(r => setSolChecklist(r?.items || [])).catch(warn);
+  }
+
   async function initSolomonConversation(): Promise<string | null> {
     try {
       const convs = await apiGet<any[]>(`/api/solomon/projects/${projectId}/conversations`);
@@ -128,6 +150,8 @@ export function useSolomonChat(deps: UseSolomonChatDeps) {
       } else {
         const newConv = await apiPost<any>(`/api/solomon/projects/${projectId}/conversations`, {});
         setSolomonConvId(newConv.id);
+        // The backend creates conversations with the org default (often Opus); the selector starts on Sonnet
+        apiPut(`/api/solomon/conversations/${newConv.id}/model`, { model: "claude-sonnet-4-6" }).catch(e => console.warn("[project]", e?.message || e));
         // Display auto-greeting from Solomon with program context
         if (newConv.greeting) {
           setSolomonMessages([{ role: "assistant", text: newConv.greeting, extractions: [] }]);
@@ -193,8 +217,10 @@ export function useSolomonChat(deps: UseSolomonChatDeps) {
 
     // Auto-detect Opus requests — temporarily upgrade model for this message
     const requestedOpus = needsOpus(userText);
+    const autoUpgraded = requestedOpus && solomonModel !== "opus";
+    const toolsUsed = new Set<string>();
     let useET = solomonET;
-    if (requestedOpus && solomonModel !== "opus") {
+    if (autoUpgraded) {
       await handleSolomonModelChange("opus");
       useET = true; // Opus benefits from ET
     }
@@ -286,6 +312,7 @@ export function useSolomonChat(deps: UseSolomonChatDeps) {
                 return prev;
               });
             } else if (evt.type === "tool_use") {
+              if (evt.toolName) toolsUsed.add(evt.toolName);
               // FIX I: Accumulate source trail instead of 3s flash
               setSolomonToolUse({ toolName: evt.toolName, query: evt.query });
               if (evt.sources && evt.sources.length > 0) {
@@ -366,10 +393,12 @@ export function useSolomonChat(deps: UseSolomonChatDeps) {
       setSolomonStreaming(false);
       setSolomonTimedOut(false);
       if (solomonTimeoutRef.current) clearTimeout(solomonTimeoutRef.current);
-      // Revert to Sonnet after Opus one-shot
-      if (requestedOpus) {
+      // Revert to Sonnet after an automatic Opus one-shot (keep a model the user picked)
+      if (autoUpgraded) {
         handleSolomonModelChange("sonnet");
       }
+      // Tools write to the DB without streaming the changes — reload what they may have touched
+      if ([...toolsUsed].some(t => DATA_TOOLS.has(t))) refreshProjectData();
     }
   };
 
@@ -492,6 +521,7 @@ export function useSolomonChat(deps: UseSolomonChatDeps) {
         }
       }
     } catch (err: any) {
+      if (err?.name === "AbortError") return; // user pressed Stop
       console.error("Solomon upload error:", err);
       toast("error", err.message || "Eroare la upload-ul documentului în Solomon.");
       setSolomonMessages(prev => {
@@ -503,6 +533,7 @@ export function useSolomonChat(deps: UseSolomonChatDeps) {
     } finally {
       solomonAbortRef.current = null;
       setSolomonStreaming(false);
+      refreshProjectData();
     }
   };
 
@@ -623,7 +654,7 @@ export function useSolomonChat(deps: UseSolomonChatDeps) {
   }, [refineEnabled]);
 
   const handleRefineSubmit = async () => {
-    if (readOnly || !refineInput.trim() || !refinePopup || !solomonConvId) return;
+    if (readOnly || solomonStreaming || !refineInput.trim() || !refinePopup || !solomonConvId) return;
     setSolomonStreaming(true);
     const abortCtrl = new AbortController();
     solomonAbortRef.current = abortCtrl;
@@ -675,8 +706,9 @@ export function useSolomonChat(deps: UseSolomonChatDeps) {
           } catch { /* SSE parse — incomplete chunk, expected */ }
         }
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Refine SSE error:", err);
+      if (err?.name !== "AbortError") toast("error", "Rescrierea nu a reușit. Încearcă din nou.");
     } finally {
       solomonAbortRef.current = null;
       setSolomonStreaming(false);

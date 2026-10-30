@@ -119,12 +119,9 @@ export default function ElementsTab({ projectId, elements, setElements, readOnly
 
   const handleConfirmElementApi = async (elId: string) => {
     if (readOnly) return;
-    const el = elements.find(e => e.id === elId);
     try {
-      await apiPut(`/api/projects/${projectId}/elements/${elId}`, {
-        value: el?.value || undefined,
-        confirmed: true,
-      });
+      // Confirm only — `value` is display text (flattened JSON / masked CNP) and must not be written back
+      await apiPut(`/api/projects/${projectId}/elements/${elId}`, { confirmed: true });
       const proj = await apiGet<any>(`/api/projects/${projectId}`);
       setElements(() => mapElements(proj.elements || []));
     } catch (err) {
@@ -411,7 +408,7 @@ export default function ElementsTab({ projectId, elements, setElements, readOnly
                           <button className="el-btn el-btn-ok el-btn-sm" onClick={(ev) => { ev.stopPropagation(); handleConfirmElementApi(el.id); }}>{"\u2713"}</button>
                         )}
                         {!readOnly && (
-                          <button className="el-btn el-btn-ghost el-btn-sm" onClick={(ev) => { ev.stopPropagation(); setEditingElementId(el.id); setEditingElementValue(el.value || ""); }}>{"\u270E"}</button>
+                          <button className="el-btn el-btn-ghost el-btn-sm" onClick={(ev) => { ev.stopPropagation(); setEditingElementId(el.id); setEditingElementValue(el.rawValue || ""); }}>{"\u270E"}</button>
                         )}
                         <button className="el-btn el-btn-ghost el-btn-sm" onClick={(ev) => { ev.stopPropagation(); openDetailPanel(el.id); }}>{"\u22EF"}</button>
                         <button className="el-btn el-btn-ghost el-btn-sm" title="Întreabă Solomon" onClick={(ev) => { ev.stopPropagation(); askSolomonAbout(el); }}>{"\uD83D\uDCAC"}</button>
@@ -483,7 +480,7 @@ export default function ElementsTab({ projectId, elements, setElements, readOnly
                 {!readOnly && el.status === "propus_ai" && editingElementId !== el.id && (
                   <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
                     <button className="el-btn el-btn-ok" onClick={() => handleConfirmElementApi(el.id)}>{"\u2713"} Confirmă</button>
-                    <button className="el-btn el-btn-sec" onClick={() => { setEditingElementId(el.id); setEditingElementValue(el.value || ""); }}>{"\u270E"} Editează</button>
+                    <button className="el-btn el-btn-sec" onClick={() => { setEditingElementId(el.id); setEditingElementValue(el.rawValue || ""); }}>{"\u270E"} Editează</button>
                   </div>
                 )}
                 {editingElementId === el.id && (

@@ -4,9 +4,14 @@ import { apiGet, apiPost } from "@/lib/api";
 
 const API_URL = "";
 
+// Mounted lock holders per project. A remount (React StrictMode, or leaving and quickly reopening the
+// project) acquires before the previous unmount's release lands; the release must then be skipped,
+// otherwise it frees the lock the new mount just took and every edit fails with 423.
+const activeHolders = new Map<string, number>();
+
 /**
  * Pessimistic project lock: acquire on mount, heartbeat every 5 min,
- * poll every 30s while locked by someone else, release on unmount + beforeunload.
+ * poll every 30s while locked by someone else, release on unmount (deferred, see activeHolders) + beforeunload.
  */
 export function useProjectLock(projectId: string) {
   const [lockOwned, setLockOwned] = useState(false);
@@ -31,7 +36,11 @@ export function useProjectLock(projectId: string) {
             try {
               await apiPost(`/api/projects/${projectId}/lock/heartbeat`, {});
             } catch {
+              // Lock lost (expired after sleep, or taken by someone else): stop beating and try to
+              // re-acquire — on failure tryAcquireLock shows the "opened by X" banner instead of going silently read-only
+              if (heartbeatRef.current) { clearInterval(heartbeatRef.current); heartbeatRef.current = null; }
               setLockOwned(false);
+              if (!cancelledRef.current) tryAcquireLock();
             }
           }, 5 * 60 * 1000);
         }
@@ -86,31 +95,33 @@ export function useProjectLock(projectId: string) {
       }
     });
 
-    // Release lock on unmount / navigation
-    const releaseLock = () => {
-      const token = typeof window !== "undefined" ? localStorage.getItem("df-token") || "" : "";
+    activeHolders.set(projectId, (activeHolders.get(projectId) || 0) + 1);
+    const token = () => (typeof window !== "undefined" ? localStorage.getItem("df-token") || "" : "");
+
+    // Tab closing: the page is going away, release immediately (sendBeacon survives unload; token in body)
+    const releaseOnUnload = () => {
       if (typeof navigator !== "undefined" && navigator.sendBeacon) {
-        const blob = new Blob([JSON.stringify({ token })], { type: "application/json" });
+        const blob = new Blob([JSON.stringify({ token: token() })], { type: "application/json" });
         navigator.sendBeacon(`${API_URL}/api/projects/${projectId}/lock/release`, blob);
       }
-      fetch(`${API_URL}/api/projects/${projectId}/lock`, {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        keepalive: true,
-      }).catch(e => console.warn("[project]", e?.message || e));
     };
-
-    window.addEventListener("beforeunload", releaseLock);
+    window.addEventListener("beforeunload", releaseOnUnload);
 
     return () => {
       cancelledRef.current = true;
       if (heartbeatRef.current) { clearInterval(heartbeatRef.current); heartbeatRef.current = null; }
       if (lockPollRef.current) { clearInterval(lockPollRef.current); lockPollRef.current = null; }
-      window.removeEventListener("beforeunload", releaseLock);
-      releaseLock();
+      window.removeEventListener("beforeunload", releaseOnUnload);
+      activeHolders.set(projectId, (activeHolders.get(projectId) || 1) - 1);
+      // In-app navigation: release on the next tick, unless the project was mounted again meanwhile
+      setTimeout(() => {
+        if ((activeHolders.get(projectId) || 0) > 0) return;
+        fetch(`${API_URL}/api/projects/${projectId}/lock`, {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
+          keepalive: true,
+        }).catch(e => console.warn("[project]", e?.message || e));
+      }, 0);
     };
   }, [projectId]);
 

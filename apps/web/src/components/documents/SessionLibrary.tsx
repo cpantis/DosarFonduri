@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import { Tabs } from "@/components/ui/Tabs";
+import { useToast } from "@/components/shared/Toast";
 import { RuleCard, RuleCardList, RuleCardData, CATEGORY_COLORS as RC_COLORS, CATEGORY_LABELS as RC_LABELS } from "@/components/shared/RuleCard";
 
 /* ══════════════════════════════════════════
@@ -505,6 +506,8 @@ function TablesTab({ tables }: { tables: LibraryData["tables"] }) {
    ══════════════════════════════════════════ */
 
 function ChecklistTab({ checklist, folderId, onRefresh }: { checklist: LibraryData["checklist"]; folderId: string; onRefresh: () => void }) {
+  const { toast } = useToast();
+  const fail = (msg: string) => (err: any) => toast("error", err?.message || msg);
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
   const [newCategory, setNewCategory] = useState("General");
@@ -519,14 +522,14 @@ function ChecklistTab({ checklist, folderId, onRefresh }: { checklist: LibraryDa
       setNewName("");
       setAdding(false);
       onRefresh();
-    } catch { /* ignore */ }
+    } catch (err) { fail("Documentul nu a fost adăugat")(err); }
   };
 
   const handleDelete = async (itemId: string) => {
     try {
       await apiDelete(`/api/documents/session/${folderId}/checklist/${itemId}`);
       onRefresh();
-    } catch { /* ignore */ }
+    } catch (err) { fail("Ștergerea nu a reușit")(err); }
   };
 
   const handleAutoPopulate = async () => {
@@ -534,7 +537,7 @@ function ChecklistTab({ checklist, folderId, onRefresh }: { checklist: LibraryDa
     try {
       await apiPost(`/api/documents/session/${folderId}/checklist/auto-populate`, {});
       onRefresh();
-    } catch { /* ignore */ }
+    } catch (err) { fail("Popularea automată nu a reușit")(err); }
     setPopulating(false);
   };
 

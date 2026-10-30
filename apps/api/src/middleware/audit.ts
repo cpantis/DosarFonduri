@@ -12,6 +12,8 @@ export const auditMiddleware = async (c: Context, next: Next) => {
 
   const auth = c.get("auth") as AuthContext | undefined;
   if (!auth || !auth.organizationId) return;
+  // Lock heartbeats fire every 5 min per open project — noise that would bury real activity
+  if (c.req.path.endsWith("/lock/heartbeat")) return;
 
   try {
     await db.insert(auditLog).values({

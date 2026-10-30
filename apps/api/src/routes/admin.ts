@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { db } from "../db";
 import { users, organizations, projects, aiUsageLog, auditLog } from "../db/schema";
-import { eq, and, not, sql, desc, count, sum, gte, lte, inArray } from "drizzle-orm";
+import { eq, and, not, sql, desc, count, sum, gte, lte, inArray, like, notLike, or, type SQL } from "drizzle-orm";
 import type { AuthContext } from "../middleware/auth";
 import { sendEmail } from "../services/email";
 
@@ -261,6 +261,17 @@ adminRoutes.put("/users/:id", async (c) => {
     return c.json({ error: "Nu te poți dezactiva pe tine" }, 400);
   }
 
+  // The cabinet must keep at least one active admin (otherwise nobody can reach Admin again)
+  const losesAdmin = user.role === "admin" && user.status === "active"
+    && ((body.role && body.role !== "admin") || (body.status && body.status !== "active"));
+  if (losesAdmin) {
+    if (id === auth.userId) return c.json({ error: "Nu îți poți retrage singur rolul de administrator" }, 400);
+    const [{ admins }] = await db.select({ admins: count() }).from(users).where(and(
+      eq(users.organizationId, auth.organizationId!), eq(users.role, "admin"), eq(users.status, "active"),
+    ));
+    if (admins <= 1) return c.json({ error: "Cabinetul trebuie să aibă cel puțin un administrator activ" }, 400);
+  }
+
   const updates: Record<string, any> = {};
   if (body.role) updates.role = body.role;
   if (body.status) updates.status = body.status;
@@ -394,10 +405,18 @@ adminRoutes.get("/audit-log", async (c) => {
   const type = c.req.query("type");
   const offset = (page - 1) * limit;
 
-  const conditions = [eq(auditLog.organizationId, auth.organizationId)];
-  if (type && type !== "all") {
-    conditions.push(eq(auditLog.action, type));
-  }
+  // Actions are stored as "METHOD /api/path" (middleware/audit.ts); map the UI filters onto that format
+  const conditions = [
+    eq(auditLog.organizationId, auth.organizationId),
+    notLike(auditLog.action, "%/lock/heartbeat"),
+  ];
+  const typeFilters: Record<string, SQL> = {
+    create: like(auditLog.action, "POST %"),
+    upload: or(like(auditLog.action, "%upload%"), like(auditLog.action, "POST /api/documents/folders/%/documents"))!,
+    user: or(like(auditLog.action, "% /api/admin/users%"), like(auditLog.action, "% /api/auth/%"))!,
+    config: or(like(auditLog.action, "% /api/config%"), like(auditLog.action, "% /api/admin/%"))!,
+  };
+  if (type && typeFilters[type]) conditions.push(typeFilters[type]);
 
   const logs = await db
     .select({

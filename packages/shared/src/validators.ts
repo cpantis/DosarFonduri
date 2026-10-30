@@ -93,6 +93,8 @@ export const updateProjectSchema = z.object({
   codMysmis: z.string().max(100).optional().nullable(),
   structuraDosar: z.any().optional(),
   tipProiect: z.string().max(100).optional().nullable(),
+  /** Submission deadline (ISO date or datetime); drives dashboard deadlines and reminder emails */
+  deadline: z.string().refine(v => !isNaN(Date.parse(v)), "Dată invalidă").optional().nullable(),
 });
 
 export const updateElementSchema = z.object({
@@ -185,6 +187,11 @@ export const composeConfigSchema = z.object({
     promptTemplate: z.string().max(10000).optional(),
     elementKeys: z.array(z.string()).optional(),
     sortOrder: z.number().int().optional(),
+    // Fields the template viewer edits and neemiaCompose's SectionSpec consumes — zod would strip them otherwise
+    type: z.enum(["narrative", "table", "calculation"]).optional(),
+    label: z.string().max(500).optional(),
+    instructions: z.string().max(10000).optional(),
+    referenceTableIds: z.array(z.string()).optional(),
   })).optional(),
   aiModel: z.string().max(100).optional(),
   language: z.string().max(20).optional(),

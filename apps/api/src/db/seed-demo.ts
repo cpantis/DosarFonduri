@@ -39,9 +39,14 @@ async function seedDemo() {
   console.log("🌱 Seeding demo cabinet...\n");
 
   // ─── 1. ORGANIZAȚIE (Cabinet de consultanță) ──────────
-  let org = await db.query.organizations.findFirst({
-    where: (o, { eq }) => eq(o.code, ORG_CODE),
+  // If the admin already exists (e.g. created by migrate.ts's startup seed with another org code),
+  // seed into *their* cabinet — otherwise the demo company lands in an org the admin can't see.
+  const existingAdmin = await db.query.users.findFirst({
+    where: (u, { eq }) => eq(u.email, ADMIN_EMAIL),
   });
+  let org = existingAdmin?.organizationId
+    ? await db.query.organizations.findFirst({ where: (o, { eq }) => eq(o.id, existingAdmin.organizationId!) })
+    : await db.query.organizations.findFirst({ where: (o, { eq }) => eq(o.code, ORG_CODE) });
 
   if (org) {
     console.log(`⏭  Organizația "${ORG_NAME}" există deja (id: ${org.id})`);
